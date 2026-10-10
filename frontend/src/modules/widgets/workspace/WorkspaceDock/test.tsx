@@ -11,6 +11,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import { createMemoryRouter, RouterProvider } from "react-router";
@@ -307,6 +308,7 @@ describe("WorkspaceDock", () => {
     afterEach(() => {
       // 전역 저장소라 테스트끼리 녹음이 새지 않도록 처음 상태로 되돌려요
       useRecordingStore.getState().discardRecording();
+      mockServer.events.removeAllListeners();
     });
 
     const clickMic = async (name = "회의 녹음 시작") => {
@@ -330,6 +332,23 @@ describe("WorkspaceDock", () => {
       vi
         .spyOn(navigator.mediaDevices, "getUserMedia")
         .mockRejectedValueOnce(new DOMException("", "NotAllowedError"));
+
+    const END_RECORDING_DIALOG = "녹음을 끝낼까요?";
+
+    /** 끝내기 확인 창에서 버튼을 골라요. 「녹음 끝내기」는 녹음 칩의 중지에도 있어 창 안에서 찾아요. */
+    const chooseInEndRecordingDialog = async (name: string) => {
+      const dialog = screen.getByRole("dialog", { name: END_RECORDING_DIALOG });
+
+      await act(async () => {
+        fireEvent.click(within(dialog).getByRole("button", { name }));
+      });
+    };
+
+    /** 녹음 칩의 중지를 누르고 확인 창에서 「녹음 끝내기」를 골라요 */
+    const stopRecording = async () => {
+      await clickMic("녹음 끝내기");
+      await chooseInEndRecordingDialog("녹음 끝내기");
+    };
 
     it("접힌 독과 펼친 독 모두에 마이크가 있다", () => {
       renderDock();
@@ -474,12 +493,39 @@ describe("WorkspaceDock", () => {
         ).not.toBeInTheDocument();
       });
 
-      it("중지를 누르면 녹음을 끝내고 제자리에서 마이크로 돌아간다", async () => {
+      it("중지를 누르면 확인 창을 띄우고 아직 끝내지 않는다", async () => {
+        let endRequestCount = 0;
+        mockServer.events.on("request:start", ({ request }) => {
+          if (request.url.endsWith("/end")) endRequestCount += 1;
+        });
+        renderDock();
+
+        await clickMic("녹음 끝내기");
+
+        expect(
+          screen.getByRole("dialog", { name: END_RECORDING_DIALOG }),
+        ).toBeInTheDocument();
+        expect(useRecordingStore.getState().status).toBe("recording");
+        expect(endRequestCount).toBe(0);
+      });
+
+      it("확인 창의 계속 녹음은 창만 닫고 녹음 칩을 그대로 둔다", async () => {
+        renderDock();
+
+        await clickMic("녹음 끝내기");
+        await chooseInEndRecordingDialog("계속 녹음");
+
+        expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+        expect(useRecordingStore.getState().status).toBe("recording");
+        expect(
+          screen.getByRole("button", { name: "녹음 화면으로 이동" }),
+        ).toBeInTheDocument();
+      });
+
+      it("확인 창에서 녹음 끝내기를 고르면 녹음을 끝내고 제자리에서 마이크로 돌아간다", async () => {
         const { router } = renderDock();
 
-        await act(async () => {
-          fireEvent.click(screen.getByRole("button", { name: "녹음 끝내기" }));
-        });
+        await stopRecording();
 
         await waitFor(() =>
           expect(useRecordingStore.getState().status).toBe("idle"),
@@ -516,7 +562,7 @@ describe("WorkspaceDock", () => {
         });
       });
 
-      it("중지를 빠르게 두 번 눌러도 종료 요청은 한 번만 보낸다", async () => {
+      it("중지를 다시 눌러도 확인 창을 열지 않고 종료 요청은 한 번만 보낸다", async () => {
         let endRequestCount = 0;
         let respondEnd = () => {};
         mockServer.use(
@@ -531,12 +577,12 @@ describe("WorkspaceDock", () => {
         );
         renderDock();
 
-        const stopButton = screen.getByRole("button", { name: "녹음 끝내기" });
-        await act(async () => {
-          fireEvent.click(stopButton);
-          fireEvent.click(stopButton);
-        });
+        await stopRecording();
         await waitFor(() => expect(endRequestCount).toBe(1));
+        await clickMic("녹음 끝내기");
+
+        expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+
         await act(async () => respondEnd());
 
         await waitFor(() =>
@@ -557,18 +603,14 @@ describe("WorkspaceDock", () => {
         vi.spyOn(console, "error").mockImplementation(() => {});
         renderDock();
 
-        await act(async () => {
-          fireEvent.click(screen.getByRole("button", { name: "녹음 끝내기" }));
-        });
+        await stopRecording();
         await waitFor(() => expect(endRequestCount).toBe(1));
         await waitFor(() =>
           expect(useRecordingStore.getState().isEnding).toBe(false),
         );
         expect(useRecordingStore.getState().status).toBe("recording");
 
-        await act(async () => {
-          fireEvent.click(screen.getByRole("button", { name: "녹음 끝내기" }));
-        });
+        await stopRecording();
 
         await waitFor(() => expect(endRequestCount).toBe(2));
       });

@@ -11,6 +11,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import { createMemoryRouter, Outlet, RouterProvider } from "react-router";
@@ -70,10 +71,25 @@ const startRecording = async () => {
   });
 };
 
+/** 녹음 바의 「녹음 끝내기」를 누르고 확인 창에서 「녹음 끝내기」를 골라요 */
+const confirmEndRecording = async () => {
+  await act(async () => {
+    fireEvent.click(screen.getByRole("button", { name: "녹음 끝내기" }));
+  });
+  const dialog = screen.getByRole("dialog", { name: "녹음을 끝낼까요?" });
+
+  await act(async () => {
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "녹음 끝내기" }),
+    );
+  });
+};
+
 describe("RecordingPage", () => {
   afterEach(() => {
     // 전역 저장소라 테스트끼리 녹음이 새지 않도록 처음 상태로 되돌려요
     useRecordingStore.getState().discardRecording();
+    mockServer.events.removeAllListeners();
   });
 
   it("진행 중인 녹음 없이 들어오면 홈으로 보내고, 뒤로 가기로 돌아오지 않는다", async () => {
@@ -94,17 +110,19 @@ describe("RecordingPage", () => {
     expect(router.state.location.pathname).toBe(RECORDING_PATH);
   });
 
-  it("녹음을 끝내면 홈으로 나간다", async () => {
+  it("확인 창에서 녹음 끝내기를 고르면 종료 요청과 업로드 완료 확인을 마치고 홈으로 나간다", async () => {
+    const count = { end: 0, complete: 0 };
+    mockServer.events.on("request:start", ({ request }) => {
+      if (request.url.endsWith("/end")) count.end += 1;
+      if (request.url.endsWith("/audio-upload-complete")) count.complete += 1;
+    });
     await startRecording();
     const { router } = renderRecordingPage();
 
-    await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "녹음 끝내기" }));
-    });
+    await confirmEndRecording();
 
-    await waitFor(() =>
-      expect(router.state.location.pathname).toBe(HOME_PATH),
-    );
+    await waitFor(() => expect(router.state.location.pathname).toBe(HOME_PATH));
+    expect(count).toEqual({ end: 1, complete: 1 });
   });
 
   describe("최종 오디오 업로드", () => {
@@ -128,17 +146,11 @@ describe("RecordingPage", () => {
       await startRecording();
       const { router } = renderRecordingPage();
 
-      await act(async () => {
-        fireEvent.click(screen.getByRole("button", { name: "녹음 끝내기" }));
-      });
+      await confirmEndRecording();
       await waitFor(() =>
         expect(router.state.location.pathname).toBe(HOME_PATH),
       );
     };
-
-    afterEach(() => {
-      mockServer.events.removeAllListeners();
-    });
 
     it("PUT을 마치면 업로드 완료를 확인받는다", async () => {
       const count = countUploadRequests();
