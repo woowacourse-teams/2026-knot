@@ -6,13 +6,16 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import lombok.Getter;
 
 @Getter
 @Entity
 @Table(name = "transcript_segments")
 public class TranscriptSegment {
-
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -79,6 +82,52 @@ public class TranscriptSegment {
         );
     }
 
+    public static List<TranscriptSegment> createAll(
+            long transcriptId,
+            List<TranscriptUtterance> utterances
+    ) {
+        if (utterances.isEmpty()) {
+            throw new RecordingException(RecordingErrorCode.INVALID_RECORDING_DATA);
+        }
+        List<TranscriptSegment> segments = new ArrayList<>();
+        Map<String, Integer> speakerNumbers = new HashMap<>();
+        double previousStartSeconds = 0;
+        for (int position = 0; position < utterances.size(); position++) {
+            TranscriptUtterance utterance = utterances.get(position);
+            if (utterance.startSeconds() < previousStartSeconds) {
+                throw new RecordingException(RecordingErrorCode.INVALID_RECORDING_DATA);
+            }
+            segments.add(
+                    create(
+                            transcriptId,
+                            position,
+                            utterance.startMillis(),
+                            utterance.endMillis(),
+                            speakerNumber(
+                                    speakerNumbers,
+                                    utterance.speakerLabel()
+                            ),
+                            utterance.text()
+                    )
+            );
+            previousStartSeconds = utterance.startSeconds();
+        }
+        return segments;
+    }
+
+    private static Integer speakerNumber(
+            Map<String, Integer> speakerNumbers,
+            String speakerLabel
+    ) {
+        if (speakerLabel == null || speakerLabel.isBlank()) {
+            return null;
+        }
+        return speakerNumbers.computeIfAbsent(
+                speakerLabel,
+                ignored -> speakerNumbers.size() + 1
+        );
+    }
+
     private void validateTranscriptId(long transcriptId) {
         if (transcriptId <= 0) {
             throw new RecordingException(RecordingErrorCode.INVALID_RECORDING_DATA);
@@ -99,6 +148,9 @@ public class TranscriptSegment {
             throw new RecordingException(RecordingErrorCode.INVALID_RECORDING_DATA);
         }
         if (endMillis != null && endMillis < startMillis) {
+            throw new RecordingException(RecordingErrorCode.INVALID_RECORDING_DATA);
+        }
+        if (endMillis != null && endMillis > RecordingSession.MAX_RECORDING_MILLIS) {
             throw new RecordingException(RecordingErrorCode.INVALID_RECORDING_DATA);
         }
     }

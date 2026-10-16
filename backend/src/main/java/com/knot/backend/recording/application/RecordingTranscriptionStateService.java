@@ -17,16 +17,14 @@ import com.knot.backend.recording.domain.Transcript;
 import com.knot.backend.recording.domain.TranscriptRepository;
 import com.knot.backend.recording.domain.TranscriptSegment;
 import com.knot.backend.recording.domain.TranscriptSegmentRepository;
+import com.knot.backend.recording.domain.TranscriptUtterance;
 import com.knot.backend.workspace.domain.WorkspaceRepository;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
-import java.util.stream.IntStream;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
@@ -150,19 +148,18 @@ public class RecordingTranscriptionStateService {
             );
             return;
         }
-        validateTranscript(result);
-        Instant now = now();
+        List<TranscriptUtterance> utterances = result.toUtterances();
         Transcript transcript = transcripts.saveAndFlush(
                 Transcript.create(
                         execution.recordingId(),
                         result.rawWhisperJson(),
-                        now
+                        now()
                 )
         );
         segments.saveAll(
-                toSegments(
+                TranscriptSegment.createAll(
                         transcript.getId(),
-                        result
+                        utterances
                 )
         );
         documentIntake.acceptCompletedTranscript(
@@ -221,59 +218,6 @@ public class RecordingTranscriptionStateService {
         return uploads.findByRecordingId(recordingId)
                 .filter(RecordingAudioUpload::isAudioAvailable)
                 .isPresent();
-    }
-
-    private void validateTranscript(AiTranscript result) {
-        if (result == null || result.schemaVersion() != 1 || result.rawWhisperJson() == null || result.rawWhisperJson()
-                .isBlank() || result.utterances()
-                        .isEmpty()) {
-            throw new RecordingException(RecordingErrorCode.INVALID_RECORDING_DATA);
-        }
-        double previousStart = -1;
-        for (int index = 0; index < result.utterances()
-                .size(); index++) {
-            AiTranscript.Utterance utterance = result.utterances()
-                    .get(index);
-            if (utterance.ord() != index || !Double.isFinite(utterance.startSec())
-                    || !Double.isFinite(utterance.endSec()) || utterance.startSec() < 0 || utterance.endSec() > 7200
-                    || utterance.startSec() < previousStart || utterance.endSec() < utterance.startSec()) {
-                throw new RecordingException(RecordingErrorCode.INVALID_RECORDING_DATA);
-            }
-            previousStart = utterance.startSec();
-        }
-    }
-
-    private List<TranscriptSegment> toSegments(
-            long transcriptId,
-            AiTranscript result
-    ) {
-        Map<String, Integer> speakerNumbers = new HashMap<>();
-        return IntStream.range(
-                0,
-                result.utterances()
-                        .size()
-        )
-                .mapToObj(index -> {
-                    AiTranscript.Utterance utterance = result.utterances()
-                            .get(index);
-                    Integer speakerNumber = null;
-                    if (utterance.speakerLabel() != null && !utterance.speakerLabel()
-                            .isBlank()) {
-                        speakerNumber = speakerNumbers.computeIfAbsent(
-                                utterance.speakerLabel(),
-                                ignored -> speakerNumbers.size() + 1
-                        );
-                    }
-                    return TranscriptSegment.create(
-                            transcriptId,
-                            index,
-                            Math.round(utterance.startSec() * 1000),
-                            Math.round(utterance.endSec() * 1000),
-                            speakerNumber,
-                            utterance.text()
-                    );
-                })
-                .toList();
     }
 
     private Instant now() {

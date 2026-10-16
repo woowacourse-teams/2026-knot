@@ -33,7 +33,7 @@ public class Transcript {
             String content,
             Instant createdAt
     ) {
-        if (recordingSessionId <= 0 || content == null || createdAt == null) {
+        if (recordingSessionId <= 0 || content == null || content.isBlank() || createdAt == null) {
             throw new RecordingException(RecordingErrorCode.INVALID_RECORDING_DATA);
         }
         this.recordingSessionId = recordingSessionId;
