@@ -44,26 +44,48 @@ public class RecordingTranscriptionStateService {
     private final Clock clock;
 
     @Transactional(propagation = Propagation.MANDATORY)
-    public void registerAutomatic(long recordingId) {
-        if (transcriptions.findByRecordingSessionId(recordingId)
-                .isPresent()) {
-            return;
-        }
-        transcriptions.lockAdmission();
-        Instant now = now();
-        RecordingTranscription transcription = RecordingTranscription.processing(
+    public void registerAutomatic(
+            long workspaceId,
+            long recordingId
+    ) {
+        RecordingLog.Scope trace = RecordingLog.begin(
+                "recording.transcription.accept",
+                workspaceId,
                 recordingId,
-                UUID.randomUUID(),
-                now
+                null,
+                null
         );
-        if (transcriptions.findProcessing()
-                .isPresent()) {
-            transcription.fail(
-                    transcription.getAttemptId(),
-                    "BUSY"
+        trace.call(() -> {
+            Optional<RecordingTranscription> existing = transcriptions.findByRecordingSessionId(recordingId);
+            if (existing.isPresent()) {
+                trace.attempt(
+                        existing.orElseThrow()
+                                .getAttemptId()
+                )
+                        .outcome("replayed");
+                return null;
+            }
+            transcriptions.lockAdmission();
+            Instant now = now();
+            RecordingTranscription transcription = RecordingTranscription.processing(
+                    recordingId,
+                    UUID.randomUUID(),
+                    now
             );
-        }
-        transcriptions.saveAndFlush(transcription);
+            trace.attempt(transcription.getAttemptId())
+                    .outcome("accepted");
+            if (transcriptions.findProcessing()
+                    .isPresent()) {
+                transcription.fail(
+                        transcription.getAttemptId(),
+                        "BUSY"
+                );
+                trace.outcome("rejected")
+                        .error("BUSY");
+            }
+            transcriptions.saveAndFlush(transcription);
+            return null;
+        });
     }
 
     @Transactional
@@ -72,32 +94,45 @@ public class RecordingTranscriptionStateService {
             long memberId,
             long recordingId
     ) {
-        recordingAccess.loadOwnedForUpdate(
+        RecordingLog.Scope trace = RecordingLog.begin(
+                "recording.transcription.retry_reserve",
                 workspaceId,
-                memberId,
-                recordingId
-        )
-                .validateEnded();
-        RecordingAudioUpload upload = uploads.findByRecordingId(recordingId)
-                .orElseThrow(() -> new RecordingException(RecordingErrorCode.AUDIO_UPLOAD_NOT_FOUND));
-        upload.validateAudioAvailable();
-        RecordingTranscription transcription = transcriptions.findByRecordingSessionIdForUpdate(recordingId)
-                .orElseThrow(() -> new RecordingException(RecordingErrorCode.TRANSCRIPTION_RETRY_NOT_ALLOWED));
-        transcription.validateRetryable();
-        transcriptions.lockAdmission();
-        if (transcriptions.findProcessing()
-                .isPresent()) {
-            throw new RecordingException(RecordingErrorCode.TRANSCRIPTION_BUSY);
-        }
-        transcription.retry(
-                UUID.randomUUID(),
-                now()
-        );
-        return new RecordingTranscriptionRetryResult(
                 recordingId,
-                transcription.getAttemptId(),
-                transcription.getStatus()
+                null,
+                null
         );
+        return trace.call(() -> {
+            recordingAccess.loadOwnedForUpdate(
+                    workspaceId,
+                    memberId,
+                    recordingId
+            )
+                    .validateEnded();
+            RecordingAudioUpload upload = uploads.findByRecordingId(recordingId)
+                    .orElseThrow(() -> new RecordingException(RecordingErrorCode.AUDIO_UPLOAD_NOT_FOUND));
+            trace.upload(upload.getId());
+            upload.validateAudioAvailable();
+            RecordingTranscription transcription = transcriptions.findByRecordingSessionIdForUpdate(recordingId)
+                    .orElseThrow(() -> new RecordingException(RecordingErrorCode.TRANSCRIPTION_RETRY_NOT_ALLOWED));
+            trace.attempt(transcription.getAttemptId());
+            transcription.validateRetryable();
+            transcriptions.lockAdmission();
+            if (transcriptions.findProcessing()
+                    .isPresent()) {
+                throw new RecordingException(RecordingErrorCode.TRANSCRIPTION_BUSY);
+            }
+            transcription.retry(
+                    UUID.randomUUID(),
+                    now()
+            );
+            trace.attempt(transcription.getAttemptId())
+                    .outcome("accepted");
+            return new RecordingTranscriptionRetryResult(
+                    recordingId,
+                    transcription.getAttemptId(),
+                    transcription.getStatus()
+            );
+        });
     }
 
     @Transactional(readOnly = true)
@@ -124,45 +159,59 @@ public class RecordingTranscriptionStateService {
             RecordingTranscriptionExecution execution,
             AiTranscript result
     ) {
-        boolean workspaceAvailable = workspaces.findByIdForUpdate(execution.workspaceId())
-                .isPresent();
-        boolean recordingAvailable = recordings.findByIdForUpdate(execution.recordingId())
-                .filter(value -> value.isTranscribableIn(execution.workspaceId()))
-                .isPresent();
-        Optional<RecordingTranscription> current = transcriptions
-                .findByRecordingSessionIdForUpdate(execution.recordingId())
-                .filter(value -> value.isProcessing(execution.attemptId()));
-        if (current.isEmpty()) {
-            return;
-        }
-        RecordingTranscription transcription = current.orElseThrow();
-        if (!workspaceAvailable || !recordingAvailable || !hasAvailableUpload(execution.recordingId())) {
-            transcription.fail(
-                    execution.attemptId(),
-                    "RECORDING_UNAVAILABLE"
-            );
-            return;
-        }
-        List<TranscriptUtterance> utterances = result.toUtterances();
-        Transcript transcript = transcripts.saveAndFlush(
-                Transcript.create(
-                        execution.recordingId(),
-                        result.rawWhisperJson(),
-                        now()
-                )
-        );
-        segments.saveAll(
-                TranscriptSegment.createAll(
-                        transcript.getId(),
-                        utterances
-                )
-        );
-        documentIntake.acceptCompletedTranscript(
+        RecordingLog.Scope trace = RecordingLog.begin(
+                "recording.transcription.persist",
                 execution.workspaceId(),
                 execution.recordingId(),
-                transcript.getId()
+                null,
+                execution.attemptId()
         );
-        transcription.succeed(execution.attemptId());
+        trace.call(() -> {
+            boolean workspaceAvailable = workspaces.findByIdForUpdate(execution.workspaceId())
+                    .isPresent();
+            boolean recordingAvailable = recordings.findByIdForUpdate(execution.recordingId())
+                    .filter(value -> value.isTranscribableIn(execution.workspaceId()))
+                    .isPresent();
+            Optional<RecordingTranscription> current = transcriptions
+                    .findByRecordingSessionIdForUpdate(execution.recordingId())
+                    .filter(value -> value.isProcessing(execution.attemptId()));
+            if (current.isEmpty()) {
+                trace.outcome("ignored");
+                return null;
+            }
+            RecordingTranscription transcription = current.orElseThrow();
+            if (!workspaceAvailable || !recordingAvailable || !hasAvailableUpload(execution.recordingId())) {
+                transcription.fail(
+                        execution.attemptId(),
+                        "RECORDING_UNAVAILABLE"
+                );
+                trace.outcome("failed")
+                        .error("RECORDING_UNAVAILABLE");
+                return null;
+            }
+            List<TranscriptUtterance> utterances = result.toUtterances();
+            Transcript transcript = transcripts.saveAndFlush(
+                    Transcript.create(
+                            execution.recordingId(),
+                            result.rawWhisperJson(),
+                            now()
+                    )
+            );
+            segments.saveAll(
+                    TranscriptSegment.createAll(
+                            transcript.getId(),
+                            utterances
+                    )
+            );
+            documentIntake.acceptCompletedTranscript(
+                    execution.workspaceId(),
+                    execution.recordingId(),
+                    transcript.getId()
+            );
+            transcription.succeed(execution.attemptId());
+            trace.outcome("completed");
+            return null;
+        });
     }
 
     @Transactional
@@ -170,15 +219,32 @@ public class RecordingTranscriptionStateService {
             RecordingTranscriptionExecution execution,
             String failureCode
     ) {
-        workspaces.findIncludingDeletedByIdForUpdate(execution.workspaceId());
-        recordings.findByIdForUpdate(execution.recordingId());
-        transcriptions.findByRecordingSessionIdForUpdate(execution.recordingId())
-                .ifPresent(
-                        value -> value.fail(
-                                execution.attemptId(),
-                                failureCode
-                        )
-                );
+        RecordingLog.Scope trace = RecordingLog.begin(
+                "recording.transcription.persist",
+                execution.workspaceId(),
+                execution.recordingId(),
+                null,
+                execution.attemptId()
+        );
+        trace.call(() -> {
+            workspaces.findIncludingDeletedByIdForUpdate(execution.workspaceId());
+            recordings.findByIdForUpdate(execution.recordingId());
+            Optional<RecordingTranscription> current = transcriptions
+                    .findByRecordingSessionIdForUpdate(execution.recordingId())
+                    .filter(value -> value.isProcessing(execution.attemptId()));
+            if (current.isEmpty()) {
+                trace.outcome("ignored");
+                return null;
+            }
+            current.orElseThrow()
+                    .fail(
+                            execution.attemptId(),
+                            failureCode
+                    );
+            trace.outcome("failed")
+                    .error(failureCode);
+            return null;
+        });
     }
 
     @Transactional

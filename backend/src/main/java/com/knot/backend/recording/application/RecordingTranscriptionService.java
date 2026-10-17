@@ -40,19 +40,30 @@ public class RecordingTranscriptionService {
             long memberId,
             long recordingId
     ) {
-        if (!properties.enabled()) {
-            throw new RecordingException(RecordingErrorCode.TRANSCRIPTION_DISABLED);
-        }
-        if (!accepting) {
-            throw new RecordingException(RecordingErrorCode.AI_NOT_READY);
-        }
-        RecordingTranscriptionRetryResult result = state.retry(
+        RecordingLog.Scope observation = RecordingLog.begin(
+                "recording.transcription.retry",
                 workspaceId,
-                memberId,
-                recordingId
+                recordingId,
+                null,
+                null
         );
-        dispatch();
-        return result;
+        return observation.call(() -> {
+            if (!properties.enabled()) {
+                throw new RecordingException(RecordingErrorCode.TRANSCRIPTION_DISABLED);
+            }
+            if (!accepting) {
+                throw new RecordingException(RecordingErrorCode.AI_NOT_READY);
+            }
+            RecordingTranscriptionRetryResult result = state.retry(
+                    workspaceId,
+                    memberId,
+                    recordingId
+            );
+            observation.attempt(result.attemptId())
+                    .outcome("accepted");
+            dispatch();
+            return result;
+        });
     }
 
     public synchronized void dispatch() {
@@ -101,52 +112,116 @@ public class RecordingTranscriptionService {
     private AiTranscriptionJob runRemote(RecordingTranscriptionExecution execution) {
         Instant deadline = execution.startedAt()
                 .plus(properties.jobTimeout());
-        requireTime(deadline);
-        String url = storage.presignDownload(
-                execution.storageKey(),
-                execution.storageVersionId(),
-                execution.contentType(),
-                execution.contentLength()
+        RecordingLog.Scope input = observe(
+                "input",
+                execution
         );
-        requireTime(deadline);
-        AiTranscriptionJob job;
-        try {
-            job = client.submit(
-                    execution.attemptId(),
-                    url
+        String url = input.call(() -> {
+            requireTime(deadline);
+            String signed = storage.presignDownload(
+                    execution.storageKey(),
+                    execution.storageVersionId(),
+                    execution.contentType(),
+                    execution.contentLength()
             );
+            requireTime(deadline);
+            input.outcome("prepared");
+            return signed;
+        });
+        RecordingLog.Scope result = observe(
+                "result",
+                execution
+        ).outcome("unconfirmed");
+        return result.call(() -> {
+            AiTranscriptionJob job = submit(
+                    execution,
+                    url,
+                    deadline
+            );
+            while (job.status() == AiTranscriptionJob.Status.PROCESSING) {
+                Duration remaining = Duration.between(
+                        clock.instant(),
+                        deadline
+                );
+                if (remaining.isNegative() || remaining.isZero()) {
+                    throw new RecordingException(RecordingErrorCode.AI_TIMEOUT);
+                }
+                try {
+                    Thread.sleep(
+                            remaining.compareTo(properties.pollInterval()) < 0 ? remaining : properties.pollInterval()
+                    );
+                } catch (InterruptedException exception) {
+                    Thread.currentThread()
+                            .interrupt();
+                    throw new RecordingException(
+                            RecordingErrorCode.AI_INTERRUPTED,
+                            exception
+                    );
+                }
+                requireTime(deadline);
+                job = client.get(execution.attemptId());
+            }
+            result.outcome(job.status() == AiTranscriptionJob.Status.SUCCEEDED ? "completed" : "failed")
+                    .error(job.failureCode());
+            return job;
+        });
+    }
+
+    private AiTranscriptionJob submit(
+            RecordingTranscriptionExecution execution,
+            String url,
+            Instant deadline
+    ) {
+        RecordingLog.Scope submission = observe(
+                "submit",
+                execution
+        );
+        try {
+            return submission.call(() -> {
+                try {
+                    AiTranscriptionJob job = client.submit(
+                            execution.attemptId(),
+                            url
+                    );
+                    submission.outcome("accepted");
+                    return job;
+                } catch (RecordingException exception) {
+                    if (exception.getErrorCode() == RecordingErrorCode.AI_TIMEOUT
+                            || exception.getErrorCode() == RecordingErrorCode.AI_UNAVAILABLE) {
+                        submission.outcome("unconfirmed");
+                    }
+                    throw exception;
+                }
+            });
         } catch (RecordingException exception) {
             if (exception.getErrorCode() != RecordingErrorCode.AI_TIMEOUT
                     && exception.getErrorCode() != RecordingErrorCode.AI_UNAVAILABLE) {
                 throw exception;
             }
-            requireTime(deadline);
-            job = client.get(execution.attemptId());
+            RecordingLog.Scope confirmation = observe(
+                    "confirm",
+                    execution
+            ).outcome("unconfirmed");
+            return confirmation.call(() -> {
+                requireTime(deadline);
+                AiTranscriptionJob job = client.get(execution.attemptId());
+                confirmation.outcome("confirmed");
+                return job;
+            });
         }
-        while (job.status() == AiTranscriptionJob.Status.PROCESSING) {
-            Duration remaining = Duration.between(
-                    clock.instant(),
-                    deadline
-            );
-            if (remaining.isNegative() || remaining.isZero()) {
-                throw new RecordingException(RecordingErrorCode.AI_TIMEOUT);
-            }
-            try {
-                Thread.sleep(
-                        remaining.compareTo(properties.pollInterval()) < 0 ? remaining : properties.pollInterval()
-                );
-            } catch (InterruptedException exception) {
-                Thread.currentThread()
-                        .interrupt();
-                throw new RecordingException(
-                        RecordingErrorCode.AI_INTERRUPTED,
-                        exception
-                );
-            }
-            requireTime(deadline);
-            job = client.get(execution.attemptId());
-        }
-        return job;
+    }
+
+    private RecordingLog.Scope observe(
+            String stage,
+            RecordingTranscriptionExecution execution
+    ) {
+        return RecordingLog.begin(
+                "recording.transcription." + stage,
+                execution.workspaceId(),
+                execution.recordingId(),
+                null,
+                execution.attemptId()
+        );
     }
 
     private void requireTime(Instant deadline) {

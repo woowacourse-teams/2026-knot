@@ -1,12 +1,21 @@
 package com.knot.ai.transcription.infrastructure;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.AppenderBase;
+import com.knot.ai.transcription.application.TranscriptionLog;
+import org.slf4j.LoggerFactory;
+import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.stream.Collectors;
 import com.knot.ai.global.AiServerProperties;
 import com.knot.ai.transcription.application.command.CreateTranscriptionCommand;
 import com.knot.ai.transcription.domain.TranscriptionException;
@@ -42,8 +51,18 @@ class HeadlessTranscriptionEngineTest {
     private HeadlessTranscriptionEngine engine;
     private Path ffmpeg;
     private Path pnpm;
+    private final List<ILoggingEvent> events = new CopyOnWriteArrayList<>();
+    private final Logger logger = (Logger) LoggerFactory.getLogger(TranscriptionLog.class);
+    private final AppenderBase<ILoggingEvent> appender = new AppenderBase<>() {
+        @Override
+        protected void append(ILoggingEvent event) {
+            events.add(event);
+        }
+    };
     @BeforeEach
     void prepare() throws Exception {
+        appender.start();
+        logger.addAppender(appender);
         Path runner = directory.resolve("runner");
         Path scripts = runner.resolve("scripts");
         Files.createDirectories(scripts);
@@ -158,6 +177,8 @@ class HeadlessTranscriptionEngineTest {
     @AfterEach
     void close() {
         server.stop(0);
+        logger.detachAppender(appender);
+        appender.stop();
     }
 
     @Test
@@ -174,6 +195,32 @@ class HeadlessTranscriptionEngineTest {
                         .getFirst()
                         .text()
         );
+        assertThat(fields()).extracting(fields -> fields.get("event") + ":" + fields.get("outcome"))
+                .containsExactly(
+                        "recording.transcription.download:started",
+                        "recording.transcription.download:completed",
+                        "recording.transcription.decode:started",
+                        "recording.transcription.decode:completed",
+                        "recording.transcription.model:started",
+                        "recording.transcription.model:completed",
+                        "recording.transcription.result_check:started",
+                        "recording.transcription.result_check:completed"
+                );
+        for (ILoggingEvent event : events) {
+            assertThat(event.getFormattedMessage()).doesNotContain(
+                    "https://",
+                    "audio.webm",
+                    "input.wav",
+                    "profile",
+                    "안녕"
+            );
+            assertThat(event.getThrowableProxy()).isNull();
+            assertThat(fields(event)).containsEntry(
+                    "attemptId",
+                    command.attemptId()
+                            .toString()
+            );
+        }
         engine.cleanup(command.attemptId());
         assertFalse(
                 Files.exists(
@@ -184,6 +231,57 @@ class HeadlessTranscriptionEngineTest {
                                 )
                 )
         );
+    }
+
+    @Test
+    @DisplayName("다운로드 실패는 안전한 코드로 기록하고 디코딩 단계에 진입하지 않는다")
+    void transcribe_failure_downloadLogsKnownCodeWithoutUrl() throws Exception {
+        // given
+        CreateTranscriptionCommand command = new CreateTranscriptionCommand(
+                UUID.randomUUID(),
+                "https://secret.invalid/private-audio?token=secret-token",
+                null
+        );
+
+        // when
+        TranscriptionException failure = assertThrows(
+                TranscriptionException.class,
+                () -> engine.transcribe(command)
+        );
+
+        // then
+        assertEquals(
+                "INVALID_DOWNLOAD_URL",
+                failure.getCode()
+        );
+        assertThat(fields()).anySatisfy(
+                fields -> assertThat(fields).containsEntry(
+                        "event",
+                        "recording.transcription.download"
+                )
+                        .containsEntry(
+                                "outcome",
+                                "failed"
+                        )
+                        .containsEntry(
+                                "errorCode",
+                                "INVALID_DOWNLOAD_URL"
+                        )
+        );
+        assertThat(fields()).noneSatisfy(
+                fields -> assertThat(fields).containsEntry(
+                        "event",
+                        "recording.transcription.decode"
+                )
+        );
+        for (ILoggingEvent event : events) {
+            assertThat(event.getFormattedMessage()).doesNotContain(
+                    "secret.invalid",
+                    "private-audio",
+                    "secret-token"
+            );
+        }
+        engine.cleanup(command.attemptId());
     }
 
     @Test
@@ -208,6 +306,20 @@ class HeadlessTranscriptionEngineTest {
                 "INVALID_RESULT",
                 exception.getCode()
         );
+        assertThat(fields()).anySatisfy(
+                fields -> assertThat(fields).containsEntry(
+                        "event",
+                        "recording.transcription.result_check"
+                )
+                        .containsEntry(
+                                "outcome",
+                                "failed"
+                        )
+                        .containsEntry(
+                                "errorCode",
+                                "INVALID_RESULT"
+                        )
+        );
         engine.cleanup(command.attemptId());
     }
 
@@ -229,6 +341,26 @@ class HeadlessTranscriptionEngineTest {
         assertEquals(
                 "DECODE_TIMEOUT",
                 exception.getCode()
+        );
+        assertThat(fields()).anySatisfy(
+                fields -> assertThat(fields).containsEntry(
+                        "event",
+                        "recording.transcription.decode"
+                )
+                        .containsEntry(
+                                "outcome",
+                                "failed"
+                        )
+                        .containsEntry(
+                                "errorCode",
+                                "DECODE_TIMEOUT"
+                        )
+        );
+        assertThat(fields()).noneSatisfy(
+                fields -> assertThat(fields).containsEntry(
+                        "event",
+                        "recording.transcription.model"
+                )
         );
         engine.cleanup(command.attemptId());
     }
@@ -338,6 +470,20 @@ class HeadlessTranscriptionEngineTest {
                 "STT_FAILED",
                 exception.getCode()
         );
+        assertThat(fields()).anySatisfy(
+                fields -> assertThat(fields).containsEntry(
+                        "event",
+                        "recording.transcription.model"
+                )
+                        .containsEntry(
+                                "outcome",
+                                "failed"
+                        )
+                        .containsEntry(
+                                "errorCode",
+                                "STT_FAILED"
+                        )
+        );
         engine.cleanup(command.attemptId());
     }
 
@@ -436,6 +582,23 @@ class HeadlessTranscriptionEngineTest {
                         .contains("SECRET_TRANSCRIPT")
         );
         engine.cleanup(command.attemptId());
+    }
+
+    private List<Map<String, Object>> fields() {
+        return events.stream()
+                .map(this::fields)
+                .toList();
+    }
+
+    private Map<String, Object> fields(ILoggingEvent event) {
+        return event.getKeyValuePairs()
+                .stream()
+                .collect(
+                        Collectors.toMap(
+                                pair -> pair.key,
+                                pair -> pair.value
+                        )
+                );
     }
 
     private void failingRunner(String body) throws Exception {

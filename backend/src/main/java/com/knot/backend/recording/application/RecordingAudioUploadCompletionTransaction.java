@@ -68,7 +68,10 @@ public class RecordingAudioUploadCompletionTransaction {
             );
             recordingAudioUploadRepository.save(upload);
             if (transcriptionProperties.enabled() && upload.isAudioAvailable()) {
-                transcriptionState.registerAutomatic(recordingId);
+                transcriptionState.registerAutomatic(
+                        workspaceId,
+                        recordingId
+                );
             }
             return RecordingAudioUploadCompletionResult.from(upload);
         });

@@ -7,13 +7,10 @@ import com.knot.ai.transcription.domain.TranscriptionException;
 import jakarta.annotation.PreDestroy;
 import java.util.Objects;
 import java.util.UUID;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 @Service
 public class TranscriptionJobService {
-    private static final Logger LOGGER = LoggerFactory.getLogger(TranscriptionJobService.class);
     private static final long SHUTDOWN_WAIT_MILLIS = 15_000;
 
     private final TranscriptionEngine engine;
@@ -26,18 +23,39 @@ public class TranscriptionJobService {
     }
 
     public synchronized JobSnapshot create(CreateTranscriptionCommand request) {
+        long started = TranscriptionLog.start();
         if (!accepting) {
-            throw new TranscriptionException(TranscriptionErrorCode.NOT_READY);
+            throw rejection(
+                    request.attemptId(),
+                    started,
+                    TranscriptionErrorCode.NOT_READY
+            );
         }
         if (current != null && current.attemptId()
                 .equals(request.attemptId())) {
+            TranscriptionLog.record(
+                    "recording.transcription.accept",
+                    "replayed",
+                    request.attemptId(),
+                    started,
+                    null,
+                    null
+            );
             return current;
         }
         if (worker != null) {
-            throw new TranscriptionException(TranscriptionErrorCode.BUSY);
+            throw rejection(
+                    request.attemptId(),
+                    started,
+                    TranscriptionErrorCode.BUSY
+            );
         }
         if (!engine.isReady()) {
-            throw new TranscriptionException(TranscriptionErrorCode.NOT_READY);
+            throw rejection(
+                    request.attemptId(),
+                    started,
+                    TranscriptionErrorCode.NOT_READY
+            );
         }
         current = new JobSnapshot(
                 request.attemptId(),
@@ -50,9 +68,20 @@ public class TranscriptionJobService {
                 .unstarted(() -> execute(request));
         try {
             worker.start();
-        } catch (RuntimeException exception) {
-            logFailure(
+            TranscriptionLog.record(
+                    "recording.transcription.accept",
+                    "accepted",
                     request.attemptId(),
+                    started,
+                    null,
+                    null
+            );
+        } catch (RuntimeException exception) {
+            TranscriptionLog.record(
+                    "recording.transcription.accept",
+                    "failed",
+                    request.attemptId(),
+                    started,
                     TranscriptionErrorCode.EXECUTOR_REJECTED.getCode(),
                     exception
             );
@@ -99,27 +128,33 @@ public class TranscriptionJobService {
         }
     }
 
-    private void logFailure(
+    private TranscriptionException rejection(
             UUID attemptId,
-            String code,
-            Exception exception
+            long started,
+            TranscriptionErrorCode code
     ) {
-        LOGGER.warn(
-                "전사 작업 실패 attemptId={} code={} exception={} cause={} location={}",
+        TranscriptionLog.record(
+                "recording.transcription.accept",
+                "rejected",
                 attemptId,
-                code,
-                exception.getClass()
-                        .getName(),
-                exception.getCause() == null
-                        ? "없음"
-                        : exception.getCause()
-                                .getClass()
-                                .getName(),
-                exception.getStackTrace().length == 0 ? "없음" : exception.getStackTrace()[0]
+                started,
+                code.getCode(),
+                null
         );
+        return new TranscriptionException(code);
     }
 
     private void execute(CreateTranscriptionCommand request) {
+        long started = TranscriptionLog.start();
+        TranscriptionLog.record(
+                "recording.transcription.execute",
+                "started",
+                request.attemptId(),
+                started,
+                null,
+                null
+        );
+        Exception failure = null;
         JobSnapshot outcome = new JobSnapshot(
                 request.attemptId(),
                 JobSnapshot.Status.FAILED,
@@ -135,36 +170,43 @@ public class TranscriptionJobService {
                     result
             );
         } catch (Exception exception) {
-            if (exception instanceof TranscriptionException failure) {
+            if (exception instanceof TranscriptionException knownFailure) {
                 outcome = new JobSnapshot(
                         request.attemptId(),
                         JobSnapshot.Status.FAILED,
-                        failure.getCode(),
+                        knownFailure.getCode(),
                         null
                 );
             }
-            logFailure(
-                    request.attemptId(),
-                    outcome.failureCode(),
-                    exception
-            );
+            failure = exception;
         } finally {
             Thread.interrupted();
             try {
-                engine.cleanup(request.attemptId());
+                TranscriptionLog.stage(
+                        "recording.transcription.cleanup",
+                        request.attemptId(),
+                        TranscriptionErrorCode.PROCESS_CLEANUP_FAILED,
+                        () -> {
+                            engine.cleanup(request.attemptId());
+                            return null;
+                        }
+                );
             } catch (Exception exception) {
                 synchronized (this) {
                     accepting = false;
                 }
-                logFailure(
-                        request.attemptId(),
-                        TranscriptionErrorCode.PROCESS_CLEANUP_FAILED.getCode(),
-                        exception
-                );
             }
             synchronized (this) {
                 current = outcome;
                 worker = null;
+                TranscriptionLog.record(
+                        "recording.transcription.execute",
+                        outcome.status() == JobSnapshot.Status.SUCCEEDED ? "completed" : "failed",
+                        request.attemptId(),
+                        started,
+                        outcome.failureCode(),
+                        failure
+                );
             }
         }
     }

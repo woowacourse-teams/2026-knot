@@ -2,6 +2,7 @@ package com.knot.ai.transcription.infrastructure;
 
 import com.knot.ai.global.AiServerProperties;
 import com.knot.ai.transcription.application.TranscriptionEngine;
+import com.knot.ai.transcription.application.TranscriptionLog;
 import com.knot.ai.transcription.application.command.CreateTranscriptionCommand;
 import com.knot.ai.transcription.domain.TranscriptionErrorCode;
 import com.knot.ai.transcription.domain.TranscriptionException;
@@ -73,72 +74,110 @@ public class HeadlessTranscriptionEngine implements TranscriptionEngine {
         );
         Path source = directory.resolve("input.webm");
         Path wav = directory.resolve("input.wav");
-        downloader.download(
-                request.downloadUrl(),
-                source
+        TranscriptionLog.stage(
+                "recording.transcription.download",
+                request.attemptId(),
+                TranscriptionErrorCode.DOWNLOAD_FAILED,
+                () -> {
+                    downloader.download(
+                            request.downloadUrl(),
+                            source
+                    );
+                    return null;
+                }
         );
-        supervisor.runDecoding(
-                List.of(
-                        properties.ffmpeg(),
-                        "-nostdin",
-                        "-v",
-                        "error",
-                        "-y",
-                        "-i",
-                        source.toString(),
-                        "-vn",
-                        "-ac",
-                        "1",
-                        "-ar",
-                        "16000",
-                        "-c:a",
-                        "pcm_s16le",
-                        "-t",
-                        Integer.toString(AudioInspector.MAXIMUM_DURATION_SECONDS),
-                        "-fs",
-                        "231448576",
-                        wav.toString()
-                ),
-                directory,
-                properties.conversionTimeout()
+        double duration = TranscriptionLog.stage(
+                "recording.transcription.decode",
+                request.attemptId(),
+                TranscriptionErrorCode.DECODE_FAILED,
+                () -> {
+                    supervisor.runDecoding(
+                            List.of(
+                                    properties.ffmpeg(),
+                                    "-nostdin",
+                                    "-v",
+                                    "error",
+                                    "-y",
+                                    "-i",
+                                    source.toString(),
+                                    "-vn",
+                                    "-ac",
+                                    "1",
+                                    "-ar",
+                                    "16000",
+                                    "-c:a",
+                                    "pcm_s16le",
+                                    "-t",
+                                    Integer.toString(AudioInspector.MAXIMUM_DURATION_SECONDS),
+                                    "-fs",
+                                    "231448576",
+                                    wav.toString()
+                            ),
+                            directory,
+                            properties.conversionTimeout()
+                    );
+                    return audioInspector.readPcmDuration(wav);
+                }
         );
-        double duration = audioInspector.readPcmDuration(wav);
-        Map<String, Object> manifest = new LinkedHashMap<>();
-        manifest.put(
-                "audioPath",
-                wav.toString()
+        TranscriptionLog.stage(
+                "recording.transcription.model",
+                request.attemptId(),
+                TranscriptionErrorCode.INFERENCE_FAILED,
+                () -> {
+                    Map<String, Object> manifest = new LinkedHashMap<>();
+                    manifest.put(
+                            "audioPath",
+                            wav.toString()
+                    );
+                    manifest.put(
+                            "outputDirectory",
+                            directory.toString()
+                    );
+                    manifest.put(
+                            "profile",
+                            profile
+                    );
+                    if (request.speakerCount() != null) {
+                        manifest.put(
+                                "speakerCount",
+                                request.speakerCount()
+                        );
+                    }
+                    Path input = directory.resolve("input.json");
+                    mapper.writeValue(
+                            input.toFile(),
+                            manifest
+                    );
+                    supervisor.runInference(
+                            List.of(
+                                    properties.pnpm(),
+                                    "exec",
+                                    "tsx",
+                                    "scripts/serverPipeline.ts",
+                                    "--manifest",
+                                    input.toString()
+                            ),
+                            directory,
+                            properties.inferenceTimeout()
+                    );
+                    return null;
+                }
         );
-        manifest.put(
-                "outputDirectory",
-                directory.toString()
+        return TranscriptionLog.stage(
+                "recording.transcription.result_check",
+                request.attemptId(),
+                TranscriptionErrorCode.INVALID_RESULT,
+                () -> readResult(
+                        directory,
+                        duration
+                )
         );
-        manifest.put(
-                "profile",
-                profile
-        );
-        if (request.speakerCount() != null) {
-            manifest.put(
-                    "speakerCount",
-                    request.speakerCount()
-            );
-        }
-        Path input = directory.resolve("input.json");
-        mapper.writeValue(
-                input.toFile(),
-                manifest
-        );
-        supervisor.runInference(
-                List.of(
-                        properties.pnpm(),
-                        "exec",
-                        "tsx",
-                        "scripts/serverPipeline.ts",
-                        "--manifest",
-                        input.toString()
-                ),
-                directory,
-                properties.inferenceTimeout()
-        );
+    }
+
+    private TranscriptResult readResult(
+            Path directory,
+            double duration
+    ) throws IOException {
         Path resultFile = directory.resolve("result.json");
         if (!Files.isRegularFile(resultFile) || Files.size(resultFile) > MAXIMUM_RESULT_BYTES) {
             throw new TranscriptionException(TranscriptionErrorCode.INVALID_RESULT);

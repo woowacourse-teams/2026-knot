@@ -276,10 +276,10 @@ class TranscriptionJobServiceTest {
                 completed.status()
         );
         assertThat(output.getAll()).contains(
-                "attemptId=" + id,
-                "code=PROCESS_CLEANUP_FAILED",
-                "exception=com.knot.ai.transcription.domain.TranscriptionException",
-                "cause=java.lang.IllegalStateException"
+                "\"attemptId\":\"" + id + "\"",
+                "\"errorCode\":\"PROCESS_CLEANUP_FAILED\"",
+                "\"exception\":\"com.knot.ai.transcription.domain.TranscriptionException\"",
+                "\"cause\":\"java.lang.IllegalStateException\""
         )
                 .doesNotContain("cleanup secret");
     }
@@ -403,11 +403,11 @@ class TranscriptionJobServiceTest {
                 awaitFinished(id).failureCode()
         );
         assertThat(output.getAll()).contains(
-                "attemptId=" + id,
-                "code=INFERENCE_FAILED",
-                "exception=java.lang.IllegalStateException",
-                "cause=java.lang.IllegalArgumentException",
-                "location="
+                "\"attemptId\":\"" + id + "\"",
+                "\"errorCode\":\"INFERENCE_FAILED\"",
+                "\"exception\":\"java.lang.IllegalStateException\"",
+                "\"cause\":\"java.lang.IllegalArgumentException\"",
+                "\"location\":"
         )
                 .doesNotContain(
                         "secret URL",
