@@ -8,7 +8,6 @@ import static org.mockito.Mockito.when;
 import com.knot.backend.document.DocumentFixtures;
 import com.knot.backend.recording.application.dto.result.RecordingAudioUploadCompletionResult;
 import com.knot.backend.recording.application.dto.result.RecordingDetailResult;
-import com.knot.backend.recording.application.dto.result.RecordingTranscriptionRetryResult;
 import com.knot.backend.recording.domain.model.RecordingAudioUpload;
 import com.knot.backend.recording.domain.repository.RecordingAudioUploadRepository;
 import com.knot.backend.recording.domain.model.RecordingAudioUploadStatus;
@@ -25,6 +24,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
@@ -58,6 +58,9 @@ class RecordingTranscriptionFlowIntegrationTest {
     private static final String PATH = "/api/v1/transcription-jobs";
     private static final ObjectMapper MAPPER = new ObjectMapper();
     private static final List<UUID> SUBMITTED = new CopyOnWriteArrayList<>();
+    private static final AtomicBoolean FAIL_FIRST_GET = new AtomicBoolean();
+    private static final AtomicReference<CountDownLatch> FIRST_GET_ENTERED = emptyLatchReference();
+    private static final AtomicReference<CountDownLatch> RELEASE_FIRST_GET = emptyLatchReference();
     private static final AtomicBoolean GET_NOT_FOUND = new AtomicBoolean();
     private static final AtomicBoolean VALID_AUTHORIZATION = new AtomicBoolean(true);
     private static final AtomicBoolean PREVIOUS_SAVED_BEFORE_SECOND_POST = new AtomicBoolean();
@@ -140,6 +143,9 @@ class RecordingTranscriptionFlowIntegrationTest {
         );
         SUBMITTED.clear();
         GET_NOT_FOUND.set(false);
+        FAIL_FIRST_GET.set(false);
+        FIRST_GET_ENTERED.set(new CountDownLatch(0));
+        RELEASE_FIRST_GET.set(new CountDownLatch(0));
         VALID_AUTHORIZATION.set(true);
         PREVIOUS_SAVED_BEFORE_SECOND_POST.set(false);
         DATABASE.set(jdbc);
@@ -250,63 +256,27 @@ class RecordingTranscriptionFlowIntegrationTest {
     }
 
     @Test
-    @DisplayName("AI 재시작으로 작업이 사라지면 실패를 노출하고 사용자 재시도는 새 ID로 결과와 문서 접수를 한 번 저장한다")
-    void retry_success_missingAiJob() throws Exception {
+    @DisplayName("AI 메모리 유실의 404는 같은 시도와 version으로 복구해 문서를 한 번 접수한다")
+    void complete_success_missingAiJobRecoversSameAttempt() throws Exception {
         // given
         GET_NOT_FOUND.set(true);
         Upload upload = reserveUpload();
+        // when
         completion.complete(
                 workspaceId,
                 memberId,
                 upload.recordingId(),
                 upload.uploadId()
         );
-        awaitStatus(
-                upload.recordingId(),
-                TranscriptionStatus.FAILED
-        );
-        UUID previousAttempt = recordingTranscriptionStateService.findSnapshot(upload.recordingId())
-                .attemptId();
-        assertThat(
-                details.find(
-                        workspaceId,
-                        memberId,
-                        upload.recordingId()
-                )
-                        .transcriptionFailureCode()
-        ).isEqualTo("AI_JOB_NOT_FOUND");
-        assertThat(count("transcripts")).isZero();
-        GET_NOT_FOUND.set(false);
-
-        // when
-        RecordingTranscriptionRetryResult retry = worker.retry(
-                workspaceId,
-                memberId,
-                upload.recordingId()
-        );
-
         // then
         awaitStatus(
                 upload.recordingId(),
                 TranscriptionStatus.SUCCEEDED
         );
-        assertThat(retry.attemptId()).isNotEqualTo(previousAttempt);
-        assertThat(SUBMITTED).containsExactly(
-                previousAttempt,
-                retry.attemptId()
-        );
+        assertThat(SUBMITTED).hasSize(2);
+        assertThat(SUBMITTED.get(0)).isEqualTo(SUBMITTED.get(1));
         assertThat(count("transcripts")).isEqualTo(1);
-        assertThat(count("transcript_segments")).isEqualTo(2);
-        assertThat(count("document_generation_batches")).isEqualTo(1);
         assertThat(count("document_generation_jobs")).isEqualTo(1);
-        assertThat(
-                details.find(
-                        workspaceId,
-                        memberId,
-                        upload.recordingId()
-                )
-                        .transcriptionFailureCode()
-        ).isNull();
     }
 
     @Test
@@ -376,6 +346,55 @@ class RecordingTranscriptionFlowIntegrationTest {
         assertThat(result.uploadStatus()).isEqualTo(RecordingAudioUploadStatus.COMPLETED);
         assertThat(recordingTranscriptionStateService.findSnapshot(upload.recordingId())).isNull();
         assertThat(SUBMITTED).isEmpty();
+    }
+
+    @Test
+    @DisplayName("앞 전사가 실패하면 이미 대기 중인 다음 녹음을 자동으로 실행해 문서를 접수한다")
+    void complete_success_drainsQueuedAfterRemoteFailure() throws Exception {
+        // given
+        FAIL_FIRST_GET.set(true);
+        FIRST_GET_ENTERED.set(new CountDownLatch(1));
+        RELEASE_FIRST_GET.set(new CountDownLatch(1));
+        Upload first = reserveUpload();
+        Upload second = reserveUpload();
+        completion.complete(
+                workspaceId,
+                memberId,
+                first.recordingId(),
+                first.uploadId()
+        );
+        assertThat(
+                FIRST_GET_ENTERED.get()
+                        .await(
+                                5,
+                                TimeUnit.SECONDS
+                        )
+        ).isTrue();
+        completion.complete(
+                workspaceId,
+                memberId,
+                second.recordingId(),
+                second.uploadId()
+        );
+        assertThat(
+                recordingTranscriptionStateService.findSnapshot(second.recordingId())
+                        .status()
+        ).isEqualTo(TranscriptionStatus.QUEUED);
+        // when
+        RELEASE_FIRST_GET.get()
+                .countDown();
+        // then
+        awaitStatus(
+                first.recordingId(),
+                TranscriptionStatus.FAILED
+        );
+        awaitStatus(
+                second.recordingId(),
+                TranscriptionStatus.SUCCEEDED
+        );
+        assertThat(SUBMITTED).hasSize(2);
+        assertThat(count("transcripts")).isEqualTo(1);
+        assertThat(count("document_generation_jobs")).isEqualTo(1);
     }
 
     private Upload reserveUpload() {
@@ -477,7 +496,7 @@ class RecordingTranscriptionFlowIntegrationTest {
             );
             return;
         }
-        if (GET_NOT_FOUND.get()) {
+        if (GET_NOT_FOUND.getAndSet(false)) {
             send(
                     exchange,
                     404,
@@ -492,6 +511,29 @@ class RecordingTranscriptionFlowIntegrationTest {
         String path = exchange.getRequestURI()
                 .getPath();
         String attempt = path.substring((PATH + "/").length());
+        if (FAIL_FIRST_GET.getAndSet(false)) {
+            FIRST_GET_ENTERED.get()
+                    .countDown();
+            awaitFirstRelease();
+            send(
+                    exchange,
+                    200,
+                    MAPPER.createObjectNode()
+                            .put(
+                                    "attemptId",
+                                    attempt
+                            )
+                            .put(
+                                    "status",
+                                    "FAILED"
+                            )
+                            .put(
+                                    "failureCode",
+                                    "INFERENCE_FAILED"
+                            )
+            );
+            return;
+        }
         ObjectNode body = MAPPER.createObjectNode()
                 .put(
                         "attemptId",
@@ -522,6 +564,29 @@ class RecordingTranscriptionFlowIntegrationTest {
                 200,
                 body
         );
+    }
+
+    private static AtomicReference<CountDownLatch> emptyLatchReference() {
+        return new AtomicReference<>(new CountDownLatch(0));
+    }
+
+    private static void awaitFirstRelease() throws IOException {
+        try {
+            if (!RELEASE_FIRST_GET.get()
+                    .await(
+                            5,
+                            TimeUnit.SECONDS
+                    )) {
+                throw new IOException("검증 응답 대기 시간이 초과되었습니다");
+            }
+        } catch (InterruptedException exception) {
+            Thread.currentThread()
+                    .interrupt();
+            throw new IOException(
+                    "검증 응답이 중단되었습니다",
+                    exception
+            );
+        }
     }
 
     private static void send(

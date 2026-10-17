@@ -102,7 +102,7 @@ class RecordingTranscriptionRetryAcceptanceTest {
         // then
         result.andExpect(status().isAccepted())
                 .andExpect(jsonPath("$.recordingId").value(1L))
-                .andExpect(jsonPath("$.transcriptionStatus").value("PROCESSING"));
+                .andExpect(jsonPath("$.transcriptionStatus").value("QUEUED"));
         UUID nextAttempt = UUID.fromString(
                 objectMapper.readTree(
                         result.andReturn()

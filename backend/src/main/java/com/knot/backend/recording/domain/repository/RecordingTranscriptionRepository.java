@@ -9,5 +9,7 @@ public interface RecordingTranscriptionRepository {
     Optional<RecordingTranscription> findByRecordingSessionId(long recordingSessionId);
     Optional<RecordingTranscription> findByRecordingSessionIdForUpdate(long recordingSessionId);
     Optional<RecordingTranscription> findProcessing();
+    Optional<RecordingTranscription> findNextQueuedForUpdate(java.time.Instant now);
+    Optional<RecordingTranscription> findProcessingForUpdate();
     void lockAdmission();
 }

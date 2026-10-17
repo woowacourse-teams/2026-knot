@@ -33,6 +33,16 @@ public class RecordingTranscriptionRepositoryAdapter implements RecordingTranscr
     }
 
     @Override
+    public Optional<RecordingTranscription> findNextQueuedForUpdate(java.time.Instant now) {
+        return recordingTranscriptionJpaRepository.findNextQueuedForUpdate(now);
+    }
+
+    @Override
+    public Optional<RecordingTranscription> findProcessingForUpdate() {
+        return recordingTranscriptionJpaRepository.findProcessingForUpdate();
+    }
+
+    @Override
     public void lockAdmission() {
         recordingTranscriptionJpaRepository.lockAdmission();
     }

@@ -178,8 +178,8 @@ class AiTranscriptionHttpClientTest {
     }
 
     @ParameterizedTest
-    @CsvSource({"401, AI_AUTHENTICATION_FAILED", "403, AI_AUTHENTICATION_FAILED", "404, AI_JOB_NOT_FOUND",
-            "409, AI_BUSY", "503, AI_NOT_READY", "500, AI_UNAVAILABLE", "400, AI_INVALID_RESPONSE",
+    @CsvSource({"401, AI_AUTHENTICATION_FAILED", "403, AI_AUTHENTICATION_FAILED", "404, AI_INVALID_RESPONSE",
+            "409, AI_INVALID_RESPONSE", "503, AI_UNAVAILABLE", "500, AI_UNAVAILABLE", "400, AI_INVALID_RESPONSE",
             "302, AI_INVALID_RESPONSE", "202, AI_INVALID_RESPONSE"})
     @DisplayName("HTTP 오류를 구분하고 자동 재시도나 리다이렉트 없이 정적 오류를 반환한다")
     void get_failure_status(
@@ -414,6 +414,33 @@ class AiTranscriptionHttpClientTest {
                 )
         );
     }
+    @ParameterizedTest
+    @CsvSource({"404, JOB_NOT_FOUND, AI_JOB_NOT_FOUND", "409, BUSY, AI_BUSY", "503, NOT_READY, AI_NOT_READY"})
+    @DisplayName("명시한 원격 오류 코드만 작업 소실과 접수 거절로 해석한다")
+    void get_failure_confirmedRemoteCode(
+            int status,
+            String code,
+            RecordingErrorCode expected
+    ) throws Exception {
+        // given
+        try (LlmHttpServer server = new LlmHttpServer()) {
+            respond(
+                    server,
+                    status,
+                    "{\"code\":\"" + code + "\"}",
+                    new AtomicReference<>()
+            );
+            AiTranscriptionHttpClient client = client(
+                    server,
+                    Duration.ofSeconds(2)
+            );
+            // when
+            Throwable failure = catchThrowable(() -> client.get(ID));
+            // then
+            assertThat(failure).hasMessage(expected.getMessage());
+        }
+    }
+
     private void respond(
             LlmHttpServer server,
             int status,

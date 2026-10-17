@@ -17,6 +17,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.node.ObjectNode;
 
 public final class AiTranscriptionHttpClient implements TranscriptionClient {
@@ -40,9 +41,16 @@ public final class AiTranscriptionHttpClient implements TranscriptionClient {
     @Override
     public AiTranscriptionJob submit(
             UUID attemptId,
-            String downloadUrl
+            String downloadUrl,
+            Integer speakerCount
     ) {
         ObjectNode body = objectMapper.createObjectNode();
+        if (speakerCount != null) {
+            body.put(
+                    "speakerCount",
+                    speakerCount
+            );
+        }
         body.put(
                 "attemptId",
                 attemptId.toString()
@@ -118,7 +126,10 @@ public final class AiTranscriptionHttpClient implements TranscriptionClient {
                     TimeUnit.MILLISECONDS
             );
             if (response.statusCode() != expectedStatus) {
-                throw httpFailure(response.statusCode());
+                throw httpFailure(
+                        response.statusCode(),
+                        response.body()
+                );
             }
             return response.body();
         } catch (TimeoutException exception) {
@@ -146,15 +157,53 @@ public final class AiTranscriptionHttpClient implements TranscriptionClient {
         }
     }
 
-    private RecordingException httpFailure(int status) {
+    private RecordingException httpFailure(
+            int status,
+            String body
+    ) {
         RecordingErrorCode code = switch (status) {
             case 401, 403 -> RecordingErrorCode.AI_AUTHENTICATION_FAILED;
-            case 404 -> RecordingErrorCode.AI_JOB_NOT_FOUND;
-            case 409 -> RecordingErrorCode.AI_BUSY;
-            case 503 -> RecordingErrorCode.AI_NOT_READY;
+            case 404 -> confirmedCode(
+                    body,
+                    "JOB_NOT_FOUND",
+                    RecordingErrorCode.AI_JOB_NOT_FOUND,
+                    RecordingErrorCode.AI_INVALID_RESPONSE
+            );
+            case 409 -> confirmedCode(
+                    body,
+                    "BUSY",
+                    RecordingErrorCode.AI_BUSY,
+                    RecordingErrorCode.AI_INVALID_RESPONSE
+            );
+            case 503 -> confirmedCode(
+                    body,
+                    "NOT_READY",
+                    RecordingErrorCode.AI_NOT_READY,
+                    RecordingErrorCode.AI_UNAVAILABLE
+            );
             default -> status >= 500 ? RecordingErrorCode.AI_UNAVAILABLE : RecordingErrorCode.AI_INVALID_RESPONSE;
         };
         return new RecordingException(code);
+    }
+
+    private RecordingErrorCode confirmedCode(
+            String body,
+            String expected,
+            RecordingErrorCode confirmed,
+            RecordingErrorCode ambiguous
+    ) {
+        try {
+            JsonNode error = objectMapper.readTree(body);
+            if (error != null && expected.equals(
+                    error.path("code")
+                            .asString()
+            )) {
+                return confirmed;
+            }
+            return ambiguous;
+        } catch (JacksonException exception) {
+            return ambiguous;
+        }
     }
 
     private AiTranscriptionJob readJob(
