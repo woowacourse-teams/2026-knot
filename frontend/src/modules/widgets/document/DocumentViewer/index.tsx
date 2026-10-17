@@ -1,4 +1,8 @@
-import { NO_DECISION_SENTENCE } from "@constants/document";
+import {
+  DOCUMENT_FROM_PARAM,
+  DOCUMENT_FROM_RECORDING,
+  NO_DECISION_SENTENCE,
+} from "@constants/document";
 import styled from "@emotion/styled";
 import useConfirmDocument from "@hooks/domain/document/useConfirmDocument";
 import Breadcrumb from "@primitives/ui/Breadcrumb";
@@ -7,7 +11,7 @@ import DocumentBody from "@primitives/ui/DocumentBody";
 import { formatDate } from "@utils/formatDate";
 import { formatDurationFromSeconds } from "@utils/formatDurationFromSeconds";
 import { useId } from "react";
-import { useParams } from "react-router";
+import { useParams, useSearchParams } from "react-router";
 
 import { useDocumentViewer } from "./model/useDocumentViewer";
 import DocumentConfirmButton from "./ui/DocumentConfirmButton";
@@ -26,14 +30,18 @@ import DocumentSkeleton from "./ui/DocumentSkeleton";
  * 받은 문서 값을 그리기만 하면 되는 것(경로 · 제목 · 날짜 · 녹음 길이 · 본문)은 여기서 직접 그려요.
  * 복사 버튼 · 확인 수 · 스테퍼 · 확인 버튼은 이 위젯의 부품(`ui/`)이고, 필요한 값과 동작을 여기서 넘겨줘요. 문서는 여기서 한 번만 조회해요.
  * 본문 아래 줄에는 왼쪽에 같은 녹음의 문서를 넘기는 스테퍼를, 오른쪽에 확인 버튼을 놓아요.
+ * 스테퍼는 녹음 직후 정리 화면에서 넘어와 주소에 `?from=recording`이 있을 때만 그려요(DOC-R2). 문서 탭 · 홈 · 탐색에서 연 저장 문서에는 확인 버튼만 남아요.
  * 확인 버튼은 확인 대상에게만 보여요. 확인한 뒤에는 누를 수 없는 「확인했어요」로 바뀌고, 확인 대상이 아니면 그리지 않아요.
  * 결정이 없는 회의 문서는 본문의 결정 없음 문장을 흐리게 그려요(STT-R23).
  */
 export default function DocumentViewer() {
   const titleId = useId();
   const params = useParams();
+  const [searchParams] = useSearchParams();
   const workspaceId = Number(params.workspaceId);
   const documentId = Number(params.documentId);
+  const isFromRecording =
+    searchParams.get(DOCUMENT_FROM_PARAM) === DOCUMENT_FROM_RECORDING;
   const { status, documentDetail, retry } = useDocumentViewer({
     workspaceId,
     documentId,
@@ -90,11 +98,13 @@ export default function DocumentViewer() {
         mutedLines={[NO_DECISION_SENTENCE]}
       />
       <ConfirmBar>
-        <DocumentStepper
-          workspaceId={workspaceId}
-          documentId={documentDetail.id}
-          recordingSessionId={documentDetail.recordingSessionId}
-        />
+        {isFromRecording && (
+          <DocumentStepper
+            workspaceId={workspaceId}
+            documentId={documentDetail.id}
+            recordingSessionId={documentDetail.recordingSessionId}
+          />
+        )}
         {documentDetail.myConfirmationState !== "NOT_REQUIRED" && (
           <ConfirmButtonWrapper>
             <DocumentConfirmButton

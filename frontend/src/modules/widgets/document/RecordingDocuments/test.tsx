@@ -8,6 +8,10 @@ import type {
   RecordingDocumentGenerationResponse,
 } from "@api/mock/types/recording";
 import { mockServer } from "@api/mock/server";
+import {
+  DOCUMENT_FROM_PARAM,
+  DOCUMENT_FROM_RECORDING,
+} from "@constants/document";
 import { ThemeProvider } from "@emotion/react";
 import { theme } from "@provider/themeProvider";
 import { getRouterPath, PATH_ROUTE } from "@routes/PATH_ROUTE";
@@ -453,6 +457,18 @@ describe("RecordingDocuments", () => {
       getDocumentPath(firstCompletedRecordingDocument.id),
     );
     expect(router.state.historyAction).toBe("REPLACE");
+  });
+
+  it("첫 문서로 보낼 때 정리 화면에서 넘어왔다는 쿼리를 붙여, 문서 보기가 같은 녹음의 문서를 넘기는 스테퍼를 보여주게 한다", async () => {
+    const { router } = renderRecordingDocuments(completedRecording.recordingId);
+
+    await screen.findByText("문서 화면");
+
+    expect(
+      new URLSearchParams(router.state.location.search).get(
+        DOCUMENT_FROM_PARAM,
+      ),
+    ).toBe(DOCUMENT_FROM_RECORDING);
   });
 
   it("정리 중에는 문서 목록을 조회하지 않고, 정리가 끝나면 조회해 첫 문서로 보낸다", async () => {

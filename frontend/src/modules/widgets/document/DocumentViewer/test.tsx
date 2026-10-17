@@ -17,6 +17,10 @@ import type {
   DocumentConfirmationsResponse,
   DocumentsResponse,
 } from "@api/mock/types/document";
+import {
+  DOCUMENT_FROM_PARAM,
+  DOCUMENT_FROM_RECORDING,
+} from "@constants/document";
 import { ThemeProvider } from "@emotion/react";
 import { theme } from "@provider/themeProvider";
 import { getRouterPath, PATH_ROUTE } from "@routes/PATH_ROUTE";
@@ -109,8 +113,11 @@ const getDocumentPath = (documentId: number) =>
 
 const writeText = vi.fn<(text: string) => Promise<void>>();
 
+/** 녹음 직후 정리 화면에서 문서 보기로 넘어왔다는 주소 쿼리. 이 쿼리가 있을 때만 스테퍼가 보여요 */
+const FROM_RECORDING_SEARCH = `?${DOCUMENT_FROM_PARAM}=${DOCUMENT_FROM_RECORDING}`;
+
 // 이동을 확인할 수 있게 로그인 경로에 표시만 하는 화면을 둬요
-const renderViewer = (documentId: string) => {
+const renderViewerAt = (initialEntry: string) => {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
@@ -119,14 +126,7 @@ const renderViewer = (documentId: string) => {
       { path: PATH_ROUTE.DOCUMENT, element: <DocumentViewer /> },
       { path: PATH_ROUTE.LOGIN, element: <p>로그인 화면</p> },
     ],
-    {
-      initialEntries: [
-        getRouterPath({
-          routeKey: "DOCUMENT",
-          params: { workspaceId: WORKSPACE_ID, documentId },
-        }),
-      ],
-    },
+    { initialEntries: [initialEntry] },
   );
 
   render(
@@ -139,6 +139,19 @@ const renderViewer = (documentId: string) => {
 
   return { router };
 };
+
+/** 문서 탭 · 홈 · 탐색에서 연 것처럼 쿼리 없이 문서를 열어요 */
+const renderViewer = (documentId: string) =>
+  renderViewerAt(
+    getRouterPath({
+      routeKey: "DOCUMENT",
+      params: { workspaceId: WORKSPACE_ID, documentId },
+    }),
+  );
+
+/** 녹음 직후 정리 화면에서 넘어온 것처럼 쿼리를 붙여 문서를 열어요 */
+const renderViewerFromRecording = (documentId: number) =>
+  renderViewerAt(`${getDocumentPath(documentId)}${FROM_RECORDING_SEARCH}`);
 
 const findStepper = () => screen.findByRole("group", { name: STEPPER_NAME });
 
@@ -703,20 +716,66 @@ describe("DocumentViewer", () => {
     ).toBeInTheDocument();
   });
 
+  it("정리 화면에서 넘어오지 않은 문서에는 스테퍼를 그리지 않고 같은 녹음의 문서도 받지 않으며, 본문 아래 줄에 확인 버튼만 남긴다", async () => {
+    let requestCount = 0;
+    mockServer.use(
+      http.get(DOCUMENTS_REQUEST, () => {
+        requestCount += 1;
+
+        return HttpResponse.json(documentsResponse);
+      }),
+    );
+    renderViewer(String(expected.id));
+
+    const confirmButton = await screen.findByRole("button", {
+      name: CONFIRM_BUTTON_NAME,
+    });
+    // 스테퍼가 그려진다면 같은 녹음의 문서를 받아 그릴 시간을 줘요
+    await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+
+    const viewer = screen.getByRole("region", { name: expected.title });
+    const confirmBar = viewer.lastElementChild as HTMLElement;
+
+    expect(
+      screen.queryByRole("group", { name: STEPPER_NAME }),
+    ).not.toBeInTheDocument();
+    expect(requestCount).toBe(0);
+    expect(within(confirmBar).getAllByRole("button")).toEqual([confirmButton]);
+  });
+
+  it("정리 화면에서 넘어오지 않았고 확인 대상도 아니면 본문 아래 줄을 남기지 않는다", async () => {
+    mockServer.use(
+      http.get(DOCUMENT_REQUEST, () =>
+        HttpResponse.json({
+          ...documentDetailsResponse[0],
+          myConfirmationState: "NOT_REQUIRED",
+        }),
+      ),
+    );
+    renderViewer(String(expected.id));
+
+    const viewer = await screen.findByRole("region", { name: expected.title });
+    // 스테퍼가 그려진다면 같은 녹음의 문서를 받아 그릴 시간을 줘요
+    await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+
+    expect(viewer.lastElementChild).toBeEmptyDOMElement();
+    expect(viewer.lastElementChild).not.toBeVisible();
+  });
+
   it("같은 녹음에서 나온 문서 가운데 지금 문서가 몇 번째인지 보여준다", async () => {
     const position =
       recordingDocuments.findIndex(({ id }) => id === expected.id) + 1;
 
-    renderViewer(String(expected.id));
+    renderViewerFromRecording(expected.id);
 
     expect(await findStepper()).toHaveTextContent(
       `${position} / ${recordingDocuments.length}`,
     );
   });
 
-  it("다음을 누르면 같은 녹음의 다음 문서로 가고, 뒤로 가면 앞 문서로 돌아온다", async () => {
+  it("다음을 누르면 같은 녹음의 다음 문서로 가고(정리 화면 쿼리는 남겨요), 뒤로 가면 앞 문서로 돌아온다", async () => {
     const [first, second] = recordingDocuments;
-    const { router } = renderViewer(String(first.id));
+    const { router } = renderViewerFromRecording(first.id);
 
     await click(getStepButtons(await findStepper()).nextButton);
 
@@ -727,6 +786,7 @@ describe("DocumentViewer", () => {
       }),
     ).toBeInTheDocument();
     expect(router.state.location.pathname).toBe(getDocumentPath(second.id));
+    expect(router.state.location.search).toBe(FROM_RECORDING_SEARCH);
 
     await act(async () => {
       await router.navigate(-1);
@@ -740,9 +800,9 @@ describe("DocumentViewer", () => {
     ).toBeInTheDocument();
   });
 
-  it("이전을 누르면 같은 녹음의 앞 문서로 간다", async () => {
+  it("이전을 누르면 같은 녹음의 앞 문서로 가고 정리 화면 쿼리는 남긴다", async () => {
     const [first, second] = recordingDocuments;
-    renderViewer(String(second.id));
+    const { router } = renderViewerFromRecording(second.id);
 
     await click(getStepButtons(await findStepper()).previousButton);
 
@@ -752,10 +812,11 @@ describe("DocumentViewer", () => {
         name: getDocumentTitle(first.id),
       }),
     ).toBeInTheDocument();
+    expect(router.state.location.search).toBe(FROM_RECORDING_SEARCH);
   });
 
   it("첫 문서에서는 이전을, 마지막 문서에서는 다음을 누를 수 없다", async () => {
-    const { router } = renderViewer(String(firstRecordingDocument.id));
+    const { router } = renderViewerFromRecording(firstRecordingDocument.id);
 
     const firstButtons = getStepButtons(await findStepper());
 
@@ -763,7 +824,9 @@ describe("DocumentViewer", () => {
     expect(firstButtons.nextButton).toBeEnabled();
 
     await act(async () => {
-      await router.navigate(getDocumentPath(lastRecordingDocument.id));
+      await router.navigate(
+        `${getDocumentPath(lastRecordingDocument.id)}${FROM_RECORDING_SEARCH}`,
+      );
     });
     await screen.findByRole("heading", {
       level: 2,
@@ -778,7 +841,7 @@ describe("DocumentViewer", () => {
 
   it("스테퍼로 다른 문서로 넘어가면 앞 문서의 「복사됨」 표시가 남지 않는다", async () => {
     const [first, second] = recordingDocuments;
-    renderViewer(String(first.id));
+    renderViewerFromRecording(first.id);
 
     // 두 문서를 한 번씩 열어 둬요. 받아 둔 문서는 다시 넘길 때 불러오는 중 화면 없이 바로 바뀌어요
     await click(getStepButtons(await findStepper()).nextButton);
@@ -819,7 +882,7 @@ describe("DocumentViewer", () => {
         } satisfies DocumentsResponse),
       ),
     );
-    renderViewer(String(expected.id));
+    renderViewerFromRecording(expected.id);
 
     const stepper = await findStepper();
     const { previousButton, nextButton } = getStepButtons(stepper);
@@ -838,7 +901,7 @@ describe("DocumentViewer", () => {
         }),
       ),
     );
-    renderViewer(String(expected.id));
+    renderViewerFromRecording(expected.id);
 
     expect(await findStepper()).toBeInTheDocument();
     expect(queryConfirmButton()).not.toBeInTheDocument();
@@ -853,7 +916,7 @@ describe("DocumentViewer", () => {
         return new HttpResponse(null, { status: 500 });
       }),
     );
-    renderViewer(String(expected.id));
+    renderViewerFromRecording(expected.id);
 
     await screen.findByRole("heading", { level: 2, name: expected.title });
     await waitFor(() => expect(requestCount).toBe(1));
@@ -881,7 +944,7 @@ describe("DocumentViewer", () => {
         return new HttpResponse(null, { status: 500 });
       }),
     );
-    renderViewer(String(expected.id));
+    renderViewerFromRecording(expected.id);
 
     const viewer = await screen.findByRole("region", { name: expected.title });
     await waitFor(() => expect(requestCount).toBe(1));
@@ -908,7 +971,7 @@ describe("DocumentViewer", () => {
         } satisfies DocumentsResponse);
       }),
     );
-    renderViewer(String(expected.id));
+    renderViewerFromRecording(expected.id);
 
     await screen.findByRole("heading", { level: 2, name: expected.title });
     await waitFor(() => expect(requestCount).toBe(1));
@@ -939,7 +1002,7 @@ describe("DocumentViewer", () => {
         );
       }),
     );
-    renderViewer(String(firstRecordingDocument.id));
+    renderViewerFromRecording(firstRecordingDocument.id);
 
     expect(await findStepper()).toHaveTextContent(
       `1 / ${recordingDocuments.length}`,

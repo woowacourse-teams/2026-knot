@@ -14,6 +14,7 @@ interface UseDocumentStepperParams {
  *
  * 문서 순서는 서버가 준 순서 그대로예요. 여기서 다시 정렬하지 않아요.
  * 이동은 방문 기록에 쌓여서, 뒤로 가면 앞에 보던 문서로 돌아가요.
+ * 스테퍼는 정리 화면에서 넘어온 문서에만 있으므로, 넘어간 문서에도 같은 쿼리를 붙여 스테퍼가 남게 해요.
  * 같은 녹음의 문서를 아직 받지 못했거나 받지 못했으면 `position`이 `undefined`예요. 받은 문서에 지금 문서가 없을 때도 같아요.
  */
 export const useDocumentStepper = ({
@@ -36,7 +37,11 @@ export const useDocumentStepper = ({
 
     if (targetDocumentId === undefined) return;
 
-    navigateToDocument({ workspaceId, documentId: targetDocumentId });
+    navigateToDocument({
+      workspaceId,
+      documentId: targetDocumentId,
+      isFromRecording: true,
+    });
   };
 
   return {
