@@ -297,20 +297,25 @@ class RecordingStartServiceTest {
     void start_success_reclaimsDisconnectedSession() {
         // given
         prepareAccess();
-        RecordingSession disconnected = RecordingSession.start(
-                WORKSPACE_ID + 1,
-                MEMBER_ID,
-                UUID.randomUUID(),
-                UUID.randomUUID(),
-                HASH,
-                NOW.minusSeconds(30)
+        RecordingSession disconnected = withId(
+                RecordingSession.start(
+                        WORKSPACE_ID + 1,
+                        MEMBER_ID,
+                        UUID.randomUUID(),
+                        UUID.randomUUID(),
+                        HASH,
+                        NOW.minusSeconds(30)
+                ),
+                6L
         );
         when(recordingSessionRepository.findAllActiveByMemberIdForUpdate(MEMBER_ID)).thenReturn(List.of(disconnected));
         when(recordingSessionRepository.save(any(RecordingSession.class))).thenAnswer(
-                invocation -> withId(
-                        invocation.getArgument(0),
-                        8L
-                )
+                invocation -> invocation.getArgument(0) == disconnected
+                        ? disconnected
+                        : withId(
+                                invocation.getArgument(0),
+                                8L
+                        )
         );
 
         // when

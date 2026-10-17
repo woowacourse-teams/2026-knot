@@ -30,39 +30,50 @@ public class RecordingAudioUploadUrlService {
             long recordingId,
             RecordingAudioUploadUrlCommand command
     ) {
-        recordingAccess.loadOwnedForUpdate(
+        RecordingLog.Scope trace = RecordingLog.begin(
+                "recording.upload_url",
                 workspaceId,
-                memberId,
-                recordingId
-        )
-                .validateAudioUploadable();
+                recordingId,
+                null,
+                null
+        );
+        return trace.call(() -> {
+            recordingAccess.loadOwnedForUpdate(
+                    workspaceId,
+                    memberId,
+                    recordingId
+            )
+                    .validateAudioUploadable();
 
-        Optional<RecordingAudioUpload> existing = recordingAudioUploadRepository.findByRecordingId(recordingId);
-        existing.ifPresent(
-                reserved -> reserved.validateReissuable(
-                        command.contentType(),
-                        command.contentLength()
-                )
-        );
-        RecordingAudioUpload upload = existing.orElseGet(
-                () -> recordingAudioUploadRepository.save(
-                        reserve(
-                                recordingId,
-                                command
-                        )
-                )
-        );
-        PresignedAudioUpload presigned = audioStorage.presignUpload(
-                upload.getStorageKey(),
-                upload.getContentType(),
-                upload.getContentLength()
-        );
-        return new RecordingAudioUploadUrlResult(
-                upload.getId(),
-                presigned.uploadUrl(),
-                presigned.expiresAt(),
-                existing.isEmpty()
-        );
+            Optional<RecordingAudioUpload> existing = recordingAudioUploadRepository.findByRecordingId(recordingId);
+            existing.ifPresent(
+                    reserved -> reserved.validateReissuable(
+                            command.contentType(),
+                            command.contentLength()
+                    )
+            );
+            RecordingAudioUpload upload = existing.orElseGet(
+                    () -> recordingAudioUploadRepository.save(
+                            reserve(
+                                    recordingId,
+                                    command
+                            )
+                    )
+            );
+            trace.upload(upload.getId())
+                    .outcome(existing.isEmpty() ? "issued" : "reissued");
+            PresignedAudioUpload presigned = audioStorage.presignUpload(
+                    upload.getStorageKey(),
+                    upload.getContentType(),
+                    upload.getContentLength()
+            );
+            return new RecordingAudioUploadUrlResult(
+                    upload.getId(),
+                    presigned.uploadUrl(),
+                    presigned.expiresAt(),
+                    existing.isEmpty()
+            );
+        });
     }
 
     private RecordingAudioUpload reserve(

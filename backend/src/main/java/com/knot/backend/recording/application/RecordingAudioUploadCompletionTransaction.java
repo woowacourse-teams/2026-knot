@@ -46,22 +46,32 @@ public class RecordingAudioUploadCompletionTransaction {
             long uploadId,
             StoredAudioObject storedObject
     ) {
-        RecordingAudioUpload upload = findValidatedUpload(
+        RecordingLog.Scope trace = RecordingLog.begin(
+                "recording.upload.complete",
                 workspaceId,
-                memberId,
                 recordingId,
-                uploadId
+                uploadId,
+                null
         );
-        upload.complete(
-                storedObject,
-                clock.instant()
-                        .truncatedTo(ChronoUnit.MICROS)
-        );
-        recordingAudioUploadRepository.save(upload);
-        if (transcriptionProperties.enabled() && upload.isAudioAvailable()) {
-            transcriptionState.registerAutomatic(recordingId);
-        }
-        return RecordingAudioUploadCompletionResult.from(upload);
+        return trace.call(() -> {
+            RecordingAudioUpload upload = findValidatedUpload(
+                    workspaceId,
+                    memberId,
+                    recordingId,
+                    uploadId
+            );
+            trace.outcome(upload.isCompleted() ? "replayed" : "completed");
+            upload.complete(
+                    storedObject,
+                    clock.instant()
+                            .truncatedTo(ChronoUnit.MICROS)
+            );
+            recordingAudioUploadRepository.save(upload);
+            if (transcriptionProperties.enabled() && upload.isAudioAvailable()) {
+                transcriptionState.registerAutomatic(recordingId);
+            }
+            return RecordingAudioUploadCompletionResult.from(upload);
+        });
     }
 
     private RecordingAudioUpload findValidatedUpload(

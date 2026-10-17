@@ -6,6 +6,8 @@ import com.knot.backend.recording.application.dto.result.RecordingHeartbeatResul
 import com.knot.backend.recording.application.dto.result.RecordingPauseResult;
 import com.knot.backend.recording.application.dto.result.RecordingResumeResult;
 import com.knot.backend.recording.domain.RecordingException;
+import com.knot.backend.recording.domain.RecordingEndReason;
+import com.knot.backend.recording.domain.RecordingStatus;
 import com.knot.backend.recording.domain.RecordingSession;
 import com.knot.backend.recording.domain.RecordingSessionRepository;
 import java.time.Clock;
@@ -29,14 +31,32 @@ public class RecordingControlService {
             long recordingId,
             RecordingControlCommand command
     ) {
-        RecordingSession session = recordingAccess.loadControlledForUpdate(
+        RecordingLog.Scope trace = RecordingLog.begin(
+                "recording.pause",
                 workspaceId,
-                memberId,
                 recordingId,
-                command
+                null,
+                null
         );
-        session.pause(now());
-        return RecordingPauseResult.from(recordingSessionRepository.save(session));
+        return trace.call(() -> {
+            RecordingSession session = recordingAccess.loadControlledForUpdate(
+                    workspaceId,
+                    memberId,
+                    recordingId,
+                    command
+            );
+            RecordingStatus previous = session.getStatus();
+            try {
+                session.pause(now());
+            } finally {
+                logAutoEnded(
+                        session,
+                        previous
+                );
+            }
+            trace.outcome(previous == session.getStatus() ? "replayed" : "changed");
+            return RecordingPauseResult.from(recordingSessionRepository.save(session));
+        });
     }
 
     @Transactional(noRollbackFor = RecordingException.class)
@@ -46,14 +66,32 @@ public class RecordingControlService {
             long recordingId,
             RecordingControlCommand command
     ) {
-        RecordingSession session = recordingAccess.loadControlledForUpdate(
+        RecordingLog.Scope trace = RecordingLog.begin(
+                "recording.resume",
                 workspaceId,
-                memberId,
                 recordingId,
-                command
+                null,
+                null
         );
-        session.resume(now());
-        return RecordingResumeResult.from(recordingSessionRepository.save(session));
+        return trace.call(() -> {
+            RecordingSession session = recordingAccess.loadControlledForUpdate(
+                    workspaceId,
+                    memberId,
+                    recordingId,
+                    command
+            );
+            RecordingStatus previous = session.getStatus();
+            try {
+                session.resume(now());
+            } finally {
+                logAutoEnded(
+                        session,
+                        previous
+                );
+            }
+            trace.outcome(previous == session.getStatus() ? "replayed" : "changed");
+            return RecordingResumeResult.from(recordingSessionRepository.save(session));
+        });
     }
 
     @Transactional
@@ -63,14 +101,39 @@ public class RecordingControlService {
             long recordingId,
             RecordingControlCommand command
     ) {
-        RecordingSession session = recordingAccess.loadControlledForUpdate(
+        RecordingLog.Scope trace = RecordingLog.begin(
+                "recording.end",
                 workspaceId,
-                memberId,
                 recordingId,
-                command
+                null,
+                null
         );
-        session.end(now());
-        return RecordingEndResult.from(recordingSessionRepository.save(session));
+        return trace.call(() -> {
+            RecordingSession session = recordingAccess.loadControlledForUpdate(
+                    workspaceId,
+                    memberId,
+                    recordingId,
+                    command
+            );
+            RecordingStatus previous = session.getStatus();
+            try {
+                session.end(now());
+            } finally {
+                logAutoEnded(
+                        session,
+                        previous
+                );
+            }
+            trace.outcome(previous == session.getStatus() ? "replayed" : "changed");
+            trace.endReason(
+                    session.getEndReason()
+                            .name()
+            );
+            if (previous != session.getStatus() && session.getEndReason() != RecordingEndReason.USER_ENDED) {
+                trace.outcome("ignored");
+            }
+            return RecordingEndResult.from(recordingSessionRepository.save(session));
+        });
     }
 
     @Transactional
@@ -87,10 +150,35 @@ public class RecordingControlService {
                 command
         );
         Instant now = now();
+        RecordingStatus previous = session.getStatus();
         session.recordHeartbeat(now);
+        logAutoEnded(
+                session,
+                previous
+        );
         return RecordingHeartbeatResult.of(
                 recordingSessionRepository.save(session),
                 now
+        );
+    }
+
+    private void logAutoEnded(
+            RecordingSession session,
+            RecordingStatus previous
+    ) {
+        if (previous == RecordingStatus.ENDED || session.getStatus() != RecordingStatus.ENDED
+                || session.getEndReason() == RecordingEndReason.USER_ENDED) {
+            return;
+        }
+        RecordingLog.committed(
+                "recording.auto_end",
+                "changed",
+                session.getWorkspaceId(),
+                session.getId(),
+                null,
+                null,
+                session.getEndReason()
+                        .name()
         );
     }
 

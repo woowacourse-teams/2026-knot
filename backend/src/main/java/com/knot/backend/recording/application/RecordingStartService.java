@@ -30,40 +30,55 @@ public class RecordingStartService {
             long memberId,
             RecordingStartCommand command
     ) {
-        recordingAccess.lockMember(
+        RecordingLog.Scope trace = RecordingLog.begin(
+                "recording.start",
                 workspaceId,
-                memberId
+                null,
+                null,
+                null
         );
-        memberRepository.findByIdForUpdate(memberId)
-                .orElseThrow(() -> new RecordingException(RecordingErrorCode.RECORDING_MEMBER_NOT_FOUND));
-
-        String controlTokenHash = controlTokenHasher.hash(command.controlToken());
-        Optional<RecordingSession> existing = recordingSessionRepository.findByMemberIdAndRequestIdForUpdate(
-                memberId,
-                command.requestId()
-        );
-        if (existing.isPresent()) {
-            return replay(
-                    existing.orElseThrow(),
+        return trace.call(() -> {
+            recordingAccess.lockMember(
                     workspaceId,
-                    command,
-                    controlTokenHash
+                    memberId
             );
-        }
-        releaseActiveRecordings(memberId);
+            memberRepository.findByIdForUpdate(memberId)
+                    .orElseThrow(() -> new RecordingException(RecordingErrorCode.RECORDING_MEMBER_NOT_FOUND));
 
-        RecordingSession session = RecordingSession.start(
-                workspaceId,
-                memberId,
-                command.requestId(),
-                command.tabId(),
-                controlTokenHash,
-                now()
-        );
-        return RecordingStartResult.from(
-                recordingSessionRepository.save(session),
-                true
-        );
+            String controlTokenHash = controlTokenHasher.hash(command.controlToken());
+            Optional<RecordingSession> existing = recordingSessionRepository.findByMemberIdAndRequestIdForUpdate(
+                    memberId,
+                    command.requestId()
+            );
+            if (existing.isPresent()) {
+                RecordingSession session = existing.orElseThrow();
+                trace.recording(session.getId())
+                        .outcome("replayed");
+                return replay(
+                        session,
+                        workspaceId,
+                        command,
+                        controlTokenHash
+                );
+            }
+            releaseActiveRecordings(memberId);
+
+            RecordingSession session = RecordingSession.start(
+                    workspaceId,
+                    memberId,
+                    command.requestId(),
+                    command.tabId(),
+                    controlTokenHash,
+                    now()
+            );
+            RecordingSession saved = recordingSessionRepository.save(session);
+            trace.recording(saved.getId())
+                    .outcome("created");
+            return RecordingStartResult.from(
+                    saved,
+                    true
+            );
+        });
     }
 
     private RecordingStartResult replay(
@@ -79,6 +94,7 @@ public class RecordingStartService {
         );
         if (session.expireIfDue(now())) {
             recordingSessionRepository.save(session);
+            logAutoEnded(session);
         }
         return RecordingStartResult.from(
                 session,
@@ -91,7 +107,21 @@ public class RecordingStartService {
         for (RecordingSession active : recordingSessionRepository.findAllActiveByMemberIdForUpdate(memberId)) {
             active.releaseForNewRecording(now);
             recordingSessionRepository.save(active);
+            logAutoEnded(active);
         }
+    }
+
+    private void logAutoEnded(RecordingSession session) {
+        RecordingLog.committed(
+                "recording.auto_end",
+                "changed",
+                session.getWorkspaceId(),
+                session.getId(),
+                null,
+                null,
+                session.getEndReason()
+                        .name()
+        );
     }
 
     private Instant now() {
