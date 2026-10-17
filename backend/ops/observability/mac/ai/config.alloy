@@ -1,0 +1,29 @@
+// Opt in from the existing host configuration; reuse its remote_write receiver.
+declare "metrics" {
+  argument "address" {
+    optional = true
+    default  = "127.0.0.1:18765"
+  }
+  argument "scope" {
+    optional = true
+    default  = "service"
+  }
+  argument "token_file" {}
+  argument "forward_to" {}
+
+  prometheus.scrape "ai" {
+    targets = [{
+      "__address__" = argument.address.value,
+      "job"        = "mac-ai",
+      "instance"   = "knot-ai-macmini",
+      "ai_scope"   = argument.scope.value,
+    }]
+    job_name          = "mac-ai"
+    metrics_path      = "/internal/metrics"
+    scrape_interval   = "5s"
+    scrape_timeout    = "3s"
+    bearer_token_file = argument.token_file.value
+    follow_redirects  = false
+    forward_to       = argument.forward_to.value
+  }
+}

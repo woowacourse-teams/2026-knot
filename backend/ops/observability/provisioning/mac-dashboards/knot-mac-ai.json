@@ -1,0 +1,664 @@
+{
+  "uid": "knot-mac-ai",
+  "title": "Mac AI 전사 진행",
+  "description": "validation은 별도 검증 프로세스, service는 운영 AI 프로세스입니다. 수집 성공·앱 준비·작업 진행은 서로 다른 상태이며 호스트 자원은 Mac AI 서버 자원 화면에서 확인합니다.",
+  "schemaVersion": 41,
+  "version": 1,
+  "editable": false,
+  "timezone": "Asia/Seoul",
+  "refresh": "5s",
+  "time": {
+    "from": "now-30m",
+    "to": "now"
+  },
+  "tags": [
+    "knot",
+    "mac",
+    "ai"
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "ai_scope",
+        "label": "관측 대상",
+        "type": "custom",
+        "query": "validation,service",
+        "current": {
+          "text": "validation",
+          "value": "validation",
+          "selected": true
+        },
+        "options": [
+          {
+            "text": "validation",
+            "value": "validation",
+            "selected": true
+          },
+          {
+            "text": "service",
+            "value": "service",
+            "selected": false
+          }
+        ],
+        "multi": false,
+        "includeAll": false,
+        "hide": 0
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "지표 수집 성공",
+      "description": "1은 인증된 수집 성공, 0은 수집 실패입니다. 마지막 표본이 20초 이상 오래되면 데이터 없음으로 표시합니다.",
+      "type": "stat",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "knot-prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 6,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "(up{project=\"knot\",env=\"shared\",job=\"mac-ai\",instance=\"knot-ai-macmini\",ai_scope=\"$ai_scope\"} and (time() - timestamp(up{project=\"knot\",env=\"shared\",job=\"mac-ai\",instance=\"knot-ai-macmini\",ai_scope=\"$ai_scope\"}) < 20))",
+          "legendFormat": "수집 성공",
+          "range": false,
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "noValue": "데이터 없음"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "none"
+      }
+    },
+    {
+      "id": 2,
+      "title": "앱 준비 상태",
+      "description": "기존 accepting 및 엔진 준비 상태입니다. 작업 중에도 1일 수 있어 작업 진행과 별도로 봅니다.",
+      "type": "stat",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "knot-prometheus"
+      },
+      "gridPos": {
+        "x": 6,
+        "y": 0,
+        "w": 6,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "knot_ai_ready{project=\"knot\",env=\"shared\",job=\"mac-ai\",instance=\"knot-ai-macmini\",ai_scope=\"$ai_scope\"} and on(project,env,job,instance,ai_scope) ((up{project=\"knot\",env=\"shared\",job=\"mac-ai\",instance=\"knot-ai-macmini\",ai_scope=\"$ai_scope\"} and (time() - timestamp(up{project=\"knot\",env=\"shared\",job=\"mac-ai\",instance=\"knot-ai-macmini\",ai_scope=\"$ai_scope\"}) < 20)) == 1)",
+          "legendFormat": "앱 준비",
+          "range": false,
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "noValue": "데이터 없음"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "none"
+      }
+    },
+    {
+      "id": 3,
+      "title": "전사 작업 진행",
+      "description": "1은 작업 처리 중이며 정리 단계가 끝날 때까지 유지됩니다. 수집 실패 때는 이전 값을 표시하지 않습니다.",
+      "type": "stat",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "knot-prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 0,
+        "w": 6,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "knot_ai_active_jobs{project=\"knot\",env=\"shared\",job=\"mac-ai\",instance=\"knot-ai-macmini\",ai_scope=\"$ai_scope\"} and on(project,env,job,instance,ai_scope) ((up{project=\"knot\",env=\"shared\",job=\"mac-ai\",instance=\"knot-ai-macmini\",ai_scope=\"$ai_scope\"} and (time() - timestamp(up{project=\"knot\",env=\"shared\",job=\"mac-ai\",instance=\"knot-ai-macmini\",ai_scope=\"$ai_scope\"}) < 20)) == 1)",
+          "legendFormat": "진행 작업 수",
+          "range": false,
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "noValue": "데이터 없음"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "none"
+      }
+    },
+    {
+      "id": 4,
+      "title": "마지막 수집 후 경과",
+      "description": "20초를 넘으면 수집 경로를 점검합니다. 중앙 수신이 끊기면 Prometheus 조회 가능 기간 이후 데이터 없음입니다.",
+      "type": "stat",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "knot-prometheus"
+      },
+      "gridPos": {
+        "x": 18,
+        "y": 0,
+        "w": 6,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "time() - timestamp(up{project=\"knot\",env=\"shared\",job=\"mac-ai\",instance=\"knot-ai-macmini\",ai_scope=\"$ai_scope\"})",
+          "legendFormat": "마지막 수집 후 경과",
+          "range": false,
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "noValue": "데이터 없음"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "none"
+      }
+    },
+    {
+      "id": 5,
+      "title": "현재 작업 경과",
+      "description": "유휴 상태는 앱이 제공한 실제 0입니다. 수집 실패와 데이터 누락은 0으로 대체하지 않습니다.",
+      "type": "stat",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "knot-prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 4,
+        "w": 8,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "knot_ai_job_elapsed_seconds{project=\"knot\",env=\"shared\",job=\"mac-ai\",instance=\"knot-ai-macmini\",ai_scope=\"$ai_scope\"} and on(project,env,job,instance,ai_scope) ((up{project=\"knot\",env=\"shared\",job=\"mac-ai\",instance=\"knot-ai-macmini\",ai_scope=\"$ai_scope\"} and (time() - timestamp(up{project=\"knot\",env=\"shared\",job=\"mac-ai\",instance=\"knot-ai-macmini\",ai_scope=\"$ai_scope\"}) < 20)) == 1)",
+          "legendFormat": "작업 경과",
+          "range": false,
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "noValue": "데이터 없음"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "none"
+      }
+    },
+    {
+      "id": 6,
+      "title": "완료 작업 수",
+      "description": "프로세스 시작 이후 누적값입니다. 재시작하면 초기화됩니다. 요청 거절과 중복 요청은 포함하지 않습니다. 정리 실패만 발생한 전사 성공은 완료에 포함됩니다.",
+      "type": "stat",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "knot-prometheus"
+      },
+      "gridPos": {
+        "x": 8,
+        "y": 4,
+        "w": 8,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "knot_ai_jobs_completed_total{project=\"knot\",env=\"shared\",job=\"mac-ai\",instance=\"knot-ai-macmini\",ai_scope=\"$ai_scope\",outcome=\"completed\"} and on(project,env,job,instance,ai_scope) ((up{project=\"knot\",env=\"shared\",job=\"mac-ai\",instance=\"knot-ai-macmini\",ai_scope=\"$ai_scope\"} and (time() - timestamp(up{project=\"knot\",env=\"shared\",job=\"mac-ai\",instance=\"knot-ai-macmini\",ai_scope=\"$ai_scope\"}) < 20)) == 1)",
+          "legendFormat": "완료",
+          "range": false,
+          "instant": true
+        },
+        {
+          "refId": "B",
+          "expr": "knot_ai_jobs_completed_total{project=\"knot\",env=\"shared\",job=\"mac-ai\",instance=\"knot-ai-macmini\",ai_scope=\"$ai_scope\",outcome=\"failed\"} and on(project,env,job,instance,ai_scope) ((up{project=\"knot\",env=\"shared\",job=\"mac-ai\",instance=\"knot-ai-macmini\",ai_scope=\"$ai_scope\"} and (time() - timestamp(up{project=\"knot\",env=\"shared\",job=\"mac-ai\",instance=\"knot-ai-macmini\",ai_scope=\"$ai_scope\"}) < 20)) == 1)",
+          "legendFormat": "실패",
+          "range": false,
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "noValue": "데이터 없음"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "none"
+      }
+    },
+    {
+      "id": 7,
+      "title": "완료 단계 수",
+      "description": "프로세스 시작 이후 단계별 누적 횟수입니다. 정리 실패는 작업 성공 여부와 독립적으로 실패 횟수에 포함됩니다.",
+      "type": "stat",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "knot-prometheus"
+      },
+      "gridPos": {
+        "x": 16,
+        "y": 4,
+        "w": 8,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum without(outcome) (knot_ai_stage_duration_seconds_count{project=\"knot\",env=\"shared\",job=\"mac-ai\",instance=\"knot-ai-macmini\",ai_scope=\"$ai_scope\",stage=\"download\"}) and on(project,env,job,instance,ai_scope) ((up{project=\"knot\",env=\"shared\",job=\"mac-ai\",instance=\"knot-ai-macmini\",ai_scope=\"$ai_scope\"} and (time() - timestamp(up{project=\"knot\",env=\"shared\",job=\"mac-ai\",instance=\"knot-ai-macmini\",ai_scope=\"$ai_scope\"}) < 20)) == 1)",
+          "legendFormat": "다운로드",
+          "range": false,
+          "instant": true
+        },
+        {
+          "refId": "B",
+          "expr": "sum without(outcome) (knot_ai_stage_duration_seconds_count{project=\"knot\",env=\"shared\",job=\"mac-ai\",instance=\"knot-ai-macmini\",ai_scope=\"$ai_scope\",stage=\"decode\"}) and on(project,env,job,instance,ai_scope) ((up{project=\"knot\",env=\"shared\",job=\"mac-ai\",instance=\"knot-ai-macmini\",ai_scope=\"$ai_scope\"} and (time() - timestamp(up{project=\"knot\",env=\"shared\",job=\"mac-ai\",instance=\"knot-ai-macmini\",ai_scope=\"$ai_scope\"}) < 20)) == 1)",
+          "legendFormat": "디코딩",
+          "range": false,
+          "instant": true
+        },
+        {
+          "refId": "C",
+          "expr": "sum without(outcome) (knot_ai_stage_duration_seconds_count{project=\"knot\",env=\"shared\",job=\"mac-ai\",instance=\"knot-ai-macmini\",ai_scope=\"$ai_scope\",stage=\"model\"}) and on(project,env,job,instance,ai_scope) ((up{project=\"knot\",env=\"shared\",job=\"mac-ai\",instance=\"knot-ai-macmini\",ai_scope=\"$ai_scope\"} and (time() - timestamp(up{project=\"knot\",env=\"shared\",job=\"mac-ai\",instance=\"knot-ai-macmini\",ai_scope=\"$ai_scope\"}) < 20)) == 1)",
+          "legendFormat": "모델 실행",
+          "range": false,
+          "instant": true
+        },
+        {
+          "refId": "D",
+          "expr": "sum without(outcome) (knot_ai_stage_duration_seconds_count{project=\"knot\",env=\"shared\",job=\"mac-ai\",instance=\"knot-ai-macmini\",ai_scope=\"$ai_scope\",stage=\"result_check\"}) and on(project,env,job,instance,ai_scope) ((up{project=\"knot\",env=\"shared\",job=\"mac-ai\",instance=\"knot-ai-macmini\",ai_scope=\"$ai_scope\"} and (time() - timestamp(up{project=\"knot\",env=\"shared\",job=\"mac-ai\",instance=\"knot-ai-macmini\",ai_scope=\"$ai_scope\"}) < 20)) == 1)",
+          "legendFormat": "결과 확인",
+          "range": false,
+          "instant": true
+        },
+        {
+          "refId": "E",
+          "expr": "sum without(outcome) (knot_ai_stage_duration_seconds_count{project=\"knot\",env=\"shared\",job=\"mac-ai\",instance=\"knot-ai-macmini\",ai_scope=\"$ai_scope\",stage=\"cleanup\"}) and on(project,env,job,instance,ai_scope) ((up{project=\"knot\",env=\"shared\",job=\"mac-ai\",instance=\"knot-ai-macmini\",ai_scope=\"$ai_scope\"} and (time() - timestamp(up{project=\"knot\",env=\"shared\",job=\"mac-ai\",instance=\"knot-ai-macmini\",ai_scope=\"$ai_scope\"}) < 20)) == 1)",
+          "legendFormat": "정리",
+          "range": false,
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "noValue": "데이터 없음"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "none"
+      }
+    },
+    {
+      "id": 8,
+      "title": "현재 진행 단계",
+      "description": "각 단계는 진행 중 1, 비활성 0입니다. 모델 실행은 통합 runner 시간이며 순수 추론 시간으로 해석하지 않습니다.",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "knot-prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 8,
+        "w": 12,
+        "h": 7
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "knot_ai_stage_active{project=\"knot\",env=\"shared\",job=\"mac-ai\",instance=\"knot-ai-macmini\",ai_scope=\"$ai_scope\",stage=\"download\"} and on(project,env,job,instance,ai_scope) ((up{project=\"knot\",env=\"shared\",job=\"mac-ai\",instance=\"knot-ai-macmini\",ai_scope=\"$ai_scope\"} and (time() - timestamp(up{project=\"knot\",env=\"shared\",job=\"mac-ai\",instance=\"knot-ai-macmini\",ai_scope=\"$ai_scope\"}) < 20)) == 1)",
+          "legendFormat": "다운로드",
+          "range": true,
+          "instant": false
+        },
+        {
+          "refId": "B",
+          "expr": "knot_ai_stage_active{project=\"knot\",env=\"shared\",job=\"mac-ai\",instance=\"knot-ai-macmini\",ai_scope=\"$ai_scope\",stage=\"decode\"} and on(project,env,job,instance,ai_scope) ((up{project=\"knot\",env=\"shared\",job=\"mac-ai\",instance=\"knot-ai-macmini\",ai_scope=\"$ai_scope\"} and (time() - timestamp(up{project=\"knot\",env=\"shared\",job=\"mac-ai\",instance=\"knot-ai-macmini\",ai_scope=\"$ai_scope\"}) < 20)) == 1)",
+          "legendFormat": "디코딩",
+          "range": true,
+          "instant": false
+        },
+        {
+          "refId": "C",
+          "expr": "knot_ai_stage_active{project=\"knot\",env=\"shared\",job=\"mac-ai\",instance=\"knot-ai-macmini\",ai_scope=\"$ai_scope\",stage=\"model\"} and on(project,env,job,instance,ai_scope) ((up{project=\"knot\",env=\"shared\",job=\"mac-ai\",instance=\"knot-ai-macmini\",ai_scope=\"$ai_scope\"} and (time() - timestamp(up{project=\"knot\",env=\"shared\",job=\"mac-ai\",instance=\"knot-ai-macmini\",ai_scope=\"$ai_scope\"}) < 20)) == 1)",
+          "legendFormat": "모델 실행",
+          "range": true,
+          "instant": false
+        },
+        {
+          "refId": "D",
+          "expr": "knot_ai_stage_active{project=\"knot\",env=\"shared\",job=\"mac-ai\",instance=\"knot-ai-macmini\",ai_scope=\"$ai_scope\",stage=\"result_check\"} and on(project,env,job,instance,ai_scope) ((up{project=\"knot\",env=\"shared\",job=\"mac-ai\",instance=\"knot-ai-macmini\",ai_scope=\"$ai_scope\"} and (time() - timestamp(up{project=\"knot\",env=\"shared\",job=\"mac-ai\",instance=\"knot-ai-macmini\",ai_scope=\"$ai_scope\"}) < 20)) == 1)",
+          "legendFormat": "결과 확인",
+          "range": true,
+          "instant": false
+        },
+        {
+          "refId": "E",
+          "expr": "knot_ai_stage_active{project=\"knot\",env=\"shared\",job=\"mac-ai\",instance=\"knot-ai-macmini\",ai_scope=\"$ai_scope\",stage=\"cleanup\"} and on(project,env,job,instance,ai_scope) ((up{project=\"knot\",env=\"shared\",job=\"mac-ai\",instance=\"knot-ai-macmini\",ai_scope=\"$ai_scope\"} and (time() - timestamp(up{project=\"knot\",env=\"shared\",job=\"mac-ai\",instance=\"knot-ai-macmini\",ai_scope=\"$ai_scope\"}) < 20)) == 1)",
+          "legendFormat": "정리",
+          "range": true,
+          "instant": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "noValue": "데이터 없음",
+          "custom": {
+            "spanNulls": false
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "id": 9,
+      "title": "진행 단계 경과",
+      "description": "현재 활성 단계의 경과 시간이며 비활성 단계는 앱이 0으로 제공합니다. 완료 작업의 단계 시간은 아래 누적값으로 확인합니다.",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "knot-prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 8,
+        "w": 12,
+        "h": 7
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "knot_ai_stage_elapsed_seconds{project=\"knot\",env=\"shared\",job=\"mac-ai\",instance=\"knot-ai-macmini\",ai_scope=\"$ai_scope\",stage=\"download\"} and on(project,env,job,instance,ai_scope) ((up{project=\"knot\",env=\"shared\",job=\"mac-ai\",instance=\"knot-ai-macmini\",ai_scope=\"$ai_scope\"} and (time() - timestamp(up{project=\"knot\",env=\"shared\",job=\"mac-ai\",instance=\"knot-ai-macmini\",ai_scope=\"$ai_scope\"}) < 20)) == 1)",
+          "legendFormat": "다운로드",
+          "range": true,
+          "instant": false
+        },
+        {
+          "refId": "B",
+          "expr": "knot_ai_stage_elapsed_seconds{project=\"knot\",env=\"shared\",job=\"mac-ai\",instance=\"knot-ai-macmini\",ai_scope=\"$ai_scope\",stage=\"decode\"} and on(project,env,job,instance,ai_scope) ((up{project=\"knot\",env=\"shared\",job=\"mac-ai\",instance=\"knot-ai-macmini\",ai_scope=\"$ai_scope\"} and (time() - timestamp(up{project=\"knot\",env=\"shared\",job=\"mac-ai\",instance=\"knot-ai-macmini\",ai_scope=\"$ai_scope\"}) < 20)) == 1)",
+          "legendFormat": "디코딩",
+          "range": true,
+          "instant": false
+        },
+        {
+          "refId": "C",
+          "expr": "knot_ai_stage_elapsed_seconds{project=\"knot\",env=\"shared\",job=\"mac-ai\",instance=\"knot-ai-macmini\",ai_scope=\"$ai_scope\",stage=\"model\"} and on(project,env,job,instance,ai_scope) ((up{project=\"knot\",env=\"shared\",job=\"mac-ai\",instance=\"knot-ai-macmini\",ai_scope=\"$ai_scope\"} and (time() - timestamp(up{project=\"knot\",env=\"shared\",job=\"mac-ai\",instance=\"knot-ai-macmini\",ai_scope=\"$ai_scope\"}) < 20)) == 1)",
+          "legendFormat": "모델 실행",
+          "range": true,
+          "instant": false
+        },
+        {
+          "refId": "D",
+          "expr": "knot_ai_stage_elapsed_seconds{project=\"knot\",env=\"shared\",job=\"mac-ai\",instance=\"knot-ai-macmini\",ai_scope=\"$ai_scope\",stage=\"result_check\"} and on(project,env,job,instance,ai_scope) ((up{project=\"knot\",env=\"shared\",job=\"mac-ai\",instance=\"knot-ai-macmini\",ai_scope=\"$ai_scope\"} and (time() - timestamp(up{project=\"knot\",env=\"shared\",job=\"mac-ai\",instance=\"knot-ai-macmini\",ai_scope=\"$ai_scope\"}) < 20)) == 1)",
+          "legendFormat": "결과 확인",
+          "range": true,
+          "instant": false
+        },
+        {
+          "refId": "E",
+          "expr": "knot_ai_stage_elapsed_seconds{project=\"knot\",env=\"shared\",job=\"mac-ai\",instance=\"knot-ai-macmini\",ai_scope=\"$ai_scope\",stage=\"cleanup\"} and on(project,env,job,instance,ai_scope) ((up{project=\"knot\",env=\"shared\",job=\"mac-ai\",instance=\"knot-ai-macmini\",ai_scope=\"$ai_scope\"} and (time() - timestamp(up{project=\"knot\",env=\"shared\",job=\"mac-ai\",instance=\"knot-ai-macmini\",ai_scope=\"$ai_scope\"}) < 20)) == 1)",
+          "legendFormat": "정리",
+          "range": true,
+          "instant": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "noValue": "데이터 없음",
+          "custom": {
+            "spanNulls": false
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "id": 10,
+      "title": "완료 단계 누적 시간",
+      "description": "프로세스 시작 이후 성공·실패를 합친 시간 합계입니다. 모델 실행은 다운로드·결과 확인과 분리된 통합 runner 호출 구간입니다.",
+      "type": "stat",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "knot-prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 15,
+        "w": 12,
+        "h": 5
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum without(outcome) (knot_ai_stage_duration_seconds_sum{project=\"knot\",env=\"shared\",job=\"mac-ai\",instance=\"knot-ai-macmini\",ai_scope=\"$ai_scope\",stage=\"download\"}) and on(project,env,job,instance,ai_scope) ((up{project=\"knot\",env=\"shared\",job=\"mac-ai\",instance=\"knot-ai-macmini\",ai_scope=\"$ai_scope\"} and (time() - timestamp(up{project=\"knot\",env=\"shared\",job=\"mac-ai\",instance=\"knot-ai-macmini\",ai_scope=\"$ai_scope\"}) < 20)) == 1)",
+          "legendFormat": "다운로드",
+          "range": false,
+          "instant": true
+        },
+        {
+          "refId": "B",
+          "expr": "sum without(outcome) (knot_ai_stage_duration_seconds_sum{project=\"knot\",env=\"shared\",job=\"mac-ai\",instance=\"knot-ai-macmini\",ai_scope=\"$ai_scope\",stage=\"decode\"}) and on(project,env,job,instance,ai_scope) ((up{project=\"knot\",env=\"shared\",job=\"mac-ai\",instance=\"knot-ai-macmini\",ai_scope=\"$ai_scope\"} and (time() - timestamp(up{project=\"knot\",env=\"shared\",job=\"mac-ai\",instance=\"knot-ai-macmini\",ai_scope=\"$ai_scope\"}) < 20)) == 1)",
+          "legendFormat": "디코딩",
+          "range": false,
+          "instant": true
+        },
+        {
+          "refId": "C",
+          "expr": "sum without(outcome) (knot_ai_stage_duration_seconds_sum{project=\"knot\",env=\"shared\",job=\"mac-ai\",instance=\"knot-ai-macmini\",ai_scope=\"$ai_scope\",stage=\"model\"}) and on(project,env,job,instance,ai_scope) ((up{project=\"knot\",env=\"shared\",job=\"mac-ai\",instance=\"knot-ai-macmini\",ai_scope=\"$ai_scope\"} and (time() - timestamp(up{project=\"knot\",env=\"shared\",job=\"mac-ai\",instance=\"knot-ai-macmini\",ai_scope=\"$ai_scope\"}) < 20)) == 1)",
+          "legendFormat": "모델 실행",
+          "range": false,
+          "instant": true
+        },
+        {
+          "refId": "D",
+          "expr": "sum without(outcome) (knot_ai_stage_duration_seconds_sum{project=\"knot\",env=\"shared\",job=\"mac-ai\",instance=\"knot-ai-macmini\",ai_scope=\"$ai_scope\",stage=\"result_check\"}) and on(project,env,job,instance,ai_scope) ((up{project=\"knot\",env=\"shared\",job=\"mac-ai\",instance=\"knot-ai-macmini\",ai_scope=\"$ai_scope\"} and (time() - timestamp(up{project=\"knot\",env=\"shared\",job=\"mac-ai\",instance=\"knot-ai-macmini\",ai_scope=\"$ai_scope\"}) < 20)) == 1)",
+          "legendFormat": "결과 확인",
+          "range": false,
+          "instant": true
+        },
+        {
+          "refId": "E",
+          "expr": "sum without(outcome) (knot_ai_stage_duration_seconds_sum{project=\"knot\",env=\"shared\",job=\"mac-ai\",instance=\"knot-ai-macmini\",ai_scope=\"$ai_scope\",stage=\"cleanup\"}) and on(project,env,job,instance,ai_scope) ((up{project=\"knot\",env=\"shared\",job=\"mac-ai\",instance=\"knot-ai-macmini\",ai_scope=\"$ai_scope\"} and (time() - timestamp(up{project=\"knot\",env=\"shared\",job=\"mac-ai\",instance=\"knot-ai-macmini\",ai_scope=\"$ai_scope\"}) < 20)) == 1)",
+          "legendFormat": "정리",
+          "range": false,
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "noValue": "데이터 없음"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "none"
+      }
+    },
+    {
+      "id": 11,
+      "title": "완료 단계 평균 시간",
+      "description": "누적 시간 합계를 누적 횟수로 나눕니다. 완료 표본이 없는 단계의 평균은 데이터 없음입니다. 실행 중인 단계 시간과 구분합니다.",
+      "type": "stat",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "knot-prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 15,
+        "w": 12,
+        "h": 5
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "(sum without(outcome) (knot_ai_stage_duration_seconds_sum{project=\"knot\",env=\"shared\",job=\"mac-ai\",instance=\"knot-ai-macmini\",ai_scope=\"$ai_scope\",stage=\"download\"}) / (sum without(outcome) (knot_ai_stage_duration_seconds_count{project=\"knot\",env=\"shared\",job=\"mac-ai\",instance=\"knot-ai-macmini\",ai_scope=\"$ai_scope\",stage=\"download\"}) > 0)) and on(project,env,job,instance,ai_scope) ((up{project=\"knot\",env=\"shared\",job=\"mac-ai\",instance=\"knot-ai-macmini\",ai_scope=\"$ai_scope\"} and (time() - timestamp(up{project=\"knot\",env=\"shared\",job=\"mac-ai\",instance=\"knot-ai-macmini\",ai_scope=\"$ai_scope\"}) < 20)) == 1)",
+          "legendFormat": "다운로드",
+          "range": false,
+          "instant": true
+        },
+        {
+          "refId": "B",
+          "expr": "(sum without(outcome) (knot_ai_stage_duration_seconds_sum{project=\"knot\",env=\"shared\",job=\"mac-ai\",instance=\"knot-ai-macmini\",ai_scope=\"$ai_scope\",stage=\"decode\"}) / (sum without(outcome) (knot_ai_stage_duration_seconds_count{project=\"knot\",env=\"shared\",job=\"mac-ai\",instance=\"knot-ai-macmini\",ai_scope=\"$ai_scope\",stage=\"decode\"}) > 0)) and on(project,env,job,instance,ai_scope) ((up{project=\"knot\",env=\"shared\",job=\"mac-ai\",instance=\"knot-ai-macmini\",ai_scope=\"$ai_scope\"} and (time() - timestamp(up{project=\"knot\",env=\"shared\",job=\"mac-ai\",instance=\"knot-ai-macmini\",ai_scope=\"$ai_scope\"}) < 20)) == 1)",
+          "legendFormat": "디코딩",
+          "range": false,
+          "instant": true
+        },
+        {
+          "refId": "C",
+          "expr": "(sum without(outcome) (knot_ai_stage_duration_seconds_sum{project=\"knot\",env=\"shared\",job=\"mac-ai\",instance=\"knot-ai-macmini\",ai_scope=\"$ai_scope\",stage=\"model\"}) / (sum without(outcome) (knot_ai_stage_duration_seconds_count{project=\"knot\",env=\"shared\",job=\"mac-ai\",instance=\"knot-ai-macmini\",ai_scope=\"$ai_scope\",stage=\"model\"}) > 0)) and on(project,env,job,instance,ai_scope) ((up{project=\"knot\",env=\"shared\",job=\"mac-ai\",instance=\"knot-ai-macmini\",ai_scope=\"$ai_scope\"} and (time() - timestamp(up{project=\"knot\",env=\"shared\",job=\"mac-ai\",instance=\"knot-ai-macmini\",ai_scope=\"$ai_scope\"}) < 20)) == 1)",
+          "legendFormat": "모델 실행",
+          "range": false,
+          "instant": true
+        },
+        {
+          "refId": "D",
+          "expr": "(sum without(outcome) (knot_ai_stage_duration_seconds_sum{project=\"knot\",env=\"shared\",job=\"mac-ai\",instance=\"knot-ai-macmini\",ai_scope=\"$ai_scope\",stage=\"result_check\"}) / (sum without(outcome) (knot_ai_stage_duration_seconds_count{project=\"knot\",env=\"shared\",job=\"mac-ai\",instance=\"knot-ai-macmini\",ai_scope=\"$ai_scope\",stage=\"result_check\"}) > 0)) and on(project,env,job,instance,ai_scope) ((up{project=\"knot\",env=\"shared\",job=\"mac-ai\",instance=\"knot-ai-macmini\",ai_scope=\"$ai_scope\"} and (time() - timestamp(up{project=\"knot\",env=\"shared\",job=\"mac-ai\",instance=\"knot-ai-macmini\",ai_scope=\"$ai_scope\"}) < 20)) == 1)",
+          "legendFormat": "결과 확인",
+          "range": false,
+          "instant": true
+        },
+        {
+          "refId": "E",
+          "expr": "(sum without(outcome) (knot_ai_stage_duration_seconds_sum{project=\"knot\",env=\"shared\",job=\"mac-ai\",instance=\"knot-ai-macmini\",ai_scope=\"$ai_scope\",stage=\"cleanup\"}) / (sum without(outcome) (knot_ai_stage_duration_seconds_count{project=\"knot\",env=\"shared\",job=\"mac-ai\",instance=\"knot-ai-macmini\",ai_scope=\"$ai_scope\",stage=\"cleanup\"}) > 0)) and on(project,env,job,instance,ai_scope) ((up{project=\"knot\",env=\"shared\",job=\"mac-ai\",instance=\"knot-ai-macmini\",ai_scope=\"$ai_scope\"} and (time() - timestamp(up{project=\"knot\",env=\"shared\",job=\"mac-ai\",instance=\"knot-ai-macmini\",ai_scope=\"$ai_scope\"}) < 20)) == 1)",
+          "legendFormat": "정리",
+          "range": false,
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "noValue": "데이터 없음"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "none"
+      }
+    }
+  ]
+}
