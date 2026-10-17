@@ -46,7 +46,7 @@ class RecordingStartServiceTest {
     private MemberRepository memberRepository;
     private RecordingSessionRepository recordingSessionRepository;
     private RecordingControlTokenHasher hasher;
-    private RecordingStartService service;
+    private RecordingService service;
     private RecordingStartCommand command;
 
     @BeforeEach
@@ -56,7 +56,7 @@ class RecordingStartServiceTest {
         memberRepository = mock(MemberRepository.class);
         recordingSessionRepository = mock(RecordingSessionRepository.class);
         hasher = mock(RecordingControlTokenHasher.class);
-        service = new RecordingStartService(
+        service = new RecordingService(
                 new RecordingAccess(
                         workspaceRepository,
                         workspaceMemberRepository,

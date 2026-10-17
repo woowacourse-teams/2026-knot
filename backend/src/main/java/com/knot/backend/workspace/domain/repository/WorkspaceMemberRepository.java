@@ -10,8 +10,6 @@ public interface WorkspaceMemberRepository {
 
     WorkspaceMember save(WorkspaceMember workspaceMember);
 
-    Optional<WorkspaceMember> findById(Long workspaceMemberId);
-
     List<WorkspaceMember> findAllByMemberIdForUpdate(Long memberId);
 
     List<WorkspaceMember> findAllActiveByWorkspaceIdAndMemberIdsForUpdate(

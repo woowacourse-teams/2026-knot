@@ -78,7 +78,7 @@ public class RecordingAudioUploadCompletionTransaction {
                 memberId,
                 recordingId
         )
-                .validateAudioUploadable();
+                .validateEnded();
         RecordingAudioUpload upload = recordingAudioUploadRepository.findById(uploadId)
                 .orElseThrow(() -> new RecordingException(RecordingErrorCode.AUDIO_UPLOAD_NOT_FOUND));
         upload.validateBelongsTo(recordingId);

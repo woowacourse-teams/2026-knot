@@ -1,7 +1,7 @@
 package com.knot.backend.recording.presentation;
 
 import com.knot.backend.auth.domain.model.AuthenticatedMember;
-import com.knot.backend.recording.application.RecordingControlService;
+import com.knot.backend.recording.application.RecordingService;
 import com.knot.backend.recording.application.dto.result.RecordingHeartbeatResult;
 import com.knot.backend.recording.presentation.dto.request.RecordingControlRequest;
 import com.knot.backend.recording.presentation.dto.response.RecordingHeartbeatResponse;
@@ -18,7 +18,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/v1/workspaces/{workspaceId}/recordings")
 @RequiredArgsConstructor
 public class RecordingHeartbeatController implements RecordingHeartbeatApi {
-    private final RecordingControlService recordingControlService;
+    private final RecordingService recordingService;
 
     @Override
     @PostMapping("/{recordingId}/heartbeat")
@@ -28,7 +28,7 @@ public class RecordingHeartbeatController implements RecordingHeartbeatApi {
             @Valid @RequestBody RecordingControlRequest request,
             @AuthenticationPrincipal AuthenticatedMember authenticatedMember
     ) {
-        RecordingHeartbeatResult result = recordingControlService.heartbeat(
+        RecordingHeartbeatResult result = recordingService.heartbeat(
                 workspaceId,
                 authenticatedMember.getMemberId(),
                 recordingId,

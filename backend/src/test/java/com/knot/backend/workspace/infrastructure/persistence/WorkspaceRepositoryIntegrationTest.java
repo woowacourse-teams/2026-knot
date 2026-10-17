@@ -78,7 +78,12 @@ class WorkspaceRepositoryIntegrationTest {
                         "Knot 팀",
                         CREATED_AT
                 );
-        assertThat(workspaceMemberRepository.findById(savedWorkspaceMember.getId())).get()
+        assertThat(
+                entityManager.find(
+                        WorkspaceMember.class,
+                        savedWorkspaceMember.getId()
+                )
+        ).isNotNull()
                 .extracting(
                         WorkspaceMember::getMemberId,
                         WorkspaceMember::getJoinedAt
@@ -424,7 +429,9 @@ class WorkspaceRepositoryIntegrationTest {
     private WorkspaceMember saveAndReload(WorkspaceMember workspaceMember) {
         WorkspaceMember savedWorkspaceMember = saveAndFlush(workspaceMember);
         entityManager.clear();
-        return workspaceMemberRepository.findById(savedWorkspaceMember.getId())
-                .orElseThrow();
+        return entityManager.find(
+                WorkspaceMember.class,
+                savedWorkspaceMember.getId()
+        );
     }
 }

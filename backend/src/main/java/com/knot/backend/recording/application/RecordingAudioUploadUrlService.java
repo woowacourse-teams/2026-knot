@@ -35,7 +35,7 @@ public class RecordingAudioUploadUrlService {
                 memberId,
                 recordingId
         )
-                .validateAudioUploadable();
+                .validateEnded();
 
         Optional<RecordingAudioUpload> existing = recordingAudioUploadRepository.findByRecordingId(recordingId);
         existing.ifPresent(

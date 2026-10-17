@@ -12,7 +12,6 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
-import com.knot.backend.workspace.application.dto.result.WorkspaceCreateResult;
 import com.knot.backend.workspace.application.dto.result.WorkspaceDetailResult;
 import com.knot.backend.workspace.application.dto.result.WorkspaceListResult;
 import com.knot.backend.workspace.domain.model.Workspace;
@@ -65,7 +64,7 @@ class WorkspaceServiceTest {
         });
 
         // when
-        WorkspaceCreateResult result = service.create(
+        long workspaceId = service.create(
                 3L,
                 "Knot 팀"
         );
@@ -75,7 +74,7 @@ class WorkspaceServiceTest {
         ArgumentCaptor<WorkspaceMember> memberCaptor = ArgumentCaptor.forClass(WorkspaceMember.class);
         verify(workspaceRepository).save(workspaceCaptor.capture());
         verify(workspaceMemberRepository).save(memberCaptor.capture());
-        assertThat(result.id()).isEqualTo(7L);
+        assertThat(workspaceId).isEqualTo(7L);
         assertThat(workspaceCaptor.getValue()).extracting(
                 Workspace::getName,
                 Workspace::getCreatedAt

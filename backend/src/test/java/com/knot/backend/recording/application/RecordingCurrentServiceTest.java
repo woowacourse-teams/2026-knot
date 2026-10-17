@@ -11,6 +11,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import com.knot.backend.member.domain.MemberRepository;
 import com.knot.backend.recording.application.dto.result.RecordingCurrentResult;
 import com.knot.backend.recording.domain.model.RecordingSession;
 import com.knot.backend.recording.domain.repository.RecordingSessionRepository;
@@ -42,21 +43,23 @@ class RecordingCurrentServiceTest {
     private WorkspaceRepository workspaceRepository;
     private WorkspaceMemberRepository workspaceMemberRepository;
     private RecordingSessionRepository recordingSessionRepository;
-    private RecordingCurrentService service;
+    private RecordingService service;
 
     @BeforeEach
     void setUp() {
         workspaceRepository = mock(WorkspaceRepository.class);
         workspaceMemberRepository = mock(WorkspaceMemberRepository.class);
         recordingSessionRepository = mock(RecordingSessionRepository.class);
-        service = new RecordingCurrentService(
+        service = new RecordingService(
                 new RecordingAccess(
                         workspaceRepository,
                         workspaceMemberRepository,
                         recordingSessionRepository,
                         mock(RecordingControlTokenHasher.class)
                 ),
+                mock(MemberRepository.class),
                 recordingSessionRepository,
+                mock(RecordingControlTokenHasher.class),
                 Clock.fixed(
                         NOW,
                         ZoneOffset.UTC
@@ -146,14 +149,16 @@ class RecordingCurrentServiceTest {
             currentTime.set(resumedAt.plusMillis(1));
             return Optional.of(session);
         });
-        RecordingCurrentService racingService = new RecordingCurrentService(
+        RecordingService racingService = new RecordingService(
                 new RecordingAccess(
                         workspaceRepository,
                         workspaceMemberRepository,
                         recordingSessionRepository,
                         mock(RecordingControlTokenHasher.class)
                 ),
+                mock(MemberRepository.class),
                 recordingSessionRepository,
+                mock(RecordingControlTokenHasher.class),
                 clock
         );
 

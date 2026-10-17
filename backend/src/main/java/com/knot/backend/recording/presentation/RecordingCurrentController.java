@@ -1,7 +1,7 @@
 package com.knot.backend.recording.presentation;
 
 import com.knot.backend.auth.domain.model.AuthenticatedMember;
-import com.knot.backend.recording.application.RecordingCurrentService;
+import com.knot.backend.recording.application.RecordingService;
 import com.knot.backend.recording.presentation.dto.response.RecordingCurrentResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -15,7 +15,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/v1/workspaces/{workspaceId}/recordings")
 @RequiredArgsConstructor
 public class RecordingCurrentController implements RecordingCurrentApi {
-    private final RecordingCurrentService recordingCurrentService;
+    private final RecordingService recordingService;
 
     @Override
     @GetMapping("/current")
@@ -23,7 +23,7 @@ public class RecordingCurrentController implements RecordingCurrentApi {
             @PathVariable long workspaceId,
             @AuthenticationPrincipal AuthenticatedMember authenticatedMember
     ) {
-        return recordingCurrentService.findCurrent(
+        return recordingService.findCurrent(
                 workspaceId,
                 authenticatedMember.getMemberId()
         )

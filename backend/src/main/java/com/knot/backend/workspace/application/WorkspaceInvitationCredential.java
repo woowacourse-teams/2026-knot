@@ -3,14 +3,14 @@ package com.knot.backend.workspace.application;
 import com.knot.backend.workspace.domain.WorkspaceErrorCode;
 import com.knot.backend.workspace.domain.WorkspaceException;
 import java.util.Locale;
+import java.util.regex.Pattern;
 
 public record WorkspaceInvitationCredential(
         WorkspaceInvitationSecretKind kind,
-        String secret,
-        boolean requiresRateLimiting
+        String secret
 ) {
     static final int CODE_LENGTH = 6;
-    private static final String CODE_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ23456789";
+    private static final Pattern INVITE_CODE_PATTERN = Pattern.compile("[A-Z2-9]{" + CODE_LENGTH + "}");
 
     public static WorkspaceInvitationCredential from(String tokenOrCode) {
         if (tokenOrCode == null || tokenOrCode.isBlank()) {
@@ -22,8 +22,7 @@ public record WorkspaceInvitationCredential(
         }
         return new WorkspaceInvitationCredential(
                 WorkspaceInvitationSecretKind.LINK_TOKEN,
-                tokenOrCode,
-                false
+                tokenOrCode
         );
     }
 
@@ -31,22 +30,21 @@ public record WorkspaceInvitationCredential(
         String normalizedCode = stripped.toUpperCase(Locale.ROOT);
         return new WorkspaceInvitationCredential(
                 WorkspaceInvitationSecretKind.INVITE_CODE,
-                normalizedCode,
-                true
+                normalizedCode
         );
+    }
+
+    public boolean requiresRateLimiting() {
+        return kind == WorkspaceInvitationSecretKind.INVITE_CODE;
     }
 
     public void validate() {
         if (kind != WorkspaceInvitationSecretKind.INVITE_CODE) {
             return;
         }
-        if (secret.length() != CODE_LENGTH) {
+        if (!INVITE_CODE_PATTERN.matcher(secret)
+                .matches()) {
             throw previewNotFound();
-        }
-        for (int index = 0; index < secret.length(); index++) {
-            if (CODE_ALPHABET.indexOf(secret.charAt(index)) < 0) {
-                throw previewNotFound();
-            }
         }
     }
 

@@ -33,20 +33,14 @@ class RecordingCurrentServiceIntegrationTest {
     private static final Instant JOINED_AT = Instant.parse("2026-10-05T00:01:00Z");
     private static final String CONTROL_TOKEN = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefA";
 
-    private final RecordingCurrentService recordingCurrentService;
-    private final RecordingControlService recordingControlService;
-    private final RecordingStartService recordingStartService;
+    private final RecordingService recordingService;
     private final JdbcClient jdbcClient;
 
     RecordingCurrentServiceIntegrationTest(
-            RecordingCurrentService recordingCurrentService,
-            RecordingControlService recordingControlService,
-            RecordingStartService recordingStartService,
+            RecordingService recordingService,
             JdbcClient jdbcClient
     ) {
-        this.recordingCurrentService = recordingCurrentService;
-        this.recordingControlService = recordingControlService;
-        this.recordingStartService = recordingStartService;
+        this.recordingService = recordingService;
         this.jdbcClient = jdbcClient;
     }
 
@@ -77,7 +71,7 @@ class RecordingCurrentServiceIntegrationTest {
         StoredRecording before = storedRecording(recording.id());
 
         // when
-        Optional<RecordingCurrentResult> result = recordingCurrentService.findCurrent(
+        Optional<RecordingCurrentResult> result = recordingService.findCurrent(
                 workspaceId,
                 memberId
         );
@@ -105,20 +99,20 @@ class RecordingCurrentServiceIntegrationTest {
                 workspaceId,
                 memberId
         );
-        RecordingPauseResult paused = recordingControlService.pause(
+        RecordingPauseResult paused = recordingService.pause(
                 workspaceId,
                 memberId,
                 recording.id(),
                 recording.control()
         );
         StoredRecording before = storedRecording(recording.id());
-        recordingCurrentService.findCurrent(
+        recordingService.findCurrent(
                 workspaceId,
                 memberId
         );
 
         // when
-        Optional<RecordingCurrentResult> result = recordingCurrentService.findCurrent(
+        Optional<RecordingCurrentResult> result = recordingService.findCurrent(
                 workspaceId,
                 memberId
         );
@@ -136,7 +130,7 @@ class RecordingCurrentServiceIntegrationTest {
             long memberId
     ) {
         UUID tabId = UUID.randomUUID();
-        long recordingId = recordingStartService.start(
+        long recordingId = recordingService.start(
                 workspaceId,
                 memberId,
                 new RecordingStartCommand(

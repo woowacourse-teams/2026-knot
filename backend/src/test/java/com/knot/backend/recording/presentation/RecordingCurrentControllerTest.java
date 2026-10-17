@@ -9,7 +9,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.knot.backend.auth.domain.model.AuthenticatedMember;
 import com.knot.backend.global.exception.GlobalExceptionHandler;
-import com.knot.backend.recording.application.RecordingCurrentService;
+import com.knot.backend.recording.application.RecordingService;
 import com.knot.backend.recording.application.dto.result.RecordingCurrentResult;
 import com.knot.backend.recording.domain.model.RecordingStatus;
 import com.knot.backend.workspace.domain.WorkspaceErrorCode;
@@ -35,13 +35,13 @@ class RecordingCurrentControllerTest {
     private static final long RECORDING_ID = 34L;
     private static final Instant STARTED_AT = Instant.parse("2026-10-05T00:00:00Z");
 
-    private RecordingCurrentService recordingCurrentService;
+    private RecordingService recordingService;
     private MockMvc mockMvc;
 
     @BeforeEach
     void setUp() {
-        recordingCurrentService = mock(RecordingCurrentService.class);
-        mockMvc = MockMvcBuilders.standaloneSetup(new RecordingCurrentController(recordingCurrentService))
+        recordingService = mock(RecordingService.class);
+        mockMvc = MockMvcBuilders.standaloneSetup(new RecordingCurrentController(recordingService))
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .setCustomArgumentResolvers(new AuthenticationPrincipalArgumentResolver())
                 .build();
@@ -59,7 +59,7 @@ class RecordingCurrentControllerTest {
     void findCurrent_success() throws Exception {
         // given
         when(
-                recordingCurrentService.findCurrent(
+                recordingService.findCurrent(
                         WORKSPACE_ID,
                         MEMBER_ID
                 )
@@ -95,7 +95,7 @@ class RecordingCurrentControllerTest {
     void findCurrent_success_noContent() throws Exception {
         // given
         when(
-                recordingCurrentService.findCurrent(
+                recordingService.findCurrent(
                         WORKSPACE_ID,
                         MEMBER_ID
                 )
@@ -119,7 +119,7 @@ class RecordingCurrentControllerTest {
     void findCurrent_failure_accessDenied() throws Exception {
         // given
         when(
-                recordingCurrentService.findCurrent(
+                recordingService.findCurrent(
                         WORKSPACE_ID,
                         MEMBER_ID
                 )

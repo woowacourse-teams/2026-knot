@@ -43,19 +43,16 @@ class RecordingPauseIntegrationTest {
     private static final Instant JOINED_AT = Instant.parse("2026-10-05T00:01:00Z");
     private static final String CONTROL_TOKEN = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefA";
 
-    private final RecordingControlService recordingControlService;
-    private final RecordingStartService recordingStartService;
+    private final RecordingService recordingService;
     private final TransactionTemplate transactionTemplate;
     private final JdbcClient jdbcClient;
 
     RecordingPauseIntegrationTest(
-            RecordingControlService recordingControlService,
-            RecordingStartService recordingStartService,
+            RecordingService recordingService,
             TransactionTemplate transactionTemplate,
             JdbcClient jdbcClient
     ) {
-        this.recordingControlService = recordingControlService;
-        this.recordingStartService = recordingStartService;
+        this.recordingService = recordingService;
         this.transactionTemplate = transactionTemplate;
         this.jdbcClient = jdbcClient;
     }
@@ -85,7 +82,7 @@ class RecordingPauseIntegrationTest {
                 workspaceId,
                 memberId
         );
-        RecordingPauseResult paused = recordingControlService.pause(
+        RecordingPauseResult paused = recordingService.pause(
                 workspaceId,
                 memberId,
                 recording.id(),
@@ -93,7 +90,7 @@ class RecordingPauseIntegrationTest {
         );
 
         // when
-        RecordingEndResult ended = recordingControlService.end(
+        RecordingEndResult ended = recordingService.end(
                 workspaceId,
                 memberId,
                 recording.id(),
@@ -125,13 +122,13 @@ class RecordingPauseIntegrationTest {
 
         // when
         RaceResult<RecordingPauseResult, RecordingPauseResult> result = race(
-                () -> recordingControlService.pause(
+                () -> recordingService.pause(
                         workspaceId,
                         memberId,
                         recording.id(),
                         recording.control()
                 ),
-                () -> recordingControlService.pause(
+                () -> recordingService.pause(
                         workspaceId,
                         memberId,
                         recording.id(),
@@ -181,13 +178,13 @@ class RecordingPauseIntegrationTest {
 
         // when
         RaceResult<RecordingPauseResult, RecordingEndResult> result = race(
-                () -> recordingControlService.pause(
+                () -> recordingService.pause(
                         workspaceId,
                         memberId,
                         recording.id(),
                         recording.control()
                 ),
-                () -> recordingControlService.end(
+                () -> recordingService.end(
                         workspaceId,
                         memberId,
                         recording.id(),
@@ -231,7 +228,7 @@ class RecordingPauseIntegrationTest {
                 workspaceId,
                 memberId
         );
-        recordingControlService.pause(
+        recordingService.pause(
                 workspaceId,
                 memberId,
                 recording.id(),
@@ -240,7 +237,7 @@ class RecordingPauseIntegrationTest {
 
         // when
         Throwable thrown = catchThrowable(
-                () -> recordingStartService.start(
+                () -> recordingService.start(
                         workspaceId,
                         memberId,
                         new RecordingStartCommand(
@@ -275,7 +272,7 @@ class RecordingPauseIntegrationTest {
 
         // when
         Throwable thrown = catchThrowable(() -> transactionTemplate.executeWithoutResult(status -> {
-            recordingControlService.pause(
+            recordingService.pause(
                     workspaceId,
                     memberId,
                     recording.id(),
@@ -353,7 +350,7 @@ class RecordingPauseIntegrationTest {
             long memberId
     ) {
         UUID tabId = UUID.randomUUID();
-        long recordingId = recordingStartService.start(
+        long recordingId = recordingService.start(
                 workspaceId,
                 memberId,
                 new RecordingStartCommand(

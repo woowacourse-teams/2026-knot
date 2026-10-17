@@ -41,14 +41,14 @@ class RecordingStartServiceIntegrationTest {
     private static final String CONTROL_TOKEN = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefA";
     private static final String OTHER_CONTROL_TOKEN = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefE";
 
-    private final RecordingStartService recordingStartService;
+    private final RecordingService recordingService;
     private final JdbcClient jdbcClient;
 
     RecordingStartServiceIntegrationTest(
-            RecordingStartService recordingStartService,
+            RecordingService recordingService,
             JdbcClient jdbcClient
     ) {
-        this.recordingStartService = recordingStartService;
+        this.recordingService = recordingService;
         this.jdbcClient = jdbcClient;
     }
 
@@ -77,14 +77,14 @@ class RecordingStartServiceIntegrationTest {
                 TAB_ID,
                 CONTROL_TOKEN
         );
-        RecordingStartResult firstResult = recordingStartService.start(
+        RecordingStartResult firstResult = recordingService.start(
                 workspaceId,
                 memberId,
                 command
         );
 
         // when
-        RecordingStartResult secondResult = recordingStartService.start(
+        RecordingStartResult secondResult = recordingService.start(
                 workspaceId,
                 memberId,
                 command
@@ -199,7 +199,7 @@ class RecordingStartServiceIntegrationTest {
                 workspaceId,
                 memberId
         );
-        recordingStartService.start(
+        recordingService.start(
                 workspaceId,
                 memberId,
                 command(
@@ -216,7 +216,7 @@ class RecordingStartServiceIntegrationTest {
 
         // when
         assertThatThrownBy(
-                () -> recordingStartService.start(
+                () -> recordingService.start(
                         workspaceId,
                         memberId,
                         changedCommand
@@ -238,7 +238,7 @@ class RecordingStartServiceIntegrationTest {
 
         // when
         assertThatThrownBy(
-                () -> recordingStartService.start(
+                () -> recordingService.start(
                         workspaceId,
                         memberId,
                         command(
@@ -265,7 +265,7 @@ class RecordingStartServiceIntegrationTest {
                     TimeUnit.SECONDS
             );
             try {
-                RecordingStartResult result = recordingStartService.start(
+                RecordingStartResult result = recordingService.start(
                         workspaceId,
                         memberId,
                         command

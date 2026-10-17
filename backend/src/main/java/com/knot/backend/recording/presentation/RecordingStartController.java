@@ -1,7 +1,7 @@
 package com.knot.backend.recording.presentation;
 
 import com.knot.backend.auth.domain.model.AuthenticatedMember;
-import com.knot.backend.recording.application.RecordingStartService;
+import com.knot.backend.recording.application.RecordingService;
 import com.knot.backend.recording.application.dto.result.RecordingStartResult;
 import com.knot.backend.recording.presentation.dto.request.RecordingStartRequest;
 import com.knot.backend.recording.presentation.dto.response.RecordingStartResponse;
@@ -20,7 +20,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/v1/workspaces/{workspaceId}/recordings")
 @RequiredArgsConstructor
 public class RecordingStartController implements RecordingStartApi {
-    private final RecordingStartService recordingStartService;
+    private final RecordingService recordingService;
 
     @Override
     @PostMapping
@@ -29,7 +29,7 @@ public class RecordingStartController implements RecordingStartApi {
             @Valid @RequestBody RecordingStartRequest request,
             @AuthenticationPrincipal AuthenticatedMember authenticatedMember
     ) {
-        RecordingStartResult result = recordingStartService.start(
+        RecordingStartResult result = recordingService.start(
                 workspaceId,
                 authenticatedMember.getMemberId(),
                 request.toCommand()

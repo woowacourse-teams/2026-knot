@@ -2,7 +2,7 @@ package com.knot.backend.recording.infrastructure.scheduling;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.knot.backend.recording.application.RecordingStartService;
+import com.knot.backend.recording.application.RecordingService;
 import com.knot.backend.recording.application.dto.command.RecordingStartCommand;
 import com.knot.backend.testsupport.TestApplicationProperties;
 import com.knot.backend.testsupport.TestcontainersConfiguration;
@@ -34,14 +34,14 @@ class RecordingConnectionExpirySchedulerIntegrationTest {
     private static final Duration WAIT_LIMIT = Duration.ofSeconds(10);
     private static final long POLL_MILLIS = 100L;
 
-    private final RecordingStartService recordingStartService;
+    private final RecordingService recordingService;
     private final JdbcClient jdbcClient;
 
     RecordingConnectionExpirySchedulerIntegrationTest(
-            RecordingStartService recordingStartService,
+            RecordingService recordingService,
             JdbcClient jdbcClient
     ) {
-        this.recordingStartService = recordingStartService;
+        this.recordingService = recordingService;
         this.jdbcClient = jdbcClient;
     }
 
@@ -158,7 +158,7 @@ class RecordingConnectionExpirySchedulerIntegrationTest {
                         CREATED_AT.toString()
                 )
                 .update();
-        return recordingStartService.start(
+        return recordingService.start(
                 workspaceId,
                 memberId,
                 new RecordingStartCommand(

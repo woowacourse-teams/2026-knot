@@ -5,7 +5,6 @@ import static org.assertj.core.api.Assertions.catchThrowable;
 
 import com.knot.backend.testsupport.TestApplicationProperties;
 import com.knot.backend.testsupport.TestcontainersConfiguration;
-import com.knot.backend.workspace.application.dto.result.WorkspaceCreateResult;
 import java.time.Instant;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -49,17 +48,17 @@ class WorkspaceServiceIntegrationTest {
         long memberId = saveMember("octocat");
 
         // when
-        WorkspaceCreateResult result = workspaceService.create(
+        long workspaceId = workspaceService.create(
                 memberId,
                 "Knot 팀"
         );
 
         // then
-        assertThat(result.id()).isPositive();
-        assertThat(workspaceName(result.id())).isEqualTo("Knot 팀");
-        assertThat(workspaceMemberRole(result.id())).isEqualTo("OWNER");
-        assertThat(workspaceMemberId(result.id())).isEqualTo(memberId);
-        assertThat(workspaceCreatedAt(result.id())).isEqualTo(workspaceJoinedAt(result.id()));
+        assertThat(workspaceId).isPositive();
+        assertThat(workspaceName(workspaceId)).isEqualTo("Knot 팀");
+        assertThat(workspaceMemberRole(workspaceId)).isEqualTo("OWNER");
+        assertThat(workspaceMemberId(workspaceId)).isEqualTo(memberId);
+        assertThat(workspaceCreatedAt(workspaceId)).isEqualTo(workspaceJoinedAt(workspaceId));
     }
 
     @Test
@@ -67,19 +66,19 @@ class WorkspaceServiceIntegrationTest {
     void create_success_duplicateWorkspaceName() {
         // given
         long memberId = saveMember("octocat");
-        WorkspaceCreateResult first = workspaceService.create(
+        long firstWorkspaceId = workspaceService.create(
                 memberId,
                 "Knot 팀"
         );
 
         // when
-        WorkspaceCreateResult second = workspaceService.create(
+        long secondWorkspaceId = workspaceService.create(
                 memberId,
                 "Knot 팀"
         );
 
         // then
-        assertThat(second.id()).isNotEqualTo(first.id());
+        assertThat(secondWorkspaceId).isNotEqualTo(firstWorkspaceId);
         assertThat(count("workspaces")).isEqualTo(2);
         assertThat(count("workspace_members")).isEqualTo(2);
     }

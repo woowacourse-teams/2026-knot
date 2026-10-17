@@ -55,8 +55,7 @@ class RecordingAudioUploadCompletionServiceIntegrationTest {
 
     private final RecordingAudioUploadUrlService recordingAudioUploadUrlService;
     private final RecordingAudioUploadCompletionService recordingAudioUploadCompletionService;
-    private final RecordingStartService recordingStartService;
-    private final RecordingControlService recordingControlService;
+    private final RecordingService recordingService;
     private final TransactionTemplate transactionTemplate;
     private final JdbcClient jdbcClient;
     private final Clock clock;
@@ -66,16 +65,14 @@ class RecordingAudioUploadCompletionServiceIntegrationTest {
     RecordingAudioUploadCompletionServiceIntegrationTest(
             RecordingAudioUploadUrlService recordingAudioUploadUrlService,
             RecordingAudioUploadCompletionService recordingAudioUploadCompletionService,
-            RecordingStartService recordingStartService,
-            RecordingControlService recordingControlService,
+            RecordingService recordingService,
             TransactionTemplate transactionTemplate,
             JdbcClient jdbcClient,
             Clock clock
     ) {
         this.recordingAudioUploadUrlService = recordingAudioUploadUrlService;
         this.recordingAudioUploadCompletionService = recordingAudioUploadCompletionService;
-        this.recordingStartService = recordingStartService;
-        this.recordingControlService = recordingControlService;
+        this.recordingService = recordingService;
         this.transactionTemplate = transactionTemplate;
         this.jdbcClient = jdbcClient;
         this.clock = clock;
@@ -368,7 +365,7 @@ class RecordingAudioUploadCompletionServiceIntegrationTest {
                 memberId,
                 tabId
         );
-        recordingControlService.end(
+        recordingService.end(
                 workspaceId,
                 memberId,
                 recordingId,
@@ -469,7 +466,7 @@ class RecordingAudioUploadCompletionServiceIntegrationTest {
             long memberId,
             UUID tabId
     ) {
-        return recordingStartService.start(
+        return recordingService.start(
                 workspaceId,
                 memberId,
                 command(tabId)

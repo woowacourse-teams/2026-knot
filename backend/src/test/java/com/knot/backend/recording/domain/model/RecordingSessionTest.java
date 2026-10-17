@@ -626,13 +626,13 @@ class RecordingSessionTest {
 
     @Test
     @DisplayName("종료된 녹음은 오디오를 업로드할 수 있다")
-    void validateAudioUploadable_success_ended() {
+    void validateEnded_success_endedAudioUpload() {
         // given
         RecordingSession session = startRecording();
         session.end(STARTED_AT.plusSeconds(10));
 
         // when
-        Throwable failure = catchThrowable(session::validateAudioUploadable);
+        Throwable failure = catchThrowable(session::validateEnded);
 
         // then
         assertThat(failure).isNull();
@@ -640,13 +640,13 @@ class RecordingSessionTest {
 
     @Test
     @DisplayName("녹음 중이거나 일시정지한 녹음은 종료 전이라 오디오를 업로드할 수 없다")
-    void validateAudioUploadable_failure_notEnded() {
+    void validateEnded_failure_notEndedAudioUpload() {
         // given
         RecordingSession session = startRecording();
         session.pause(STARTED_AT.plusSeconds(10));
 
         // when
-        Throwable failure = catchThrowable(session::validateAudioUploadable);
+        Throwable failure = catchThrowable(session::validateEnded);
 
         // then
         assertThat(failure).isInstanceOf(RecordingException.class)
@@ -656,13 +656,13 @@ class RecordingSessionTest {
 
     @Test
     @DisplayName("폐기된 녹음은 오디오를 업로드할 수 없다")
-    void validateAudioUploadable_failure_discarded() {
+    void validateEnded_failure_discardedAudioUpload() {
         // given
         RecordingSession session = startRecording();
         session.discard(STARTED_AT.plusSeconds(10));
 
         // when
-        Throwable failure = catchThrowable(session::validateAudioUploadable);
+        Throwable failure = catchThrowable(session::validateEnded);
 
         // then
         assertThat(failure).isInstanceOf(RecordingException.class)

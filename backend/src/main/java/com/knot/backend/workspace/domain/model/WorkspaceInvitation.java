@@ -63,7 +63,7 @@ public class WorkspaceInvitation {
         this.workspaceId = workspaceId;
         this.linkTokenHash = linkTokenHash;
         this.inviteCodeHash = inviteCodeHash;
-        Instant databasePrecisionCreatedAt = truncateToDatabasePrecision(createdAt);
+        Instant databasePrecisionCreatedAt = createdAt.truncatedTo(ChronoUnit.MICROS);
         this.expiresAt = databasePrecisionCreatedAt.plus(VALIDITY_PERIOD);
         this.createdAt = databasePrecisionCreatedAt;
     }
@@ -137,9 +137,5 @@ public class WorkspaceInvitation {
         if (pointInTime == null) {
             throw new WorkspaceException(WorkspaceErrorCode.INVALID_WORKSPACE_INVITATION_POINT_IN_TIME);
         }
-    }
-
-    private Instant truncateToDatabasePrecision(Instant instant) {
-        return instant.truncatedTo(ChronoUnit.MICROS);
     }
 }

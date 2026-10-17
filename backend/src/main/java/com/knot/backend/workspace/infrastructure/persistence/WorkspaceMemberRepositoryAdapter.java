@@ -9,7 +9,6 @@ import org.springframework.stereotype.Repository;
 
 @Repository
 public class WorkspaceMemberRepositoryAdapter implements WorkspaceMemberRepository {
-
     private final WorkspaceMemberJpaRepository workspaceMemberJpaRepository;
 
     public WorkspaceMemberRepositoryAdapter(WorkspaceMemberJpaRepository workspaceMemberJpaRepository) {
@@ -19,11 +18,6 @@ public class WorkspaceMemberRepositoryAdapter implements WorkspaceMemberReposito
     @Override
     public WorkspaceMember save(WorkspaceMember workspaceMember) {
         return workspaceMemberJpaRepository.save(workspaceMember);
-    }
-
-    @Override
-    public Optional<WorkspaceMember> findById(Long workspaceMemberId) {
-        return workspaceMemberJpaRepository.findById(workspaceMemberId);
     }
 
     @Override

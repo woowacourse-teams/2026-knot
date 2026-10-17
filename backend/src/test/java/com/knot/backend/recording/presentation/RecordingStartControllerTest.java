@@ -14,7 +14,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.knot.backend.auth.domain.model.AuthenticatedMember;
 import com.knot.backend.global.exception.GlobalExceptionHandler;
-import com.knot.backend.recording.application.RecordingStartService;
+import com.knot.backend.recording.application.RecordingService;
 import com.knot.backend.recording.application.dto.command.RecordingStartCommand;
 import com.knot.backend.recording.application.dto.result.RecordingStartResult;
 import com.knot.backend.recording.domain.RecordingErrorCode;
@@ -48,13 +48,13 @@ class RecordingStartControllerTest {
     private static final String CONTROL_TOKEN = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefA";
     private static final Instant STARTED_AT = Instant.parse("2026-10-01T00:00:00Z");
 
-    private RecordingStartService recordingStartService;
+    private RecordingService recordingService;
     private MockMvc mockMvc;
 
     @BeforeEach
     void setUp() {
-        recordingStartService = mock(RecordingStartService.class);
-        mockMvc = MockMvcBuilders.standaloneSetup(new RecordingStartController(recordingStartService))
+        recordingService = mock(RecordingService.class);
+        mockMvc = MockMvcBuilders.standaloneSetup(new RecordingStartController(recordingService))
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .setCustomArgumentResolvers(new AuthenticationPrincipalArgumentResolver())
                 .build();
@@ -72,7 +72,7 @@ class RecordingStartControllerTest {
         SecurityContextHolder.getContext()
                 .setAuthentication(memberAuthentication());
         when(
-                recordingStartService.start(
+                recordingService.start(
                         eq(WORKSPACE_ID),
                         eq(MEMBER_ID),
                         eq(command())
@@ -96,12 +96,12 @@ class RecordingStartControllerTest {
                 .andExpect(jsonPath("$.requestId").doesNotExist())
                 .andExpect(jsonPath("$.tabId").doesNotExist())
                 .andExpect(jsonPath("$.controlToken").doesNotExist());
-        verify(recordingStartService).start(
+        verify(recordingService).start(
                 WORKSPACE_ID,
                 MEMBER_ID,
                 command()
         );
-        verifyNoMoreInteractions(recordingStartService);
+        verifyNoMoreInteractions(recordingService);
     }
 
     @Test
@@ -111,7 +111,7 @@ class RecordingStartControllerTest {
         SecurityContextHolder.getContext()
                 .setAuthentication(memberAuthentication());
         when(
-                recordingStartService.start(
+                recordingService.start(
                         eq(WORKSPACE_ID),
                         eq(MEMBER_ID),
                         eq(command())
@@ -133,7 +133,7 @@ class RecordingStartControllerTest {
                 .andExpect(jsonPath("$.status").value("PAUSED"))
                 .andExpect(jsonPath("$.startedAt").value("2026-10-01T00:00:00Z"))
                 .andExpect(jsonPath("$.controlToken").doesNotExist());
-        verify(recordingStartService).start(
+        verify(recordingService).start(
                 WORKSPACE_ID,
                 MEMBER_ID,
                 command()
@@ -171,7 +171,7 @@ class RecordingStartControllerTest {
         result.andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
                 .andExpect(jsonPath("$.fieldErrors[0].field").value("requestId"));
-        verifyNoInteractions(recordingStartService);
+        verifyNoInteractions(recordingService);
     }
 
     @Test
@@ -208,7 +208,7 @@ class RecordingStartControllerTest {
                         .getResponse()
                         .getContentAsString()
         ).doesNotContain(invalidControlToken);
-        verifyNoInteractions(recordingStartService);
+        verifyNoInteractions(recordingService);
     }
 
     @Test
@@ -237,7 +237,7 @@ class RecordingStartControllerTest {
         // then
         result.andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("INVALID_REQUEST_BODY"));
-        verifyNoInteractions(recordingStartService);
+        verifyNoInteractions(recordingService);
     }
 
     @Test
@@ -246,7 +246,7 @@ class RecordingStartControllerTest {
         // given
         SecurityContextHolder.getContext()
                 .setAuthentication(memberAuthentication());
-        doThrow(new RecordingException(RecordingErrorCode.RECORDING_START_REQUEST_CONFLICT)).when(recordingStartService)
+        doThrow(new RecordingException(RecordingErrorCode.RECORDING_START_REQUEST_CONFLICT)).when(recordingService)
                 .start(
                         WORKSPACE_ID,
                         MEMBER_ID,
@@ -265,7 +265,7 @@ class RecordingStartControllerTest {
         // then
         result.andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value("RECORDING_START_REQUEST_CONFLICT"));
-        verify(recordingStartService).start(
+        verify(recordingService).start(
                 WORKSPACE_ID,
                 MEMBER_ID,
                 command()
@@ -278,7 +278,7 @@ class RecordingStartControllerTest {
         // given
         SecurityContextHolder.getContext()
                 .setAuthentication(memberAuthentication());
-        doThrow(new RecordingException(RecordingErrorCode.ACTIVE_RECORDING_ALREADY_EXISTS)).when(recordingStartService)
+        doThrow(new RecordingException(RecordingErrorCode.ACTIVE_RECORDING_ALREADY_EXISTS)).when(recordingService)
                 .start(
                         WORKSPACE_ID,
                         MEMBER_ID,
@@ -305,7 +305,7 @@ class RecordingStartControllerTest {
         // given
         SecurityContextHolder.getContext()
                 .setAuthentication(memberAuthentication());
-        doThrow(new WorkspaceException(WorkspaceErrorCode.WORKSPACE_NOT_FOUND)).when(recordingStartService)
+        doThrow(new WorkspaceException(WorkspaceErrorCode.WORKSPACE_NOT_FOUND)).when(recordingService)
                 .start(
                         WORKSPACE_ID,
                         MEMBER_ID,
@@ -332,7 +332,7 @@ class RecordingStartControllerTest {
         // given
         SecurityContextHolder.getContext()
                 .setAuthentication(memberAuthentication());
-        doThrow(new WorkspaceException(WorkspaceErrorCode.WORKSPACE_ACCESS_DENIED)).when(recordingStartService)
+        doThrow(new WorkspaceException(WorkspaceErrorCode.WORKSPACE_ACCESS_DENIED)).when(recordingService)
                 .start(
                         WORKSPACE_ID,
                         MEMBER_ID,

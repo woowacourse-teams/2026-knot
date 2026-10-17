@@ -45,23 +45,20 @@ class RecordingEndIntegrationTest {
     private static final Instant JOINED_AT = Instant.parse("2026-10-05T00:01:00Z");
     private static final String CONTROL_TOKEN = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefA";
 
-    private final RecordingControlService recordingControlService;
-    private final RecordingStartService recordingStartService;
+    private final RecordingService recordingService;
     private final WorkspaceLeaveService workspaceLeaveService;
     private final RecordingControlTokenHasher recordingControlTokenHasher;
     private final TransactionTemplate transactionTemplate;
     private final JdbcClient jdbcClient;
 
     RecordingEndIntegrationTest(
-            RecordingControlService recordingControlService,
-            RecordingStartService recordingStartService,
+            RecordingService recordingService,
             WorkspaceLeaveService workspaceLeaveService,
             RecordingControlTokenHasher recordingControlTokenHasher,
             TransactionTemplate transactionTemplate,
             JdbcClient jdbcClient
     ) {
-        this.recordingControlService = recordingControlService;
-        this.recordingStartService = recordingStartService;
+        this.recordingService = recordingService;
         this.workspaceLeaveService = workspaceLeaveService;
         this.recordingControlTokenHasher = recordingControlTokenHasher;
         this.transactionTemplate = transactionTemplate;
@@ -98,7 +95,7 @@ class RecordingEndIntegrationTest {
         );
 
         // when
-        RecordingEndResult result = recordingControlService.end(
+        RecordingEndResult result = recordingService.end(
                 workspaceId,
                 memberId,
                 recordingId,
@@ -132,13 +129,13 @@ class RecordingEndIntegrationTest {
 
         // when
         RaceResult<RecordingEndResult, RecordingEndResult> result = race(
-                () -> recordingControlService.end(
+                () -> recordingService.end(
                         workspaceId,
                         memberId,
                         recording.id(),
                         recording.control()
                 ),
-                () -> recordingControlService.end(
+                () -> recordingService.end(
                         workspaceId,
                         memberId,
                         recording.id(),
@@ -192,7 +189,7 @@ class RecordingEndIntegrationTest {
 
         // when
         RaceResult<RecordingEndResult, Void> result = race(
-                () -> recordingControlService.end(
+                () -> recordingService.end(
                         workspaceId,
                         memberId,
                         recording.id(),
@@ -240,7 +237,7 @@ class RecordingEndIntegrationTest {
                 workspaceId,
                 memberId
         );
-        recordingControlService.end(
+        recordingService.end(
                 workspaceId,
                 memberId,
                 recording.id(),
@@ -248,7 +245,7 @@ class RecordingEndIntegrationTest {
         );
 
         // when
-        RecordingStartResult next = recordingStartService.start(
+        RecordingStartResult next = recordingService.start(
                 workspaceId,
                 memberId,
                 startCommand(UUID.randomUUID())
@@ -278,7 +275,7 @@ class RecordingEndIntegrationTest {
 
         // when
         Throwable thrown = catchThrowable(
-                () -> recordingControlService.end(
+                () -> recordingService.end(
                         workspaceId,
                         memberId,
                         recording.id(),
@@ -323,7 +320,7 @@ class RecordingEndIntegrationTest {
 
         // when
         Throwable thrown = catchThrowable(
-                () -> recordingControlService.end(
+                () -> recordingService.end(
                         workspaceId,
                         memberId,
                         recording.id(),
@@ -356,7 +353,7 @@ class RecordingEndIntegrationTest {
 
         // when
         Throwable thrown = catchThrowable(() -> transactionTemplate.executeWithoutResult(status -> {
-            recordingControlService.end(
+            recordingService.end(
                     workspaceId,
                     memberId,
                     recording.id(),
@@ -434,7 +431,7 @@ class RecordingEndIntegrationTest {
             long memberId
     ) {
         UUID tabId = UUID.randomUUID();
-        long recordingId = recordingStartService.start(
+        long recordingId = recordingService.start(
                 workspaceId,
                 memberId,
                 startCommand(tabId)

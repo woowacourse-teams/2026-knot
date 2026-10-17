@@ -8,6 +8,7 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.HashMap;
+import java.util.Map;
 import java.util.Objects;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
@@ -21,7 +22,7 @@ public class InMemoryWorkspaceInvitationPreviewRateLimiter implements WorkspaceI
     private static final String UNKNOWN_ADDRESS_KEY = "<unknown>";
     private static final String OVERFLOW_KEY = "<overflow>";
 
-    private final WindowCounters counters = new WindowCounters();
+    private final Map<String, WindowCounter> counters = new HashMap<>();
     private final Clock clock;
     private final int maxTrackedAddresses;
     private Instant nextCleanupAt = Instant.MIN;
@@ -133,9 +134,5 @@ public class InMemoryWorkspaceInvitationPreviewRateLimiter implements WorkspaceI
                     seconds
             );
         }
-    }
-
-    private static final class WindowCounters extends HashMap<String, WindowCounter> {
-        private static final long serialVersionUID = 1L;
     }
 }

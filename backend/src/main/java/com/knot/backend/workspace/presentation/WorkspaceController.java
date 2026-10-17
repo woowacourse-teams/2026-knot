@@ -3,7 +3,6 @@ package com.knot.backend.workspace.presentation;
 import com.knot.backend.auth.domain.model.AuthenticatedMember;
 import com.knot.backend.workspace.application.WorkspaceLeaveService;
 import com.knot.backend.workspace.application.WorkspaceService;
-import com.knot.backend.workspace.application.dto.result.WorkspaceCreateResult;
 import com.knot.backend.workspace.presentation.dto.request.WorkspaceCreateRequest;
 import com.knot.backend.workspace.presentation.dto.response.WorkspaceCreateResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -33,13 +32,13 @@ public class WorkspaceController implements WorkspaceLeaveApi {
             @AuthenticationPrincipal AuthenticatedMember authenticatedMember,
             @RequestBody WorkspaceCreateRequest request
     ) {
-        WorkspaceCreateResult result = workspaceService.create(
+        long workspaceId = workspaceService.create(
                 authenticatedMember.getMemberId(),
                 request.name()
         );
 
         return ResponseEntity.status(HttpStatus.CREATED)
-                .body(WorkspaceCreateResponse.from(result));
+                .body(new WorkspaceCreateResponse(workspaceId));
     }
 
     @Override
