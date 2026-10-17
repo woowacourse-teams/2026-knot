@@ -5,7 +5,7 @@ import static com.knot.backend.global.config.OpenApiConfig.ACCESS_TOKEN_COOKIE;
 import com.knot.backend.auth.domain.model.AuthenticatedMember;
 import com.knot.backend.global.config.OpenApiConfig;
 import com.knot.backend.global.response.ErrorResponse;
-import com.knot.backend.recording.presentation.dto.request.RecordingControlRequest;
+import com.knot.backend.recording.presentation.dto.request.RecordingEndRequest;
 import com.knot.backend.recording.presentation.dto.response.RecordingEndResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -26,7 +26,7 @@ public interface RecordingEndApi {
     // @formatter:off
     @Operation(
             summary = "녹음 종료",
-            description = "녹음을 시작한 최초 탭만 종료할 수 있다. 시작 때의 tabId와 controlToken으로 증명하며 업로드 ID는 필요하지 않다. "
+            description = "본문 없는 요청은 본인 녹음을 원격 종료한다. audioSeal 등록은 최초 탭의 tabId와 controlToken 증명이 필요하다. "
                     + "반복 종료도 증명을 먼저 확인한 뒤 처음 확정한 종료 결과를 반환한다. 종료는 업로드 완료나 STT 접수를 뜻하지 않는다",
             parameters = @Parameter(
                     name = OpenApiConfig.CSRF_TOKEN_HEADER_NAME,
@@ -60,7 +60,7 @@ public interface RecordingEndApi {
     RecordingEndResponse end(
             long workspaceId,
             @Parameter(description = "녹음 세션 ID", schema = @Schema(minimum = "1")) long recordingId,
-            @Valid RecordingControlRequest request,
+            @Valid RecordingEndRequest request,
             @Parameter(hidden = true) AuthenticatedMember authenticatedMember
     );
     // @formatter:on

@@ -14,6 +14,9 @@ import org.springframework.data.jpa.repository.Query;
 
 interface RecordingSessionJpaRepository extends JpaRepository<RecordingSession, Long> {
 
+    @Query("select s.workspaceId from RecordingSession s where s.id = :recordingId")
+    Optional<Long> findWorkspaceIdById(long recordingId);
+
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     Optional<RecordingSession> findWithLockById(long id);
 

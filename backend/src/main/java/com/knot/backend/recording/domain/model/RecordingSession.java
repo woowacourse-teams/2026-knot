@@ -231,6 +231,10 @@ public class RecordingSession {
         validateEnded();
     }
 
+    public void validateNotDiscarded() {
+        ensureNotDiscarded();
+    }
+
     public void validateEnded() {
         ensureNotDiscarded();
         if (status != RecordingStatus.ENDED) {

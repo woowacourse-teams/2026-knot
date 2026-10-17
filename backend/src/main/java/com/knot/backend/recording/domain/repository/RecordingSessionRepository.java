@@ -13,6 +13,8 @@ public interface RecordingSessionRepository {
 
     Optional<RecordingSession> findById(Long recordingSessionId);
 
+    Optional<Long> findWorkspaceIdById(long recordingId);
+
     Optional<RecordingSession> findByIdForUpdate(long recordingSessionId);
 
     Optional<RecordingSession> findByMemberIdAndRequestIdForUpdate(

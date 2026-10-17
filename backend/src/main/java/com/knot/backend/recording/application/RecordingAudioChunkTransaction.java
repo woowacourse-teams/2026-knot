@@ -1,5 +1,7 @@
 package com.knot.backend.recording.application;
 
+import com.knot.backend.recording.domain.model.RecordingAudioSealKind;
+
 import com.knot.backend.recording.application.dto.command.RecordingAudioChunkCommand;
 import com.knot.backend.recording.application.dto.command.RecordingControlCommand;
 import com.knot.backend.recording.application.dto.result.AudioFrameRange;
@@ -32,6 +34,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
+// 요청 거절 시에도 입력 검증 전에 확정한 논리적 종료와 seal을 보존한다.
 @Component
 @RequiredArgsConstructor
 public class RecordingAudioChunkTransaction {
@@ -41,7 +44,7 @@ public class RecordingAudioChunkTransaction {
     private final RecordingAudioChunkRepository chunks;
     private final Clock clock;
 
-    @Transactional(noRollbackFor = RecordingAudioCaptureExpiredException.class)
+    @Transactional(noRollbackFor = RecordingException.class)
     public RecordingAudioChunkReservation reserve(
             long workspaceId,
             long memberId,
@@ -69,6 +72,13 @@ public class RecordingAudioChunkTransaction {
             );
         }
         validateWritable(controlled);
+        if (controlled.expired()) {
+            throw new RecordingAudioCaptureExpiredException();
+        }
+        if (controlled.stream()
+                .isSealed()) {
+            throw new RecordingException(RecordingErrorCode.RECORDING_ALREADY_ENDED);
+        }
         controlled.stream()
                 .reserve(command.descriptor());
         RecordingAudioChunk chunk = RecordingAudioChunk.reserve(
@@ -114,16 +124,19 @@ public class RecordingAudioChunkTransaction {
                 chunk,
                 command
         );
-        chunk.extendUploadUrlExpiry(expiresAt);
+        Instant cappedExpiry = controlled.stream()
+                .capUploadExpiry(expiresAt);
+        chunk.extendUploadUrlExpiry(cappedExpiry);
         chunks.save(chunk);
         return reservation(
                 chunk,
                 false,
-                null
+                null,
+                cappedExpiry
         );
     }
 
-    @Transactional(noRollbackFor = RecordingAudioCaptureExpiredException.class)
+    @Transactional(noRollbackFor = RecordingException.class)
     public RecordingAudioChunkReservationResult confirmReservation(
             long workspaceId,
             long memberId,
@@ -155,8 +168,10 @@ public class RecordingAudioChunkTransaction {
             );
         }
         validateWritable(controlled);
+        Instant maximumExpiry = controlled.stream()
+                .capUploadExpiry(chunk.getUploadUrlExpiresAt());
         if (signed.expiresAt() == null || signed.expiresAt()
-                .isAfter(chunk.getUploadUrlExpiresAt())
+                .isAfter(maximumExpiry)
                 || !signed.expiresAt()
                         .isAfter(now())) {
             throw new RecordingException(RecordingErrorCode.AUDIO_STORAGE_UNAVAILABLE);
@@ -171,7 +186,7 @@ public class RecordingAudioChunkTransaction {
         );
     }
 
-    @Transactional(noRollbackFor = RecordingAudioCaptureExpiredException.class)
+    @Transactional(noRollbackFor = RecordingException.class)
     public RecordingAudioChunkConfirmation prepareConfirmation(
             long workspaceId,
             long memberId,
@@ -203,7 +218,7 @@ public class RecordingAudioChunkTransaction {
         );
     }
 
-    @Transactional(noRollbackFor = RecordingAudioCaptureExpiredException.class)
+    @Transactional(noRollbackFor = RecordingException.class)
     public RecordingAudioChunkCompletionResult confirmStored(
             long workspaceId,
             long memberId,
@@ -252,10 +267,11 @@ public class RecordingAudioChunkTransaction {
                 memberId
         );
         validateMode(session);
-        streams.findByRecordingId(recordingId)
+        RecordingAudioStream stream = streams.findByRecordingId(recordingId)
                 .orElseThrow(() -> new RecordingException(RecordingErrorCode.RECORDING_NOT_FOUND));
         return state(
                 session,
+                stream,
                 chunks.findAllByRecordingIdOrderBySequence(recordingId)
         );
     }
@@ -279,6 +295,18 @@ public class RecordingAudioChunkTransaction {
         RecordingAudioStream stream = streams.findByRecordingIdForUpdate(recordingId)
                 .orElseThrow(() -> new RecordingException(RecordingErrorCode.RECORDING_NOT_FOUND));
         boolean expired = session.expireIfDue(now());
+        if (session.getStatus() == RecordingStatus.ENDED) {
+            RecordingAudioSealKind kind = switch (session.getEndReason()) {
+                case CONNECTION_EXPIRED -> RecordingAudioSealKind.TIMEOUT;
+                case MAX_DURATION -> RecordingAudioSealKind.LIMIT;
+                case USER_ENDED -> RecordingAudioSealKind.REMOTE;
+            };
+            stream.seal(
+                    kind,
+                    session.getEndedAt()
+            );
+            streams.save(stream);
+        }
         if (expired) {
             sessions.save(session);
         }
@@ -290,15 +318,14 @@ public class RecordingAudioChunkTransaction {
     }
 
     private void validateWritable(ControlledAudio controlled) {
-        if (controlled.expired()) {
+        if (controlled.expired() && !now().isBefore(
+                controlled.stream()
+                        .getAcceptUntil()
+        )) {
             throw new RecordingAudioCaptureExpiredException();
         }
-        if (!controlled.session()
-                .isActive()) {
-            throw new RecordingException(RecordingErrorCode.RECORDING_ALREADY_ENDED);
-        }
         controlled.stream()
-                .validateNotFrozen();
+                .validateClientWrite(now());
     }
 
     private void validateMode(RecordingSession session) {
@@ -316,7 +343,7 @@ public class RecordingAudioChunkTransaction {
                 recordingId,
                 sequence
         );
-        if (controlled.expired() && (found.isEmpty() || !isVerified(found.orElseThrow()))) {
+        if (controlled.expired() && found.isEmpty()) {
             throw new RecordingAudioCaptureExpiredException();
         }
         return found.orElseThrow(() -> new RecordingException(RecordingErrorCode.AUDIO_CHUNK_NOT_FOUND));
@@ -342,13 +369,27 @@ public class RecordingAudioChunkTransaction {
             boolean created,
             RecordingAudioChunkReservationResult completed
     ) {
+        return reservation(
+                chunk,
+                created,
+                completed,
+                chunk.getUploadUrlExpiresAt()
+        );
+    }
+
+    private RecordingAudioChunkReservation reservation(
+            RecordingAudioChunk chunk,
+            boolean created,
+            RecordingAudioChunkReservationResult completed,
+            Instant expiresAt
+    ) {
         return new RecordingAudioChunkReservation(
                 created,
                 chunk.getSequence(),
                 chunk.getStorageKey(),
                 chunk.getByteLength(),
                 chunk.getChecksumSha256(),
-                chunk.getUploadUrlExpiresAt(),
+                expiresAt,
                 completed
         );
     }
@@ -382,6 +423,7 @@ public class RecordingAudioChunkTransaction {
 
     private RecordingAudioSaveResult state(
             RecordingSession session,
+            RecordingAudioStream stream,
             List<RecordingAudioChunk> all
     ) {
         Progress progress = progress(all);
@@ -399,14 +441,21 @@ public class RecordingAudioChunkTransaction {
                         all,
                         RecordingAudioChunkStatus.RESERVED
                 ),
-                session.getStatus() == RecordingStatus.ENDED,
-                null,
-                null,
+                stream.isTailUnknown(),
+                expectedLastSequence(stream),
+                stream.getAcceptUntil(),
                 null,
                 false,
                 null,
                 null
         );
+    }
+
+    private Integer expectedLastSequence(RecordingAudioStream stream) {
+        if (stream.isSealed()) {
+            return stream.getLastSequence();
+        }
+        return null;
     }
 
     private String audioSaveStatus(RecordingSession session) {

@@ -250,8 +250,8 @@ class RecordingEndAcceptanceTest {
     }
 
     @Test
-    @DisplayName("요청 본문 없이 종료하면 400이고 녹음을 유지한다")
-    void end_failure_missingBody() throws Exception {
+    @DisplayName("요청 본문 없이 본인 녹음을 원격 종료한다")
+    void end_success_bodylessOwnerRemoteEnd() throws Exception {
         // given
         long memberId = saveMember("member");
         long workspaceId = saveWorkspace("팀");
@@ -282,9 +282,10 @@ class RecordingEndAcceptanceTest {
         );
 
         // then
-        result.andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("INVALID_REQUEST_BODY"));
-        assertThat(recordingStatus(recordingId)).isEqualTo("RECORDING");
+        result.andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("ENDED"))
+                .andExpect(jsonPath("$.audioSave").doesNotExist());
+        assertThat(recordingStatus(recordingId)).isEqualTo("ENDED");
     }
 
     @Test
@@ -584,10 +585,10 @@ class RecordingEndAcceptanceTest {
                         jsonPath(endPath + ".responses['409'].content['application/json'].schema['$ref']")
                                 .value(errorResponseRef)
                 )
-                .andExpect(jsonPath(endPath + ".requestBody.required").value(true))
+                .andExpect(jsonPath(endPath + ".requestBody").exists())
                 .andExpect(
                         jsonPath(endPath + ".requestBody.content['application/json'].schema['$ref']")
-                                .value("#/components/schemas/RecordingControlRequest")
+                                .value("#/components/schemas/RecordingEndRequest")
                 )
                 .andExpect(jsonPath(endPath + ".security[*].accessTokenCookie").exists())
                 .andExpect(

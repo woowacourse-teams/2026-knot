@@ -27,6 +27,7 @@ public class RecordingStartService {
     private final RecordingSessionRepository recordingSessionRepository;
     private final RecordingControlTokenHasher recordingControlTokenHasher;
     private final Clock clock;
+    private final RecordingAudioSealing audioSealing;
     private final RecordingAudioStreamRepository recordingAudioStreamRepository;
     private final RecordingAudioChunksProperties audioChunksProperties;
 
@@ -93,6 +94,7 @@ public class RecordingStartService {
                 command.audioMode()
         );
         if (session.expireIfDue(now())) {
+            audioSealing.sealEnded(session);
             recordingSessionRepository.save(session);
         }
         return RecordingStartResult.from(
@@ -105,6 +107,7 @@ public class RecordingStartService {
         Instant now = now();
         for (RecordingSession active : recordingSessionRepository.findAllActiveByMemberIdForUpdate(memberId)) {
             active.releaseForNewRecording(now);
+            audioSealing.sealEnded(active);
             recordingSessionRepository.save(active);
         }
     }

@@ -34,6 +34,11 @@ public class RecordingSessionRepositoryAdapter implements RecordingSessionReposi
     }
 
     @Override
+    public Optional<Long> findWorkspaceIdById(long recordingId) {
+        return recordingSessionJpaRepository.findWorkspaceIdById(recordingId);
+    }
+
+    @Override
     public Optional<RecordingSession> findByIdForUpdate(long recordingSessionId) {
         return recordingSessionJpaRepository.findWithLockById(recordingSessionId);
     }
@@ -107,11 +112,13 @@ public class RecordingSessionRepositoryAdapter implements RecordingSessionReposi
         while (cause != null) {
             if (ConstraintViolationException.class.isInstance(cause)) {
                 ConstraintViolationException violation = ConstraintViolationException.class.cast(cause);
-                return new RecordingException(switch (String.valueOf(violation.getConstraintName())) {
+                RecordingErrorCode code = switch (String.valueOf(violation.getConstraintName())) {
                     case "uk_recording_sessions_member_active" -> RecordingErrorCode.ACTIVE_RECORDING_ALREADY_EXISTS;
                     case "uk_recording_sessions_member_request" -> RecordingErrorCode.RECORDING_START_REQUEST_CONFLICT;
                     default -> RecordingErrorCode.INVALID_RECORDING_DATA;
-                },
+                };
+                return new RecordingException(
+                        code,
                         exception
                 );
             }

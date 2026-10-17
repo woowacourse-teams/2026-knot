@@ -531,6 +531,7 @@ class RecordingStartServiceTest {
                         NOW,
                         ZoneOffset.UTC
                 ),
+                mock(RecordingAudioSealing.class),
                 streamRepository,
                 new RecordingAudioChunksProperties(enabled)
         );

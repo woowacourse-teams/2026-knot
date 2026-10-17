@@ -76,7 +76,10 @@ class RecordingControlServiceTest {
                 Clock.fixed(
                         NOW,
                         ZoneOffset.UTC
-                )
+                ),
+                mock(RecordingAudioSealing.class),
+                mock(com.knot.backend.recording.domain.repository.RecordingAudioStreamRepository.class),
+                mock(com.knot.backend.recording.domain.repository.RecordingAudioChunkRepository.class)
         );
     }
 

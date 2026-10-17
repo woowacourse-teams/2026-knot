@@ -181,12 +181,25 @@ class RecordingEndControllerTest {
     }
 
     @Test
-    @DisplayName("요청 본문이 없으면 INVALID_REQUEST_BODY 400을 반환하고 서비스를 호출하지 않는다")
-    void end_failure_missingBody() throws Exception {
+    @DisplayName("요청 본문 없이 본인 녹음을 원격 종료한다")
+    void end_success_remoteWithoutBody() throws Exception {
         // given
         SecurityContextHolder.getContext()
                 .setAuthentication(memberAuthentication());
-
+        when(
+                recordingControlService.end(
+                        WORKSPACE_ID,
+                        MEMBER_ID,
+                        RECORDING_ID,
+                        null
+                )
+        ).thenReturn(
+                new RecordingEndResult(
+                        RECORDING_ID,
+                        RecordingStatus.ENDED,
+                        ENDED_AT
+                )
+        );
         // when
         ResultActions result = mockMvc.perform(
                 post(
@@ -195,11 +208,59 @@ class RecordingEndControllerTest {
                         RECORDING_ID
                 )
         );
-
         // then
-        result.andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("INVALID_REQUEST_BODY"));
-        verifyNoInteractions(recordingControlService);
+        result.andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("ENDED"));
+    }
+
+    @Test
+    void end_success_optionalAudioSeal() throws Exception {
+        // given
+        SecurityContextHolder.getContext()
+                .setAuthentication(memberAuthentication());
+        when(
+                recordingControlService.end(
+                        eq(WORKSPACE_ID),
+                        eq(MEMBER_ID),
+                        eq(RECORDING_ID),
+                        any(),
+                        any()
+                )
+        ).thenReturn(
+                new RecordingEndResult(
+                        RECORDING_ID,
+                        RecordingStatus.ENDED,
+                        ENDED_AT,
+                        new com.knot.backend.recording.application.dto.result.RecordingAudioSealSummary(
+                                "DRAINING",
+                                0,
+                                0,
+                                false,
+                                ENDED_AT.plusSeconds(120)
+                        )
+                )
+        );
+        // when
+        ResultActions result = mockMvc.perform(
+                post(
+                        "/api/v1/workspaces/{workspaceId}/recordings/{recordingId}/end",
+                        WORKSPACE_ID,
+                        RECORDING_ID
+                ).contentType(MediaType.APPLICATION_JSON)
+                        .content(
+                                """
+                                        {"tabId":"%s","controlToken":"%s",
+                                         "audioSeal":{"lastSequence":0,"totalFrameCount":0,"pendingDescriptors":[]}}
+                                        """.formatted(
+                                        TAB_ID,
+                                        CONTROL_TOKEN
+                                )
+                        )
+        );
+        // then
+        result.andExpect(status().isOk())
+                .andExpect(jsonPath("$.audioSave.expectedLastSequence").value(0))
+                .andExpect(jsonPath("$.audioSave.tailUnknown").value(false));
     }
 
     private UsernamePasswordAuthenticationToken memberAuthentication() {

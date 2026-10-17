@@ -7,8 +7,22 @@ import java.time.Instant;
 public record RecordingEndResult(
         long recordingId,
         RecordingStatus status,
-        Instant endedAt
+        Instant endedAt,
+        RecordingAudioSealSummary audioSave
 ) {
+
+    public RecordingEndResult(
+            long recordingId,
+            RecordingStatus status,
+            Instant endedAt
+    ) {
+        this(
+                recordingId,
+                status,
+                endedAt,
+                null
+        );
+    }
 
     public static RecordingEndResult from(RecordingSession session) {
         return new RecordingEndResult(

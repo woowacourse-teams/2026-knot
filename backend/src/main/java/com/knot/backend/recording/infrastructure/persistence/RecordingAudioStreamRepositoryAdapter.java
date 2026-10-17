@@ -3,6 +3,8 @@ package com.knot.backend.recording.infrastructure.persistence;
 import com.knot.backend.recording.domain.model.RecordingAudioStream;
 import com.knot.backend.recording.domain.repository.RecordingAudioStreamRepository;
 import java.util.Optional;
+import java.util.List;
+import org.springframework.data.domain.PageRequest;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Repository;
 
@@ -10,6 +12,16 @@ import org.springframework.stereotype.Repository;
 @RequiredArgsConstructor
 public class RecordingAudioStreamRepositoryAdapter implements RecordingAudioStreamRepository {
     private final RecordingAudioStreamJpaRepository repository;
+
+    @Override
+    public List<Long> findSealedRecordingIds(int limit) {
+        return repository.findSealedRecordingIds(
+                PageRequest.of(
+                        0,
+                        limit
+                )
+        );
+    }
 
     @Override
     public RecordingAudioStream save(RecordingAudioStream value) {
