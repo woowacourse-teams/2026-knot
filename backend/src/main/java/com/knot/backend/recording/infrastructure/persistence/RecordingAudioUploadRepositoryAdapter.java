@@ -25,4 +25,8 @@ public class RecordingAudioUploadRepositoryAdapter implements RecordingAudioUplo
     public Optional<RecordingAudioUpload> findByRecordingId(long recordingId) {
         return recordingAudioUploadJpaRepository.findByRecordingId(recordingId);
     }
+    @Override
+    public Optional<RecordingAudioUpload> findByRecordingIdForUpdate(long recordingId) {
+        return recordingAudioUploadJpaRepository.findWithLockByRecordingId(recordingId);
+    }
 }

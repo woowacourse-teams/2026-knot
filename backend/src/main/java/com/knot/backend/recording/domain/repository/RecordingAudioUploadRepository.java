@@ -11,4 +11,6 @@ public interface RecordingAudioUploadRepository {
     Optional<RecordingAudioUpload> findById(long uploadId);
 
     Optional<RecordingAudioUpload> findByRecordingId(long recordingId);
+
+    Optional<RecordingAudioUpload> findByRecordingIdForUpdate(long recordingId);
 }

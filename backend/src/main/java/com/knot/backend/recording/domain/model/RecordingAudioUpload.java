@@ -53,6 +53,9 @@ public class RecordingAudioUpload {
     @Column(name = "deleted_at")
     private Instant deletedAt;
 
+    @Column(name = "revoked_at")
+    private Instant revokedAt;
+
     @Column(name = "storage_version_id")
     private String storageVersionId;
 
@@ -153,7 +156,7 @@ public class RecordingAudioUpload {
     }
 
     public boolean isAudioAvailable() {
-        return isCompleted() && deletedAt == null;
+        return isCompleted() && deletedAt == null && revokedAt == null;
     }
 
     public void validateAudioAvailable() {
@@ -168,6 +171,13 @@ public class RecordingAudioUpload {
             return false;
         }
         return !now.isBefore(completedAt.plus(AUDIO_RETENTION));
+    }
+
+    public void revoke(Instant revokedAt) {
+        validateRetentionTime(revokedAt);
+        if (this.revokedAt == null) {
+            this.revokedAt = revokedAt;
+        }
     }
 
     public void recordDeleted(Instant deletedAt) {

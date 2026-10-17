@@ -57,7 +57,8 @@ class WorkspaceLeaveServiceTest {
             Clock.fixed(
                     NOW,
                     ZoneOffset.UTC
-            )
+            ),
+            mock(com.knot.backend.recording.application.RecordingAudioCleanupStateService.class)
     );
 
     @DisplayName("다른 멤버가 남는 탈퇴는 멤버십을 저장하고 탈퇴자의 진행 녹음만 폐기한 뒤 문서를 보관한다")

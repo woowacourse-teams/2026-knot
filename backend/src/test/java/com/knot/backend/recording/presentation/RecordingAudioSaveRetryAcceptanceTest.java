@@ -1,6 +1,7 @@
 package com.knot.backend.recording.presentation;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -42,6 +43,7 @@ import tools.jackson.databind.ObjectMapper;
 @AutoConfigureMockMvc
 @TestConstructor(autowireMode = AutowireMode.ALL)
 class RecordingAudioSaveRetryAcceptanceTest {
+    private static final Instant NOW = Instant.parse("2026-10-18T10:00:00Z");
     private static final String JWT_COOKIE_NAME = "KNOT_ACCESS_TOKEN";
     private static final String CSRF_COOKIE_NAME = "XSRF-TOKEN";
     private static final String CONTROL_TOKEN = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefA";
@@ -57,7 +59,8 @@ class RecordingAudioSaveRetryAcceptanceTest {
     private final AuthTokenProvider authTokenProvider;
     private final ObjectMapper objectMapper;
     private final JdbcClient jdbcClient;
-    private final Clock clock;
+    @MockitoBean
+    private Clock clock;
     @MockitoBean
     private com.knot.backend.recording.application.RecordingAudioFinalizationWorker worker;
 
@@ -65,18 +68,17 @@ class RecordingAudioSaveRetryAcceptanceTest {
             MockMvc mockMvc,
             AuthTokenProvider authTokenProvider,
             ObjectMapper objectMapper,
-            JdbcClient jdbcClient,
-            Clock clock
+            JdbcClient jdbcClient
     ) {
         this.mockMvc = mockMvc;
         this.authTokenProvider = authTokenProvider;
         this.objectMapper = objectMapper;
         this.jdbcClient = jdbcClient;
-        this.clock = clock;
     }
 
     @BeforeEach
     void setUp() {
+        when(clock.instant()).thenReturn(NOW);
         jdbcClient.sql("""
                 TRUNCATE TABLE recording_sessions, workspace_members, workspaces,
                     oauth_identities, members RESTART IDENTITY CASCADE
@@ -143,6 +145,95 @@ class RecordingAudioSaveRetryAcceptanceTest {
 
         // then
         result.andExpect(status().isUnauthorized());
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(longs = {-1, 0})
+    void readState_stopsRetryAtExactRetentionCutoff(long offsetMicros) throws Exception {
+        // given
+        Fixture fixture = failedRecording();
+        moveToRetentionBoundary(
+                fixture,
+                offsetMicros
+        );
+
+        // when
+        ResultActions result = mockMvc.perform(
+                get(
+                        RECORDING_PATH + "/audio-save",
+                        fixture.workspaceId(),
+                        fixture.recordingId()
+                ).cookie(accessTokenCookie(fixture.memberId()))
+        );
+
+        // then
+        result.andExpect(status().isOk())
+                .andExpect(jsonPath("$.audioSaveStatus").value("FAILED"))
+                .andExpect(jsonPath("$.canRetry").value(offsetMicros < 0));
+        assertThat(
+                jdbcClient.sql("SELECT status FROM recording_audio_finalizations")
+                        .query(String.class)
+                        .single()
+        ).isEqualTo("FAILED");
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(longs = {-1, 0})
+    void retry_rejectsAtExactRetentionCutoff(long offsetMicros) throws Exception {
+        // given
+        Fixture fixture = failedRecording();
+        moveToRetentionBoundary(
+                fixture,
+                offsetMicros
+        );
+
+        // when
+        ResultActions result = retry(fixture);
+
+        // then
+        result.andExpect(status().is(retryBoundaryStatus(offsetMicros)));
+        assertThat(
+                jdbcClient.sql("SELECT status FROM recording_audio_finalizations")
+                        .query(String.class)
+                        .single()
+        ).isEqualTo(retryBoundaryJobStatus(offsetMicros));
+    }
+
+    private void moveToRetentionBoundary(
+            Fixture fixture,
+            long offsetMicros
+    ) {
+        jdbcClient.sql("UPDATE recording_sessions SET ended_at=CAST(:time AS TIMESTAMPTZ) WHERE id=:id")
+                .param(
+                        "time",
+                        NOW.toString()
+                )
+                .param(
+                        "id",
+                        fixture.recordingId()
+                )
+                .update();
+        when(clock.instant()).thenReturn(
+                NOW.plus(java.time.Duration.ofDays(30))
+                        .plus(
+                                offsetMicros,
+                                java.time.temporal.ChronoUnit.MICROS
+                        )
+        );
+    }
+
+    private int retryBoundaryStatus(long offsetMicros) {
+        if (offsetMicros < 0) {
+            return 202;
+        }
+        return 409;
+    }
+
+    private String retryBoundaryJobStatus(long offsetMicros) {
+        if (offsetMicros < 0) {
+            return "QUEUED";
+        }
+        return "FAILED";
     }
 
     @Test

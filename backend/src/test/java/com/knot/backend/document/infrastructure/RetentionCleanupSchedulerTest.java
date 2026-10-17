@@ -38,6 +38,8 @@ class RetentionCleanupSchedulerTest {
     private RecordingAudioDeletionRepository audio;
     private RecordingAudioRetentionService audioRetention;
     private RecordingAudioDeletionWorker worker;
+    private com.knot.backend.recording.domain.repository.RecordingAudioCleanupRepository audioCleanup;
+    private com.knot.backend.recording.application.RecordingAudioCleanupStateService audioCleanupState;
     private ThreadPoolTaskExecutor executor;
     private RetentionCleanupScheduler scheduler;
 
@@ -49,6 +51,8 @@ class RetentionCleanupSchedulerTest {
         audioRetention = mock(RecordingAudioRetentionService.class);
         worker = mock(RecordingAudioDeletionWorker.class);
         executor = mock(ThreadPoolTaskExecutor.class);
+        audioCleanup = mock(com.knot.backend.recording.domain.repository.RecordingAudioCleanupRepository.class);
+        audioCleanupState = mock(com.knot.backend.recording.application.RecordingAudioCleanupStateService.class);
         scheduler = new RetentionCleanupScheduler(
                 documents,
                 cleanup,
@@ -60,13 +64,16 @@ class RetentionCleanupSchedulerTest {
                 Clock.fixed(
                         NOW,
                         ZoneOffset.UTC
-                )
+                ),
+                audioCleanup,
+                audioCleanupState
         );
     }
 
     @Test
     @DisplayName("개별 후보 정리가 실패해도 다음 녹음과 오디오 접수를 계속한다")
     void cleanupExpiredData_failureContinuesNextCandidate() {
+        // given
         when(
                 documents.findCandidates(
                         NOW,
@@ -99,8 +106,10 @@ class RetentionCleanupSchedulerTest {
                         3
                 );
 
+        // when
         scheduler.cleanupExpiredData();
 
+        // then
         verify(cleanup).cleanup(
                 1,
                 4,
@@ -112,6 +121,7 @@ class RetentionCleanupSchedulerTest {
     @Test
     @DisplayName("실행 슬롯에 제출한 후에만 삭제 Worker를 호출한다")
     void dispatchAudioDeletion_successSubmittedBeforeClaim() {
+        // given
         when(
                 audio.findReadyTasks(
                         NOW,
@@ -119,8 +129,10 @@ class RetentionCleanupSchedulerTest {
                 )
         ).thenReturn(List.of(10L));
 
+        // when
         scheduler.dispatchAudioDeletion();
 
+        // then
         ArgumentCaptor<Runnable> runnable = ArgumentCaptor.forClass(Runnable.class);
         verify(executor).execute(runnable.capture());
         verifyNoInteractions(worker);
@@ -132,6 +144,7 @@ class RetentionCleanupSchedulerTest {
     @Test
     @DisplayName("실행 슬롯이 없으면 작업 상태를 바꾸거나 Worker를 실행하지 않는다")
     void dispatchAudioDeletion_failureRejectedTaskUnchanged() {
+        // given
         when(
                 audio.findReadyTasks(
                         NOW,
@@ -146,8 +159,10 @@ class RetentionCleanupSchedulerTest {
         doThrow(new TaskRejectedException("실행 슬롯 없음")).when(executor)
                 .execute(any(Runnable.class));
 
+        // when
         scheduler.dispatchAudioDeletion();
 
+        // then
         verifyNoInteractions(worker);
         verify(
                 audio,
@@ -159,6 +174,7 @@ class RetentionCleanupSchedulerTest {
     @org.junit.jupiter.params.provider.ValueSource(strings = {"documents", "audio-retention", "audio-delete"})
     @DisplayName("보존 정리의 세 후보 조회 오류는 기록 후 다음 실행을 계속한다")
     void poll_failure_queryThenNextRun(String phase) {
+        // given
         IllegalStateException failure = new IllegalStateException("private-sql");
         Runnable poll = configureFailingQuery(
                 phase,
@@ -166,7 +182,9 @@ class RetentionCleanupSchedulerTest {
         );
         try (LogCapture logs = new LogCapture(RetentionCleanupScheduler.class)) {
             poll.run();
+            // when
             poll.run();
+            // then
             assertThat(logs.events()).singleElement()
                     .satisfies(event -> {
                         assertThat(event.getLevel()).isEqualTo(Level.ERROR);
@@ -176,6 +194,66 @@ class RetentionCleanupSchedulerTest {
                     });
         }
         verifyQueryTwice(phase);
+    }
+
+    @Test
+    void cleanupPrefixSchedulingFailureContinuesNextCandidate() {
+        // given
+        when(
+                audioCleanup.findCandidates(
+                        NOW,
+                        20
+                )
+        ).thenReturn(
+                List.of(
+                        1L,
+                        2L
+                )
+        );
+        doThrow(new IllegalStateException("정리 상태 저장 실패")).when(audioCleanupState)
+                .schedule(1);
+        // when
+        scheduler.cleanupExpiredData();
+        // then
+        verify(audioCleanupState).schedule(2);
+    }
+
+    @Test
+    void dispatchPrefixDeletionSubmitsBeforeWorkerClaim() {
+        // given
+        when(
+                audioCleanup.findReady(
+                        NOW,
+                        20
+                )
+        ).thenReturn(List.of(1L));
+        // when
+        scheduler.dispatchAudioPrefixDeletion();
+        // then
+        ArgumentCaptor<Runnable> task = ArgumentCaptor.forClass(Runnable.class);
+        verify(executor).execute(task.capture());
+        verifyNoInteractions(worker);
+        task.getValue()
+                .run();
+        verify(worker).executeCleanup(1);
+    }
+
+    @Test
+    void rejectedPrefixDeletionSubmissionLeavesClaimInDatabase() {
+        // given
+        when(
+                audioCleanup.findReady(
+                        NOW,
+                        20
+                )
+        ).thenReturn(List.of(1L));
+        doThrow(new TaskRejectedException("실행 슬롯 없음")).when(executor)
+                .execute(any(Runnable.class));
+        // when
+        scheduler.dispatchAudioPrefixDeletion();
+        // then
+        verifyNoInteractions(worker);
+        verifyNoInteractions(audioCleanupState);
     }
 
     private Runnable configureFailingQuery(

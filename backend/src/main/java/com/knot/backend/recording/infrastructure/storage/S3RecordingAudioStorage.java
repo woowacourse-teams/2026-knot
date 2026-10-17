@@ -192,6 +192,87 @@ public class S3RecordingAudioStorage implements RecordingAudioStorage {
         }
     }
 
+    @Override
+    public void deleteRecordingPrefix(String storagePrefix) {
+        if (storagePrefix == null || !storagePrefix.matches("recordings/[1-9][0-9]*/(chunks/)?")) {
+            throw new RecordingException(RecordingErrorCode.INVALID_RECORDING_DATA);
+        }
+        try {
+            long deadline = System.nanoTime() + DELETION_TIMEOUT.toNanos();
+            String prefix = keyPrefix + storagePrefix;
+            GetBucketVersioningResponse versioning = s3Client.getBucketVersioning(
+                    GetBucketVersioningRequest.builder()
+                            .bucket(bucket)
+                            .build()
+            );
+            if (versioning.status() != BucketVersioningStatus.ENABLED
+                    && versioning.status() != BucketVersioningStatus.SUSPENDED) {
+                throw new RecordingException(RecordingErrorCode.AUDIO_STORAGE_UNAVAILABLE);
+            }
+            // 삭제한 페이지의 continuation marker에 의존하지 않고 남은 첫 페이지를 다시 읽는다.
+            for (int page = 0; page < MAX_VERSION_PAGES; page++) {
+                validateDeletionDeadline(deadline);
+                ListObjectVersionsResponse versions = s3Client.listObjectVersions(
+                        ListObjectVersionsRequest.builder()
+                                .bucket(bucket)
+                                .prefix(prefix)
+                                .maxKeys(1000)
+                                .build()
+                );
+                if (versions.versions()
+                        .isEmpty()
+                        && versions.deleteMarkers()
+                                .isEmpty()) {
+                    if (Boolean.TRUE.equals(versions.isTruncated())) {
+                        throw new RecordingException(RecordingErrorCode.AUDIO_STORAGE_UNAVAILABLE);
+                    }
+                    return;
+                }
+                for (ObjectVersion version : versions.versions()) {
+                    validatePrefixObject(
+                            prefix,
+                            version.key(),
+                            version.versionId()
+                    );
+                    validateDeletionDeadline(deadline);
+                    deleteObject(
+                            version.key(),
+                            version.versionId()
+                    );
+                }
+                for (DeleteMarkerEntry marker : versions.deleteMarkers()) {
+                    validatePrefixObject(
+                            prefix,
+                            marker.key(),
+                            marker.versionId()
+                    );
+                    validateDeletionDeadline(deadline);
+                    deleteObject(
+                            marker.key(),
+                            marker.versionId()
+                    );
+                }
+            }
+            throw new RecordingException(RecordingErrorCode.AUDIO_STORAGE_UNAVAILABLE);
+        } catch (SdkException exception) {
+            throw new RecordingException(
+                    RecordingErrorCode.AUDIO_STORAGE_UNAVAILABLE,
+                    exception
+            );
+        }
+    }
+
+    private void validatePrefixObject(
+            String prefix,
+            String key,
+            String version
+    ) {
+        if (key == null || !key.startsWith(prefix)) {
+            throw new RecordingException(RecordingErrorCode.AUDIO_STORAGE_UNAVAILABLE);
+        }
+        validateVersionId(version);
+    }
+
     private void deleteVersions(
             String key,
             long deadline

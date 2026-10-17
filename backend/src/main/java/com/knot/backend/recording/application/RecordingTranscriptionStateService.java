@@ -371,6 +371,9 @@ public class RecordingTranscriptionStateService {
                 workspaceId,
                 memberId
         );
+        RecordingAudioUpload upload = recordingAudioUploadRepository.findByRecordingId(recordingId)
+                .orElseThrow(() -> new RecordingException(RecordingErrorCode.AUDIO_UPLOAD_NOT_FOUND));
+        validateAvailableUpload(upload);
         return recordingTranscriptionRepository.findByRecordingSessionId(recordingId)
                 .filter(RecordingTranscription::isOutcomeUncertain)
                 .map(this::createExecutionContext);

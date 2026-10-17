@@ -24,6 +24,11 @@ public class UnconfiguredRecordingAudioStorage implements RecordingAudioStorage 
     }
 
     @Override
+    public void deleteRecordingPrefix(String storagePrefix) {
+        throw new RecordingException(RecordingErrorCode.AUDIO_STORAGE_UNAVAILABLE);
+    }
+
+    @Override
     public PresignedAudioUpload presignUpload(
             String storageKey,
             String contentType,

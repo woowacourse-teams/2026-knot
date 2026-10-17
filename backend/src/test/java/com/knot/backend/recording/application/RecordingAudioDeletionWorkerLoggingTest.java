@@ -22,6 +22,7 @@ class RecordingAudioDeletionWorkerLoggingTest {
     @Test
     @DisplayName("삭제와 실패 상태 저장이 연달아 실패해도 삭제 원인을 먼저 남긴다")
     void execute_failure_storageAndPersistence() {
+        // given
         RecordingAudioDeletionStateService recordingAudioDeletionStateService = mock(
                 RecordingAudioDeletionStateService.class
         );
@@ -49,12 +50,15 @@ class RecordingAudioDeletionWorkerLoggingTest {
                         2
                 );
         try (LogCapture logs = new LogCapture(RecordingAudioDeletionWorker.class)) {
+            // when
             assertThatThrownBy(
                     () -> new RecordingAudioDeletionWorker(
                             recordingAudioDeletionStateService,
-                            recordingAudioStorage
+                            recordingAudioStorage,
+                            mock(RecordingAudioCleanupStateService.class)
                     ).execute(7)
             ).isSameAs(persistence);
+            // then
             assertThat(logs.events()).singleElement()
                     .satisfies(event -> {
                         assertThat(event.getLevel()).isEqualTo(Level.WARN);
@@ -82,6 +86,7 @@ class RecordingAudioDeletionWorkerLoggingTest {
     @Test
     @DisplayName("이미 사라진 객체의 정상 삭제는 로그 없이 성공 상태를 저장한다")
     void execute_success_absentObject() {
+        // given
         RecordingAudioDeletionStateService recordingAudioDeletionStateService = mock(
                 RecordingAudioDeletionStateService.class
         );
@@ -95,10 +100,13 @@ class RecordingAudioDeletionWorkerLoggingTest {
                 )
         );
         try (LogCapture logs = new LogCapture(RecordingAudioDeletionWorker.class)) {
+            // when
             new RecordingAudioDeletionWorker(
                     recordingAudioDeletionStateService,
-                    mock(RecordingAudioStorage.class)
+                    mock(RecordingAudioStorage.class),
+                    mock(RecordingAudioCleanupStateService.class)
             ).execute(7);
+            // then
             assertThat(logs.events()).isEmpty();
         }
         verify(recordingAudioDeletionStateService).succeed(

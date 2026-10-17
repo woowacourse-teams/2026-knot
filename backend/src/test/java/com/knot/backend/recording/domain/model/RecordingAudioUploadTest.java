@@ -400,6 +400,39 @@ class RecordingAudioUploadTest {
         assertThat(storageKey).isEmpty();
     }
 
+    @Test
+    @DisplayName("접근 철회는 물리 삭제 이력과 구분하고 완료된 음원을 영구 비활성화한다")
+    void revokeDisablesAvailableAudioWithoutClaimingPhysicalDeletion() {
+        // given
+        RecordingAudioUpload upload = completed();
+        // when
+        upload.revoke(RESERVED_AT.plusSeconds(61));
+        // then
+        assertThat(upload.isAudioAvailable()).isFalse();
+        assertThat(upload.getDeletedAt()).isNull();
+        assertThat(upload.getRevokedAt()).isEqualTo(RESERVED_AT.plusSeconds(61));
+    }
+
+    @Test
+    @DisplayName("철회 뒤 완료를 반복해도 음원이 다시 활성화되지 않는다")
+    void completedRetryCannotReactivateRevokedUpload() {
+        // given
+        RecordingAudioUpload upload = completed();
+        upload.revoke(RESERVED_AT.plusSeconds(61));
+        // when
+        upload.complete(
+                StoredAudioObject.of(
+                        1024L,
+                        "audio/webm",
+                        "version-1"
+                ),
+                RESERVED_AT.plusSeconds(62)
+        );
+        // then
+        assertThat(upload.isAudioAvailable()).isFalse();
+        assertThat(upload.getRevokedAt()).isEqualTo(RESERVED_AT.plusSeconds(61));
+    }
+
     private RecordingAudioUpload completed() {
         RecordingAudioUpload upload = reserved();
         upload.complete(
