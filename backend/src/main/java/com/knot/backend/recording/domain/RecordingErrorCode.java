@@ -6,6 +6,16 @@ import lombok.Getter;
 
 @Getter
 public enum RecordingErrorCode implements ErrorCode {
+    AUDIO_SAVE_OWNERSHIP_LOST(
+            ErrorCategory.CONFLICT,
+            "AUDIO_SAVE_OWNERSHIP_LOST",
+            "오디오 저장 작업의 실행 권한이 만료되었습니다"
+    ),
+    AUDIO_SAVE_RETRY_NOT_ALLOWED(
+            ErrorCategory.CONFLICT,
+            "AUDIO_SAVE_RETRY_NOT_ALLOWED",
+            "현재 오디오 저장 작업은 다시 시도할 수 없습니다"
+    ),
     AI_OUTCOME_UNKNOWN(
             ErrorCategory.INTERNAL_SERVER_ERROR,
             "AI_OUTCOME_UNKNOWN",

@@ -2,6 +2,12 @@ package com.knot.backend.recording.infrastructure.storage;
 
 import com.knot.backend.global.config.RecordingAudioChunksProperties;
 import com.knot.backend.recording.application.RecordingAudioStorage;
+import com.knot.backend.recording.application.RecordingAudioFinalStorage;
+import com.knot.backend.recording.application.RecordingAudioAssembler;
+import com.knot.backend.recording.domain.model.AudioManifestPart;
+import com.knot.backend.recording.infrastructure.audio.PcmWavAssembler;
+import java.io.InputStream;
+import java.nio.file.Path;
 import com.knot.backend.recording.application.RecordingAudioChunkStorage;
 import com.knot.backend.recording.application.dto.result.PresignedAudioChunk;
 import com.knot.backend.recording.domain.RecordingErrorCode;
@@ -75,6 +81,46 @@ public class RecordingAudioStorageConfig {
         );
     }
 
+    @Bean
+    public RecordingAudioFinalStorage recordingAudioFinalStorage(RecordingAudioStorageProperties properties) {
+        if (!properties.isConfigured()) {
+            return new RecordingAudioFinalStorage() {
+                @Override
+                public InputStream openChunk(AudioManifestPart part) {
+                    throw new RecordingException(RecordingErrorCode.AUDIO_STORAGE_UNAVAILABLE);
+                }
+
+                @Override
+                public StoredAudioChunk uploadFinal(
+                        String storageKey,
+                        Path file,
+                        long byteLength,
+                        String checksumSha256
+                ) {
+                    throw new RecordingException(RecordingErrorCode.AUDIO_STORAGE_UNAVAILABLE);
+                }
+
+                @Override
+                public StoredAudioChunk findStoredFinal(String storageKey) {
+                    throw new RecordingException(RecordingErrorCode.AUDIO_STORAGE_UNAVAILABLE);
+                }
+            };
+        }
+        return new S3RecordingAudioFinalStorage(
+                client(
+                        properties,
+                        Duration.ofMinutes(2)
+                ),
+                properties.bucket(),
+                properties.keyPrefix()
+        );
+    }
+
+    @Bean
+    public RecordingAudioAssembler recordingAudioAssembler(RecordingAudioFinalStorage storage) {
+        return new PcmWavAssembler(storage);
+    }
+
     // NCP Object Storage 등 S3 호환 저장소를 같은 코드로 쓰기 위해 endpoint를 지정하고 path-style 주소를
     // 사용한다.
     private S3Presigner presigner(RecordingAudioStorageProperties properties) {
@@ -91,6 +137,16 @@ public class RecordingAudioStorageConfig {
     }
 
     private S3Client client(RecordingAudioStorageProperties properties) {
+        return client(
+                properties,
+                STORAGE_CALL_TIMEOUT
+        );
+    }
+
+    private S3Client client(
+            RecordingAudioStorageProperties properties,
+            Duration timeout
+    ) {
         return S3Client.builder()
                 .endpointOverride(URI.create(properties.endpoint()))
                 .region(Region.of(properties.region()))
@@ -102,7 +158,7 @@ public class RecordingAudioStorageConfig {
                 )
                 .overrideConfiguration(
                         ClientOverrideConfiguration.builder()
-                                .apiCallTimeout(STORAGE_CALL_TIMEOUT)
+                                .apiCallTimeout(timeout)
                                 .build()
                 )
                 .build();

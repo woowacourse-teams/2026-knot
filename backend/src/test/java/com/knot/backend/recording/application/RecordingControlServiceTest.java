@@ -79,7 +79,8 @@ class RecordingControlServiceTest {
                 ),
                 mock(RecordingAudioSealing.class),
                 mock(com.knot.backend.recording.domain.repository.RecordingAudioStreamRepository.class),
-                mock(com.knot.backend.recording.domain.repository.RecordingAudioChunkRepository.class)
+                mock(com.knot.backend.recording.domain.repository.RecordingAudioChunkRepository.class),
+                mock(com.knot.backend.recording.domain.repository.RecordingAudioFinalizationRepository.class)
         );
     }
 

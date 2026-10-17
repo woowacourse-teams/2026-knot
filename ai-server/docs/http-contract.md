@@ -22,7 +22,7 @@ EC2가 녹음의 presigned GET URL을 보내면 맥미니가 모델을 실행하
 
 `attemptId`는 필수 UUID, `downloadUrl`은 필수 문자열입니다. `speakerCount`를 생략하거나 null로 보내면 화자 수를 자동 추정하며, 지정할 때는 양의 정수를 사용합니다. 위 URL은 형식 예시이므로 실제 요청에는 유효한 presigned URL이 필요합니다.
 
-EC2는 업로드가 끝난 변경되지 않는 S3 객체의 URL을 발급해야 합니다. AI 서버는 별도 ETag·versionId를 받거나 객체 불변성을 보장하지 않습니다. HTTPS, 기본 포트 또는 443 포트, 설정에 등록된 정확한 AWS S3 호스트만 허용합니다. 사용자 정보·fragment·리다이렉트는 거부합니다. S3 응답은 `Content-Type: audio/webm`과 양의 `Content-Length`가 필요하며 실제 다운로드 크기가 선언된 길이와 같아야 합니다.
+EC2는 업로드가 끝난 변경되지 않는 S3 객체의 URL을 발급해야 합니다. AI 서버는 별도 ETag·versionId를 받거나 객체 불변성을 보장하지 않습니다. HTTPS, 기본 포트 또는 443 포트, 설정에 등록된 정확한 AWS S3 호스트만 허용합니다. 사용자 정보·fragment·리다이렉트는 거부합니다. S3 응답은 `Content-Type: audio/webm` 또는 `audio/wav`와 양의 `Content-Length`가 필요하며 실제 다운로드 크기가 선언된 길이와 같아야 합니다. `audio/wav`는 다운로드 직후 RIFF/WAVE 컨테이너·선언 길이·chunk 경계와 PCM16LE mono 16kHz 형식을 검사합니다. 비어 있거나 2시간을 초과한 WAV, MIME만 WAV로 표시한 다른 파일, 손상되거나 잘린 WAV는 변환 전에 거부합니다. 기존 WebM은 FFmpeg 변환 경로를 유지합니다.
 
 ## 상태와 결과
 

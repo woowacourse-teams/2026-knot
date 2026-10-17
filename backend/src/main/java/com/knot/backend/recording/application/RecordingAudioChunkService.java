@@ -25,17 +25,20 @@ public class RecordingAudioChunkService {
     private final RecordingAudioChunkTransaction transaction;
     private final RecordingAudioChunkStorage storage;
     private final Clock clock;
+    private final RecordingAudioFinalizationQuery finalizationQuery;
     private final Duration uploadUrlTtl;
 
     public RecordingAudioChunkService(
             RecordingAudioChunkTransaction transaction,
             RecordingAudioChunkStorage storage,
             Clock clock,
+            RecordingAudioFinalizationQuery finalizationQuery,
             @Value("${recording.audio-storage.upload-url-ttl:PT15M}") Duration uploadUrlTtl
     ) {
         this.transaction = transaction;
         this.storage = storage;
         this.clock = clock;
+        this.finalizationQuery = finalizationQuery;
         this.uploadUrlTtl = uploadUrlTtl;
     }
 
@@ -113,10 +116,13 @@ public class RecordingAudioChunkService {
             long memberId,
             long recordingId
     ) {
-        return transaction.findState(
-                workspaceId,
-                memberId,
-                recordingId
+        return finalizationQuery.enrich(
+                recordingId,
+                transaction.findState(
+                        workspaceId,
+                        memberId,
+                        recordingId
+                )
         );
     }
 }

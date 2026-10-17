@@ -4,6 +4,7 @@ import com.knot.backend.recording.application.RecordingAudioChunkStorage;
 import com.knot.backend.recording.application.dto.result.PresignedAudioChunk;
 import com.knot.backend.recording.domain.RecordingErrorCode;
 import com.knot.backend.recording.domain.RecordingException;
+import com.knot.backend.recording.domain.AudioStorageAccessDeniedException;
 import com.knot.backend.recording.domain.model.StoredAudioChunk;
 import java.time.Clock;
 import java.time.Duration;
@@ -124,6 +125,9 @@ public class S3RecordingAudioChunkStorage implements RecordingAudioChunkStorage 
                     response.versionId()
             );
         } catch (S3Exception exception) {
+            if (exception.statusCode() == 403 || exception.statusCode() == 401) {
+                throw new AudioStorageAccessDeniedException(exception);
+            }
             if (exception.statusCode() == NOT_FOUND_STATUS) {
                 return StoredAudioChunk.missing();
             }

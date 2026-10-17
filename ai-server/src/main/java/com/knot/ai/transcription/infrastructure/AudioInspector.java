@@ -17,6 +17,18 @@ class AudioInspector {
     private static final int DATA_CHUNK_ID = 0x64617461;
 
     double readPcmDuration(Path wav) throws IOException {
+        return readPcmDuration(
+                wav,
+                () -> {
+                }
+        );
+    }
+
+    double readPcmDuration(
+            Path wav,
+            Runnable checkpoint
+    ) throws IOException {
+        checkpoint.run();
         if (Files.size(wav) > MAXIMUM_PCM_BYTES + WAV_HEADER_ALLOWANCE_BYTES) {
             throw new TranscriptionException(TranscriptionErrorCode.AUDIO_DURATION_EXCEEDED);
         }
@@ -25,45 +37,67 @@ class AudioInspector {
                 wav.toFile(),
                 "r"
         )) {
+            checkpoint.run();
             if (file.length() < 44 || file.readInt() != RIFF_CHUNK_ID) {
                 throw new TranscriptionException(TranscriptionErrorCode.INVALID_AUDIO_FORMAT);
             }
-            file.skipBytes(4);
+            long riffSize = Integer.toUnsignedLong(Integer.reverseBytes(file.readInt()));
+            if (riffSize != file.length() - 8) {
+                throw new TranscriptionException(TranscriptionErrorCode.INVALID_AUDIO_FORMAT);
+            }
             if (file.readInt() != WAVE_FORMAT_ID) {
                 throw new TranscriptionException(TranscriptionErrorCode.INVALID_AUDIO_FORMAT);
             }
-            duration = readChunks(file);
+            duration = readChunks(
+                    file,
+                    checkpoint
+            );
         }
+        checkpoint.run();
         if (duration <= 0 || duration > MAXIMUM_DURATION_SECONDS) {
             throw new TranscriptionException(TranscriptionErrorCode.AUDIO_DURATION_EXCEEDED);
         }
         return duration;
     }
 
-    private double readChunks(RandomAccessFile file) throws IOException {
+    private double readChunks(
+            RandomAccessFile file,
+            Runnable checkpoint
+    ) throws IOException {
         boolean formatVerified = false;
+        Double duration = null;
         while (file.getFilePointer() + 8 <= file.length()) {
+            checkpoint.run();
             int chunkId = file.readInt();
             long chunkSize = Integer.toUnsignedLong(Integer.reverseBytes(file.readInt()));
             long position = file.getFilePointer();
-            if (chunkSize > file.length() - position) {
+            if (chunkSize + chunkSize % 2 > file.length() - position) {
                 throw new TranscriptionException(TranscriptionErrorCode.INVALID_AUDIO_FORMAT);
             }
             if (chunkId == FORMAT_CHUNK_ID) {
+                if (formatVerified || duration != null) {
+                    throw new TranscriptionException(TranscriptionErrorCode.INVALID_AUDIO_FORMAT);
+                }
                 verifyFormatChunk(
                         file,
                         chunkSize
                 );
                 formatVerified = true;
             } else if (chunkId == DATA_CHUNK_ID) {
-                return readDataDuration(
+                if (duration != null) {
+                    throw new TranscriptionException(TranscriptionErrorCode.INVALID_AUDIO_FORMAT);
+                }
+                duration = readDataDuration(
                         chunkSize,
                         formatVerified
                 );
             }
             file.seek(position + chunkSize + (chunkSize % 2));
         }
-        throw new TranscriptionException(TranscriptionErrorCode.INVALID_AUDIO_FORMAT);
+        if (duration == null || file.getFilePointer() != file.length()) {
+            throw new TranscriptionException(TranscriptionErrorCode.INVALID_AUDIO_FORMAT);
+        }
+        return duration;
     }
 
     private void verifyFormatChunk(

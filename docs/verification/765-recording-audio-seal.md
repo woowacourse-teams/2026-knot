@@ -1,5 +1,7 @@
 # #765 녹음 종료와 오디오 범위 확정
 
+이 문서는 #765 범위의 검증 스냅샷이다. 현재 HTTP 정본은 [녹음 종료 API](../api/recording-end.md)이며, #767 이후 반복 종료 요약은 현재 최종화 job 상태도 반영한다.
+
 종료는 캡처만 끝낸다. PCM의 descriptor seal과 최종 WAV manifest는 별개이며, 이 변경은 descriptor seal과 클라이언트 저장 확인 유예를 구현한다. 신규 PCM 시작은 기본 비활성을 유지한다.
 
 ## HTTP 계약

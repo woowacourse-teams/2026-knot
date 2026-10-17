@@ -77,6 +77,7 @@ class RecordingDetailControllerTest {
                         null,
                         null,
                         null,
+                        null,
                         null
                 )
         );
@@ -129,7 +130,8 @@ class RecordingDetailControllerTest {
                                         104L,
                                         105L
                                 )
-                        )
+                        ),
+                        null
                 )
         );
 

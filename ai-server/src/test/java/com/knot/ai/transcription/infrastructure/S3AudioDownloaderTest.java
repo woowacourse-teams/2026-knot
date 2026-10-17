@@ -16,7 +16,11 @@ import java.io.InputStream;
 import java.net.HttpURLConnection;
 import java.net.InetSocketAddress;
 import java.net.URI;
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.util.Arrays;
 import java.nio.file.Path;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -55,6 +59,61 @@ class S3AudioDownloaderTest {
         );
         assertTrue(connection.disconnected.getCount() == 0);
         assertFalse(connection.getInstanceFollowRedirects());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"canonical", "metadataBeforeData", "metadataAfterData"})
+    @DisplayName("PCM16 mono 16kHz WAV의 실제 바이트와 추가 chunk를 검증하고 저장한다")
+    void download_success_pcmWav(String layout) throws Exception {
+        // given
+        StubConnection connection = new StubConnection();
+        connection.contentType = "audio/wav";
+        connection.body = pcmWav(layout);
+        connection.contentLength = connection.body.length;
+        Path target = directory.resolve("input.wav");
+        S3AudioDownloader downloader = downloader(connection);
+
+        // when
+        downloader.download(
+                DOWNLOAD_URL,
+                target
+        );
+
+        // then
+        assertArrayEquals(
+                connection.body,
+                Files.readAllBytes(target)
+        );
+        assertTrue(connection.disconnected.getCount() == 0);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"mimeSpoof", "truncated", "riffLength", "sampleRate", "channels", "floatEncoding",
+            "sampleWidth", "unalignedData", "trailingBytes", "truncatedChunk", "missingData"})
+    @DisplayName("WAV MIME으로 선언해도 손상된 컨테이너와 잘못된 PCM 형식은 거부한다")
+    void download_failure_invalidWav(String defect) throws Exception {
+        // given
+        StubConnection connection = new StubConnection();
+        connection.contentType = "audio/wav";
+        connection.body = invalidWav(defect);
+        connection.contentLength = connection.body.length;
+        S3AudioDownloader downloader = downloader(connection);
+
+        // when
+        TranscriptionException exception = assertThrows(
+                TranscriptionException.class,
+                () -> downloader.download(
+                        DOWNLOAD_URL,
+                        directory.resolve("input.wav")
+                )
+        );
+
+        // then
+        assertEquals(
+                "INVALID_AUDIO_FORMAT",
+                exception.getCode()
+        );
+        assertTrue(connection.disconnected.getCount() == 0);
     }
 
     @Test
@@ -304,7 +363,7 @@ class S3AudioDownloaderTest {
     }
 
     @Test
-    @DisplayName("WebM 오디오가 아닌 응답은 거부한다")
+    @DisplayName("지원하는 오디오 MIME이 아닌 응답은 거부한다")
     void download_failure_wrongContentType() throws Exception {
         // given
         StubConnection connection = new StubConnection();
@@ -382,6 +441,127 @@ class S3AudioDownloaderTest {
         }
     }
 
+    private byte[] pcmWav(String layout) {
+        byte[] audio = pcmWav();
+        if ("canonical".equals(layout)) {
+            return audio;
+        }
+        int chunkPosition = "metadataBeforeData".equals(layout) ? 36 : audio.length;
+        ByteBuffer bytes = ByteBuffer.allocate(audio.length + 14)
+                .order(ByteOrder.LITTLE_ENDIAN);
+        bytes.put(
+                audio,
+                0,
+                chunkPosition
+        );
+        bytes.put("JUNK".getBytes(StandardCharsets.US_ASCII));
+        bytes.putInt(5);
+        bytes.put(new byte[6]);
+        bytes.put(
+                audio,
+                chunkPosition,
+                audio.length - chunkPosition
+        );
+        bytes.putInt(
+                4,
+                bytes.capacity() - 8
+        );
+        return bytes.array();
+    }
+
+    private byte[] pcmWav() {
+        ByteBuffer bytes = ByteBuffer.allocate(76)
+                .order(ByteOrder.LITTLE_ENDIAN);
+        bytes.put("RIFF".getBytes(StandardCharsets.US_ASCII));
+        bytes.putInt(68);
+        bytes.put("WAVEfmt ".getBytes(StandardCharsets.US_ASCII));
+        bytes.putInt(16);
+        bytes.putShort((short) 1);
+        bytes.putShort((short) 1);
+        bytes.putInt(16000);
+        bytes.putInt(32000);
+        bytes.putShort((short) 2);
+        bytes.putShort((short) 16);
+        bytes.put("data".getBytes(StandardCharsets.US_ASCII));
+        bytes.putInt(32);
+        return bytes.array();
+    }
+
+    private byte[] invalidWav(String defect) {
+        byte[] audio = pcmWav();
+        ByteBuffer bytes = ByteBuffer.wrap(audio)
+                .order(ByteOrder.LITTLE_ENDIAN);
+        switch (defect) {
+            case "mimeSpoof" -> audio = new byte[]{0x1a, 0x45, (byte) 0xdf, (byte) 0xa3};
+            case "truncated" -> audio = Arrays.copyOf(
+                    audio,
+                    60
+            );
+            case "riffLength" -> bytes.putInt(
+                    4,
+                    67
+            );
+            case "sampleRate" -> bytes.putInt(
+                    24,
+                    48000
+            );
+            case "channels" -> bytes.putShort(
+                    22,
+                    (short) 2
+            );
+            case "floatEncoding" -> bytes.putShort(
+                    20,
+                    (short) 3
+            );
+            case "sampleWidth" -> bytes.putShort(
+                    34,
+                    (short) 8
+            );
+            case "unalignedData" -> bytes.putInt(
+                    40,
+                    31
+            );
+            case "missingData" -> bytes.putInt(
+                    36,
+                    0
+            );
+            case "trailingBytes" -> {
+                audio = Arrays.copyOf(
+                        audio,
+                        77
+                );
+                ByteBuffer.wrap(audio)
+                        .order(ByteOrder.LITTLE_ENDIAN)
+                        .putInt(
+                                4,
+                                69
+                        );
+            }
+            case "truncatedChunk" -> {
+                audio = Arrays.copyOf(
+                        audio,
+                        84
+                );
+                ByteBuffer trailer = ByteBuffer.wrap(audio)
+                        .order(ByteOrder.LITTLE_ENDIAN);
+                trailer.putInt(
+                        4,
+                        76
+                );
+                trailer.putInt(
+                        76,
+                        0x4b4e554a
+                );
+                trailer.putInt(
+                        80,
+                        8
+                );
+            }
+            default -> throw new IllegalArgumentException("알 수 없는 손상 유형입니다");
+        }
+        return audio;
+    }
+
     private S3AudioDownloader downloader(StubConnection connection) {
         return new S3AudioDownloader(
                 TestFixtures.properties(directory),
@@ -391,6 +571,7 @@ class S3AudioDownloaderTest {
 
     private static class StubConnection extends HttpURLConnection {
         private final CountDownLatch disconnected = new CountDownLatch(1);
+        private byte[] body = new byte[]{1, 2, 3};
         private long contentLength = 3;
         private String contentType = "audio/webm";
         private boolean bodyOpened;
@@ -435,7 +616,7 @@ class S3AudioDownloaderTest {
         @Override
         public InputStream getInputStream() {
             bodyOpened = true;
-            return new ByteArrayInputStream(new byte[]{1, 2, 3});
+            return new ByteArrayInputStream(body);
         }
 
         @Override

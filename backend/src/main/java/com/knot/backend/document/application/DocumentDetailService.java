@@ -16,6 +16,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class DocumentDetailService {
     private final WorkspaceMemberRepository workspaceMembers;
     private final DocumentDetailQuery query;
+    private final com.knot.backend.recording.application.RecordingAudioFinalizationQuery audioQuality;
 
     public DocumentDetailResult find(
             long workspaceId,
@@ -34,6 +35,7 @@ public class DocumentDetailService {
                 memberId
         )
                 .map(DocumentDetailResult::from)
+                .map(result -> result.withSourceAudio(audioQuality.sourceQuality(result.recordingSessionId())))
                 .orElseThrow(() -> new DocumentException(DocumentErrorCode.DOCUMENT_NOT_FOUND));
     }
 }

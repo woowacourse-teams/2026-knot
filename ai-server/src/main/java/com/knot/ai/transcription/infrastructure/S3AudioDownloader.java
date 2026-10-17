@@ -98,7 +98,8 @@ public class S3AudioDownloader {
                 throw new TranscriptionException(TranscriptionErrorCode.DOWNLOAD_FAILED);
             }
             long contentLength = connection.getContentLengthLong();
-            if (!"audio/webm".equals(connection.getContentType()) || contentLength <= 0) {
+            String contentType = connection.getContentType();
+            if ((!"audio/webm".equals(contentType) && !"audio/wav".equals(contentType)) || contentLength <= 0) {
                 throw new TranscriptionException(TranscriptionErrorCode.INVALID_AUDIO_METADATA);
             }
             if (contentLength > MAXIMUM_AUDIO_BYTES) {
@@ -125,6 +126,13 @@ public class S3AudioDownloader {
                 if (count != contentLength) {
                     throw new TranscriptionException(TranscriptionErrorCode.INCOMPLETE_DOWNLOAD);
                 }
+            }
+            if ("audio/wav".equals(contentType)) {
+                new AudioInspector().readPcmDuration(
+                        target,
+                        () -> checkDeadline(deadline)
+                );
+                checkDeadline(deadline);
             }
         } catch (IOException exception) {
             checkDeadline(deadline);

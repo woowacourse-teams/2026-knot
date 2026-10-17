@@ -21,6 +21,7 @@ public class RecordingDetailService {
     private final RecordingTranscriptionStateService recordingTranscriptionStateService;
     private final DocumentGenerationProgressService documentGenerationProgressService;
     private final Clock clock;
+    private final RecordingAudioFinalizationQuery audioQuality;
 
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
     public RecordingDetailResult find(
@@ -55,6 +56,7 @@ public class RecordingDetailService {
                 )
                         .orElse(null),
                 now
-        );
+        )
+                .withSourceAudio(audioQuality.sourceQuality(recordingId));
     }
 }

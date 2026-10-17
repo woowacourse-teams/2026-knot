@@ -1,6 +1,6 @@
 # 녹음 중 PCM 오디오 조각 저장 API
 
-[Issue #764](https://github.com/woowacourse-teams/2026-Knot/issues/764)의 구현 계약이다.
+[Issue #764](https://github.com/woowacourse-teams/2026-Knot/issues/764)의 조각 저장과 #765 종료 seal·#767 최종화를 반영한 현재 계약이다.
 최초 탭이 조각을 예약하고 S3에 직접 PUT한 뒤 서버의 저장 확인을 받는다.
 PUT 성공만으로 저장 완료를 표시하지 않고, 완료 API의 `VERIFIED`를 기준으로 삼는다.
 
@@ -11,7 +11,7 @@ PUT 성공만으로 저장 완료를 표시하지 않고, 완료 API의 `VERIFIE
 설정이 꺼져도 기존 PCM 녹음의 동일 시작 재시도와 조각 저장은 계속 허용한다.
 모드를 생략하거나 null로 보내면 기존 `FINAL_WEBM_V1`이며 두 업로드 방식을 섞을 수 없다.
 
-앱 API에는 인증 쿠키가 필요하다. POST에는 `X-XSRF-TOKEN`과 최초 탭의 `tabId`·`controlToken`을 보낸다.
+앱 API에는 인증 쿠키가 필요하다. 조각 예약·완료 POST에는 `X-XSRF-TOKEN`과 최초 탭의 `tabId`·`controlToken`을 보낸다. 저장 재시도는 CSRF와 소유자를 검사하며 탭 증명을 받지 않는다.
 조회는 본인 녹음·현재 Workspace 소속을 확인하며 탭 증명을 요구하지 않는다.
 조각 예약·완료·조회는 heartbeat를 갱신하지 않으므로 기존 heartbeat를 계속 보낸다.
 
@@ -145,12 +145,14 @@ DB에 VERIFIED와 version을 저장한 뒤 `200 OK`를 반환한다.
 
 두 ranges의 단위는 밀리초나 바이트가 아닌 **프레임**이며 `[start, endExclusive)`다.
 인접한 같은 상태 구간은 합쳐 반환한다. `verifiedRanges`는 연속 prefix 뒤쪽의 VERIFIED 구간도 포함한다.
-`missingRanges`는 **예약했지만 아직 VERIFIED가 아닌 RESERVED 구간**이다.
-아직 예약하지 않은 음성과 확정된 음성 유실을 표시하는 필드가 아니다.
+`missingRanges`는 manifest 확정 전에는 예약했지만 VERIFIED가 아닌 구간, 확정 뒤에는 manifest에 고정된 알려진 누락 구간이다. 아직 예약하지 않은 마지막 음성의 길이는 추측하지 않는다.
 
-현재 구현의 `audioSaveStatus`는 RECORDING·PAUSED에서 `CAPTURING`, ENDED에서 `DRAINING`,
-DISCARDED에서 `DISCARDED`다. `tailUnknown`은 ENDED에서만 true다.
-`expectedLastSequence`·`acceptUntil`·`failureCode`·`jobId`·`quality`는 null이고 `canRetry`는 false다.
+녹음 중에는 `CAPTURING`, 종료·조각 확인 대기에는 `DRAINING`, 조립·업로드 중에는 `FINALIZING`,
+최종 WAV 검증·채택 뒤에는 `READY`, 실패 소진 시에는 `FAILED`, 폐기에는 `DISCARDED`를 반환한다.
+seal 이후 `expectedLastSequence`·`acceptUntil`·`tailUnknown`이 고정된다. NORMAL은 마지막 길이를 알고,
+REMOTE/TIMEOUT/LIMIT은 `tailUnknown=true`다. `quality`는 manifest 확정 뒤 COMPLETE 또는 PARTIAL이며,
+`jobId`는 재시도해도 유지한다. `failureCode`와 `canRetry`로 저장 실패의 수동 재접수 가능 여부를 구분한다.
+
 조회는 heartbeat나 만료 상태를 변경하지 않으므로 그 응답만으로 녹음의 생존 기한이 연장되지 않는다.
 
 ## 오류와 재시도
@@ -166,6 +168,7 @@ DISCARDED에서 `DISCARDED`다. `tailUnknown`은 ENDED에서만 true다.
 | 403 | `FORBIDDEN`, `WORKSPACE_ACCESS_DENIED`, `RECORDING_CONTROL_DENIED` | CSRF·현재 소속·녹음 소유자·최초 탭 증명 불일치 |
 | 404 | `WORKSPACE_NOT_FOUND`, `RECORDING_NOT_FOUND`, `AUDIO_CHUNK_NOT_FOUND` | 대상 또는 조각 예약 없음 |
 | 409 | `AUDIO_MODE_CONFLICT` | PCM 녹음이 아닌 대상에 조각 API 사용, 또는 PCM 녹음에 기존 최종 파일 업로드 사용 |
+| 409 | `AUDIO_SAVE_RETRY_NOT_ALLOWED` | READY·폐기·영구 실패·보관 기한 경과 등 재접수 불가 |
 | 409 | `AUDIO_SEQUENCE_GAP` | 다음 예약 번호보다 큰 번호. 최상위 `expectedNextSequence`로 다음 번호를 제공 |
 | 409 | `AUDIO_CHUNK_CONFLICT` | 기존 descriptor 변경 또는 다음 offset 불일치 |
 | 409 | `AUDIO_CHUNK_NOT_STORED` | HEAD에서 저장 객체 없음 |
@@ -174,17 +177,36 @@ DISCARDED에서 `DISCARDED`다. `tailUnknown`은 ENDED에서만 true다.
 | 500 | `AUDIO_STORAGE_UNAVAILABLE` | 서명·저장소 요청 실패. 저장 성공 여부를 단정하지 않는다. |
 
 응답을 잃으면 같은 descriptor로 예약하거나 같은 sequence로 완료를 다시 요청한다.
-별도 audio-save retry endpoint는 구현하지 않았다. 오류 시 새 번호를 만들거나 checksum을 바꿔 우회하지 않는다.
+오류 시 새 번호를 만들거나 checksum을 바꿔 우회하지 않는다.
 
-## 종료와 후속 구현 경계
+`POST /api/v1/workspaces/{workspaceId}/recordings/{recordingId}/audio-save/retry`는 빈 본문으로 요청한다.
+현재 소유자·Workspace 소속·CSRF를 검사하고, 새 재접수는 202, 이미 같은 job이 대기·실행 중이면 200과 audio-save 상태를 반환한다.
+READY·DISCARDED·무결성 충돌·내용 없음·보관 기한 경과에는 409 `AUDIO_SAVE_RETRY_NOT_ALLOWED`를 반환한다.
+기존 manifest·종료 descriptor·PUT 허용 시한은 재시도로 바뀌지 않는다.
+`AUDIO_STORAGE_ACCESS_DENIED`는 저장소 접근 거절, `AUDIO_NO_CONTENT`는 검증된 음성 없음으로 재시도할 수 없다.
 
-#764에서는 RECORDING·PAUSED에서 새 예약·URL 재발급·미검증 조각 완료를 허용한다.
-ENDED 뒤에는 이 변경을 `RECORDING_ALREADY_ENDED`로 막는다.
-종료 뒤에도 기존 VERIFIED 조각의 동일 예약·완료 재확인은 허용하며 폐기 뒤 변경 요청은 거절한다.
+## 종료·최종화·문서 원본 품질
 
-종료 요청의 마지막 조각 봉인과 저장 유예는 [#765](https://github.com/woowacourse-teams/2026-Knot/issues/765)의 범위다.
-`DRAINING` 응답만으로 현재 종료 뒤 새 저장을 할 수 있다고 해석하지 않는다.
-서버 WAV 최종화·READY·품질 확정·전사 접수는 [#767](https://github.com/woowacourse-teams/2026-Knot/issues/767)에서 연결한다.
-현재 조각 API만으로 출시 전체 녹음 흐름이 완성되지는 않는다.
+종료 요청·마지막 descriptor·유예의 정본은 [녹음 종료 API](recording-end.md)다. seal 이후에는 이미 정한 descriptor만
+acceptUntil 안에 업로드·확인할 수 있다. 동일 VERIFIED 재확인은 멱등이며, freeze 이후 새 VERIFIED나 descriptor 확장은 불가하다.
 
-FE에 전달된 기존 ZIP은 갱신하지 않았으며, 이 구현 계약과 후속 종료 계약을 반영한 전달본이 필요하다.
+NORMAL seal은 전부 VERIFIED이면 즉시 최종화한다. REMOTE/TIMEOUT/LIMIT은 acceptUntil까지 기다린다.
+누락을 고정하려면 acceptUntil 이후 시작한 서버 HEAD 확인이 필요하다. 이전 HEAD 404보다 DB에 commit된 ACK를 우선한다.
+정확한 객체 version을 순서대로 합치고 알려진 누락 frames만 무음으로 채운다. 손상된 조각을 무음으로 바꾸지 않는다.
+최종 WAV 채택과 전사 QUEUED 등록은 같은 DB 트랜잭션이며, 전사·문서 생성은 별도 상태로 진행한다.
+
+녹음 상세·문서 상세의 `sourceAudio`는 다음 형태이며 legacy 원본은 null이다.
+
+```json
+{
+  "quality": "PARTIAL",
+  "missingRanges": [{ "start": 80000, "endExclusive": 160000 }],
+  "tailUnknown": false
+}
+```
+
+품질 경고는 원본 녹음의 고정 manifest에서 읽으며 문서마다 DB에 복제하지 않는다. 오디오 보관이 끝나도 이미 채택한 원본의 누락 경고를 유지한다.
+
+최종화 워커는 `recording.audio-finalization.enabled=false`가 기본값이다. 선행 기능·AI WAV 호환과 배포 환경을 검증한 뒤 별도로 활성화한다.
+구현·검증 범위는 [#767 검증 기록](../verification/767-recording-audio-finalization.md)을 따른다.
+FE에 먼저 전달한 ZIP은 자동 갱신하지 않았으므로 최신 인계에는 이 문서와 종료 API를 함께 사용한다.

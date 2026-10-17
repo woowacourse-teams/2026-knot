@@ -59,6 +59,7 @@ class RecordingAudioChunkServiceTest {
                         NOW,
                         ZoneOffset.UTC
                 ),
+                org.mockito.Mockito.mock(com.knot.backend.recording.application.RecordingAudioFinalizationQuery.class),
                 Duration.ofMinutes(15)
         );
     }

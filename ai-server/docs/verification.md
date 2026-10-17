@@ -1,5 +1,17 @@
 # 검증 안내
 
+## 2026-10-17 WAV 다운로드 호환 — Issue #767 사전 검증
+
+녹음 조각을 합친 최종 음원을 받을 수 있도록 `audio/wav`를 추가했습니다. 다운로드한 WAV에 기존 PCM 검사기를 적용하고 RIFF 길이·전체 chunk 경계·중복 fmt/data를 검사합니다. 파일 크기 조회 전·헤더 조회 전·각 chunk·결과 반환 전에 다운로드의 취소와 마감 검사를 실행합니다. 작은 WAV와 제어된 checkpoint로 순회 중 취소·마감, 파일 조회 전 취소를 검증하며 실제 시간 경과에 의존하지 않습니다. WAV 입력은 PCM16LE mono 16kHz, 양수 길이, 최대 2시간입니다. 기존 WebM의 변환·상한 절단 경로는 유지합니다.
+
+- `./gradlew spotlessApply test --tests '*S3AudioDownloaderTest' --tests '*HeadlessTranscriptionEngineTest'`: 성공
+- `./gradlew spotlessApply test spotlessCheck bootJar`: Java 119개 통과, 실제 모델 opt-in 1개 생략
+- `pnpm --dir runner install --offline --frozen-lockfile`, `pnpm --dir runner typecheck`, `pnpm --dir runner test`: 성공, Node 12개·Python 5개 통과
+- 정상 WAV 3종(기본 헤더·data 앞/뒤 추가 chunk와 홀수 padding), 잘못된 WAV 11종(MIME 위장·잘림·RIFF 길이·다른 PCM 형식·chunk 경계)을 검증했습니다. 다운로드 URL 제한·크기·시간 제한과 기존 WebM 테스트도 통과했습니다.
+- 원문 hash 검사와 수정 Java 작성 규칙 검사는 통과했습니다. 공통 감사는 DB 없는 AI 모듈에 해당하지 않는 기존 STACK 진단 4개를 반환합니다. 전체 소스 감사에는 이번 변경 밖 `TranscriptionJobControllerTest`의 기존 GWT 진단 4개도 남아 있습니다.
+
+이 검증은 #767의 WAV 입력 호환 부분만 다룹니다. 실제 Chrome·S3·모델 경로, 백엔드 최종화·대기열·문서 생성과 운영 배포는 별도 검증 대상입니다. jar는 `build/libs/knot-ai-server-0.0.1-SNAPSHOT.jar`입니다.
+
 ## 2026-10-16 앞 2시간 전사 — Issue #723
 
 자동 종료 응답 지연으로 파일이 2시간을 넘더라도 전사할 수 있도록, FFmpeg 출력에 `-t 7200`을 적용했습니다. PCM 검증과 출력 바이트 제한은 유지합니다.

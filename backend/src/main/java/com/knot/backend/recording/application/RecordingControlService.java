@@ -45,6 +45,7 @@ public class RecordingControlService {
     private final RecordingAudioSealing audioSealing;
     private final RecordingAudioStreamRepository streams;
     private final RecordingAudioChunkRepository chunks;
+    private final com.knot.backend.recording.domain.repository.RecordingAudioFinalizationRepository finalizations;
 
     @Transactional(noRollbackFor = RecordingException.class)
     public RecordingPauseResult pause(
@@ -146,7 +147,9 @@ public class RecordingControlService {
                 session.getStatus(),
                 session.getEndedAt(),
                 new RecordingAudioSealSummary(
-                        "DRAINING",
+                        finalizations.findByRecordingId(recordingId)
+                                .map(job -> job.audioSaveStatus())
+                                .orElse("DRAINING"),
                         stream.getLastSequence(),
                         stream.getTotalFrameCount(),
                         stream.isTailUnknown(),

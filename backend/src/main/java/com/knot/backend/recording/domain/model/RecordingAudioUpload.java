@@ -97,6 +97,32 @@ public class RecordingAudioUpload {
         );
     }
 
+    public static RecordingAudioUpload adoptServerWav(
+            RecordingSession session,
+            String storageKey,
+            StoredAudioChunk stored,
+            Instant now
+    ) {
+        if (session.getAudioMode() != RecordingAudioMode.PCM16_CHUNKS_V1 || session.getStatus() != RecordingStatus.ENDED
+                || storageKey == null || storageKey.isBlank() || !stored.exists()
+                || !"audio/wav".equals(stored.contentType()) || stored.byteLength() < 44
+                || stored.byteLength() > 230400044L || stored.versionId() == null || stored.versionId()
+                        .isBlank()
+                || "null".equals(stored.versionId()) || now == null || now.isBefore(session.getEndedAt())) {
+            throw new RecordingException(RecordingErrorCode.AUDIO_CHUNK_MISMATCH);
+        }
+        RecordingAudioUpload upload = new RecordingAudioUpload();
+        upload.recordingId = session.getId();
+        upload.storageKey = storageKey;
+        upload.contentType = "audio/wav";
+        upload.contentLength = stored.byteLength();
+        upload.reservedAt = now;
+        upload.completedAt = now;
+        upload.storageVersionId = stored.versionId();
+        upload.status = RecordingAudioUploadStatus.COMPLETED;
+        return upload;
+    }
+
     public void validateReissuable(
             String contentType,
             long contentLength

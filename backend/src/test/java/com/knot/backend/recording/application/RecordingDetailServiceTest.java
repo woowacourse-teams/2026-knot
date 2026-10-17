@@ -67,7 +67,8 @@ class RecordingDetailServiceTest {
                 Clock.fixed(
                         NOW,
                         ZoneOffset.UTC
-                )
+                ),
+                org.mockito.Mockito.mock(com.knot.backend.recording.application.RecordingAudioFinalizationQuery.class)
         );
     }
 

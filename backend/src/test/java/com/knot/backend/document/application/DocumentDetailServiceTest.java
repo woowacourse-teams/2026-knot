@@ -34,7 +34,8 @@ class DocumentDetailServiceTest {
     void setUp() {
         service = new DocumentDetailService(
                 workspaceMembers,
-                query
+                query,
+                org.mockito.Mockito.mock(com.knot.backend.recording.application.RecordingAudioFinalizationQuery.class)
         );
     }
 

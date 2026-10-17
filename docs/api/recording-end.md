@@ -1,70 +1,94 @@
 # 녹음 종료 API
 
-이 문서는 [Issue #530](https://github.com/woowacourse-teams/2026-Knot/issues/530)의 구현 계약이다.
-[Issue #381](https://github.com/woowacourse-teams/2026-Knot/issues/381)에서는 녹음 시작자라면 어느 탭에서든 종료할 수 있었다.
-2026-10-08 녹음 담당자의 결정에 따라 이제는 녹음을 시작한 최초 탭만 종료할 수 있다.
-팀 Notion에 반영하거나 승인받은 문서는 아니다.
-
-## 요청
+[#765 종료 seal](https://github.com/woowacourse-teams/2026-Knot/issues/765)과 [#767 최종화](https://github.com/woowacourse-teams/2026-Knot/issues/767)를 반영한 현재 계약이다.
+과거 #530의 최초 탭 전용 종료와 본문 없음 400 규칙은 아래 원격 종료 계약으로 확장했다.
 
 `POST /api/v1/workspaces/{workspaceId}/recordings/{recordingId}/end`
 
-인증 쿠키와 `X-XSRF-TOKEN`을 함께 보낸다. 요청자는 현재 Workspace의 멤버이면서 녹음 시작자여야 한다.
-본문에는 녹음 시작 때 보낸 탭 ID와 제어 증명을 그대로 담는다. 일시정지·재개와 같은 형식이다.
+모든 요청은 인증 쿠키·CSRF와 현재 Workspace 소속·녹음 소유자를 확인한다. 종료는 캡처만 끝내며 최종 WAV·전사·문서 생성 완료와 구분한다.
+
+## 정상 PCM flush
+
+최초 탭이 수집을 멈추고 마지막 조각을 flush한 뒤 `tabId`, `controlToken`, `audioSeal`을 보낸다.
+예시는 이미 예약한 1번 80,000 frames 뒤에 1,600 frames 무음 tail을 추가한다. 증명은 형식 예시이며 실제 시작 증명을 사용해야 한다.
 
 ```json
 {
   "tabId": "0f8fad5b-d9cb-469f-a165-70867728950e",
-  "controlToken": "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefA"
+  "controlToken": "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefA",
+  "audioSeal": {
+    "lastSequence": 2,
+    "totalFrameCount": 81600,
+    "pendingDescriptors": [{
+      "sequence": 2,
+      "sampleOffset": 80000,
+      "frameCount": 1600,
+      "byteLength": 3200,
+      "checksumSha256": "WjEigd9L2N+7TUqUrQv0TQG7jPztEga5DiG0ygVozbE="
+    }]
+  }
 }
 ```
 
-| 필드 | 형식 | 설명 |
-| --- | --- | --- |
-| `tabId` | UUID, 필수 | 녹음을 시작한 최초 탭의 ID |
-| `controlToken` | 패딩 없는 Base64URL 43자, 필수 | 녹음 시작 때 보낸 제어 증명 |
+- descriptor 형식은 [조각 예약 API](recording-audio-chunks.md)와 같다. 번호·offset이 연속이어야 하며 이미 예약한 descriptor와 충돌할 수 없다.
+- tail 예약·최종 번호/총 frames 검증·ENDED·NORMAL seal을 한 트랜잭션에서 확정한다. 잘못된 seal은 tail 예약까지 rollback한다.
+- 음성이 없으면 `lastSequence=0`, `totalFrameCount=0`, `pendingDescriptors=[]`다. 일시정지 시간은 frames에 더하지 않는다.
+- 같은 seal을 재전송하면 처음 확정한 시각·범위를 반환한다. 원격·timeout·상한 종료 뒤 NORMAL seal을 덧붙이거나 기존 범위를 바꿀 수 없다.
+- heartbeat 만료가 먼저 발생하면 그 논리적 종료와 seal을 저장하고 정상 flush 요청을 거절한다. 요청 시각으로 종료 시한을 늘리지 않는다.
 
-## 성공 응답 `200 OK`
+## 원격 종료와 기존 WebM
+
+본문 없이 요청하면 현재 소속의 녹음 소유자가 다른 탭에서도 종료할 수 있다. PCM은 이미 예약한 descriptor까지만 REMOTE seal로 고정하고 `tailUnknown=true`로 표시한다.
+
+본문에 `tabId`·`controlToken`만 보내는 기존 호출도 유지한다. 본문을 보냈다면 두 증명 필드는 필수이며 잘못된 증명을 생략한 요청으로 처리하지 않는다. 잘못된 최초 탭 증명은 403이다.
+
+WebM에는 PCM `audioSeal`을 보낼 수 없다. 기존 최종 WebM 업로드는 종료 뒤 [업로드 URL 발급 API](recording-audio-upload-url.md)로 이어진다.
+
+## 성공 응답 200
 
 ```json
 {
   "recordingId": 10,
   "status": "ENDED",
-  "endedAt": "2026-10-08T10:15:00Z"
+  "endedAt": "2026-10-18T10:00:00Z",
+  "audioSave": {
+    "audioSaveStatus": "DRAINING",
+    "expectedLastSequence": 2,
+    "totalFrameCount": 81600,
+    "tailUnknown": false,
+    "acceptUntil": "2026-10-18T10:02:00Z"
+  }
 }
 ```
 
-- 종료는 업로드 완료나 STT 접수를 뜻하지 않는다. 이어서 [업로드 URL 발급 API](recording-audio-upload-url.md)를 호출한다.
-- 이미 종료된 녹음을 같은 최초 탭 증명으로 다시 종료하면 `200`과 처음 기록한 `endedAt`을 돌려준다.
-  응답을 받지 못했다면 같은 요청을 다시 보내도 안전하다.
-- 반복 종료에서도 증명을 먼저 확인한다. 다른 탭이 보낸 재요청은 이미 종료된 녹음이어도 `403`이고 종료 결과를 돌려주지 않는다.
-- 마지막 유효 신호부터 30초가 지난 녹음은 요청 시각이 아니라 `lastSeenAt + 30초`로 종료한다(연결 만료). 규칙은 [생존 신호 API](recording-heartbeat.md)에 있다.
+`audioSave`는 PCM에만 포함한다. 반복 종료에서도 `endedAt`·seal·acceptUntil은 바뀌지 않는다.
+이미 최종화된 녹음의 반복 종료는 현재 job의 FINALIZING/READY/FAILED/DISCARDED 상태를 반영한다.
 
-## 오류
+## 종료 후 저장 확인과 최종화
+
+`acceptUntil = endedAt + 120초`다. worker가 만료를 늦게 감지해도 논리적 종료 시각을 사용한다.
+NORMAL만 마지막 길이를 알며, REMOTE/TIMEOUT/LIMIT은 `tailUnknown=true`다.
+
+seal 이후에는 이미 정한 descriptor의 동일 URL 갱신·저장 확인만 `now < acceptUntil`에서 허용한다.
+URL 만료도 acceptUntil을 넘지 않는다. 서버는 HEAD 뒤 commit 직전에 시한·권한·freeze를 다시 확인한다.
+이미 VERIFIED인 조각의 동일 예약·완료 재확인은 cutoff 뒤에도 권한을 확인하고 같은 결과를 반환한다.
+freeze 이후 새 descriptor나 새로운 VERIFIED를 추가할 수 없다.
+
+NORMAL은 모든 조각이 검증되면 즉시 최종화하고 나머지 종료 종류는 acceptUntil까지 기다린다.
+누락 확정에는 acceptUntil 이후 시작한 서버 저장소 재확인이 필요하다. 최종 결과·품질·재시도는
+[GET audio-save와 저장 재시도](recording-audio-chunks.md#오류와-재시도)로 조회한다.
+내용이 없으면 `AUDIO_NO_CONTENT`로 실패하며 전사·문서를 만들지 않는다.
+
+## 주요 오류
 
 | 상태 | code | 의미 |
 | --- | --- | --- |
-| 400 | `VALIDATION_ERROR` | `tabId`·`controlToken` 누락 또는 형식 오류 |
-| 400 | `INVALID_REQUEST_BODY` | 본문 없음 또는 JSON 형식 오류 |
-| 400 | `INVALID_WORKSPACE_ID`·`INVALID_RECORDING_DATA`·`INVALID_PARAMETER` | 잘못된 ID |
-| 401 | `UNAUTHENTICATED` | 로그인 필요 |
-| 403 | `WORKSPACE_ACCESS_DENIED` | Workspace 멤버가 아님(탈퇴 포함) |
-| 403 | `RECORDING_CONTROL_DENIED` | 녹음 시작자가 아니거나, 시작자라도 최초 탭의 탭 ID·제어 증명이 아님 |
-| 403 | `FORBIDDEN` | CSRF 검증 실패 |
-| 404 | `WORKSPACE_NOT_FOUND`·`RECORDING_NOT_FOUND` | 없거나 다른 Workspace의 녹음 |
-| 409 | `RECORDING_ALREADY_DISCARDED` | 탈퇴·삭제로 폐기된 녹음 |
-
-다른 탭에서 받은 `403 RECORDING_CONTROL_DENIED`는 다시 보내도 결과가 바뀌지 않는다.
-
-## FE 전환
-
-- 본문 없는 기존 종료 호출과 호환되는 경로는 두지 않는다. 이 변경이 배포되면 본문 없는 호출은 `400 INVALID_REQUEST_BODY`가 된다.
-- 이 변경을 먼저 배포한다(2026-10-09 결정). FE가 종료 호출에 증명을 붙여 배포할 때까지 개발 서버의 종료는 `400`으로 실패한다.
-  백엔드 배포는 개발 서버뿐이므로 이 공백은 개발 서버에서 녹음을 시험하는 팀원에게만 영향을 준다.
-- FE는 일시정지와 같이 `getRecordingControlProof()`의 값을 종료 요청 본문에 담는다.
-
-## 이번 범위 밖
-
-- heartbeat, 연결 만료와 2시간 상한에 따른 서버 자동 종료(#384·#385)
-- 브라우저 마이크 수집 중지와 오디오 보존
-- 같은 브라우저의 물리 탭을 서버가 직접 식별하는 일. 서버는 탭 ID와 제어 증명이 일치하는지만 확인한다
+| 400 | `VALIDATION_ERROR`, `INVALID_REQUEST_BODY` | 제공한 본문의 증명·JSON 형식 오류 |
+| 400 | `INVALID_AUDIO_SEAL`, `INVALID_AUDIO_CHUNK` | 마지막 번호·frames·descriptor 형식 오류 |
+| 401 | `UNAUTHENTICATED` | 인증 필요 |
+| 403 | `FORBIDDEN`, `WORKSPACE_ACCESS_DENIED`, `RECORDING_CONTROL_DENIED` | CSRF·현재 소속·소유자·제공한 탭 증명 불일치 |
+| 404 | `WORKSPACE_NOT_FOUND`, `RECORDING_NOT_FOUND` | 대상 없음 |
+| 409 | `AUDIO_MODE_CONFLICT` | WebM에 PCM seal 제공 |
+| 409 | `AUDIO_SEAL_CONFLICT` | 이미 확정한 범위·descriptor와 충돌 |
+| 409 | `AUDIO_ACCEPTANCE_CLOSED`, `AUDIO_SAVE_FROZEN` | 저장 확인 시한 또는 최종 범위 확정 |
+| 409 | `RECORDING_ALREADY_DISCARDED`, `RECORDING_ALREADY_ENDED` | 폐기 또는 정상 flush 이전 논리적 종료 |

@@ -7,6 +7,7 @@ import com.knot.backend.document.domain.model.DocumentStatus;
 import com.knot.backend.document.domain.model.MyConfirmationState;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.time.Instant;
+import com.knot.backend.recording.presentation.dto.response.RecordingSourceAudioResponse;
 
 public record DocumentDetailResponse(
         @Schema(description = "Document ID", requiredMode = REQUIRED) long id,
@@ -21,7 +22,8 @@ public record DocumentDetailResponse(
         @Schema(description = "일시정지를 제외한 서버 누적 녹음 길이. 소수 초는 버림", requiredMode = REQUIRED) int recordingDurationSeconds,
         @Schema(description = "문서를 만든 Transcript ID", requiredMode = REQUIRED) long sourceTranscriptId,
         @Schema(description = "PENDING=대상 미확인, CONFIRMED=확인 완료, NOT_REQUIRED=비대상", requiredMode = REQUIRED) MyConfirmationState myConfirmationState,
-        @Schema(description = "확인 대상 집계", requiredMode = REQUIRED) DocumentConfirmationSummaryResponse confirmationSummary
+        @Schema(description = "확인 대상 집계", requiredMode = REQUIRED) DocumentConfirmationSummaryResponse confirmationSummary,
+        @Schema(description = "원본 오디오 품질·누락. 기존 녹음은 null", nullable = true) RecordingSourceAudioResponse sourceAudio
 ) {
     public static DocumentDetailResponse from(DocumentDetailResult result) {
         return new DocumentDetailResponse(
@@ -37,7 +39,8 @@ public record DocumentDetailResponse(
                 result.recordingDurationSeconds(),
                 result.sourceTranscriptId(),
                 result.myConfirmationState(),
-                DocumentConfirmationSummaryResponse.from(result.confirmationSummary())
+                DocumentConfirmationSummaryResponse.from(result.confirmationSummary()),
+                RecordingSourceAudioResponse.from(result.sourceAudio())
         );
     }
 }

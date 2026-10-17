@@ -20,7 +20,8 @@ public record RecordingDetailResponse(
         @Schema(description = "전사 실패 코드. 실패가 아니면 null", nullable = true) String transcriptionFailureCode,
 
         @Schema(description = "문서 생성 결과. 접수 전 null", types = {
-                "object", "null"}) RecordingDocumentGenerationResponse documentGeneration
+                "object", "null"}) RecordingDocumentGenerationResponse documentGeneration,
+        @Schema(description = "원본 오디오 품질·누락. 기존 녹음은 null", nullable = true) RecordingSourceAudioResponse sourceAudio
 ) {
 
     public static RecordingDetailResponse from(RecordingDetailResult result) {
@@ -35,7 +36,8 @@ public record RecordingDetailResponse(
                 result.transcriptionFailureCode(),
                 result.documentGeneration() == null
                         ? null
-                        : RecordingDocumentGenerationResponse.from(result.documentGeneration())
+                        : RecordingDocumentGenerationResponse.from(result.documentGeneration()),
+                RecordingSourceAudioResponse.from(result.sourceAudio())
         );
     }
 }

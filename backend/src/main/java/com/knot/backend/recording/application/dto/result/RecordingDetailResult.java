@@ -19,8 +19,26 @@ public record RecordingDetailResult(
         UUID transcriptionAttemptId,
         TranscriptionStatus transcriptionStatus,
         String transcriptionFailureCode,
-        DocumentGenerationSummaryResult documentGeneration
+        DocumentGenerationSummaryResult documentGeneration,
+        com.knot.backend.recording.application.dto.result.RecordingSourceAudioQuality sourceAudio
 ) {
+
+    public RecordingDetailResult withSourceAudio(
+            com.knot.backend.recording.application.dto.result.RecordingSourceAudioQuality source
+    ) {
+        return new RecordingDetailResult(
+                status,
+                elapsedMillis,
+                endedAt,
+                endReason,
+                audioUploadStatus,
+                transcriptionAttemptId,
+                transcriptionStatus,
+                transcriptionFailureCode,
+                documentGeneration,
+                source
+        );
+    }
 
     public static RecordingDetailResult of(
             RecordingDetailSnapshot snapshot,
@@ -40,7 +58,8 @@ public record RecordingDetailResult(
                 transcription == null ? null : transcription.attemptId(),
                 transcription == null ? null : transcription.status(),
                 transcription == null ? null : transcription.failureCode(),
-                documentGeneration
+                documentGeneration,
+                null
         );
     }
 
