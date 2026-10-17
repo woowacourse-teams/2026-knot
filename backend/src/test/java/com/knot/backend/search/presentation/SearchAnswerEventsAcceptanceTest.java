@@ -11,6 +11,7 @@ import com.knot.backend.auth.domain.AuthTokenProvider;
 import com.knot.backend.auth.domain.model.AuthenticatedMember;
 import com.knot.backend.document.DocumentFixtures;
 import com.knot.backend.global.config.JwtProperties;
+import com.knot.backend.global.config.SearchWorkerProperties;
 import com.knot.backend.search.SearchMessageFixtures;
 import com.knot.backend.search.application.SearchAnswerExecutionService;
 import com.knot.backend.search.application.SearchAnswerGenerator;
@@ -74,12 +75,14 @@ import tools.jackson.databind.json.JsonMapper;
 @Tag("acceptance")
 @ActiveProfiles("dev")
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = {
-        "knot.search.worker.stream-timeout=2s", "knot.search.worker.stream-heartbeat-interval=50ms",
+        "knot.search.worker.stream-timeout=1s", "knot.search.worker.stream-heartbeat-interval=50ms",
         "knot.search.worker.stream-concurrency=2"})
 @Import({TestcontainersConfiguration.class, SearchAnswerEventsAcceptanceTest.RequestObserverConfiguration.class})
 @TestApplicationProperties
 @Timeout(30)
 class SearchAnswerEventsAcceptanceTest {
+    private static final Duration STREAM_COMPLETION_WAIT = Duration.ofSeconds(5);
+    private static final Duration STREAM_EXECUTOR_POLL_INTERVAL = Duration.ofMillis(10);
 
     @LocalServerPort
     private int port;
@@ -89,6 +92,8 @@ class SearchAnswerEventsAcceptanceTest {
     private AuthTokenProvider tokens;
     @Autowired
     private JwtProperties jwt;
+    @Autowired
+    private SearchWorkerProperties searchWorkerProperties;
     @Autowired
     private JsonMapper json;
     @Autowired
@@ -456,6 +461,7 @@ class SearchAnswerEventsAcceptanceTest {
     @ExtendWith(OutputCaptureExtension.class)
     void reconnect_success_timeoutCleanup(CapturedOutput output) throws Exception {
         for (int attempt = 0; attempt < 3; attempt++) {
+            long startedAt = System.nanoTime();
             try (BufferedReader reader = reader(
                     connect(
                             cookie,
@@ -471,7 +477,10 @@ class SearchAnswerEventsAcceptanceTest {
                         )
                 ).contains(":keepalive")
                         .doesNotContain("event:failed");
+                assertThat(Duration.ofNanos(System.nanoTime() - startedAt))
+                        .isGreaterThanOrEqualTo(searchWorkerProperties.getStreamTimeout());
             }
+            awaitStreamExecutorIdle();
         }
         assertThat(
                 jdbc.sql("SELECT status FROM search_messages WHERE id=:id")
@@ -483,6 +492,24 @@ class SearchAnswerEventsAcceptanceTest {
                         .single()
         ).isEqualTo("STREAMING");
         assertThat(output.getAll()).doesNotContain("AsyncRequestTimeoutException");
+    }
+
+    private void awaitStreamExecutorIdle() throws InterruptedException {
+        long deadline = System.nanoTime() + STREAM_COMPLETION_WAIT.toNanos();
+        while (!isStreamExecutorIdle() && System.nanoTime() < deadline) {
+            TimeUnit.MILLISECONDS.sleep(STREAM_EXECUTOR_POLL_INTERVAL.toMillis());
+        }
+        assertThat(streamExecutor.getActiveCount()).isZero();
+        assertThat(
+                streamExecutor.getThreadPoolExecutor()
+                        .getQueue()
+        ).isEmpty();
+    }
+
+    private boolean isStreamExecutorIdle() {
+        return streamExecutor.getActiveCount() == 0 && streamExecutor.getThreadPoolExecutor()
+                .getQueue()
+                .isEmpty();
     }
 
     private String failureCode(String status) {

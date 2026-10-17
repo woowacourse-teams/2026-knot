@@ -11,7 +11,11 @@ import com.knot.backend.document.application.dto.query.DocumentListParameters;
 import com.knot.backend.document.application.dto.result.DocumentCardResult;
 import com.knot.backend.document.application.dto.result.DocumentListResult;
 import com.knot.backend.document.domain.model.MyConfirmationState;
+import com.knot.backend.document.infrastructure.persistence.DocumentConfirmationQueryAdapter;
 import com.knot.backend.document.infrastructure.persistence.DocumentListQueryAdapter;
+import com.knot.backend.recording.infrastructure.persistence.TranscriptSegmentRepositoryAdapter;
+import com.knot.backend.search.infrastructure.persistence.SearchConversationListQueryAdapter;
+import com.knot.backend.search.infrastructure.persistence.SearchMessageListQueryAdapter;
 import com.knot.backend.testsupport.TestApplicationProperties;
 import com.knot.backend.testsupport.TestcontainersConfiguration;
 import java.sql.Timestamp;
@@ -36,6 +40,9 @@ import org.springframework.transaction.support.TransactionTemplate;
 @SpringBootTest
 @Import(TestcontainersConfiguration.class)
 @TestApplicationProperties
+@MockitoSpyBean(types = {DocumentListQueryAdapter.class, DocumentConfirmationQueryAdapter.class,
+        TranscriptSegmentRepositoryAdapter.class, SearchConversationListQueryAdapter.class,
+        SearchMessageListQueryAdapter.class})
 class DocumentListSnapshotIntegrationTest {
     @Autowired
     private DocumentListService service;
@@ -43,7 +50,7 @@ class DocumentListSnapshotIntegrationTest {
     private JdbcClient jdbc;
     @Autowired
     private PlatformTransactionManager transactions;
-    @MockitoSpyBean
+    @Autowired
     private DocumentListQueryAdapter query;
     private DocumentFixtures fixtures;
     private long workspaceId;

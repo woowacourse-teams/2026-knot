@@ -8,7 +8,8 @@ import com.knot.backend.document.application.dto.result.DocumentTranscriptSnapsh
 import com.knot.backend.recording.domain.model.TranscriptSegment;
 import com.knot.backend.recording.domain.repository.TranscriptSegmentRepository;
 import com.knot.backend.recording.infrastructure.persistence.TranscriptSegmentRepositoryAdapter;
-import com.knot.backend.testsupport.TestcontainersConfiguration;
+import com.knot.backend.testsupport.SharedPostgresDocumentTranscriptTestSupport;
+import com.knot.backend.testsupport.SharedPostgresTestConfiguration;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -21,9 +22,9 @@ import org.springframework.jdbc.core.simple.JdbcClient;
 
 @Tag("integration")
 @DataJpaTest
-@Import({TestcontainersConfiguration.class, DocumentTranscriptQueryAdapter.class,
+@Import({SharedPostgresTestConfiguration.class, DocumentTranscriptQueryAdapter.class,
         TranscriptSegmentRepositoryAdapter.class})
-class DocumentTranscriptQueryIntegrationTest {
+class DocumentTranscriptQueryIntegrationTest extends SharedPostgresDocumentTranscriptTestSupport {
 
     @Autowired
     private DocumentTranscriptQuery query;

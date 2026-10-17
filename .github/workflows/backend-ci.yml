@@ -12,12 +12,58 @@ permissions:
   contents: read
 
 jobs:
-  verify:
+  integration:
     runs-on: ubuntu-latest
 
     defaults:
       run:
         working-directory: backend
+
+    outputs:
+      integration_tests: ${{ steps.integration-tests.outcome }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "25"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Grant execute permission
+        run: chmod +x gradlew
+
+      - name: Run integration tests
+        id: integration-tests
+        run: ./gradlew integrationTest
+
+      - name: Preserve test reports
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-test-reports-integration-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            backend/build/test-results/
+            backend/build/reports/tests/
+          if-no-files-found: warn
+
+  remaining:
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: backend
+
+    outputs:
+      formatting: ${{ steps.formatting.outcome }}
+      unit_tests: ${{ steps.unit-tests.outcome }}
+      acceptance_tests: ${{ steps.acceptance-tests.outcome }}
+      build: ${{ steps.build.outcome }}
 
     steps:
       - name: Checkout
@@ -43,10 +89,6 @@ jobs:
         id: unit-tests
         run: ./gradlew test
 
-      - name: Run integration tests
-        id: integration-tests
-        run: ./gradlew integrationTest
-
       - name: Run acceptance tests
         id: acceptance-tests
         run: ./gradlew acceptanceTest
@@ -55,17 +97,54 @@ jobs:
         id: build
         run: ./gradlew bootJar
 
+      - name: Preserve test reports
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-test-reports-remaining-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            backend/build/test-results/
+            backend/build/reports/tests/
+          if-no-files-found: warn
+
+  verify:
+    needs:
+      - integration
+      - remaining
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - name: Checkout
+        id: checkout
+        uses: actions/checkout@v6
+
+      - name: Verify required jobs
+        if: ${{ always() }}
+        env:
+          INTEGRATION_RESULT: ${{ needs.integration.result }}
+          REMAINING_RESULT: ${{ needs.remaining.result }}
+        run: |
+          if [ "$INTEGRATION_RESULT" != "success" ] || [ "$REMAINING_RESULT" != "success" ]; then
+            echo "Required validation jobs did not both succeed (integration=$INTEGRATION_RESULT, remaining=$REMAINING_RESULT)."
+            exit 1
+          fi
+
       - name: Notify Discord on failure
-        if: ${{ failure() }}
+        if: ${{ failure() && (needs.integration.result == 'failure' || needs.remaining.result == 'failure' || steps.checkout.outcome == 'failure') }}
         working-directory: .
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_BACKEND_CI_WEBHOOK_URL }}
 
-          FORMATTING: ${{ steps.formatting.outcome }}
-          UNIT_TESTS: ${{ steps.unit-tests.outcome }}
-          INTEGRATION_TESTS: ${{ steps.integration-tests.outcome }}
-          ACCEPTANCE_TESTS: ${{ steps.acceptance-tests.outcome }}
-          BUILD: ${{ steps.build.outcome }}
+          FORMATTING: ${{ needs.remaining.outputs.formatting }}
+          UNIT_TESTS: ${{ needs.remaining.outputs.unit_tests }}
+          INTEGRATION_TESTS: ${{ needs.integration.outputs.integration_tests }}
+          ACCEPTANCE_TESTS: ${{ needs.remaining.outputs.acceptance_tests }}
+          BUILD: ${{ needs.remaining.outputs.build }}
 
           EVENT_NAME: ${{ github.event_name }}
           ACTOR: ${{ github.actor }}

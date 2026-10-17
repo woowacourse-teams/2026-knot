@@ -8,7 +8,8 @@ import com.knot.backend.auth.domain.model.AuthSession;
 import com.knot.backend.auth.domain.repository.AuthSessionRepository;
 import com.knot.backend.member.domain.Member;
 import com.knot.backend.testsupport.TestApplicationProperties;
-import com.knot.backend.testsupport.TestcontainersConfiguration;
+import com.knot.backend.testsupport.SharedPostgresAuthRepositoryTestSupport;
+import com.knot.backend.testsupport.SharedPostgresTestConfiguration;
 import jakarta.persistence.EntityManager;
 import java.time.Instant;
 import org.junit.jupiter.api.DisplayName;
@@ -23,10 +24,11 @@ import org.springframework.test.context.TestConstructor.AutowireMode;
 
 @Tag("integration")
 @DataJpaTest(properties = "spring.jpa.hibernate.ddl-auto=validate")
-@Import({AuthSessionRepositoryImpl.class, TestcontainersConfiguration.class})
+@Import({AuthSessionRepositoryImpl.class, ConsumedRefreshTokenRepositoryImpl.class,
+        SharedPostgresTestConfiguration.class})
 @TestApplicationProperties
 @TestConstructor(autowireMode = AutowireMode.ALL)
-class AuthSessionRepositoryTest {
+class AuthSessionRepositoryTest extends SharedPostgresAuthRepositoryTestSupport {
     private final AuthSessionRepository repository;
     private final EntityManager entityManager;
     private final JdbcTemplate jdbcTemplate;

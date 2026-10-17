@@ -6,9 +6,13 @@ import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.doAnswer;
 
 import com.knot.backend.document.DocumentFixtures;
+import com.knot.backend.document.infrastructure.persistence.DocumentConfirmationQueryAdapter;
+import com.knot.backend.document.infrastructure.persistence.DocumentListQueryAdapter;
+import com.knot.backend.recording.infrastructure.persistence.TranscriptSegmentRepositoryAdapter;
 import com.knot.backend.search.SearchFixtures;
 import com.knot.backend.search.application.dto.query.SearchConversationListParameters;
 import com.knot.backend.search.infrastructure.persistence.SearchConversationListQueryAdapter;
+import com.knot.backend.search.infrastructure.persistence.SearchMessageListQueryAdapter;
 import com.knot.backend.testsupport.TestApplicationProperties;
 import com.knot.backend.testsupport.TestcontainersConfiguration;
 import java.util.concurrent.Executors;
@@ -31,6 +35,9 @@ import org.springframework.transaction.support.TransactionTemplate;
 @SpringBootTest
 @Import(TestcontainersConfiguration.class)
 @TestApplicationProperties
+@MockitoSpyBean(types = {DocumentListQueryAdapter.class, DocumentConfirmationQueryAdapter.class,
+        TranscriptSegmentRepositoryAdapter.class, SearchConversationListQueryAdapter.class,
+        SearchMessageListQueryAdapter.class})
 class SearchConversationListSnapshotIntegrationTest {
 
     @Autowired
@@ -39,7 +46,7 @@ class SearchConversationListSnapshotIntegrationTest {
     private JdbcClient jdbc;
     @Autowired
     private PlatformTransactionManager transactions;
-    @MockitoSpyBean
+    @Autowired
     private SearchConversationListQueryAdapter query;
     private SearchFixtures fixtures;
     private long workspaceId;

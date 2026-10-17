@@ -6,8 +6,12 @@ import static org.mockito.Mockito.doCallRealMethod;
 
 import com.knot.backend.document.DocumentFixtures;
 import com.knot.backend.document.application.dto.result.DocumentTranscriptResult;
+import com.knot.backend.document.infrastructure.persistence.DocumentConfirmationQueryAdapter;
+import com.knot.backend.document.infrastructure.persistence.DocumentListQueryAdapter;
 import com.knot.backend.recording.domain.model.TranscriptSegment;
 import com.knot.backend.recording.infrastructure.persistence.TranscriptSegmentRepositoryAdapter;
+import com.knot.backend.search.infrastructure.persistence.SearchConversationListQueryAdapter;
+import com.knot.backend.search.infrastructure.persistence.SearchMessageListQueryAdapter;
 import com.knot.backend.testsupport.TestApplicationProperties;
 import com.knot.backend.testsupport.TestcontainersConfiguration;
 import java.util.List;
@@ -32,6 +36,9 @@ import org.springframework.transaction.support.TransactionTemplate;
 @SpringBootTest
 @Import(TestcontainersConfiguration.class)
 @TestApplicationProperties
+@MockitoSpyBean(types = {DocumentListQueryAdapter.class, DocumentConfirmationQueryAdapter.class,
+        TranscriptSegmentRepositoryAdapter.class, SearchConversationListQueryAdapter.class,
+        SearchMessageListQueryAdapter.class})
 class DocumentTranscriptSnapshotIntegrationTest {
 
     @Autowired
@@ -40,7 +47,7 @@ class DocumentTranscriptSnapshotIntegrationTest {
     private JdbcClient jdbc;
     @Autowired
     private PlatformTransactionManager transactions;
-    @MockitoSpyBean
+    @Autowired
     private TranscriptSegmentRepositoryAdapter segments;
     private long memberId;
     private long workspaceId;

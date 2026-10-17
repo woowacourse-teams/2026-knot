@@ -1,5 +1,10 @@
 version: 0.2
 
+env:
+  shell: bash
+  variables:
+    CI_GROUP: all
+
 phases:
   install:
     runtime-versions:
@@ -8,18 +13,52 @@ phases:
   pre_build:
     commands:
       - chmod +x backend/gradlew
+      - ./backend/gradlew -p backend clean
 
   build:
     commands:
-      - ./backend/gradlew -p backend clean build
-      - JAR_FILE=$(find backend/build/libs -maxdepth 1 -type f -name '*.jar' ! -name '*-plain.jar' | head -n 1)
-      - cp "$JAR_FILE" app.jar
-      - cp backend/appspec.yml appspec.yml
-      - cp -R backend/scripts scripts
+      - |
+        set -euo pipefail
+        test "$CODEBUILD_BUILD_SUCCEEDING" = 1
+        case "$CI_GROUP" in
+          all|integration|remaining) ;;
+          *) printf 'Unknown CI_GROUP: %s\n' "$CI_GROUP" >&2; exit 2 ;;
+        esac
+
+        ./backend/gradlew -p backend testClasses --build-cache
+
+        if [ "$CI_GROUP" = integration ]; then
+          ./backend/gradlew -p backend integrationTest --rerun --no-build-cache
+          exit 0
+        fi
+
+        ./backend/gradlew -p backend spotlessCheck --build-cache
+        ./backend/gradlew -p backend test --rerun --no-build-cache
+        if [ "$CI_GROUP" = all ]; then
+          ./backend/gradlew -p backend integrationTest --rerun --no-build-cache
+        fi
+        ./backend/gradlew -p backend acceptanceTest --rerun --no-build-cache
+        ./backend/gradlew -p backend bootJar --build-cache
+
+        JAR_FILE=$(find backend/build/libs -maxdepth 1 -type f -name '*.jar' ! -name '*-plain.jar' | head -n 1)
+        test -n "$JAR_FILE"
+        cp "$JAR_FILE" app.jar
+        cp backend/appspec.yml appspec.yml
+        cp -R backend/scripts scripts
 
 artifacts:
   files:
     - app.jar
     - appspec.yml
     - scripts/**/*
+    - backend/build/test-results/**/*
+    - backend/build/reports/tests/**/*
   discard-paths: no
+
+cache:
+  key: gradle-v2-$CI_GROUP-$(codebuild-hash-files backend/build.gradle backend/settings.gradle backend/gradle/wrapper/gradle-wrapper.properties)-$(codebuild-hash-files 'backend/src/**/*.*')
+  fallback-keys:
+    - gradle-v2-$CI_GROUP-$(codebuild-hash-files backend/build.gradle backend/settings.gradle backend/gradle/wrapper/gradle-wrapper.properties)-
+  paths:
+    - '/root/.gradle/wrapper/**/*'
+    - '/root/.gradle/caches/**/*'

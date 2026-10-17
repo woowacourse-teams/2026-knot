@@ -23,6 +23,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
@@ -34,6 +35,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.TestInstance;
+import org.junit.jupiter.api.TestMethodOrder;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
@@ -51,11 +54,14 @@ import tools.jackson.databind.node.ObjectNode;
 @SpringBootTest
 @Import(TestcontainersConfiguration.class)
 @TestApplicationProperties
-@DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_EACH_TEST_METHOD)
+@TestInstance(TestInstance.Lifecycle.PER_CLASS)
+@TestMethodOrder(RecordingTranscriptionMethodOrderer.class)
+@DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 class RecordingTranscriptionFlowIntegrationTest {
     private static final Instant NOW = DocumentFixtures.CREATED_AT.plusSeconds(120);
     private static final String RAW = "{\"transcription\":[{\"text\":\"회의 발언\"}]}";
     private static final String PATH = "/api/v1/transcription-jobs";
+    private static final String WORKER_THREAD_NAME = "recording-transcription";
     private static final ObjectMapper MAPPER = new ObjectMapper();
     private static final List<UUID> SUBMITTED = new CopyOnWriteArrayList<>();
     private static final AtomicBoolean GET_NOT_FOUND = new AtomicBoolean();
@@ -85,6 +91,8 @@ class RecordingTranscriptionFlowIntegrationTest {
     private DocumentFixtures fixtures;
     private long workspaceId;
     private long memberId;
+    private Set<Thread> workerThreadsBeforeTest = Set.of();
+    private List<Thread> workerThreadsStartedInPreviousTest = List.of();
 
     @DynamicPropertySource
     static void transcriptionProperties(DynamicPropertyRegistry registry) {
@@ -113,6 +121,10 @@ class RecordingTranscriptionFlowIntegrationTest {
 
     @BeforeEach
     void setUp() {
+        assertThat(workerThreadsStartedInPreviousTest)
+                .as("previous test worker threads must end before database and static state reset")
+                .noneMatch(Thread::isAlive);
+        workerThreadsBeforeTest = Set.copyOf(activeWorkerThreads());
         when(clock.instant()).thenReturn(NOW);
         when(recordingAudioStorage.findStoredObject(any())).thenReturn(
                 StoredAudioObject.of(
@@ -146,12 +158,20 @@ class RecordingTranscriptionFlowIntegrationTest {
     }
 
     @AfterEach
-    void stopWorkerBeforeDatabaseShutdown() {
-        worker.close();
+    void waitForWorkerThreadsToFinish() throws InterruptedException {
+        List<Thread> workerThreads = activeWorkerThreads().stream()
+                .filter(thread -> !workerThreadsBeforeTest.contains(thread))
+                .toList();
+        joinWorkerThreads(workerThreads);
+        workerThreadsStartedInPreviousTest = workerThreads;
+        assertThat(workerThreadsStartedInPreviousTest)
+                .as("worker threads started by this test must finish before the next test")
+                .noneMatch(Thread::isAlive);
     }
 
     @AfterAll
-    static void stopHttpServer() {
+    void stopWorkerBeforeHttpServer() {
+        worker.close();
         SERVER.close();
     }
 
@@ -400,6 +420,29 @@ class RecordingTranscriptionFlowIntegrationTest {
                 recording,
                 upload
         );
+    }
+
+    private static List<Thread> activeWorkerThreads() {
+        return Thread.getAllStackTraces()
+                .keySet()
+                .stream()
+                .filter(Thread::isAlive)
+                .filter(thread -> WORKER_THREAD_NAME.equals(thread.getName()))
+                .toList();
+    }
+
+    private void joinWorkerThreads(List<Thread> workerThreads) throws InterruptedException {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
+        for (Thread workerThread : workerThreads) {
+            long remainingNanos = deadline - System.nanoTime();
+            if (remainingNanos <= 0) {
+                return;
+            }
+            TimeUnit.NANOSECONDS.timedJoin(
+                    workerThread,
+                    remainingNanos
+            );
+        }
     }
 
     private void awaitStatus(

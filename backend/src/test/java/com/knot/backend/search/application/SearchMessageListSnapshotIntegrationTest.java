@@ -6,6 +6,9 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 
 import com.knot.backend.document.DocumentFixtures;
+import com.knot.backend.document.infrastructure.persistence.DocumentConfirmationQueryAdapter;
+import com.knot.backend.document.infrastructure.persistence.DocumentListQueryAdapter;
+import com.knot.backend.recording.infrastructure.persistence.TranscriptSegmentRepositoryAdapter;
 import com.knot.backend.search.SearchFixtures;
 import com.knot.backend.search.SearchMessageFixtures;
 import com.knot.backend.search.application.dto.query.SearchMessageListParameters;
@@ -13,6 +16,7 @@ import com.knot.backend.search.application.dto.result.SearchEvidenceItemResult;
 import com.knot.backend.search.application.dto.result.SearchMessageListItemResult;
 import com.knot.backend.search.application.dto.result.SearchMessageListResult;
 import com.knot.backend.search.domain.model.SearchMessageStatus;
+import com.knot.backend.search.infrastructure.persistence.SearchConversationListQueryAdapter;
 import com.knot.backend.search.infrastructure.persistence.SearchMessageListQueryAdapter;
 import com.knot.backend.testsupport.TestApplicationProperties;
 import com.knot.backend.testsupport.TestcontainersConfiguration;
@@ -38,6 +42,9 @@ import org.springframework.transaction.support.TransactionTemplate;
 @SpringBootTest
 @Import(TestcontainersConfiguration.class)
 @TestApplicationProperties
+@MockitoSpyBean(types = {DocumentListQueryAdapter.class, DocumentConfirmationQueryAdapter.class,
+        TranscriptSegmentRepositoryAdapter.class, SearchConversationListQueryAdapter.class,
+        SearchMessageListQueryAdapter.class})
 class SearchMessageListSnapshotIntegrationTest {
 
     @Autowired
@@ -46,7 +53,7 @@ class SearchMessageListSnapshotIntegrationTest {
     private JdbcClient jdbc;
     @Autowired
     private PlatformTransactionManager transactions;
-    @MockitoSpyBean
+    @Autowired
     private SearchMessageListQueryAdapter query;
     private SearchMessageFixtures messages;
     private long workspaceId;

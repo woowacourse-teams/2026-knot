@@ -10,7 +10,8 @@ import com.knot.backend.auth.domain.model.ConsumedRefreshToken;
 import com.knot.backend.auth.domain.repository.ConsumedRefreshTokenRepository;
 import com.knot.backend.member.domain.Member;
 import com.knot.backend.testsupport.TestApplicationProperties;
-import com.knot.backend.testsupport.TestcontainersConfiguration;
+import com.knot.backend.testsupport.SharedPostgresAuthRepositoryTestSupport;
+import com.knot.backend.testsupport.SharedPostgresTestConfiguration;
 import jakarta.persistence.EntityManager;
 import java.time.Instant;
 import java.util.Set;
@@ -25,10 +26,11 @@ import org.springframework.test.context.TestConstructor.AutowireMode;
 
 @Tag("integration")
 @DataJpaTest(properties = "spring.jpa.hibernate.ddl-auto=validate")
-@Import({AuthSessionRepositoryImpl.class, ConsumedRefreshTokenRepositoryImpl.class, TestcontainersConfiguration.class})
+@Import({AuthSessionRepositoryImpl.class, ConsumedRefreshTokenRepositoryImpl.class,
+        SharedPostgresTestConfiguration.class})
 @TestApplicationProperties
 @TestConstructor(autowireMode = AutowireMode.ALL)
-class ConsumedRefreshTokenRepositoryTest {
+class ConsumedRefreshTokenRepositoryTest extends SharedPostgresAuthRepositoryTestSupport {
     private final AuthSessionRepository authSessionRepository;
     private final ConsumedRefreshTokenRepository consumedRefreshTokenRepository;
     private final EntityManager entityManager;

@@ -1,0 +1,38 @@
+# Existing CodePipeline Build stage. Apply to knot-backend-dev-pipeline only.
+# Both normal CodeBuild actions use the existing codebuild-project role.
+# Keep Deploy in the following stage, consuming BuildArtifact.
+name: Build
+actions:
+  - name: IntegrationTest
+    actionTypeId:
+      category: Build
+      owner: AWS
+      provider: CodeBuild
+      version: "1"
+    runOrder: 1
+    configuration:
+      ProjectName: knot-backend-dev-build
+      EnvironmentVariables: '[{"name":"CI_GROUP","value":"integration","type":"PLAINTEXT"}]'
+    inputArtifacts:
+      - name: SourceArtifact
+    outputArtifacts:
+      - name: IntegrationReports
+    namespace: IntegrationVariables
+    region: ap-northeast-2
+
+  - name: Build
+    actionTypeId:
+      category: Build
+      owner: AWS
+      provider: CodeBuild
+      version: "1"
+    runOrder: 1
+    configuration:
+      ProjectName: knot-backend-dev-build
+      EnvironmentVariables: '[{"name":"CI_GROUP","value":"remaining","type":"PLAINTEXT"}]'
+    inputArtifacts:
+      - name: SourceArtifact
+    outputArtifacts:
+      - name: BuildArtifact
+    namespace: BuildVariables
+    region: ap-northeast-2

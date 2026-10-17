@@ -57,8 +57,7 @@ class DocumentGenerationSchedulerIntegrationTest {
     @DisplayName("접수만 하면 실제 스케줄러가 분류와 두 주제 생성을 자동으로 완료한다")
     void dispatchQueued_success_automaticallyCompletesIntake() throws Exception {
         // given
-        jdbc.sql("TRUNCATE TABLE members, workspaces RESTART IDENTITY CASCADE")
-                .update();
+        assertFreshDatabase();
         DocumentFixtures fixtures = new DocumentFixtures(jdbc);
         long member = fixtures.saveMember("녹음자");
         long workspace = fixtures.saveWorkspace();
@@ -130,6 +129,30 @@ class DocumentGenerationSchedulerIntegrationTest {
                         .query(Long.class)
                         .single()
         ).isEqualTo(3);
+    }
+
+    private void assertFreshDatabase() {
+        List<String> tables = List.of(
+                "members",
+                "workspaces",
+                "recording_sessions",
+                "transcripts",
+                "document_generation_batches",
+                "document_generation_jobs",
+                "documents",
+                "document_confirmations"
+        );
+        for (String table : tables) {
+            assertThat(
+                    jdbc.sql("SELECT count(*) FROM " + table)
+                            .query(Long.class)
+                            .single()
+            ).as(
+                    "전용 테스트 DB의 %s 테이블은 비어 있어야 한다",
+                    table
+            )
+                    .isZero();
+        }
     }
 
     private void awaitCompletion(
