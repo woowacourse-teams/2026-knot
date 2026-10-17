@@ -4,6 +4,7 @@ import com.knot.backend.global.response.ErrorResponse;
 import com.knot.backend.global.logging.ServerErrorLogger;
 import lombok.extern.slf4j.Slf4j;
 import com.knot.backend.global.response.FieldErrorResponse;
+import com.knot.backend.recording.domain.AudioSequenceGapException;
 import jakarta.validation.ConstraintViolation;
 import jakarta.validation.ConstraintViolationException;
 import jakarta.validation.ElementKind;
@@ -49,6 +50,21 @@ public class GlobalExceptionHandler {
                     .body(response.getBody());
         }
         return response;
+    }
+
+    @ExceptionHandler(AudioSequenceGapException.class)
+    public ResponseEntity<ErrorResponse> handleAudioSequenceGap(AudioSequenceGapException exception) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(
+                        new ErrorResponse(
+                                exception.getErrorCode()
+                                        .getCode(),
+                                exception.getErrorCode()
+                                        .getMessage(),
+                                List.of(),
+                                exception.getExpectedNextSequence()
+                        )
+                );
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)

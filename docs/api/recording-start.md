@@ -9,13 +9,20 @@
 `POST /api/v1/workspaces/{workspaceId}/recordings`
 
 인증 쿠키와 `X-XSRF-TOKEN`을 보낸다. `workspaceId`는 현재 참여 중인 Workspace여야 한다.
-JSON 본문은 세 필드를 모두 요구한다.
+JSON 본문은 `requestId`·`tabId`·`controlToken`을 요구하고 `audioMode`는 선택이다.
 
 | 필드 | 형식 | 유지 범위 |
 | --- | --- | --- |
 | `requestId` | UUID | 하나의 시작 시도와 그 재시도에서 동일 |
 | `tabId` | UUID | 최초 녹음 탭에서 새로고침 동안 유지 |
 | `controlToken` | 암호학적 난수 32바이트의 패딩 없는 Base64URL, 43자 | 같은 요청 재시도와 같은 탭 복구에 유지 |
+| `audioMode` | `FINAL_WEBM_V1` 또는 `PCM16_CHUNKS_V1` | 같은 시작 요청과 재시도에서 유지. 생략·null이면 `FINAL_WEBM_V1` |
+
+`FINAL_WEBM_V1`은 기존 종료 후 최종 파일 업로드 방식이다. `PCM16_CHUNKS_V1`은
+[녹음 중 PCM 조각 저장](recording-audio-chunks.md)을 사용하며, 신규 시작에는
+`recording.audio-chunks.enabled=true`가 필요하다. 설정 기본값은 false다.
+설정을 다시 false로 바꿔도 이미 시작한 PCM 녹음의 동일 시작 재시도와 조각 저장을 막지 않는다.
+모드는 시작 후 바꿀 수 없으며 성공 응답의 필드는 기존과 같다.
 
 클라이언트는 요청 전에 세 값을 만들어 보관한다. 응답 유실 때 새 키를 만들지 않는다.
 다른 탭·기기에 증명을 공유하거나 전체 브라우저가 공유하는 저장소에 넣지 않는다.
@@ -69,6 +76,8 @@ JSON 본문은 세 필드를 모두 요구한다.
 | 404 | `WORKSPACE_NOT_FOUND` | Workspace 없음(양수가 아닌 ID 포함) |
 | 409 | `ACTIVE_RECORDING_ALREADY_EXISTS` | 다른 요청으로 만든 본인 활성 세션 존재 |
 | 409 | `RECORDING_START_REQUEST_CONFLICT` | 같은 키에 Workspace·탭·증명 중 하나라도 변경 |
+| 409 | `AUDIO_MODE_DISABLED` | 조각 저장 설정이 꺼진 상태에서 새 PCM 녹음 시작 |
+| 409 | `AUDIO_MODE_CONFLICT` | 같은 시작 요청의 기존 오디오 모드 변경 |
 
 오류는 입력 원문, 제어값, DB 제약명·SQL·예외명·스택을 포함하지 않는다.
 

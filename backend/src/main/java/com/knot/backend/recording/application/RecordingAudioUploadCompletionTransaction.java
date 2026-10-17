@@ -3,6 +3,7 @@ package com.knot.backend.recording.application;
 import com.knot.backend.global.config.TranscriptionProperties;
 import com.knot.backend.recording.application.dto.result.RecordingAudioUploadCompletionResult;
 import com.knot.backend.recording.domain.model.RecordingAudioUpload;
+import com.knot.backend.recording.domain.model.RecordingSession;
 import com.knot.backend.recording.domain.repository.RecordingAudioUploadRepository;
 import com.knot.backend.recording.domain.RecordingErrorCode;
 import com.knot.backend.recording.domain.RecordingException;
@@ -73,12 +74,13 @@ public class RecordingAudioUploadCompletionTransaction {
         if (uploadId <= 0) {
             throw new RecordingException(RecordingErrorCode.INVALID_RECORDING_DATA);
         }
-        recordingAccess.loadOwnedForUpdate(
+        RecordingSession session = recordingAccess.loadOwnedForUpdate(
                 workspaceId,
                 memberId,
                 recordingId
-        )
-                .validateAudioUploadable();
+        );
+        session.validateLegacyAudioMode();
+        session.validateAudioUploadable();
         RecordingAudioUpload upload = recordingAudioUploadRepository.findById(uploadId)
                 .orElseThrow(() -> new RecordingException(RecordingErrorCode.AUDIO_UPLOAD_NOT_FOUND));
         upload.validateBelongsTo(recordingId);

@@ -10,6 +10,10 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import com.knot.backend.global.config.RecordingAudioChunksProperties;
+import com.knot.backend.recording.domain.model.RecordingAudioMode;
+import com.knot.backend.recording.domain.model.RecordingAudioStream;
+import com.knot.backend.recording.domain.repository.RecordingAudioStreamRepository;
 import com.knot.backend.member.domain.Member;
 import com.knot.backend.member.domain.MemberRepository;
 import com.knot.backend.recording.application.dto.command.RecordingStartCommand;
@@ -46,6 +50,7 @@ class RecordingStartServiceTest {
     private MemberRepository memberRepository;
     private RecordingSessionRepository recordingSessionRepository;
     private RecordingControlTokenHasher hasher;
+    private RecordingAudioStreamRepository streamRepository;
     private RecordingStartService service;
     private RecordingStartCommand command;
 
@@ -56,21 +61,8 @@ class RecordingStartServiceTest {
         memberRepository = mock(MemberRepository.class);
         recordingSessionRepository = mock(RecordingSessionRepository.class);
         hasher = mock(RecordingControlTokenHasher.class);
-        service = new RecordingStartService(
-                new RecordingAccess(
-                        workspaceRepository,
-                        workspaceMemberRepository,
-                        recordingSessionRepository,
-                        hasher
-                ),
-                memberRepository,
-                recordingSessionRepository,
-                hasher,
-                Clock.fixed(
-                        NOW,
-                        ZoneOffset.UTC
-                )
-        );
+        streamRepository = mock(RecordingAudioStreamRepository.class);
+        service = serviceWithFlag(false);
         command = new RecordingStartCommand(
                 UUID.randomUUID(),
                 UUID.randomUUID(),
@@ -365,6 +357,183 @@ class RecordingStartServiceTest {
         assertThat(existing.getEndedAt()).isEqualTo(NOW.minusSeconds(270));
         assertThat(existing.getLastSeenAt()).isEqualTo(NOW.minusSeconds(300));
         verify(recordingSessionRepository).save(existing);
+    }
+
+    @Test
+    @DisplayName("조각 모드가 꺼져 있으면 이전 녹음을 조회하거나 해제하거나 새 세션을 저장하지 않는다")
+    void start_failure_pcmDisabledPreservesOldSession() {
+        // given
+        prepareAccess();
+        RecordingStartCommand pcmCommand = pcmCommand();
+
+        // when
+        Throwable failure = catchThrowable(
+                () -> service.start(
+                        WORKSPACE_ID,
+                        MEMBER_ID,
+                        pcmCommand
+                )
+        );
+
+        // then
+        assertThat(failure).isInstanceOf(RecordingException.class)
+                .extracting("errorCode")
+                .isEqualTo(com.knot.backend.recording.domain.RecordingErrorCode.AUDIO_MODE_DISABLED);
+        verify(
+                recordingSessionRepository,
+                org.mockito.Mockito.never()
+        ).findAllActiveByMemberIdForUpdate(MEMBER_ID);
+        verify(
+                recordingSessionRepository,
+                org.mockito.Mockito.never()
+        ).save(any(RecordingSession.class));
+        verifyNoInteractions(streamRepository);
+    }
+
+    @Test
+    @DisplayName("조각 모드가 켜져 있으면 PCM 세션과 초기 스트림을 같은 시작 흐름에서 저장한다")
+    void start_success_pcmCreatesStream() {
+        // given
+        prepareAccess();
+        service = serviceWithFlag(true);
+        when(recordingSessionRepository.save(any(RecordingSession.class))).thenAnswer(
+                invocation -> withId(
+                        invocation.getArgument(0),
+                        7L
+                )
+        );
+
+        // when
+        RecordingStartResult result = service.start(
+                WORKSPACE_ID,
+                MEMBER_ID,
+                pcmCommand()
+        );
+
+        // then
+        assertThat(result.created()).isTrue();
+        ArgumentCaptor<RecordingAudioStream> stream = ArgumentCaptor.forClass(RecordingAudioStream.class);
+        verify(streamRepository).save(stream.capture());
+        assertThat(
+                stream.getValue()
+                        .getRecordingId()
+        ).isEqualTo(7L);
+        assertThat(
+                stream.getValue()
+                        .getNextSequence()
+        ).isEqualTo(1);
+        assertThat(
+                stream.getValue()
+                        .getTotalFrameCount()
+        ).isZero();
+    }
+
+    @Test
+    @DisplayName("기능이 꺼져도 이미 시작한 PCM 세션의 같은 요청 재시도는 허용한다")
+    void start_success_pcmReplayWhileDisabled() {
+        // given
+        prepareAccess();
+        RecordingSession existing = pcmSession();
+        when(
+                recordingSessionRepository.findByMemberIdAndRequestIdForUpdate(
+                        MEMBER_ID,
+                        command.requestId()
+                )
+        ).thenReturn(Optional.of(existing));
+
+        // when
+        RecordingStartResult result = service.start(
+                WORKSPACE_ID,
+                MEMBER_ID,
+                pcmCommand()
+        );
+
+        // then
+        assertThat(result.created()).isFalse();
+        assertThat(result.recordingId()).isEqualTo(7L);
+        verify(
+                recordingSessionRepository,
+                org.mockito.Mockito.never()
+        ).save(any(RecordingSession.class));
+        verifyNoInteractions(streamRepository);
+    }
+
+    @Test
+    @DisplayName("같은 시작 요청에서 오디오 모드만 바꾸면 기존 PCM 세션을 변경하지 않는다")
+    void start_failure_changedAudioMode() {
+        // given
+        prepareAccess();
+        RecordingSession existing = pcmSession();
+        when(
+                recordingSessionRepository.findByMemberIdAndRequestIdForUpdate(
+                        MEMBER_ID,
+                        command.requestId()
+                )
+        ).thenReturn(Optional.of(existing));
+
+        // when
+        Throwable failure = catchThrowable(
+                () -> service.start(
+                        WORKSPACE_ID,
+                        MEMBER_ID,
+                        command
+                )
+        );
+
+        // then
+        assertThat(failure).isInstanceOf(RecordingException.class)
+                .extracting("errorCode")
+                .isEqualTo(com.knot.backend.recording.domain.RecordingErrorCode.AUDIO_MODE_CONFLICT);
+        assertThat(existing.getAudioMode()).isEqualTo(RecordingAudioMode.PCM16_CHUNKS_V1);
+        verify(
+                recordingSessionRepository,
+                org.mockito.Mockito.never()
+        ).save(any(RecordingSession.class));
+        verifyNoInteractions(streamRepository);
+    }
+
+    private RecordingStartCommand pcmCommand() {
+        return new RecordingStartCommand(
+                command.requestId(),
+                command.tabId(),
+                command.controlToken(),
+                RecordingAudioMode.PCM16_CHUNKS_V1
+        );
+    }
+
+    private RecordingSession pcmSession() {
+        return withId(
+                RecordingSession.start(
+                        WORKSPACE_ID,
+                        MEMBER_ID,
+                        command.requestId(),
+                        command.tabId(),
+                        HASH,
+                        NOW,
+                        RecordingAudioMode.PCM16_CHUNKS_V1
+                ),
+                7L
+        );
+    }
+
+    private RecordingStartService serviceWithFlag(boolean enabled) {
+        return new RecordingStartService(
+                new RecordingAccess(
+                        workspaceRepository,
+                        workspaceMemberRepository,
+                        recordingSessionRepository,
+                        hasher
+                ),
+                memberRepository,
+                recordingSessionRepository,
+                hasher,
+                Clock.fixed(
+                        NOW,
+                        ZoneOffset.UTC
+                ),
+                streamRepository,
+                new RecordingAudioChunksProperties(enabled)
+        );
     }
 
     private RecordingSession withId(

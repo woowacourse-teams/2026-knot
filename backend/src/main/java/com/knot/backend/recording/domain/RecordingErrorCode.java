@@ -6,6 +6,60 @@ import lombok.Getter;
 
 @Getter
 public enum RecordingErrorCode implements ErrorCode {
+    AUDIO_MODE_DISABLED(
+            ErrorCategory.CONFLICT,
+            "AUDIO_MODE_DISABLED",
+            "녹음 중 오디오 저장 기능이 활성화되지 않았습니다"
+    ),
+
+    AUDIO_MODE_CONFLICT(
+            ErrorCategory.CONFLICT,
+            "AUDIO_MODE_CONFLICT",
+            "녹음 오디오 모드가 기존 요청과 다릅니다"
+    ),
+
+    INVALID_AUDIO_CHUNK(
+            ErrorCategory.INVALID_INPUT,
+            "INVALID_AUDIO_CHUNK",
+            "오디오 조각의 형식이나 크기가 올바르지 않습니다"
+    ),
+
+    AUDIO_CHUNK_CONFLICT(
+            ErrorCategory.CONFLICT,
+            "AUDIO_CHUNK_CONFLICT",
+            "오디오 조각이 기존 예약과 다릅니다"
+    ),
+
+    AUDIO_SEQUENCE_GAP(
+            ErrorCategory.CONFLICT,
+            "AUDIO_SEQUENCE_GAP",
+            "다음 오디오 조각 번호가 올바르지 않습니다"
+    ),
+
+    AUDIO_CHUNK_NOT_FOUND(
+            ErrorCategory.NOT_FOUND,
+            "AUDIO_CHUNK_NOT_FOUND",
+            "오디오 조각 예약을 찾을 수 없습니다"
+    ),
+
+    AUDIO_CHUNK_NOT_STORED(
+            ErrorCategory.CONFLICT,
+            "AUDIO_CHUNK_NOT_STORED",
+            "오디오 조각이 저장소에 올라가지 않았습니다"
+    ),
+
+    AUDIO_CHUNK_MISMATCH(
+            ErrorCategory.CONFLICT,
+            "AUDIO_CHUNK_MISMATCH",
+            "저장된 오디오 조각의 무결성을 확인할 수 없습니다"
+    ),
+
+    AUDIO_SAVE_FROZEN(
+            ErrorCategory.CONFLICT,
+            "AUDIO_SAVE_FROZEN",
+            "오디오 저장 범위가 이미 확정되었습니다"
+    ),
+
     TRANSCRIPTION_DISABLED(
             ErrorCategory.CONFLICT,
             "TRANSCRIPTION_DISABLED",

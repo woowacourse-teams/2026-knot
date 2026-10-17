@@ -4,6 +4,7 @@ import com.knot.backend.recording.application.dto.command.RecordingAudioUploadUr
 import com.knot.backend.recording.application.dto.result.PresignedAudioUpload;
 import com.knot.backend.recording.application.dto.result.RecordingAudioUploadUrlResult;
 import com.knot.backend.recording.domain.model.RecordingAudioUpload;
+import com.knot.backend.recording.domain.model.RecordingSession;
 import com.knot.backend.recording.domain.repository.RecordingAudioUploadRepository;
 import java.time.Clock;
 import java.time.temporal.ChronoUnit;
@@ -30,12 +31,13 @@ public class RecordingAudioUploadUrlService {
             long recordingId,
             RecordingAudioUploadUrlCommand command
     ) {
-        recordingAccess.loadOwnedForUpdate(
+        RecordingSession session = recordingAccess.loadOwnedForUpdate(
                 workspaceId,
                 memberId,
                 recordingId
-        )
-                .validateAudioUploadable();
+        );
+        session.validateLegacyAudioMode();
+        session.validateAudioUploadable();
 
         Optional<RecordingAudioUpload> existing = recordingAudioUploadRepository.findByRecordingId(recordingId);
         existing.ifPresent(

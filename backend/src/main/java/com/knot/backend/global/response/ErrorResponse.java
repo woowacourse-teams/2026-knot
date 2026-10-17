@@ -9,7 +9,8 @@ import java.util.Objects;
 public record ErrorResponse(
         String code,
         String message,
-        List<FieldErrorResponse> fieldErrors
+        List<FieldErrorResponse> fieldErrors,
+        Integer expectedNextSequence
 ) {
 
     public ErrorResponse(
@@ -17,9 +18,12 @@ public record ErrorResponse(
             String message,
             List<FieldErrorResponse> fieldErrors
     ) {
-        this.code = code;
-        this.message = message;
-        this.fieldErrors = fieldErrors;
+        this(
+                code,
+                message,
+                fieldErrors,
+                null
+        );
     }
 
     public ErrorResponse(ErrorCode errorCode) {

@@ -1,6 +1,7 @@
 package com.knot.backend.recording.presentation.dto.request;
 
 import com.knot.backend.recording.application.dto.command.RecordingStartCommand;
+import com.knot.backend.recording.domain.model.RecordingAudioMode;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
@@ -20,15 +21,39 @@ public record RecordingStartRequest(
         @Pattern(regexp = "[A-Za-z0-9_-]{42}[AEIMQUYcgkosw048]", message = "녹음 제어 증명 형식이 올바르지 않습니다")
         @Schema(description = "클라이언트의 32바이트 난수. 패딩 없는 Base64URL. 재시도·같은 탭 복구에 유지",
                 accessMode = Schema.AccessMode.WRITE_ONLY, requiredMode = Schema.RequiredMode.REQUIRED)
-        String controlToken
+        String controlToken,
+
+        @Schema(description = "오디오 저장 방식. 생략하면 FINAL_WEBM_V1", defaultValue = "FINAL_WEBM_V1")
+        RecordingAudioMode audioMode
 ) {
     // @formatter:on
+
+    public RecordingStartRequest {
+        audioMode = java.util.Objects.requireNonNullElse(
+                audioMode,
+                RecordingAudioMode.FINAL_WEBM_V1
+        );
+    }
+
+    public RecordingStartRequest(
+            UUID requestId,
+            UUID tabId,
+            String controlToken
+    ) {
+        this(
+                requestId,
+                tabId,
+                controlToken,
+                RecordingAudioMode.FINAL_WEBM_V1
+        );
+    }
 
     public RecordingStartCommand toCommand() {
         return new RecordingStartCommand(
                 requestId,
                 tabId,
-                controlToken
+                controlToken,
+                audioMode
         );
     }
 

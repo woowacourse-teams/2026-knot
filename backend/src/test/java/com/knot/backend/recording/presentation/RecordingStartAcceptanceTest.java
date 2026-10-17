@@ -716,6 +716,75 @@ class RecordingStartAcceptanceTest {
         assertThat(countRecordingSessions()).isEqualTo(1);
     }
 
+    @Test
+    @DisplayName("조각 저장 기능의 기본값은 비활성이며 PCM 시작은 기존 세션과 스트림을 바꾸지 않는다")
+    void start_failure_pcmDisabledByDefault() throws Exception {
+        // given
+        long memberId = saveMember("octocat");
+        long workspaceId = saveWorkspace("Knot 팀");
+        saveWorkspaceMember(
+                workspaceId,
+                memberId
+        );
+        Cookie accessCookie = accessTokenCookie(memberId);
+        CsrfCredentials csrf = csrfCredentials();
+        startRecording(
+                workspaceId,
+                REQUEST_ID,
+                TAB_ID,
+                CONTROL_TOKEN,
+                accessCookie,
+                csrf
+        ).andExpect(status().isCreated());
+        String before = jdbcClient.sql("SELECT row_to_json(recording_sessions)::text FROM recording_sessions")
+                .query(String.class)
+                .single();
+
+        // when
+        ResultActions result = mockMvc.perform(
+                post(
+                        "/api/v1/workspaces/{workspaceId}/recordings",
+                        workspaceId
+                ).cookie(
+                        accessCookie,
+                        csrf.cookie()
+                )
+                        .header(
+                                "X-XSRF-TOKEN",
+                                csrf.token()
+                        )
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(
+                                objectMapper.writeValueAsString(
+                                        java.util.Map.of(
+                                                "requestId",
+                                                UUID.randomUUID(),
+                                                "tabId",
+                                                UUID.randomUUID(),
+                                                "controlToken",
+                                                CONTROL_TOKEN,
+                                                "audioMode",
+                                                "PCM16_CHUNKS_V1"
+                                        )
+                                )
+                        )
+        );
+
+        // then
+        result.andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("AUDIO_MODE_DISABLED"));
+        assertThat(
+                jdbcClient.sql("SELECT row_to_json(recording_sessions)::text FROM recording_sessions")
+                        .query(String.class)
+                        .single()
+        ).isEqualTo(before);
+        assertThat(
+                jdbcClient.sql("SELECT COUNT(*) FROM recording_audio_streams")
+                        .query(Integer.class)
+                        .single()
+        ).isZero();
+    }
+
     private void endRecording(long recordingId) {
         transactionTemplate.executeWithoutResult(status -> {
             RecordingSession session = recordingSessionRepository.findById(recordingId)

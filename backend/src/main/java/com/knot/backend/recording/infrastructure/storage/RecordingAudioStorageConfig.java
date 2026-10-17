@@ -1,8 +1,16 @@
 package com.knot.backend.recording.infrastructure.storage;
 
+import com.knot.backend.global.config.RecordingAudioChunksProperties;
 import com.knot.backend.recording.application.RecordingAudioStorage;
+import com.knot.backend.recording.application.RecordingAudioChunkStorage;
+import com.knot.backend.recording.application.dto.result.PresignedAudioChunk;
+import com.knot.backend.recording.domain.RecordingErrorCode;
+import com.knot.backend.recording.domain.RecordingException;
+import com.knot.backend.recording.domain.model.StoredAudioChunk;
 import java.net.URI;
 import java.time.Duration;
+import java.time.Clock;
+import java.time.Instant;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -17,7 +25,7 @@ import software.amazon.awssdk.services.s3.S3Configuration;
 import software.amazon.awssdk.services.s3.presigner.S3Presigner;
 
 @Configuration(proxyBeanMethods = false)
-@EnableConfigurationProperties(RecordingAudioStorageProperties.class)
+@EnableConfigurationProperties({RecordingAudioStorageProperties.class, RecordingAudioChunksProperties.class})
 public class RecordingAudioStorageConfig {
     private static final Duration STORAGE_CALL_TIMEOUT = Duration.ofSeconds(5);
 
@@ -32,6 +40,38 @@ public class RecordingAudioStorageConfig {
                 properties.bucket(),
                 properties.keyPrefix(),
                 properties.uploadUrlTtl()
+        );
+    }
+
+    @Bean
+    public RecordingAudioChunkStorage recordingAudioChunkStorage(
+            RecordingAudioStorageProperties properties,
+            Clock clock
+    ) {
+        if (!properties.isConfigured()) {
+            return new RecordingAudioChunkStorage() {
+                @Override
+                public PresignedAudioChunk presignUpload(
+                        String storageKey,
+                        long byteLength,
+                        String checksumSha256,
+                        Instant expiresAt
+                ) {
+                    throw new RecordingException(RecordingErrorCode.AUDIO_STORAGE_UNAVAILABLE);
+                }
+
+                @Override
+                public StoredAudioChunk findStoredObject(String storageKey) {
+                    throw new RecordingException(RecordingErrorCode.AUDIO_STORAGE_UNAVAILABLE);
+                }
+            };
+        }
+        return new S3RecordingAudioChunkStorage(
+                presigner(properties),
+                client(properties),
+                properties.bucket(),
+                properties.keyPrefix(),
+                clock
         );
     }
 

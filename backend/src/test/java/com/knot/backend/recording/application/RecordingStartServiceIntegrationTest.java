@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import com.knot.backend.recording.application.dto.command.RecordingStartCommand;
 import com.knot.backend.recording.application.dto.result.RecordingStartResult;
 import com.knot.backend.recording.domain.RecordingErrorCode;
+import com.knot.backend.recording.domain.model.RecordingAudioMode;
 import com.knot.backend.recording.domain.RecordingException;
 import com.knot.backend.testsupport.TestApplicationProperties;
 import com.knot.backend.testsupport.TestcontainersConfiguration;
@@ -31,7 +32,7 @@ import org.springframework.test.context.TestConstructor.AutowireMode;
 @Tag("integration")
 @Import(TestcontainersConfiguration.class)
 @TestApplicationProperties
-@SpringBootTest
+@SpringBootTest(properties = "recording.audio-chunks.enabled=true")
 @TestConstructor(autowireMode = AutowireMode.ALL)
 class RecordingStartServiceIntegrationTest {
     private static final Instant CREATED_AT = Instant.parse("2026-10-01T00:00:00Z");
@@ -301,6 +302,114 @@ class RecordingStartServiceIntegrationTest {
         } finally {
             executorService.shutdownNow();
         }
+    }
+
+    @Test
+    @DisplayName("PCM 시작 요청은 세션과 빈 스트림을 원자적으로 저장하고 같은 요청 재시도는 하나를 유지한다")
+    void start_success_pcmStreamAndReplay() {
+        // given
+        long memberId = saveMember("octocat");
+        long workspaceId = saveWorkspace("Knot 팀");
+        saveWorkspaceMember(
+                workspaceId,
+                memberId
+        );
+        RecordingStartCommand pcm = new RecordingStartCommand(
+                REQUEST_ID,
+                TAB_ID,
+                CONTROL_TOKEN,
+                RecordingAudioMode.PCM16_CHUNKS_V1
+        );
+        RecordingStartResult first = recordingStartService.start(
+                workspaceId,
+                memberId,
+                pcm
+        );
+
+        // when
+        RecordingStartResult replay = recordingStartService.start(
+                workspaceId,
+                memberId,
+                pcm
+        );
+
+        // then
+        assertThat(replay.created()).isFalse();
+        assertThat(replay.recordingId()).isEqualTo(first.recordingId());
+        assertThat(countRecordingSessions()).isEqualTo(1);
+        assertThat(
+                jdbcClient.sql("SELECT audio_mode FROM recording_sessions WHERE id = :id")
+                        .param(
+                                "id",
+                                first.recordingId()
+                        )
+                        .query(String.class)
+                        .single()
+        ).isEqualTo("PCM16_CHUNKS_V1");
+        assertThat(
+                jdbcClient.sql("SELECT COUNT(*) FROM recording_audio_streams WHERE recording_id = :id")
+                        .param(
+                                "id",
+                                first.recordingId()
+                        )
+                        .query(Integer.class)
+                        .single()
+        ).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("시작 요청을 재사용하며 PCM에서 WebM으로 바꾸면 DB의 모드와 스트림을 보존하고 거절한다")
+    void start_failure_changedAudioModeKeepsDatabase() {
+        // given
+        long memberId = saveMember("octocat");
+        long workspaceId = saveWorkspace("Knot 팀");
+        saveWorkspaceMember(
+                workspaceId,
+                memberId
+        );
+        RecordingStartResult first = recordingStartService.start(
+                workspaceId,
+                memberId,
+                new RecordingStartCommand(
+                        REQUEST_ID,
+                        TAB_ID,
+                        CONTROL_TOKEN,
+                        RecordingAudioMode.PCM16_CHUNKS_V1
+                )
+        );
+
+        // when
+        Throwable failure = org.assertj.core.api.Assertions.catchThrowable(
+                () -> recordingStartService.start(
+                        workspaceId,
+                        memberId,
+                        command(
+                                REQUEST_ID,
+                                TAB_ID,
+                                CONTROL_TOKEN
+                        )
+                )
+        );
+
+        // then
+        assertThat(failure).isInstanceOf(RecordingException.class)
+                .extracting("errorCode")
+                .isEqualTo(RecordingErrorCode.AUDIO_MODE_CONFLICT);
+        assertThat(countRecordingSessions()).isEqualTo(1);
+        assertThat(
+                jdbcClient.sql("SELECT audio_mode FROM recording_sessions WHERE id = :id")
+                        .param(
+                                "id",
+                                first.recordingId()
+                        )
+                        .query(String.class)
+                        .single()
+        ).isEqualTo("PCM16_CHUNKS_V1");
+        assertThat(
+                jdbcClient.sql("SELECT COUNT(*) FROM recording_audio_streams")
+                        .query(Integer.class)
+                        .single()
+        ).isEqualTo(1);
     }
 
     private RecordingStartCommand command(

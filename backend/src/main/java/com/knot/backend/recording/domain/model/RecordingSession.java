@@ -53,6 +53,10 @@ public class RecordingSession {
     @Column(nullable = false, length = 20)
     private RecordingStatus status;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "audio_mode", nullable = false, updatable = false, length = 30)
+    private RecordingAudioMode audioMode;
+
     @Column(name = "started_at", nullable = false, updatable = false)
     private Instant startedAt;
 
@@ -99,6 +103,7 @@ public class RecordingSession {
         this.requestId = requestId;
         this.tabId = tabId;
         this.controlTokenHash = controlTokenHash;
+        this.audioMode = RecordingAudioMode.FINAL_WEBM_V1;
         this.status = RecordingStatus.RECORDING;
         this.startedAt = startedAt;
         this.currentIntervalStartedAt = startedAt;
@@ -128,14 +133,63 @@ public class RecordingSession {
         );
     }
 
+    public static RecordingSession start(
+            Long workspaceId,
+            Long memberId,
+            UUID requestId,
+            UUID tabId,
+            String controlTokenHash,
+            Instant startedAt,
+            RecordingAudioMode audioMode
+    ) {
+        if (audioMode == null) {
+            throw new RecordingException(RecordingErrorCode.INVALID_RECORDING_DATA);
+        }
+        RecordingSession session = start(
+                workspaceId,
+                memberId,
+                requestId,
+                tabId,
+                controlTokenHash,
+                startedAt
+        );
+        session.audioMode = audioMode;
+        return session;
+    }
+
+    public void validateStartRetry(
+            long workspaceId,
+            UUID tabId,
+            String controlTokenHash,
+            RecordingAudioMode audioMode
+    ) {
+        validateStartRetryIdentity(
+                workspaceId,
+                tabId,
+                controlTokenHash
+        );
+        if (this.audioMode != audioMode) {
+            throw new RecordingException(RecordingErrorCode.AUDIO_MODE_CONFLICT);
+        }
+    }
+
+    public void validateLegacyAudioMode() {
+        if (audioMode != RecordingAudioMode.FINAL_WEBM_V1) {
+            throw new RecordingException(RecordingErrorCode.AUDIO_MODE_CONFLICT);
+        }
+    }
+
     public void validateStartRetry(
             long workspaceId,
             UUID tabId,
             String controlTokenHash
     ) {
-        if (this.workspaceId != workspaceId || !this.tabId.equals(tabId) || !sameControlTokenHash(controlTokenHash)) {
-            throw new RecordingException(RecordingErrorCode.RECORDING_START_REQUEST_CONFLICT);
-        }
+        validateStartRetry(
+                workspaceId,
+                tabId,
+                controlTokenHash,
+                RecordingAudioMode.FINAL_WEBM_V1
+        );
     }
 
     public void releaseForNewRecording(Instant now) {
@@ -302,6 +356,16 @@ public class RecordingSession {
                         .toMillis(),
                 MAX_RECORDING_MILLIS
         );
+    }
+
+    private void validateStartRetryIdentity(
+            long workspaceId,
+            UUID tabId,
+            String controlTokenHash
+    ) {
+        if (this.workspaceId != workspaceId || !this.tabId.equals(tabId) || !sameControlTokenHash(controlTokenHash)) {
+            throw new RecordingException(RecordingErrorCode.RECORDING_START_REQUEST_CONFLICT);
+        }
     }
 
     private boolean sameControlTokenHash(String controlTokenHash) {
