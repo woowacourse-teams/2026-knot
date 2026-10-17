@@ -19,9 +19,10 @@ test('수집 Nginx는 비공개 허용 목록·mTLS·환경별 인증과 POST �
   assert(nginx.includes('include /etc/nginx/snippets/knot-ingest-allow.conf;'));
   assert(nginx.includes('ssl_verify_client on;'));
   assert(nginx.includes('deny all;'));
-  assert.equal(nginx.match(/limit_except POST \{ deny all; \}/g).length, 4);
+  assert.equal(nginx.match(/limit_except POST \{ deny all; \}/g).length, 5);
   assert.equal(nginx.match(/CN=knot-dev-alloy/g).length, 2);
   assert.equal(nginx.match(/CN=knot-prod-alloy/g).length, 2);
+  assert.equal(nginx.match(/CN=knot-mac-alloy/g).length, 1);
   assert(!/allow (?!127\.0\.0\.1;)(?:\d{1,3}\.){3}\d{1,3};/.test(nginx));
 });
 

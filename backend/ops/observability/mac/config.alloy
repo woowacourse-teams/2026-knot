@@ -1,0 +1,50 @@
+logging {
+  level = "warn"
+}
+
+prometheus.exporter.unix "mac" {
+  set_collectors = ["cpu", "meminfo", "filesystem", "boottime"]
+  filesystem {
+    mount_points_exclude = "^/(dev|Volumes|System/Volumes/(Preboot|VM|Update|xarts|iSCPreboot|Hardware))($|/)"
+  }
+}
+
+discovery.relabel "mac" {
+  targets = prometheus.exporter.unix.mac.targets
+  rule {
+    target_label = "job"
+    replacement = "mac-host"
+  }
+  rule {
+    target_label = "instance"
+    replacement = "knot-ai-macmini"
+  }
+}
+
+prometheus.scrape "mac" {
+  targets = discovery.relabel.mac.output
+  job_name = "mac-host"
+  scrape_interval = "30s"
+  forward_to = [prometheus.remote_write.central.receiver]
+}
+
+prometheus.remote_write "central" {
+  external_labels = {
+    project = "knot",
+    env = "shared",
+    host_role = "ai",
+  }
+  endpoint {
+    url = sys.env("KNOT_INGEST_BASE_URL") + "/mac/api/v1/write"
+    tls_config {
+      ca_file = sys.env("KNOT_MAC_CONFIG_DIR") + "/tls/ca.crt"
+      cert_file = sys.env("KNOT_MAC_CONFIG_DIR") + "/tls/client.crt"
+      key_file = sys.env("KNOT_MAC_CONFIG_DIR") + "/tls/client.key"
+    }
+  }
+  wal {
+    min_keepalive_time = "5m"
+    max_keepalive_time = "2h"
+    truncate_frequency = "30m"
+  }
+}

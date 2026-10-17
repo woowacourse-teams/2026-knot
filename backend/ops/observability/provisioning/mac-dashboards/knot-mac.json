@@ -1,0 +1,352 @@
+{
+  "uid": "knot-mac",
+  "title": "Mac AI 서버 자원",
+  "description": "공유 Mac AI 호스트의 기본 자원과 마지막 수신 시각. 업무 결과·GPU·알림은 별도 관찰 대상이다.",
+  "schemaVersion": 41,
+  "version": 1,
+  "editable": false,
+  "timezone": "Asia/Seoul",
+  "refresh": "30s",
+  "time": {
+    "from": "now-30m",
+    "to": "now"
+  },
+  "tags": [
+    "knot",
+    "mac",
+    "ai"
+  ],
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Mac AI 서버 자원 확인",
+      "type": "text",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 3
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "전사 전·중·후의 자원 변화를 비교합니다. **마지막 수집 경과 시간 → CPU → 메모리·swap → 디스크 여유** 순서로 보세요.\n\n이 화면은 Mac 전체의 자원입니다. 전사 성공이나 모델 진행 상태를 뜻하지 않습니다. 개인 작업이 섞인 구간과 AI만 실행한 측정 구간을 annotation으로 구분하세요. 데이터 없음은 정상 0이 아닙니다."
+      }
+    },
+    {
+      "id": 2,
+      "title": "마지막 수집 후 경과 시간",
+      "type": "stat",
+      "description": "중앙에서 조회할 수 있는 가장 최근 Mac 메모리 표본의 경과 시간입니다. 데이터 없음은 장기 단절 또는 미수집일 수 있습니다.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "knot-prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 3,
+        "w": 6,
+        "h": 7
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "time() - timestamp(node_memory_total_bytes{project=\"knot\",env=\"shared\",job=\"mac-host\",instance=\"knot-ai-macmini\"})",
+          "legendFormat": "마지막 수집 후 경과 시간",
+          "range": false,
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "noValue": "데이터 없음"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "none"
+      }
+    },
+    {
+      "id": 3,
+      "title": "Mac 물리 메모리",
+      "type": "stat",
+      "description": "Mac 물리 RAM 용량입니다. JVM heap 또는 모델 프로세스 메모리가 아닙니다.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "knot-prometheus"
+      },
+      "gridPos": {
+        "x": 6,
+        "y": 3,
+        "w": 6,
+        "h": 7
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "node_memory_total_bytes{project=\"knot\",env=\"shared\",job=\"mac-host\",instance=\"knot-ai-macmini\"}",
+          "legendFormat": "Mac 물리 메모리",
+          "range": false,
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "noValue": "데이터 없음"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "none"
+      }
+    },
+    {
+      "id": 4,
+      "title": "CPU 사용률",
+      "type": "timeseries",
+      "description": "전체 코어의 최근 2분 평균 사용률입니다. 높은 사용률만으로 장애라고 판단하지 않습니다.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "knot-prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 3,
+        "w": 12,
+        "h": 7
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "100 * (1 - avg(rate(node_cpu_seconds_total{project=\"knot\",env=\"shared\",job=\"mac-host\",instance=\"knot-ai-macmini\",mode=\"idle\"}[2m])))",
+          "legendFormat": "CPU 사용률",
+          "range": true,
+          "instant": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "noValue": "데이터 없음"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      }
+    },
+    {
+      "id": 5,
+      "title": "메모리 구성",
+      "type": "timeseries",
+      "description": "활성·고정·압축 메모리를 각각 표시합니다. 단순 합계를 Activity Monitor의 메모리 사용량이나 메모리 압력으로 해석하지 않습니다.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "knot-prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 10,
+        "w": 12,
+        "h": 7
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "node_memory_active_bytes{project=\"knot\",env=\"shared\",job=\"mac-host\",instance=\"knot-ai-macmini\"}",
+          "legendFormat": "활성",
+          "range": true
+        },
+        {
+          "refId": "B",
+          "expr": "node_memory_wired_bytes{project=\"knot\",env=\"shared\",job=\"mac-host\",instance=\"knot-ai-macmini\"}",
+          "legendFormat": "고정",
+          "range": true
+        },
+        {
+          "refId": "C",
+          "expr": "node_memory_compressed_bytes{project=\"knot\",env=\"shared\",job=\"mac-host\",instance=\"knot-ai-macmini\"}",
+          "legendFormat": "압축",
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "noValue": "데이터 없음"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      }
+    },
+    {
+      "id": 6,
+      "title": "swap 사용량",
+      "type": "timeseries",
+      "description": "디스크로 옮겨 사용하는 메모리 양입니다. 값이 0인 것과 표본이 없는 것을 구분합니다.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "knot-prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 10,
+        "w": 12,
+        "h": 7
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "node_memory_swap_used_bytes{project=\"knot\",env=\"shared\",job=\"mac-host\",instance=\"knot-ai-macmini\"}",
+          "legendFormat": "swap 사용량",
+          "range": true,
+          "instant": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "noValue": "데이터 없음"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      }
+    },
+    {
+      "id": 7,
+      "title": "데이터 볼륨 디스크 여유",
+      "type": "timeseries",
+      "description": "APFS 데이터 볼륨에서 현재 사용 가능한 공간입니다. 해당 mountpoint가 실제 Mac에 노출되는지 확인하며, 없으면 데이터 없음으로 둡니다.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "knot-prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 17,
+        "w": 12,
+        "h": 7
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "node_filesystem_avail_bytes{project=\"knot\",env=\"shared\",job=\"mac-host\",instance=\"knot-ai-macmini\",mountpoint=\"/System/Volumes/Data\"}",
+          "legendFormat": "데이터 볼륨 디스크 여유",
+          "range": true,
+          "instant": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "noValue": "데이터 없음"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      }
+    },
+    {
+      "id": 8,
+      "title": "Mac 로컬 지표 수집 성공",
+      "type": "timeseries",
+      "description": "1은 Mac에서 로컬 지표를 읽은 성공, 0은 읽기 실패입니다. 중앙 전송 상태는 마지막 수집 경과 시간과 함께 확인합니다.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "knot-prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 17,
+        "w": 12,
+        "h": 7
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "up{project=\"knot\",env=\"shared\",job=\"mac-host\",instance=\"knot-ai-macmini\"}",
+          "legendFormat": "Mac 로컬 지표 수집 성공",
+          "range": true,
+          "instant": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "noValue": "데이터 없음"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      }
+    }
+  ]
+}
