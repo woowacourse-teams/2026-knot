@@ -141,8 +141,14 @@ const collectRequests = () => {
 
 const UPLOAD_REQUESTS = ["audio-upload-url", "audio", "audio-upload-complete"];
 
-/** 403은 CSRF 토큰이 낡았을 수 있어 httpClient가 토큰을 새로 받아 한 번 더 보내요. 신호 한 번이 이렇게 나가요 */
-const CSRF_RETRIED_HEARTBEAT = ["heartbeat", "csrf", "heartbeat"];
+/** 403은 CSRF 토큰이 낡았을 수 있어 httpClient가 토큰을 새로 받아 최대 두 번 더 보내요. 계속 403인 신호 한 번이 이렇게 나가요 */
+const CSRF_RETRIED_HEARTBEAT = [
+  "heartbeat",
+  "csrf",
+  "heartbeat",
+  "csrf",
+  "heartbeat",
+];
 
 describe("RecordingHeartbeat", () => {
   beforeEach(() => {

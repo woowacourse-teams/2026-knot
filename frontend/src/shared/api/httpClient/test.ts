@@ -54,7 +54,9 @@ describe("httpClient의 CSRF 처리", () => {
         attempts += 1;
         if (attempts === 1) return new HttpResponse(null, { status: 403 });
 
-        return HttpResponse.json({ csrf: request.headers.get(CSRF_HEADER_NAME) });
+        return HttpResponse.json({
+          csrf: request.headers.get(CSRF_HEADER_NAME),
+        });
       }),
     );
 
@@ -64,10 +66,14 @@ describe("httpClient의 CSRF 처리", () => {
     expect(data.csrf).toBe("token-1");
   });
 
-  it("다시 보낸 요청도 403이면 더 보내지 않고 실패한다", async () => {
+  it("다시 보낸 요청도 403이면 토큰을 한 번 더 받아 보내고, 그래도 403이면 더 보내지 않고 실패한다", async () => {
     let attempts = 0;
+    let issued = 0;
     mockServer.use(
-      rotatingCsrfHandler(),
+      http.get(`*${AUTH_CSRF_API_PATH}`, () => {
+        issued += 1;
+        return HttpResponse.json({ token: `token-${issued}` });
+      }),
       http.post(`*${TEST_PATH}`, () => {
         attempts += 1;
         return new HttpResponse(null, { status: 403 });
@@ -77,7 +83,148 @@ describe("httpClient의 CSRF 처리", () => {
     const error = await httpClient.post(TEST_PATH).catch((e: unknown) => e);
 
     expect(isHttpError(error, HTTP_ERROR_TYPE.forbidden)).toBe(true);
-    expect(attempts).toBe(2);
+    expect(attempts).toBe(3);
+    expect(issued).toBe(2);
+  });
+});
+
+/** 토큰 캐시가 모듈에 남으므로, 캐시가 빈 상태에서 시작해야 하는 테스트는 모듈을 새로 불러와요 */
+const loadFreshHttpClient = async () => {
+  vi.resetModules();
+
+  return import(".");
+};
+
+/**
+ * 서버가 CSRF 쿠키를 지운 상태를 흉내 내는 핸들러예요.
+ *
+ * 실제 서버는 쿠키가 없을 때 받은 CSRF 조회와 거절한 변경 요청마다 새 토큰을 만들어 응답 쿠키로 내려줘요.
+ * 쿠키는 응답이 도착할 때 브라우저에 저장되므로, 쿠키를 바꾸는 일은 응답을 늦춘 뒤에 해요.
+ * 헤더의 토큰이 지금 쿠키와 같은 요청만 통과시켜요.
+ */
+interface ClearedCookieCsrfServerParams {
+  /** 경로마다 거절 응답이 도착하기까지 걸리는 시간(ms) */
+  rejectDelayMs: Record<string, number>;
+  /** CSRF 조회 응답이 도착하기까지 걸리는 시간(ms) */
+  csrfDelayMs: number;
+}
+
+const clearedCookieCsrfServer = ({
+  rejectDelayMs,
+  csrfDelayMs,
+}: ClearedCookieCsrfServerParams) => {
+  const state = {
+    cookie: "token-before-clear" as string | undefined,
+    issued: 0,
+    csrfRequests: 0,
+  };
+  const newToken = () => {
+    state.issued += 1;
+    return `token-${state.issued}`;
+  };
+
+  const csrfHandler = http.get(`*${AUTH_CSRF_API_PATH}`, async () => {
+    state.csrfRequests += 1;
+    const issuedToken = state.cookie === undefined ? newToken() : undefined;
+    const token = issuedToken ?? state.cookie;
+    await delay(csrfDelayMs);
+    if (issuedToken !== undefined) state.cookie = issuedToken;
+
+    return HttpResponse.json({ token });
+  });
+
+  const mutationHandlers = Object.entries(rejectDelayMs).map(([path, ms]) =>
+    http.post(`*${path}`, async ({ request }) => {
+      if (request.headers.get(CSRF_HEADER_NAME) === state.cookie) {
+        return HttpResponse.json({ ok: true });
+      }
+
+      const issuedToken = state.cookie === undefined ? newToken() : undefined;
+      await delay(ms);
+      if (issuedToken !== undefined) state.cookie = issuedToken;
+
+      return new HttpResponse(null, { status: 403 });
+    }),
+  );
+
+  /** 새 세션의 첫 인증 요청에서 서버가 CSRF 쿠키를 지운 순간을 만들어요 */
+  const clearCookie = () => {
+    state.cookie = undefined;
+  };
+
+  return { handlers: [csrfHandler, ...mutationHandlers], state, clearCookie };
+};
+
+describe("httpClient의 CSRF 토큰 조회 묶기", () => {
+  it("토큰이 없을 때 변경 요청 두 개가 동시에 나가도 CSRF 토큰은 한 번만 받는다", async () => {
+    const { httpClient: freshClient } = await loadFreshHttpClient();
+    let csrfRequests = 0;
+    mockServer.use(
+      http.get(`*${AUTH_CSRF_API_PATH}`, () => {
+        csrfRequests += 1;
+        return HttpResponse.json({ token: `token-${csrfRequests}` });
+      }),
+      echoCsrfHeader("post"),
+    );
+
+    const [first, second] = await Promise.all([
+      freshClient.post(TEST_PATH),
+      freshClient.post(TEST_PATH),
+    ]);
+
+    expect(csrfRequests).toBe(1);
+    expect(first.data.csrf).toBe("token-1");
+    expect(second.data.csrf).toBe("token-1");
+  });
+
+  it("서버가 CSRF 쿠키를 지운 뒤 동시에 보낸 변경 요청이 403을 받아도 둘 다 성공한다", async () => {
+    const { httpClient: freshClient, getCsrfToken: getFreshCsrfToken } =
+      await loadFreshHttpClient();
+    // 첫 거절이 쿠키를 심은 뒤 둘째 거절이 쿠키를 다시 덮어쓰고, 그 사이에 토큰 조회가 첫 쿠키를 받는 순서예요(2026-10-18 개발 서버 관찰)
+    const server = clearedCookieCsrfServer({
+      rejectDelayMs: { "/__csrf-first": 0, "/__csrf-second": 10 },
+      csrfDelayMs: 20,
+    });
+    mockServer.use(...server.handlers);
+    await getFreshCsrfToken();
+    server.clearCookie();
+
+    const results = await Promise.allSettled([
+      freshClient.post("/__csrf-first"),
+      freshClient.post("/__csrf-second"),
+    ]);
+
+    expect(results.map(({ status }) => status)).toEqual([
+      "fulfilled",
+      "fulfilled",
+    ]);
+  });
+
+  it("CSRF 토큰 조회가 실패하면 기다리던 요청이 모두 실패하고, 다음 요청은 조회를 새로 한다", async () => {
+    const { httpClient: freshClient } = await loadFreshHttpClient();
+    let csrfRequests = 0;
+    mockServer.use(
+      http.get(`*${AUTH_CSRF_API_PATH}`, () => {
+        csrfRequests += 1;
+        if (csrfRequests === 1) return new HttpResponse(null, { status: 500 });
+
+        return HttpResponse.json({ token: "token-after-failure" });
+      }),
+      echoCsrfHeader("post"),
+    );
+
+    const failed = await Promise.allSettled([
+      freshClient.post(TEST_PATH),
+      freshClient.post(TEST_PATH),
+    ]);
+    const { data } = await freshClient.post(TEST_PATH);
+
+    expect(failed.map(({ status }) => status)).toEqual([
+      "rejected",
+      "rejected",
+    ]);
+    expect(csrfRequests).toBe(2);
+    expect(data.csrf).toBe("token-after-failure");
   });
 });
 

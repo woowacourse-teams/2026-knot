@@ -1,12 +1,16 @@
-import { getCsrfToken } from "@api/httpClient";
+import {
+  getCsrfToken,
+  MAX_CSRF_RETRIES,
+  reloadCsrfToken,
+} from "@api/httpClient";
 import { readSseStream } from "@api/sse/readSseStream";
 
 interface RequestSseStreamParams {
   method: "GET" | "POST";
-  
+
   /** API 경로. 예: `/api/v1/workspaces/1/search/conversations` */
   path: string;
-  
+
   /** JSON으로 보낼 요청 본문. 없으면 본문과 Content-Type 없이 보내요 */
   body?: object;
 
@@ -49,15 +53,21 @@ export class SseRequestError extends Error {
 const toAbsoluteUrl = (path: string) =>
   new URL(path, process.env.API_BASE_URL || window.location.origin).toString();
 
+interface SendSseRequestParams extends RequestSseStreamParams {
+  /** 헤더에 붙일 CSRF 토큰. GET에는 없어요 */
+  csrfToken?: string;
+}
+
 const sendSseRequest = async ({
   method,
   path,
   body,
   signal,
-}: RequestSseStreamParams) => {
+  csrfToken,
+}: SendSseRequestParams) => {
   const headers = new Headers({ Accept: "text/event-stream" });
 
-  if (method !== "GET") headers.set("X-XSRF-TOKEN", await getCsrfToken());
+  if (csrfToken) headers.set("X-XSRF-TOKEN", csrfToken);
   if (body) headers.set("Content-Type", "application/json");
 
   return fetch(toAbsoluteUrl(path), {
@@ -67,6 +77,35 @@ const sendSseRequest = async ({
     body: body && JSON.stringify(body),
     signal,
   });
+};
+
+/**
+ * SSE 요청을 보내고, GET이 아닌 요청이 403을 받으면 CSRF 토큰을 다시 받아 최대 두 번까지 다시 보내요.
+ *
+ * httpClient의 `csrfInterceptor`와 같은 규칙이에요. 서버가 CSRF 쿠키를 지운 뒤에는 들고 있던 토큰이 낡아
+ * 403이 오는데, 다시 받지 않으면 같은 토큰으로 보내는 질문이 계속 거절돼요.
+ * 서버는 CSRF 검사를 요청 처리보다 먼저 하므로, 403을 받은 질문은 만들어지지 않아 다시 보내도 겹치지 않아요.
+ */
+const sendSseRequestWithCsrfRetry = async (params: RequestSseStreamParams) => {
+  if (params.method === "GET") return sendSseRequest(params);
+
+  let response = await sendSseRequest({
+    ...params,
+    csrfToken: await getCsrfToken(),
+  });
+
+  for (
+    let retriesLeft = MAX_CSRF_RETRIES;
+    response.status === 403 && retriesLeft > 0;
+    retriesLeft -= 1
+  ) {
+    response = await sendSseRequest({
+      ...params,
+      csrfToken: await reloadCsrfToken(),
+    });
+  }
+
+  return response;
 };
 
 interface ErrorBody {
@@ -101,7 +140,7 @@ const toSseRequestError = async (response: Response) => {
 };
 
 /**
- * @description SSE 응답을 받는 요청을 보내고 도착하는 이벤트를 순서대로 흘려보내요
+ * @description SSE 응답을 받는 요청을 보내고 도착하는 이벤트를 순서대로 흘려보내요. GET이 아닌 요청이 403을 받으면 CSRF 토큰을 다시 받아 최대 두 번까지 다시 보내요
  * @param params - 메서드, API 경로, JSON 요청 본문, 취소용 AbortSignal
  * @returns 도착 순서대로 SseEvent를 내는 async generator. 받는 쪽이 중간에 멈추면 스트림 읽기를 정리해요
  * @throws {SseRequestError} 응답은 받았지만 스트림을 받기 전에 실패한 경우. `status`·`code`로 분기할 수 있어요
@@ -111,7 +150,7 @@ const toSseRequestError = async (response: Response) => {
  * }
  */
 export async function* requestSseStream(params: RequestSseStreamParams) {
-  const response = await sendSseRequest(params);
+  const response = await sendSseRequestWithCsrfRetry(params);
 
   if (!response.ok) throw await toSseRequestError(response);
   // 서버 오류 코드가 아니라 이 함수가 붙인 코드예요. 성공 상태라 본문에 오류 코드가 없어요
