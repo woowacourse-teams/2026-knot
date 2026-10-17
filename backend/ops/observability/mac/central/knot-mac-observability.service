@@ -1,0 +1,17 @@
+[Unit]
+Description=Knot Mac metrics storage and dashboard
+Requires=docker.service knot-host-guard.service
+After=network-online.target docker.service knot-host-guard.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=/opt/knot-observability/mac/central
+Environment=KNOT_CENTRAL_SECRETS_DIR=/opt/knot-observability/private
+ExecStart=/usr/bin/docker compose up -d --wait --wait-timeout 120
+ExecStop=/usr/bin/docker compose stop
+TimeoutStartSec=180
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,14 @@
+[Unit]
+Description=Knot monitoring host firewall
+After=local-fs.target
+Before=sshd.service nginx.service docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStartPre=/usr/sbin/nft -c -f /etc/knot-observability/host-guard.nft
+ExecStart=/usr/sbin/nft -f /etc/knot-observability/host-guard.nft
+ExecReload=/usr/sbin/nft -f /etc/knot-observability/host-guard.nft
+
+[Install]
+WantedBy=multi-user.target

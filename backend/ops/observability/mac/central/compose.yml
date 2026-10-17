@@ -1,0 +1,53 @@
+name: knot-mac-observability
+
+services:
+  prometheus:
+    image: prom/prometheus@sha256:efd719c99d83b060d9daefdcf00360461adf279f45ef5391f8d111892118753e
+    restart: unless-stopped
+    mem_limit: 512m
+    cpus: 1.0
+    network_mode: host
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=14d
+      - --storage.tsdb.retention.size=2GB
+      - --web.enable-remote-write-receiver
+      - --web.listen-address=127.0.0.1:9090
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    logging: &logs
+      driver: json-file
+      options: {max-size: "10m", max-file: "3"}
+  grafana:
+    image: grafana/grafana@sha256:b28bae15e219c998fb0e0424ed724930cc61b1f61fb404d47c862f9a23f9e572
+    restart: unless-stopped
+    mem_limit: 1g
+    cpus: 1.0
+    network_mode: host
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    environment:
+      GOMEMLIMIT: 640MiB
+      GF_SECURITY_ADMIN_USER: knot-admin
+      GF_SERVER_HTTP_ADDR: 127.0.0.1
+      GF_SERVER_ROOT_URL: http://127.0.0.1:13000
+      GF_SECURITY_ADMIN_PASSWORD__FILE: /run/secrets/grafana-admin-password
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+    volumes:
+      - ${KNOT_CENTRAL_SECRETS_DIR:?private secrets directory required}/grafana-admin-password:/run/secrets/grafana-admin-password:ro
+      - ./datasources.yml:/etc/grafana/provisioning/datasources/knot.yml:ro
+      - ../../provisioning/dashboards/knot-mac.yml:/etc/grafana/provisioning/dashboards/knot-mac.yml:ro
+      - ../../provisioning/mac-dashboards:/etc/grafana/provisioning/mac-dashboards:ro
+      - grafana-data:/var/lib/grafana
+    logging: *logs
+
+volumes:
+  prometheus-data:
+  grafana-data:

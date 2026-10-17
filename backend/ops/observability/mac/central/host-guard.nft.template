@@ -1,0 +1,21 @@
+add table inet knot_guard
+flush table inet knot_guard
+table inet knot_guard {
+  chain input {
+    type filter hook input priority -10; policy drop;
+    iifname "lo" accept
+    ct state established,related accept
+    ct state invalid drop
+    ip saddr ${ADMIN_IPV4} tcp dport 22 accept
+    ip saddr ${MAC_IPV4} tcp dport 443 accept
+    iifname "${PRIMARY_IFACE}" meta nfproto ipv4 udp sport 67 udp dport 68 accept
+    ip protocol icmp accept
+    meta l4proto ipv6-icmp accept
+  }
+  chain forward {
+    type filter hook forward priority -10; policy drop;
+    ct state established,related accept
+    iifname "docker0" accept
+    iifname "br-*" accept
+  }
+}
