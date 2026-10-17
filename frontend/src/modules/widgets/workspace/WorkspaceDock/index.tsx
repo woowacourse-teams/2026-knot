@@ -20,8 +20,26 @@ const fadeIn = keyframes`
   }
 `;
 
+/**
+ * 폭이 벌어지는 동안 입력창의 글을 줄바꿈하지 않고 붙잡아 두는 모션.
+ *
+ * 펼치기 시작할 때는 입력창이 아주 좁아서, 내용만큼 높이를 잡는 입력창이 안내 문구나 남겨 둔 글을
+ * 한 글자씩 여러 줄로 접어 순간적으로 높아져요. 독은 아래가 고정이라 그만큼 위로 튀었다가 돌아와요.
+ * 이 동안은 직접 넣은 줄바꿈에서만 줄을 나눠, 높이가 펼친 뒤의 높이를 넘지 않게 해요.
+ */
+const holdLines = keyframes`
+  from,
+  to {
+    white-space: pre;
+    overflow-x: hidden;
+  }
+`;
+
 /** 독이 늘고 주는 감속. 빠르게 출발해 끝에서 오래 부드럽게 멈춰요 */
 const DOCK_EASING = "cubic-bezier(0.32, 0.72, 0, 1)";
+
+/** 독이 펼쳐지는 시간 */
+const DOCK_EXPAND_DURATION = "0.44s";
 
 /**
  * 화면 하단 가운데에 놓이는 독.
@@ -200,7 +218,7 @@ const Bar = styled.form<{
   interpolate-size: allow-keywords;
   transition-property: width, padding, gap, border-radius;
   transition-duration: ${({ $isExpanded }) =>
-    $isExpanded ? "0.44s" : "0.36s"};
+    $isExpanded ? DOCK_EXPAND_DURATION : "0.36s"};
   transition-timing-function: ${DOCK_EASING};
 
   /* 말풍선은 제 모션이 따로 있으므로 한 줄에 놓이는 것들만 뒤따라 나타나게 해요 */
@@ -276,6 +294,10 @@ const InputContainer = styled.div<{ $isHidden: boolean }>`
       pointer-events: none;
       /* 펼칠 때 독 안의 다른 것들처럼 뒤따라 나타나도록, 감춰 둔 동안은 모션을 꺼 둬요 */
       animation: none;
+
+      & > textarea {
+        animation: none;
+      }
     }
   `}
 `;
@@ -289,9 +311,15 @@ const MessageField = styled(Textarea)`
   background-color: transparent;
   color: ${({ theme }) => theme.neutral[0]};
   ${({ theme }) => theme.text.body01};
+  /* 감춰 둔 입력창은 모션이 꺼져 있어, 펼칠 때마다 처음부터 다시 붙잡아요 */
+  animation: ${holdLines} ${DOCK_EXPAND_DURATION};
 
   &::placeholder {
     color: ${({ theme }) => theme.neutral[400]};
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    animation: none;
   }
 `;
 
