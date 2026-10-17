@@ -14,12 +14,17 @@ public class TranscriptionJobService {
     private static final long SHUTDOWN_WAIT_MILLIS = 15_000;
 
     private final TranscriptionEngine engine;
+    private final TranscriptionMetrics metrics;
     private JobSnapshot current;
     private Thread worker;
     private boolean accepting = true;
 
-    public TranscriptionJobService(TranscriptionEngine engine) {
+    public TranscriptionJobService(
+            TranscriptionEngine engine,
+            TranscriptionMetrics metrics
+    ) {
         this.engine = engine;
+        this.metrics = metrics;
     }
 
     public synchronized JobSnapshot create(CreateTranscriptionCommand request) {
@@ -66,6 +71,7 @@ public class TranscriptionJobService {
         worker = Thread.ofPlatform()
                 .name("transcription-job")
                 .unstarted(() -> execute(request));
+        metrics.startJob();
         try {
             worker.start();
             TranscriptionLog.record(
@@ -92,6 +98,7 @@ public class TranscriptionJobService {
                     null
             );
             worker = null;
+            metrics.finishJob(false);
         }
         return current;
     }
@@ -106,6 +113,13 @@ public class TranscriptionJobService {
 
     public synchronized boolean isReady() {
         return accepting && engine.isReady();
+    }
+
+    public synchronized String getMetrics() {
+        return metrics.render(
+                isReady(),
+                worker != null
+        );
     }
 
     @PreDestroy
@@ -182,8 +196,8 @@ public class TranscriptionJobService {
         } finally {
             Thread.interrupted();
             try {
-                TranscriptionLog.stage(
-                        "recording.transcription.cleanup",
+                metrics.stage(
+                        TranscriptionMetrics.Stage.CLEANUP,
                         request.attemptId(),
                         TranscriptionErrorCode.PROCESS_CLEANUP_FAILED,
                         () -> {
@@ -199,6 +213,7 @@ public class TranscriptionJobService {
             synchronized (this) {
                 current = outcome;
                 worker = null;
+                metrics.finishJob(outcome.status() == JobSnapshot.Status.SUCCEEDED);
                 TranscriptionLog.record(
                         "recording.transcription.execute",
                         outcome.status() == JobSnapshot.Status.SUCCEEDED ? "completed" : "failed",

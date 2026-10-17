@@ -12,6 +12,7 @@ import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.AppenderBase;
 import com.knot.ai.transcription.application.TranscriptionLog;
+import com.knot.ai.transcription.application.TranscriptionMetrics;
 import org.slf4j.LoggerFactory;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -137,7 +138,8 @@ class HeadlessTranscriptionEngineTest {
         engine = new HeadlessTranscriptionEngine(
                 properties,
                 downloader,
-                mapper
+                mapper,
+                new TranscriptionMetrics()
         );
     }
 

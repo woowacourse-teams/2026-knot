@@ -40,7 +40,10 @@ class TranscriptionLoggingTest {
     void prepare() {
         appender.start();
         logger.addAppender(appender);
-        service = new TranscriptionJobService(engine);
+        service = new TranscriptionJobService(
+                engine,
+                new TranscriptionMetrics()
+        );
     }
 
     @AfterEach

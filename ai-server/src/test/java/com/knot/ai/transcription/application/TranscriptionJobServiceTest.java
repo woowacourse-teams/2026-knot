@@ -39,7 +39,10 @@ class TranscriptionJobServiceTest {
 
     @BeforeEach
     void prepare() {
-        service = new TranscriptionJobService(engine);
+        service = new TranscriptionJobService(
+                engine,
+                new TranscriptionMetrics()
+        );
     }
 
     @AfterEach
@@ -102,6 +105,12 @@ class TranscriptionJobServiceTest {
                 "BUSY",
                 failure.getCode()
         );
+        assertThat(service.getMetrics()).contains(
+                "knot_ai_ready 1.0\n",
+                "knot_ai_active_jobs 1.0\n",
+                "knot_ai_jobs_completed_total{outcome=\"completed\"} 0.0\n",
+                "knot_ai_jobs_completed_total{outcome=\"failed\"} 0.0\n"
+        );
     }
 
     @Test
@@ -135,6 +144,10 @@ class TranscriptionJobServiceTest {
                             first.get(),
                             second.get()
                     )
+            );
+            assertThat(service.getMetrics()).contains(
+                    "knot_ai_active_jobs 1.0\n",
+                    "knot_ai_jobs_completed_total{outcome=\"failed\"} 0.0\n"
             );
         }
     }
@@ -170,6 +183,11 @@ class TranscriptionJobServiceTest {
                 service.get(id)
                         .status()
         );
+        assertThat(service.getMetrics()).contains(
+                "knot_ai_active_jobs 1.0\n",
+                "knot_ai_stage_active{stage=\"cleanup\"} 1.0\n",
+                "knot_ai_jobs_completed_total{outcome=\"completed\"} 0.0\n"
+        );
         engine.cleaned.countDown();
         assertEquals(
                 JobSnapshot.Status.SUCCEEDED,
@@ -193,6 +211,12 @@ class TranscriptionJobServiceTest {
         assertSame(
                 completed,
                 duplicate
+        );
+        assertThat(service.getMetrics()).contains(
+                "knot_ai_active_jobs 0.0\n",
+                "knot_ai_job_elapsed_seconds 0.0\n",
+                "knot_ai_jobs_completed_total{outcome=\"completed\"} 1.0\n",
+                "knot_ai_jobs_completed_total{outcome=\"failed\"} 0.0\n"
         );
         assertEquals(
                 1,
@@ -247,6 +271,11 @@ class TranscriptionJobServiceTest {
                 failure.getCode()
         );
         assertFalse(service.isReady());
+        assertThat(service.getMetrics()).contains(
+                "knot_ai_ready 0.0\n",
+                "knot_ai_active_jobs 0.0\n",
+                "knot_ai_jobs_completed_total{outcome=\"failed\"} 0.0\n"
+        );
     }
 
     @Test
@@ -275,6 +304,13 @@ class TranscriptionJobServiceTest {
                 JobSnapshot.Status.SUCCEEDED,
                 completed.status()
         );
+        assertThat(service.getMetrics()).contains(
+                "knot_ai_ready 0.0\n",
+                "knot_ai_active_jobs 0.0\n",
+                "knot_ai_jobs_completed_total{outcome=\"completed\"} 1.0\n",
+                "knot_ai_jobs_completed_total{outcome=\"failed\"} 0.0\n",
+                "knot_ai_stage_duration_seconds_count{stage=\"cleanup\",outcome=\"failed\"} 1.0\n"
+        );
         assertThat(output.getAll()).contains(
                 "\"attemptId\":\"" + id + "\"",
                 "\"errorCode\":\"PROCESS_CLEANUP_FAILED\"",
@@ -302,6 +338,24 @@ class TranscriptionJobServiceTest {
                 failure.getCode()
         );
         assertFalse(service.isReady());
+    }
+
+    @Test
+    @DisplayName("완료 후 지표를 여러 번 수집해도 누적 횟수는 변하지 않는다")
+    void getMetrics_success_repeatedScrapesKeepCounters() throws Exception {
+        // given
+        UUID id = UUID.randomUUID();
+        service.create(request(id));
+        engine.finish.countDown();
+        awaitFinished(id);
+        String previous = service.getMetrics();
+
+        // when
+        String current = service.getMetrics();
+
+        // then
+        assertThat(current).isEqualTo(previous);
+        assertThat(current).contains("knot_ai_jobs_completed_total{outcome=\"completed\"} 1.0\n");
     }
 
     @Test
@@ -341,7 +395,10 @@ class TranscriptionJobServiceTest {
         service.create(request(id));
         engine.finish.countDown();
         awaitFinished(id);
-        TranscriptionJobService restarted = new TranscriptionJobService(engine);
+        TranscriptionJobService restarted = new TranscriptionJobService(
+                engine,
+                new TranscriptionMetrics()
+        );
         try {
             // when
             TranscriptionException failure = assertThrows(
@@ -379,6 +436,11 @@ class TranscriptionJobServiceTest {
         assertEquals(
                 "INFERENCE_TIMEOUT",
                 failed.failureCode()
+        );
+        assertThat(service.getMetrics()).contains(
+                "knot_ai_active_jobs 0.0\n",
+                "knot_ai_jobs_completed_total{outcome=\"completed\"} 0.0\n",
+                "knot_ai_jobs_completed_total{outcome=\"failed\"} 1.0\n"
         );
         assertNull(failed.result());
     }

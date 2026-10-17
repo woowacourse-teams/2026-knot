@@ -2,7 +2,7 @@ package com.knot.ai.transcription.infrastructure;
 
 import com.knot.ai.global.AiServerProperties;
 import com.knot.ai.transcription.application.TranscriptionEngine;
-import com.knot.ai.transcription.application.TranscriptionLog;
+import com.knot.ai.transcription.application.TranscriptionMetrics;
 import com.knot.ai.transcription.application.command.CreateTranscriptionCommand;
 import com.knot.ai.transcription.domain.TranscriptionErrorCode;
 import com.knot.ai.transcription.domain.TranscriptionException;
@@ -33,16 +33,19 @@ public class HeadlessTranscriptionEngine implements TranscriptionEngine {
     private final JsonNode profile;
     private final ProcessSupervisor supervisor;
     private final AudioInspector audioInspector;
+    private final TranscriptionMetrics metrics;
     private volatile boolean ready;
 
     public HeadlessTranscriptionEngine(
             AiServerProperties properties,
             S3AudioDownloader downloader,
-            JsonMapper mapper
+            JsonMapper mapper,
+            TranscriptionMetrics metrics
     ) throws IOException {
         this.properties = properties;
         this.downloader = downloader;
         this.mapper = mapper;
+        this.metrics = metrics;
         profile = mapper.readTree(
                 properties.profileFile()
                         .toFile()
@@ -74,8 +77,8 @@ public class HeadlessTranscriptionEngine implements TranscriptionEngine {
         );
         Path source = directory.resolve("input.webm");
         Path wav = directory.resolve("input.wav");
-        TranscriptionLog.stage(
-                "recording.transcription.download",
+        metrics.stage(
+                TranscriptionMetrics.Stage.DOWNLOAD,
                 request.attemptId(),
                 TranscriptionErrorCode.DOWNLOAD_FAILED,
                 () -> {
@@ -86,8 +89,8 @@ public class HeadlessTranscriptionEngine implements TranscriptionEngine {
                     return null;
                 }
         );
-        double duration = TranscriptionLog.stage(
-                "recording.transcription.decode",
+        double duration = metrics.stage(
+                TranscriptionMetrics.Stage.DECODE,
                 request.attemptId(),
                 TranscriptionErrorCode.DECODE_FAILED,
                 () -> {
@@ -119,8 +122,8 @@ public class HeadlessTranscriptionEngine implements TranscriptionEngine {
                     return audioInspector.readPcmDuration(wav);
                 }
         );
-        TranscriptionLog.stage(
-                "recording.transcription.model",
+        metrics.stage(
+                TranscriptionMetrics.Stage.MODEL,
                 request.attemptId(),
                 TranscriptionErrorCode.INFERENCE_FAILED,
                 () -> {
@@ -163,8 +166,8 @@ public class HeadlessTranscriptionEngine implements TranscriptionEngine {
                     return null;
                 }
         );
-        return TranscriptionLog.stage(
-                "recording.transcription.result_check",
+        return metrics.stage(
+                TranscriptionMetrics.Stage.RESULT_CHECK,
                 request.attemptId(),
                 TranscriptionErrorCode.INVALID_RESULT,
                 () -> readResult(
