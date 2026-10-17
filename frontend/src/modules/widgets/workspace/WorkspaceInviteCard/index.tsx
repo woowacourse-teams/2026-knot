@@ -158,10 +158,6 @@ const CodeBox = styled.button`
     cursor: default;
   }
 
-  &[aria-busy="true"] {
-    cursor: progress;
-  }
-
   &:focus-visible {
     outline: 2px solid ${({ theme }) => theme.sub.accent[500]};
     outline-offset: 2px;

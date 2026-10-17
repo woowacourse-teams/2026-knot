@@ -201,10 +201,6 @@ const Root = styled.button<{
   ${({ theme, $variant, $status }) =>
     buttonAppearance(theme)[$variant][$status]};
 
-  &[aria-busy="true"] {
-    cursor: progress;
-  }
-
   /* 포커스 링 아웃라인 논의 필요 */
   &:focus-visible {
     outline: 2px solid ${({ theme }) => theme.sub.accent[500]};
