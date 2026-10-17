@@ -187,3 +187,13 @@ jobs:
             -H "Content-Type: application/json" \
             -d "$PAYLOAD" \
             "$DISCORD_WEBHOOK_URL"
+
+      - name: Preserve test reports
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-test-reports-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            backend/build/test-results/
+            backend/build/reports/tests/
+          if-no-files-found: warn
