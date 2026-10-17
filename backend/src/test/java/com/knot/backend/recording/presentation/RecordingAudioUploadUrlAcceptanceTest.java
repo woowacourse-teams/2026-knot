@@ -104,7 +104,9 @@ class RecordingAudioUploadUrlAcceptanceTest {
         result.andExpect(status().isCreated())
                 .andExpect(jsonPath("$.uploadId").isNumber())
                 .andExpect(
-                        jsonPath("$.uploadUrl").value(startsWith("http://localhost:9000/knot-test-audio/recordings/"))
+                        jsonPath("$.uploadUrl").value(
+                                startsWith("https://knot-test-audio.s3.ap-northeast-2.amazonaws.com/recordings/")
+                        )
                 )
                 .andExpect(jsonPath("$.uploadUrl").value(containsString("X-Amz-Signature=")))
                 .andExpect(jsonPath("$.expiresAt").isNotEmpty());

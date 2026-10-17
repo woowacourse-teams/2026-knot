@@ -6,6 +6,7 @@ import com.knot.backend.recording.domain.RecordingErrorCode;
 import com.knot.backend.recording.domain.RecordingException;
 import com.knot.backend.recording.domain.model.StoredAudioObject;
 import java.time.Duration;
+import java.util.Objects;
 import software.amazon.awssdk.core.exception.SdkException;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
@@ -47,15 +48,11 @@ public class S3RecordingAudioStorage implements RecordingAudioStorage {
         this.s3Presigner = s3Presigner;
         this.s3Client = s3Client;
         this.bucket = bucket;
-        this.keyPrefix = normalizeKeyPrefix(keyPrefix);
+        this.keyPrefix = Objects.requireNonNullElse(
+                keyPrefix,
+                ""
+        );
         this.uploadUrlTtl = uploadUrlTtl;
-    }
-
-    private String normalizeKeyPrefix(String keyPrefix) {
-        if (keyPrefix == null) {
-            return "";
-        }
-        return keyPrefix;
     }
 
     @Override
@@ -142,15 +139,10 @@ public class S3RecordingAudioStorage implements RecordingAudioStorage {
                     response.contentType(),
                     response.versionId()
             );
-        } catch (S3Exception exception) {
-            if (exception.statusCode() == NOT_FOUND_STATUS) {
+        } catch (SdkException exception) {
+            if (exception instanceof S3Exception s3Exception && s3Exception.statusCode() == NOT_FOUND_STATUS) {
                 return StoredAudioObject.missing();
             }
-            throw new RecordingException(
-                    RecordingErrorCode.AUDIO_STORAGE_UNAVAILABLE,
-                    exception
-            );
-        } catch (SdkException exception) {
             throw new RecordingException(
                     RecordingErrorCode.AUDIO_STORAGE_UNAVAILABLE,
                     exception

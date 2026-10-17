@@ -443,6 +443,16 @@ Transcript·오디오·생성 중/실패 Job은 직접 검색하지 않는다. D
 실제 사용 근거 전체 보존·화면 카드 최대 3개는 유지한다.
 [Proposed ADR](../adr/670-search-generated-draft-documents.md)에 정책 변경을 기록하며 운영 Notion 동기화·팀 승인·배포 완료와 구분한다.
 
+## 2026-10-16 녹음 오디오 저장소 AWS 전용 구성
+
+[#739](https://github.com/woowacourse-teams/2026-Knot/issues/739)의 사용자 결정으로 녹음 오디오 저장소를 AWS S3 전용으로 구성한다.
+앱 전용 endpoint·고정 access key·secret key와 path-style 강제를 제거하고 AWS SDK 기본 자격 증명·endpoint 선택을 사용한다.
+EC2 역할은 기본 체인에서 선택될 수 있으며 시스템 속성·환경·프로필 자격 증명이 먼저 선택될 수 있다.
+
+기존 직접 PUT 업로드·완료 확인·버전 고정 GET·삭제 정책과 공개 API는 유지한다.
+[Proposed ADR](../adr/739-recording-audio-aws-s3-default-credentials.md)은 ADR 482의 공급자 설정 교체 동인만 대체한다.
+팀 Notion 동기화·팀 승인·실제 버킷 권한 검증·운영 배포 완료를 의미하지 않는다.
+
 ## 변경 시 갱신
 
 정책을 바꾸는 작업에서는 원문의 해당 항목과 변경 로그를 먼저 확인하고,

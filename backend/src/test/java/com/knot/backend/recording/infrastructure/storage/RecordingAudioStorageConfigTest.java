@@ -8,15 +8,24 @@ import com.knot.backend.recording.domain.RecordingException;
 import java.time.Duration;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.NullAndEmptySource;
+import org.junit.jupiter.params.provider.ValueSource;
 
 class RecordingAudioStorageConfigTest {
 
-    @Test
-    @DisplayName("저장소 설정이 비어 있으면 서버는 뜨고 업로드 URL 요청만 저장소 사용 불가로 거절한다")
-    void recordingAudioStorage_success_unconfiguredRejectsUpload() {
+    @ParameterizedTest
+    @NullAndEmptySource
+    @ValueSource(strings = " ")
+    @DisplayName("버킷이 없으면 서버는 뜨고 업로드 요청만 저장소 사용 불가로 거절한다")
+    void recordingAudioStorage_success_missingBucketRejectsUpload(String bucket) {
         // given
-        RecordingAudioStorage recordingAudioStorage = new RecordingAudioStorageConfig()
-                .recordingAudioStorage(properties(""));
+        RecordingAudioStorage recordingAudioStorage = new RecordingAudioStorageConfig().recordingAudioStorage(
+                properties(
+                        "ap-northeast-2",
+                        bucket
+                )
+        );
 
         // when
         Throwable failure = catchThrowable(
@@ -34,41 +43,32 @@ class RecordingAudioStorageConfigTest {
                 .isEqualTo(RecordingErrorCode.AUDIO_STORAGE_UNAVAILABLE);
     }
 
-    @Test
-    @DisplayName("저장소 설정이 모두 있으면 S3 호환 저장소를 사용한다")
-    void recordingAudioStorage_success_configured() {
+    @ParameterizedTest
+    @NullAndEmptySource
+    @ValueSource(strings = " ")
+    @DisplayName("리전이 없으면 저장소 미설정으로 처리한다")
+    void recordingAudioStorage_success_missingRegion(String region) {
         // given
-        RecordingAudioStorageProperties properties = properties("knot-audio");
+        RecordingAudioStorageProperties properties = properties(
+                region,
+                "knot-audio"
+        );
 
         // when
         RecordingAudioStorage recordingAudioStorage = new RecordingAudioStorageConfig()
                 .recordingAudioStorage(properties);
 
         // then
-        assertThat(recordingAudioStorage).isInstanceOf(S3RecordingAudioStorage.class);
+        assertThat(recordingAudioStorage).isInstanceOf(UnconfiguredRecordingAudioStorage.class);
     }
 
     @Test
-    @DisplayName("설정 문자열에는 접근 키와 비밀 키를 남기지 않는다")
-    void toString_success_redactsKeys() {
-        // given
-        RecordingAudioStorageProperties properties = properties("knot-audio");
-
-        // when
-        String text = properties.toString();
-
-        // then
-        assertThat(text).doesNotContain("test-access-key")
-                .doesNotContain("test-secret-key");
-    }
-
-    @Test
-    @DisplayName("고정 키가 둘 다 없으면 자격 증명을 조회하지 않고 기본 공급자를 구성한다")
+    @DisplayName("리전과 버킷만 있으면 자격 증명 조회 없이 AWS S3 저장소를 구성한다")
     void recordingAudioStorage_success_defaultCredentials() {
         // given
-        RecordingAudioStorageProperties properties = propertiesWithCredentials(
-                "",
-                ""
+        RecordingAudioStorageProperties properties = properties(
+                "ap-northeast-2",
+                "knot-audio"
         );
 
         // when
@@ -79,62 +79,13 @@ class RecordingAudioStorageConfigTest {
         assertThat(recordingAudioStorage).isInstanceOf(S3RecordingAudioStorage.class);
     }
 
-    @Test
-    @DisplayName("접근 키만 있으면 다른 인증 방식으로 우회하지 않고 저장소 사용 불가로 거절한다")
-    void recordingAudioStorage_failure_onlyAccessKey() {
-        // given
-        RecordingAudioStorageProperties properties = propertiesWithCredentials(
-                "test-access-key",
-                ""
-        );
-
-        // when
-        RecordingAudioStorage recordingAudioStorage = new RecordingAudioStorageConfig()
-                .recordingAudioStorage(properties);
-
-        // then
-        assertThat(recordingAudioStorage).isInstanceOf(UnconfiguredRecordingAudioStorage.class);
-    }
-
-    @Test
-    @DisplayName("비밀 키만 있으면 다른 인증 방식으로 우회하지 않고 저장소 사용 불가로 거절한다")
-    void recordingAudioStorage_failure_onlySecretKey() {
-        // given
-        RecordingAudioStorageProperties properties = propertiesWithCredentials(
-                "",
-                "test-secret-key"
-        );
-
-        // when
-        RecordingAudioStorage recordingAudioStorage = new RecordingAudioStorageConfig()
-                .recordingAudioStorage(properties);
-
-        // then
-        assertThat(recordingAudioStorage).isInstanceOf(UnconfiguredRecordingAudioStorage.class);
-    }
-
-    private RecordingAudioStorageProperties propertiesWithCredentials(
-            String accessKey,
-            String secretKey
+    private RecordingAudioStorageProperties properties(
+            String region,
+            String bucket
     ) {
         return new RecordingAudioStorageProperties(
-                "https://s3.ap-northeast-2.amazonaws.com",
-                "ap-northeast-2",
-                "knot-audio",
-                accessKey,
-                secretKey,
-                "knot/dev/",
-                Duration.ofMinutes(15)
-        );
-    }
-
-    private RecordingAudioStorageProperties properties(String bucket) {
-        return new RecordingAudioStorageProperties(
-                "https://kr.object.ncloudstorage.com",
-                "kr-standard",
+                region,
                 bucket,
-                "test-access-key",
-                "test-secret-key",
                 "",
                 Duration.ofMinutes(15)
         );

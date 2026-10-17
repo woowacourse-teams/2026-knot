@@ -313,6 +313,62 @@ class S3RecordingAudioStorageTest {
         assertThat(storedObject.exists()).isTrue();
     }
 
+    @Test
+    @DisplayName("접두사가 null이면 빈 접두사와 같은 업로드 경로를 서명한다")
+    void presignUpload_success_nullPrefix() {
+        // given
+        S3RecordingAudioStorage storage = storageWithPrefix(null);
+
+        // when
+        PresignedAudioUpload presigned = storage.presignUpload(
+                "recordings/7/key",
+                "audio/webm",
+                1024L
+        );
+
+        // then
+        assertThat(
+                URI.create(presigned.uploadUrl())
+                        .getPath()
+        ).isEqualTo("/knot-audio/recordings/7/key");
+    }
+
+    @Test
+    @DisplayName("AWS 기본 endpoint와 주소 방식으로 PUT의 형식과 크기를 서명한다")
+    void presignUpload_success_awsDefaults() {
+        // given
+        try (S3Presigner awsPresigner = S3Presigner.builder()
+                .region(Region.of("ap-northeast-2"))
+                .credentialsProvider(credentials())
+                .build();
+                S3Client awsClient = S3Client.builder()
+                        .region(Region.of("ap-northeast-2"))
+                        .credentialsProvider(credentials())
+                        .build()) {
+            S3RecordingAudioStorage storage = new S3RecordingAudioStorage(
+                    awsPresigner,
+                    awsClient,
+                    BUCKET,
+                    "knot/dev/",
+                    Duration.ofMinutes(15)
+            );
+
+            // when
+            PresignedAudioUpload presigned = storage.presignUpload(
+                    "recordings/7/key",
+                    "audio/webm",
+                    1024L
+            );
+
+            // then
+            URI uri = URI.create(presigned.uploadUrl());
+            assertThat(uri.getHost()).isEqualTo("knot-audio.s3.ap-northeast-2.amazonaws.com");
+            assertThat(uri.getPath()).isEqualTo("/knot/dev/recordings/7/key");
+            assertThat(uri.getQuery()).contains("X-Amz-Expires=900")
+                    .contains("X-Amz-SignedHeaders=content-length;content-type;host");
+        }
+    }
+
     private S3RecordingAudioStorage storageWithPrefix(String keyPrefix) {
         URI endpoint = URI.create(
                 "http://localhost:" + server.getAddress()

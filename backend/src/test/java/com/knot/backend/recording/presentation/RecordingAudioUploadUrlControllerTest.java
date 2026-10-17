@@ -11,7 +11,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.knot.backend.auth.domain.model.AuthenticatedMember;
 import com.knot.backend.global.exception.GlobalExceptionHandler;
-import com.knot.backend.recording.application.RecordingAudioUploadUrlService;
+import com.knot.backend.recording.application.RecordingAudioUploadService;
 import com.knot.backend.recording.application.dto.result.RecordingAudioUploadUrlResult;
 import java.time.Instant;
 import java.util.List;
@@ -37,13 +37,13 @@ class RecordingAudioUploadUrlControllerTest {
     private static final String BODY = "{\"contentType\":\"audio/webm\",\"contentLength\":1024}";
     private static final Instant EXPIRES_AT = Instant.parse("2026-10-05T00:15:00Z");
 
-    private RecordingAudioUploadUrlService recordingAudioUploadUrlService;
+    private RecordingAudioUploadService recordingAudioUploadService;
     private MockMvc mockMvc;
 
     @BeforeEach
     void setUp() {
-        recordingAudioUploadUrlService = mock(RecordingAudioUploadUrlService.class);
-        mockMvc = MockMvcBuilders.standaloneSetup(new RecordingAudioUploadUrlController(recordingAudioUploadUrlService))
+        recordingAudioUploadService = mock(RecordingAudioUploadService.class);
+        mockMvc = MockMvcBuilders.standaloneSetup(new RecordingAudioUploadUrlController(recordingAudioUploadService))
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .setCustomArgumentResolvers(new AuthenticationPrincipalArgumentResolver())
                 .build();
@@ -108,12 +108,12 @@ class RecordingAudioUploadUrlControllerTest {
         result.andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
                 .andExpect(jsonPath("$.fieldErrors[0].field").value("contentType"));
-        verifyNoInteractions(recordingAudioUploadUrlService);
+        verifyNoInteractions(recordingAudioUploadService);
     }
 
     private void stubResult(boolean created) {
         when(
-                recordingAudioUploadUrlService.issue(
+                recordingAudioUploadService.issue(
                         eq(WORKSPACE_ID),
                         eq(MEMBER_ID),
                         eq(RECORDING_ID),

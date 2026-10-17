@@ -19,9 +19,11 @@ import com.knot.backend.recording.domain.RecordingException;
 import com.knot.backend.recording.domain.model.StoredAudioObject;
 import com.knot.backend.testsupport.TestApplicationProperties;
 import com.knot.backend.testsupport.TestcontainersConfiguration;
+import com.knot.backend.workspace.domain.WorkspaceErrorCode;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.UUID;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CyclicBarrier;
@@ -53,7 +55,7 @@ class RecordingAudioUploadCompletionServiceIntegrationTest {
     private static final Instant JOINED_AT = Instant.parse("2026-10-05T00:01:00Z");
     private static final String CONTROL_TOKEN = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefA";
 
-    private final RecordingAudioUploadUrlService recordingAudioUploadUrlService;
+    private final RecordingAudioUploadService recordingAudioUploadService;
     private final RecordingAudioUploadCompletionService recordingAudioUploadCompletionService;
     private final RecordingStartService recordingStartService;
     private final RecordingControlService recordingControlService;
@@ -64,7 +66,7 @@ class RecordingAudioUploadCompletionServiceIntegrationTest {
     private RecordingAudioStorage recordingAudioStorage;
 
     RecordingAudioUploadCompletionServiceIntegrationTest(
-            RecordingAudioUploadUrlService recordingAudioUploadUrlService,
+            RecordingAudioUploadService recordingAudioUploadService,
             RecordingAudioUploadCompletionService recordingAudioUploadCompletionService,
             RecordingStartService recordingStartService,
             RecordingControlService recordingControlService,
@@ -72,7 +74,7 @@ class RecordingAudioUploadCompletionServiceIntegrationTest {
             JdbcClient jdbcClient,
             Clock clock
     ) {
-        this.recordingAudioUploadUrlService = recordingAudioUploadUrlService;
+        this.recordingAudioUploadService = recordingAudioUploadService;
         this.recordingAudioUploadCompletionService = recordingAudioUploadCompletionService;
         this.recordingStartService = recordingStartService;
         this.recordingControlService = recordingControlService;
@@ -185,6 +187,116 @@ class RecordingAudioUploadCompletionServiceIntegrationTest {
                 .extracting("errorCode")
                 .isEqualTo(RecordingErrorCode.AUDIO_STORAGE_UNAVAILABLE);
         assertThat(uploadRow(fixture.recordingId()).status()).isEqualTo("RESERVED");
+    }
+
+    @Test
+    @DisplayName("저장소 확인 중 시작자가 탈퇴하면 완료 단계에서 권한을 다시 확인해 예약을 유지한다")
+    void complete_failure_membershipRemovedDuringStorageCheck() {
+        // given
+        Fixture fixture = endedRecording();
+        long uploadId = issue(
+                fixture,
+                1024L
+        ).uploadId();
+        when(recordingAudioStorage.findStoredObject(anyString())).thenAnswer(invocation -> {
+            jdbcClient.sql("UPDATE workspace_members SET left_at = :leftAt WHERE workspace_id = :workspaceId")
+                    .param(
+                            "leftAt",
+                            clock.instant()
+                                    .atOffset(ZoneOffset.UTC)
+                    )
+                    .param(
+                            "workspaceId",
+                            fixture.workspaceId()
+                    )
+                    .update();
+            return StoredAudioObject.of(
+                    1024L,
+                    "audio/webm",
+                    "version-1"
+            );
+        });
+
+        // when
+        Throwable thrown = catchThrowable(
+                () -> complete(
+                        fixture,
+                        uploadId
+                )
+        );
+
+        // then
+        assertThat(thrown).isInstanceOf(ProjectException.class)
+                .extracting("errorCode")
+                .isEqualTo(WorkspaceErrorCode.WORKSPACE_ACCESS_DENIED);
+        assertThat(uploadRow(fixture.recordingId()).status()).isEqualTo("RESERVED");
+        assertThat(
+                jdbcClient.sql("""
+                        SELECT completed_at IS NULL AND storage_version_id IS NULL
+                        FROM recording_audio_uploads WHERE id = :uploadId
+                        """)
+                        .param(
+                                "uploadId",
+                                uploadId
+                        )
+                        .query(Boolean.class)
+                        .single()
+        ).isTrue();
+    }
+
+    @Test
+    @DisplayName("저장소 확인 중 워크스페이스가 삭제되면 완료 단계에서 다시 확인해 예약을 유지한다")
+    void complete_failure_workspaceDeletedDuringStorageCheck() {
+        // given
+        Fixture fixture = endedRecording();
+        long uploadId = issue(
+                fixture,
+                1024L
+        ).uploadId();
+        when(recordingAudioStorage.findStoredObject(anyString())).thenAnswer(invocation -> {
+            jdbcClient.sql("UPDATE workspaces SET deleted_at = :deletedAt WHERE id = :workspaceId")
+                    .param(
+                            "deletedAt",
+                            clock.instant()
+                                    .atOffset(ZoneOffset.UTC)
+                    )
+                    .param(
+                            "workspaceId",
+                            fixture.workspaceId()
+                    )
+                    .update();
+            return StoredAudioObject.of(
+                    1024L,
+                    "audio/webm",
+                    "version-1"
+            );
+        });
+
+        // when
+        Throwable thrown = catchThrowable(
+                () -> complete(
+                        fixture,
+                        uploadId
+                )
+        );
+
+        // then
+        assertThat(thrown).isInstanceOf(ProjectException.class)
+                .extracting("errorCode")
+                .isEqualTo(WorkspaceErrorCode.WORKSPACE_NOT_FOUND);
+        assertThat(uploadRow(fixture.recordingId()).status()).isEqualTo("RESERVED");
+        assertThat(
+                jdbcClient.sql("""
+                        SELECT completed_at IS NULL AND storage_version_id IS NULL
+                        FROM recording_audio_uploads WHERE id = :uploadId
+                        """)
+                        .param(
+                                "uploadId",
+                                uploadId
+                        )
+                        .query(Boolean.class)
+                        .single()
+        ).isTrue();
     }
 
     @Test
@@ -343,7 +455,7 @@ class RecordingAudioUploadCompletionServiceIntegrationTest {
             Fixture fixture,
             long contentLength
     ) {
-        return recordingAudioUploadUrlService.issue(
+        return recordingAudioUploadService.issue(
                 fixture.workspaceId(),
                 fixture.memberId(),
                 fixture.recordingId(),

@@ -11,6 +11,8 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+
+import com.knot.backend.global.config.TranscriptionProperties;
 import com.knot.backend.recording.application.dto.command.RecordingAudioUploadUrlCommand;
 import com.knot.backend.recording.application.dto.result.PresignedAudioUpload;
 import com.knot.backend.recording.application.dto.result.RecordingAudioUploadUrlResult;
@@ -32,7 +34,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
-class RecordingAudioUploadUrlServiceTest {
+class RecordingAudioUploadServiceTest {
     private static final Instant STARTED_AT = Instant.parse("2026-10-05T00:00:00Z");
     private static final Instant NOW = Instant.parse("2026-10-05T00:30:00Z");
     private static final Instant EXPIRES_AT = NOW.plusSeconds(900);
@@ -45,7 +47,7 @@ class RecordingAudioUploadUrlServiceTest {
     private WorkspaceMemberRepository workspaceMemberRepository;
     private RecordingSessionRepository recordingSessionRepository;
     private RecordingAudioUploadRepository recordingAudioUploadRepository;
-    private RecordingAudioUploadUrlService service;
+    private RecordingAudioUploadService service;
 
     @BeforeEach
     void setUp() {
@@ -66,7 +68,7 @@ class RecordingAudioUploadUrlServiceTest {
                         EXPIRES_AT
                 )
         );
-        service = new RecordingAudioUploadUrlService(
+        service = new RecordingAudioUploadService(
                 new RecordingAccess(
                         workspaceRepository,
                         workspaceMemberRepository,
@@ -78,7 +80,9 @@ class RecordingAudioUploadUrlServiceTest {
                 Clock.fixed(
                         NOW,
                         ZoneOffset.UTC
-                )
+                ),
+                mock(RecordingTranscriptionStateService.class),
+                mock(TranscriptionProperties.class)
         );
         when(workspaceRepository.findByIdForUpdate(WORKSPACE_ID)).thenReturn(
                 Optional.of(

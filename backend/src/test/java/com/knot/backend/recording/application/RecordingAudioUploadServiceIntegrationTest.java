@@ -37,25 +37,25 @@ import org.springframework.transaction.support.TransactionTemplate;
 @TestApplicationProperties
 @SpringBootTest
 @TestConstructor(autowireMode = AutowireMode.ALL)
-class RecordingAudioUploadUrlServiceIntegrationTest {
+class RecordingAudioUploadServiceIntegrationTest {
     private static final Instant CREATED_AT = Instant.parse("2026-10-05T00:00:00Z");
     private static final Instant JOINED_AT = Instant.parse("2026-10-05T00:01:00Z");
     private static final String CONTROL_TOKEN = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefA";
 
-    private final RecordingAudioUploadUrlService recordingAudioUploadUrlService;
+    private final RecordingAudioUploadService recordingAudioUploadService;
     private final RecordingStartService recordingStartService;
     private final RecordingControlService recordingControlService;
     private final TransactionTemplate transactionTemplate;
     private final JdbcClient jdbcClient;
 
-    RecordingAudioUploadUrlServiceIntegrationTest(
-            RecordingAudioUploadUrlService recordingAudioUploadUrlService,
+    RecordingAudioUploadServiceIntegrationTest(
+            RecordingAudioUploadService recordingAudioUploadService,
             RecordingStartService recordingStartService,
             RecordingControlService recordingControlService,
             TransactionTemplate transactionTemplate,
             JdbcClient jdbcClient
     ) {
-        this.recordingAudioUploadUrlService = recordingAudioUploadUrlService;
+        this.recordingAudioUploadService = recordingAudioUploadService;
         this.recordingStartService = recordingStartService;
         this.recordingControlService = recordingControlService;
         this.transactionTemplate = transactionTemplate;
@@ -87,7 +87,10 @@ class RecordingAudioUploadUrlServiceIntegrationTest {
         // then
         assertThat(result.created()).isTrue();
         assertThat(result.uploadUrl())
-                .startsWith("http://localhost:9000/knot-test-audio/recordings/" + fixture.recordingId() + "/")
+                .startsWith(
+                        "https://knot-test-audio.s3.ap-northeast-2.amazonaws.com/recordings/" + fixture.recordingId()
+                                + "/"
+                )
                 .contains("X-Amz-Signature=");
         assertThat(uploadRow(fixture.recordingId())).isEqualTo(
                 new UploadRow(
@@ -254,7 +257,7 @@ class RecordingAudioUploadUrlServiceIntegrationTest {
             Fixture fixture,
             long contentLength
     ) {
-        return recordingAudioUploadUrlService.issue(
+        return recordingAudioUploadService.issue(
                 fixture.workspaceId(),
                 fixture.memberId(),
                 fixture.recordingId(),

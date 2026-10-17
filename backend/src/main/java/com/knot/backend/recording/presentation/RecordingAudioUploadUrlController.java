@@ -1,7 +1,7 @@
 package com.knot.backend.recording.presentation;
 
 import com.knot.backend.auth.domain.model.AuthenticatedMember;
-import com.knot.backend.recording.application.RecordingAudioUploadUrlService;
+import com.knot.backend.recording.application.RecordingAudioUploadService;
 import com.knot.backend.recording.application.dto.result.RecordingAudioUploadUrlResult;
 import com.knot.backend.recording.presentation.dto.request.RecordingAudioUploadUrlRequest;
 import com.knot.backend.recording.presentation.dto.response.RecordingAudioUploadUrlResponse;
@@ -20,7 +20,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/v1/workspaces/{workspaceId}/recordings")
 @RequiredArgsConstructor
 public class RecordingAudioUploadUrlController implements RecordingAudioUploadUrlApi {
-    private final RecordingAudioUploadUrlService recordingAudioUploadUrlService;
+    private final RecordingAudioUploadService recordingAudioUploadService;
 
     @Override
     @PostMapping("/{recordingId}/audio-upload-url")
@@ -30,7 +30,7 @@ public class RecordingAudioUploadUrlController implements RecordingAudioUploadUr
             @Valid @RequestBody RecordingAudioUploadUrlRequest request,
             @AuthenticationPrincipal AuthenticatedMember authenticatedMember
     ) {
-        RecordingAudioUploadUrlResult result = recordingAudioUploadUrlService.issue(
+        RecordingAudioUploadUrlResult result = recordingAudioUploadService.issue(
                 workspaceId,
                 authenticatedMember.getMemberId(),
                 recordingId,

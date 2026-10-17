@@ -75,6 +75,8 @@ spotless {
 
 tasks.withType(Test).configureEach {
 	systemProperty 'spring.test.context.cache.maxSize', '8'
+	systemProperty 'aws.accessKeyId', 'test-access-key'
+	systemProperty 'aws.secretAccessKey', 'test-secret-key'
 	maxHeapSize = '1g'
 }
 
