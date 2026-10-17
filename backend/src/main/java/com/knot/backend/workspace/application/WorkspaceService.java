@@ -29,14 +29,30 @@ public class WorkspaceService {
             long memberId,
             String name
     ) {
-        Workspace workspace = workspaceRepository.save(
-                Workspace.create(
-                        name,
-                        Instant.now(clock)
-                )
+        WorkspaceLog.Scope trace = WorkspaceLog.begin(
+                "workspace.create",
+                null
         );
-        workspaceMemberRepository.save(workspace.createOwnerMembership(memberId));
-        return new WorkspaceCreateResult(workspace.getId());
+        return trace.call(() -> {
+            Workspace workspace = trace.step(
+                    "create_workspace",
+                    () -> Workspace.create(
+                            name,
+                            Instant.now(clock)
+                    )
+            );
+            Workspace saved = trace.step(
+                    "save_workspace",
+                    () -> workspaceRepository.save(workspace)
+            );
+            trace.workspace(saved.getId());
+            trace.step(
+                    "save_owner_membership",
+                    () -> workspaceMemberRepository.save(saved.createOwnerMembership(memberId))
+            );
+            trace.outcome("created");
+            return new WorkspaceCreateResult(saved.getId());
+        });
     }
 
     @Transactional(readOnly = true)
@@ -44,34 +60,66 @@ public class WorkspaceService {
             Long workspaceId,
             Long memberId
     ) {
-        validateWorkspaceId(workspaceId);
-        WorkspaceDetailResult detail = workspaceDetailQuery.find(
-                workspaceId,
-                memberId
-        )
-                .orElseThrow(() -> new WorkspaceException(WorkspaceErrorCode.WORKSPACE_NOT_FOUND));
-        if (!detail.isMember()) {
-            throw new WorkspaceException(WorkspaceErrorCode.WORKSPACE_ACCESS_DENIED);
-        }
-        return detail;
+        WorkspaceLog.Scope trace = WorkspaceLog.begin(
+                "workspace.detail",
+                workspaceId
+        );
+        return trace.call(() -> {
+            trace.runStep(
+                    "validate_workspace_id",
+                    () -> validateWorkspaceId(workspaceId)
+            );
+            WorkspaceDetailResult detail = trace.step(
+                    "load_detail",
+                    () -> workspaceDetailQuery.find(
+                            workspaceId,
+                            memberId
+                    )
+                            .orElseThrow(() -> new WorkspaceException(WorkspaceErrorCode.WORKSPACE_NOT_FOUND))
+            );
+            trace.runStep(
+                    "validate_membership",
+                    () -> {
+                        if (!detail.isMember()) {
+                            throw new WorkspaceException(WorkspaceErrorCode.WORKSPACE_ACCESS_DENIED);
+                        }
+                    }
+            );
+            trace.outcome("completed");
+            return detail;
+        });
     }
 
     @Transactional(readOnly = true)
     public WorkspaceListResult findAllByMemberId(long memberId) {
-        List<Workspace> workspaces = workspaceRepository.findAllByMemberId(memberId);
-        Long lastViewedWorkspaceId = workspaceMemberRepository.findLastViewedByMemberId(memberId)
-                .map(WorkspaceMember::getWorkspaceId)
-                .filter(
-                        workspaceId -> containsWorkspace(
-                                workspaces,
-                                workspaceId
-                        )
-                )
-                .orElse(null);
-        return WorkspaceListResult.from(
-                lastViewedWorkspaceId,
-                workspaces
+        WorkspaceLog.Scope trace = WorkspaceLog.begin(
+                "workspace.list",
+                null
         );
+        return trace.call(() -> {
+            List<Workspace> workspaces = trace.step(
+                    "load_workspaces",
+                    () -> workspaceRepository.findAllByMemberId(memberId)
+            );
+            Long lastViewedWorkspaceId = trace.step(
+                    "load_last_viewed",
+                    () -> workspaceMemberRepository.findLastViewedByMemberId(memberId)
+                            .map(WorkspaceMember::getWorkspaceId)
+                            .filter(
+                                    workspaceId -> containsWorkspace(
+                                            workspaces,
+                                            workspaceId
+                                    )
+                            )
+                            .orElse(null)
+            );
+            WorkspaceListResult result = WorkspaceListResult.from(
+                    lastViewedWorkspaceId,
+                    workspaces
+            );
+            trace.outcome("completed");
+            return result;
+        });
     }
 
     @Transactional
@@ -79,16 +127,47 @@ public class WorkspaceService {
             long memberId,
             Long workspaceId
     ) {
-        List<WorkspaceMember> workspaceMembers = workspaceMemberRepository.findAllByMemberIdForUpdate(memberId);
-        WorkspaceMember targetMembership = findTargetMembership(
-                workspaceMembers,
+        WorkspaceLog.Scope trace = WorkspaceLog.begin(
+                "workspace.last_viewed",
                 workspaceId
         );
-        workspaceMembers.forEach(WorkspaceMember::clearLastViewed);
-        workspaceMemberRepository.saveAll(workspaceMembers);
-        workspaceMemberRepository.flush();
-        targetMembership.markLastViewed();
-        workspaceMemberRepository.save(targetMembership);
+        trace.run(() -> {
+            List<WorkspaceMember> workspaceMembers = trace.step(
+                    "lock_memberships",
+                    () -> workspaceMemberRepository.findAllByMemberIdForUpdate(memberId)
+            );
+            WorkspaceMember targetMembership = trace.step(
+                    "find_target_membership",
+                    () -> findTargetMembership(
+                            workspaceMembers,
+                            workspaceId
+                    )
+            );
+            boolean replayed = targetMembership.isLastViewed();
+            trace.runStep(
+                    "clear_previous_selection",
+                    () -> {
+                        workspaceMembers.forEach(WorkspaceMember::clearLastViewed);
+                        workspaceMemberRepository.saveAll(workspaceMembers);
+                        workspaceMemberRepository.flush();
+                    }
+            );
+            trace.runStep(
+                    "save_selection",
+                    () -> {
+                        targetMembership.markLastViewed();
+                        workspaceMemberRepository.save(targetMembership);
+                    }
+            );
+            trace.outcome(lastViewedOutcome(replayed));
+        });
+    }
+
+    private String lastViewedOutcome(boolean replayed) {
+        if (replayed) {
+            return "replayed";
+        }
+        return "changed";
     }
 
     private boolean containsWorkspace(

@@ -34,34 +34,80 @@ public class WorkspaceLeaveService {
             long memberId,
             Long workspaceId
     ) {
-        Workspace workspace = lockWorkspace(workspaceId);
-        WorkspaceMember leavingMember = workspaceMemberRepository
-                .findLatestByWorkspaceIdAndMemberIdForUpdate(
-                        workspaceId,
-                        memberId
-                )
-                .orElseThrow(() -> new WorkspaceException(WorkspaceErrorCode.WORKSPACE_ACCESS_DENIED));
-        if (!leavingMember.isActive()) {
-            return;
+        WorkspaceLog.Scope log = WorkspaceLog.begin(
+                "workspace.leave",
+                workspaceId
+        );
+        log.run(() -> {
+            Workspace workspace = log.step(
+                    "lock_workspace",
+                    () -> lockWorkspace(workspaceId)
+            );
+            WorkspaceMember leavingMember = log.step(
+                    "load_membership",
+                    () -> workspaceMemberRepository.findLatestByWorkspaceIdAndMemberIdForUpdate(
+                            workspaceId,
+                            memberId
+                    )
+                            .orElseThrow(() -> new WorkspaceException(WorkspaceErrorCode.WORKSPACE_ACCESS_DENIED))
+            );
+            if (!leavingMember.isActive()) {
+                log.outcome("replayed");
+                return;
+            }
+            Instant leftAt = now();
+            long activeMemberCount = log.step(
+                    "count_active_members",
+                    () -> workspaceMemberRepository.countActiveByWorkspaceId(workspaceId)
+            );
+            log.runStep(
+                    "change_membership",
+                    () -> workspace.removeMember(
+                            leavingMember,
+                            activeMemberCount,
+                            leftAt
+                    )
+            );
+            log.step(
+                    "save_workspace",
+                    () -> workspaceRepository.save(workspace)
+            );
+            log.step(
+                    "save_membership",
+                    () -> workspaceMemberRepository.save(leavingMember)
+            );
+            List<RecordingSession> recordings = log.step(
+                    "load_recordings",
+                    () -> findRecordingsToDiscard(
+                            workspace,
+                            workspaceId,
+                            memberId
+                    )
+            );
+            completeDeparture(
+                    workspaceId,
+                    memberId,
+                    recordings,
+                    leftAt,
+                    log,
+                    discardReason(workspace)
+            );
+            log.outcome(leaveOutcome(workspace));
+        });
+    }
+
+    private String discardReason(Workspace workspace) {
+        if (workspace.isDeleted()) {
+            return "WORKSPACE_DELETED";
         }
-        Instant leftAt = now();
-        workspace.removeMember(
-                leavingMember,
-                workspaceMemberRepository.countActiveByWorkspaceId(workspaceId),
-                leftAt
-        );
-        workspaceRepository.save(workspace);
-        workspaceMemberRepository.save(leavingMember);
-        completeDeparture(
-                workspaceId,
-                memberId,
-                findRecordingsToDiscard(
-                        workspace,
-                        workspaceId,
-                        memberId
-                ),
-                leftAt
-        );
+        return "WORKSPACE_MEMBER_LEFT";
+    }
+
+    private String leaveOutcome(Workspace workspace) {
+        if (workspace.isDeleted()) {
+            return "left_and_workspace_deleted";
+        }
+        return "left";
     }
 
     @Transactional
@@ -70,43 +116,73 @@ public class WorkspaceLeaveService {
             Long workspaceId,
             long successorMemberId
     ) {
-        lockWorkspace(workspaceId);
-        List<WorkspaceMember> transferMembers = workspaceMemberRepository
-                .findAllActiveByWorkspaceIdAndMemberIdsForUpdate(
-                        workspaceId,
-                        List.of(
-                                memberId,
-                                successorMemberId
-                        )
-                );
-        WorkspaceMember owner = findOwner(
-                transferMembers,
-                memberId
+        WorkspaceLog.Scope log = WorkspaceLog.begin(
+                "workspace.ownership_transfer_and_leave",
+                workspaceId
         );
-        WorkspaceMember successor = findSuccessor(
-                transferMembers,
-                successorMemberId
-        );
-        Instant leftAt = now();
-        owner.transferOwnershipAndLeave(
-                successor,
-                leftAt
-        );
-        workspaceMemberRepository.saveAll(
-                List.of(
-                        owner,
-                        successor
-                )
-        );
-        completeDeparture(
-                workspaceId,
-                memberId,
-                recordingSessionRepository.findAllActiveByWorkspaceIdAndMemberIdForUpdate(
-                        workspaceId,
-                        memberId
-                ),
-                leftAt
-        );
+        log.run(() -> {
+            log.step(
+                    "lock_workspace",
+                    () -> lockWorkspace(workspaceId)
+            );
+            List<WorkspaceMember> transferMembers = log.step(
+                    "load_memberships",
+                    () -> workspaceMemberRepository.findAllActiveByWorkspaceIdAndMemberIdsForUpdate(
+                            workspaceId,
+                            List.of(
+                                    memberId,
+                                    successorMemberId
+                            )
+                    )
+            );
+            WorkspaceMember owner = log.step(
+                    "validate_owner",
+                    () -> findOwner(
+                            transferMembers,
+                            memberId
+                    )
+            );
+            WorkspaceMember successor = log.step(
+                    "validate_successor",
+                    () -> findSuccessor(
+                            transferMembers,
+                            successorMemberId
+                    )
+            );
+            Instant leftAt = now();
+            log.runStep(
+                    "change_ownership",
+                    () -> owner.transferOwnershipAndLeave(
+                            successor,
+                            leftAt
+                    )
+            );
+            log.step(
+                    "save_memberships",
+                    () -> workspaceMemberRepository.saveAll(
+                            List.of(
+                                    owner,
+                                    successor
+                            )
+                    )
+            );
+            List<RecordingSession> recordings = log.step(
+                    "load_recordings",
+                    () -> recordingSessionRepository.findAllActiveByWorkspaceIdAndMemberIdForUpdate(
+                            workspaceId,
+                            memberId
+                    )
+            );
+            completeDeparture(
+                    workspaceId,
+                    memberId,
+                    recordings,
+                    leftAt,
+                    log,
+                    "WORKSPACE_OWNERSHIP_TRANSFER_AND_LEFT"
+            );
+            log.outcome("ownership_transferred_and_left");
+        });
     }
 
     @Transactional(readOnly = true)
@@ -114,20 +190,42 @@ public class WorkspaceLeaveService {
             Long workspaceId,
             long memberId
     ) {
-        validateWorkspaceId(workspaceId);
-        workspaceRepository.findById(workspaceId)
-                .orElseThrow(() -> new WorkspaceException(WorkspaceErrorCode.WORKSPACE_NOT_FOUND));
-        if (!workspaceMemberRepository.existsByWorkspaceIdAndMemberIdAndRole(
-                workspaceId,
-                memberId,
-                WorkspaceMemberRole.OWNER
-        )) {
-            throw new WorkspaceException(WorkspaceErrorCode.WORKSPACE_OWNER_REQUIRED);
-        }
-        return workspaceOwnershipTransferCandidateQuery.findAll(
-                workspaceId,
-                memberId
+        WorkspaceLog.Scope log = WorkspaceLog.begin(
+                "workspace.ownership_candidates",
+                workspaceId
         );
+        return log.call(() -> {
+            log.runStep(
+                    "validate_workspace_id",
+                    () -> validateWorkspaceId(workspaceId)
+            );
+            log.step(
+                    "load_workspace",
+                    () -> workspaceRepository.findById(workspaceId)
+                            .orElseThrow(() -> new WorkspaceException(WorkspaceErrorCode.WORKSPACE_NOT_FOUND))
+            );
+            log.runStep(
+                    "validate_owner",
+                    () -> {
+                        if (!workspaceMemberRepository.existsByWorkspaceIdAndMemberIdAndRole(
+                                workspaceId,
+                                memberId,
+                                WorkspaceMemberRole.OWNER
+                        )) {
+                            throw new WorkspaceException(WorkspaceErrorCode.WORKSPACE_OWNER_REQUIRED);
+                        }
+                    }
+            );
+            List<WorkspaceOwnershipTransferCandidateResult> results = log.step(
+                    "load_candidates",
+                    () -> workspaceOwnershipTransferCandidateQuery.findAll(
+                            workspaceId,
+                            memberId
+                    )
+            );
+            log.outcome("completed");
+            return results;
+        });
     }
 
     private Workspace lockWorkspace(Long workspaceId) {
@@ -177,17 +275,44 @@ public class WorkspaceLeaveService {
             long workspaceId,
             long memberId,
             List<RecordingSession> recordingsToDiscard,
-            Instant leftAt
+            Instant leftAt,
+            WorkspaceLog.Scope log,
+            String reason
     ) {
-        for (RecordingSession recording : recordingsToDiscard) {
-            recording.discard(leftAt);
-            recordingSessionRepository.save(recording);
-        }
-        workspaceMemberRepository.flush();
-        documentArchivalService.archiveAfterMemberDeparture(
-                workspaceId,
-                memberId,
-                leftAt
+        log.runStep(
+                "discard_recordings",
+                () -> {
+                    for (RecordingSession recording : recordingsToDiscard) {
+                        WorkspaceLog.Scope discard = WorkspaceLog.discard(
+                                workspaceId,
+                                recording.getId(),
+                                reason
+                        );
+                        discard.run(() -> {
+                            discard.runStep(
+                                    "change_state",
+                                    () -> recording.discard(leftAt)
+                            );
+                            discard.step(
+                                    "save_recording",
+                                    () -> recordingSessionRepository.save(recording)
+                            );
+                            discard.outcome("discarded");
+                        });
+                    }
+                }
+        );
+        log.runStep(
+                "flush_memberships",
+                workspaceMemberRepository::flush
+        );
+        log.runStep(
+                "archive_documents",
+                () -> documentArchivalService.archiveAfterMemberDeparture(
+                        workspaceId,
+                        memberId,
+                        leftAt
+                )
         );
     }
 
