@@ -26,10 +26,32 @@ class SearchAgentConfigTest {
     private final ObjectMapper mapper = mock(ObjectMapper.class);
 
     @Test
-    @DisplayName("기본 설정은 기존 MCP Agent 검색기를 사용한다")
-    void searchDocumentRetriever_success_defaultsToAgent() {
+    @DisplayName("기본 설정은 Fast Path 검색기를 사용한다")
+    void searchDocumentRetriever_success_defaultsToFastPath() {
         // given
         SearchAgentProperties properties = new SearchAgentProperties();
+
+        // when
+        SearchDocumentRetriever retriever = config.searchDocumentRetriever(
+                llm,
+                mcp,
+                history,
+                access,
+                properties,
+                mapper,
+                query
+        );
+
+        // then
+        assertThat(retriever).isInstanceOf(SearchFastPathDocumentRetriever.class);
+    }
+
+    @Test
+    @DisplayName("Agent 검색기는 설정에서 명시적으로 선택할 수 있다")
+    void searchDocumentRetriever_success_selectsAgentExplicitly() {
+        // given
+        SearchAgentProperties properties = new SearchAgentProperties();
+        properties.setRetrievalMode(SearchRetrievalMode.AGENT);
 
         // when
         SearchDocumentRetriever retriever = config.searchDocumentRetriever(
@@ -47,7 +69,7 @@ class SearchAgentConfigTest {
     }
 
     @Test
-    @DisplayName("Fast Path는 설정에서 명시적으로 선택할 때만 사용한다")
+    @DisplayName("Fast Path는 설정에서 명시적으로 선택할 수 있다")
     void searchDocumentRetriever_success_selectsFastPathExplicitly() {
         // given
         SearchAgentProperties properties = new SearchAgentProperties();
