@@ -366,6 +366,49 @@ describe("PcmChunkUploadQueue", () => {
       expect(queue.pendingSequences).toEqual([]);
     });
 
+    it.each([
+      ["충돌", apiError(HTTP_ERROR_TYPE.conflict, "AUDIO_CHUNK_CONFLICT")],
+      ["API 403", apiError(HTTP_ERROR_TYPE.forbidden)],
+      [
+        "접수 마감",
+        apiError(HTTP_ERROR_TYPE.conflict, "AUDIO_ACCEPTANCE_CLOSED"),
+      ],
+    ])(
+      "저장 확인이 %s이면 재시도하지 않고 그 조각을 멈춘다",
+      async (_, error) => {
+        const { queue, complete, calls } = createFakeQueue();
+        complete.mockRejectedValue(error);
+
+        await expect(queue.enqueue(silentPcm(CHUNK_FRAMES))).rejects.toBe(
+          error,
+        );
+        await vi.advanceTimersByTimeAsync(10_000);
+
+        expect(calls.map(([name]) => name)).toEqual([
+          "reserve",
+          "upload",
+          "complete",
+        ]);
+        // 어느 조각을 버릴지는 #796이 정하므로 바이트는 들고 있어요
+        expect(queue.pendingSequences).toEqual([1]);
+      },
+    );
+
+    it("앞 조각의 예약이 멈추면 뒤 조각의 예약은 보내지 않고 같은 이유로 멈춘다", async () => {
+      const { queue, reserve } = createFakeQueue();
+      const error = apiError(HTTP_ERROR_TYPE.conflict, "AUDIO_SEQUENCE_GAP");
+      reserve.mockRejectedValueOnce(error);
+
+      const first = queue.enqueue(silentPcm(CHUNK_FRAMES));
+      const second = queue.enqueue(silentPcm(CHUNK_FRAMES));
+
+      await expect(first).rejects.toBe(error);
+      await expect(second).rejects.toBe(error);
+      await vi.advanceTimersByTimeAsync(10_000);
+      expect(reserve).toHaveBeenCalledTimes(1);
+      expect(queue.pendingSequences).toEqual([1, 2]);
+    });
+
     it("재시도를 기다리는 조각은 전송 자리를 놓아 다른 조각의 PUT이 진행된다", async () => {
       const { queue, upload } = createFakeQueue();
       upload.mockRejectedValueOnce(putError(500));

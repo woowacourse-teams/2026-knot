@@ -102,6 +102,7 @@ const isUploadPossiblyStored = (error: unknown) =>
  * - 저장 확인에서 `VERIFIED`를 받은 조각만 메모리에서 놓고 `verifiedThroughFrame`을 올려요
  * - 일시 실패는 같은 조각으로 1, 2, 4초 뒤, 그 뒤로는 4초 간격으로 횟수 제한 없이 다시 시도해요.
  *   다시 PUT할 일이 생기면 같은 descriptor로 재예약해 새 URL로 보내요
+ * - 요청을 고쳐야 하는 실패(충돌, 권한 거절 같은 4xx)는 그 조각을 멈추고, 앞 조각의 예약이 멈추면 뒤 조각의 예약도 보내지 않아요
  * - 서버 요청은 밖에서 받아요. 이 저장소는 브라우저 안의 녹음만 다루고 API 호출은 도메인 훅이 맡아요
  */
 export default class PcmChunkUploadQueue {
@@ -113,7 +114,7 @@ export default class PcmChunkUploadQueue {
   private nextSampleOffset = 0;
   /** 저장 확인 전까지 들고 있는 조각 */
   private readonly pending = new Map<number, ArrayBuffer>();
-  /** 예약을 순서대로 하나씩 보내는 사슬 */
+  /** 예약을 순서대로 하나씩 보내는 사슬. 앞 예약이 멈추면 거부된 채 남아 뒤 예약도 함께 멈춰요 */
   private reserveChain: Promise<unknown> = Promise.resolve();
   private readonly inflight = new Set<Promise<void>>();
   private transferring = 0;
@@ -136,7 +137,7 @@ export default class PcmChunkUploadQueue {
     return [...this.pending.keys()];
   }
 
-  /** 조각을 봉인해 전송을 예약해요. 돌려주는 Promise는 그 조각의 저장이 확인되면 끝나요 */
+  /** 조각을 봉인해 전송을 예약해요. 돌려주는 Promise는 그 조각의 저장이 확인되면 끝나고, 조각이 멈추면 그 이유로 거부돼요 */
   enqueue(pcm: ArrayBuffer) {
     const frameCount = pcm.byteLength / BYTES_PER_FRAME;
     const chunk: SealedPcmChunk = {
@@ -154,13 +155,25 @@ export default class PcmChunkUploadQueue {
       this.inflight.delete(task);
     });
     this.inflight.add(task);
+    // 호출자가 결과를 받지 않아도 멈춘 조각이 unhandled rejection이 되지 않게 해요
+    task.catch(() => undefined);
 
     return task;
   }
 
-  /** 넣어 둔 조각이 모두 저장 확인될 때까지 기다려요 */
+  /** 넣어 둔 조각이 모두 끝날 때까지 기다려요. 저장 확인을 못 받고 멈춘 조각이 있으면 그 첫 이유로 거부돼요 */
   async drain() {
-    while (this.inflight.size > 0) await Promise.all(this.inflight);
+    let failure: { reason: unknown } | undefined;
+    while (this.inflight.size > 0) {
+      await Promise.all(
+        [...this.inflight].map((task) =>
+          task.catch((reason: unknown) => {
+            failure ??= { reason };
+          }),
+        ),
+      );
+    }
+    if (failure) throw failure.reason;
   }
   private async transfer(chunk: SealedPcmChunk) {
     const { pcm, ...descriptor } = chunk;
@@ -173,8 +186,7 @@ export default class PcmChunkUploadQueue {
     const firstReservation = this.reserveChain.then(() =>
       this.retrying(reserveChunk, nextDelay),
     );
-    // 한 조각의 실패가 뒤 조각의 예약까지 막지 않게 사슬에는 결과를 남기지 않아요
-    this.reserveChain = firstReservation.catch(() => undefined);
+    this.reserveChain = firstReservation;
     let reservation = await firstReservation;
     // `VERIFIED` 예약은 URL이 없어 PUT을 건너뛰고 저장 확인만 보내요
     let uploadUrl = reservation.uploadUrl;
