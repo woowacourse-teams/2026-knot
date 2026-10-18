@@ -4,6 +4,13 @@
 - 계획 상태: 구현 및 로컬 검증 완료
 - 연결 기록: [Notion 02. 속도 개선 실험](https://app.notion.com/p/3fc0691a002381899022e9a2f7e320d7)
 
+## 현재 결정 (2026-10-19)
+
+- Fast Path를 기본 문서 검색 경로로 도입함. `SEARCH_RETRIEVAL_MODE`를 지정하지 않으면 `FAST_PATH`를 사용함.
+- 기존 Agent/MCP 경로는 `SEARCH_RETRIEVAL_MODE=AGENT`로 선택 가능하게 유지함. 자동 fallback은 이번 변경에 포함하지 않음.
+- 로컬 Q01-Q30 실행은 30/30 완료했고 기대 근거 일치도 30/30이었음. 첫 `delta` 중앙값 3.805초, 전체 완료 중앙값 6.178초였음.
+- 이번 측정만으로 운영 환경의 속도 개선을 확정하지 않음. Dev 배포 뒤 동일 질문과 문서 범위로 지연, 완료율, 답변 및 근거 품질을 확인해야 함.
+
 ## 1. 목표와 범위
 
 기존 MCP Agent 탐색과 PostgreSQL 직접 검색 Fast Path를 같은 로컬 문서와 고정 질문으로 비교한다. 목표는 반복적인 탐색 LLM 호출을 줄였을 때 첫 `delta`가 빨라지는지, 답변 정확성과 실제 근거가 유지되는지 확인하는 것이다.
@@ -192,11 +199,11 @@ Fast Path에서 기존 의도 분류와 최종 답변 생성은 계속 LLM을 �
 ## 12. 구현 및 로컬 검증 결과 (2026-10-18)
 
 - `SearchQueryNormalizer`를 Fast Path의 DB 검색어에만 적용함. 최종 답변 생성기에는 사용자의 원 질문을 그대로 전달함.
-- `SearchFastPathDocumentRetriever`가 기존 `SearchDocumentQuery`를 호출하도록 연결하고, `knot.search.agent.retrieval-mode`에서 `FAST_PATH`를 선택할 수 있게 함. 기본값 `AGENT`는 유지함.
+- `SearchFastPathDocumentRetriever`가 기존 `SearchDocumentQuery`를 호출하도록 연결하고, `knot.search.agent.retrieval-mode`에서 `FAST_PATH`를 선택할 수 있게 함. 이후 2026-10-19 결정으로 기본값을 `FAST_PATH`로 변경함.
 - Q11은 `운영 로그 며칠 보관 기록` 검색어로 문서 41, 42, 40을 회수함. 답변은 30일과 90일 기록 충돌 및 최종 결정 미확정 상태를 구분했고, 저장 근거도 세 문서와 일치함.
 - Q30은 문서 60 하나에 담당자, 기한, 90분 규칙이 모두 있어 기대 문서 목록을 기존 [58, 60]에서 [60]으로 보정함. 이는 검색 코드 수정 대상이 아니라 채점 기준 오류였음.
 - 로컬 Docker PostgreSQL, Workspace 31의 ARCHIVED 문서 100건, 고정 Q01-Q30, 실제 Qwen 3.8 27B API로 예열 1회 후 직렬 실행함. Dev API와 Dev RDS는 호출하지 않음.
 - 보정 후 30/30 요청이 `COMPLETED`였고 답변에 필요한 근거 일치도 30/30임. 첫 delta 평균 3.710초, 중앙값 3.805초, 잠정 P95 4.006초. 전체 완료 평균 6.510초, 중앙값 6.178초, 잠정 P95 8.752초임. 30건 P95는 nearest-rank 잠정값임.
 - 기존 정규화 실험의 중앙값과 비교해 첫 delta는 0.009초 짧고 전체 완료는 0.033초 길었음. 단일 실행 비교이므로 유의미한 속도 개선으로 판단하지 않음.
 - 관련 단위 및 설정 테스트와 `spotlessCheck`, `bootJar`, `git diff --check` 통과함. 전체 `check`는 기존 문서 목록 통합 테스트 2건이 구체 `DocumentListQueryAdapter` 대신 JDK 프록시가 주입되어 실패함. 해당 테스트와 계측 코드는 이번 변경 범위가 아니므로 수정하지 않음.
-- 운영 기본 경로는 기존 결정대로 Agent/MCP로 유지함. Fast Path는 `knot.search.agent.retrieval-mode=FAST_PATH`를 명시한 환경에서만 선택함.
+- 기본 경로는 Fast Path로 설정하고, Agent/MCP는 `SEARCH_RETRIEVAL_MODE=AGENT`로 선택할 수 있게 함. Dev 배포 및 실제 환경 확인은 아직 진행하지 않음.

@@ -19,7 +19,7 @@ public class SearchAgentProperties {
     private Duration budget = Duration.ofSeconds(120);
     private Duration cancellationPollInterval = Duration.ofMillis(250);
     private int toolCallLimit = 12;
-    private SearchRetrievalMode retrievalMode = SearchRetrievalMode.AGENT;
+    private SearchRetrievalMode retrievalMode = SearchRetrievalMode.FAST_PATH;
     private int readCodePoints = 6000;
     private int contextCharacterLimit = 48000;
 
