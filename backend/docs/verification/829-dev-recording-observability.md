@@ -15,6 +15,17 @@
 
 원격 점검 결과와 주 대화의 중앙 화면 검증을 구분했다. 로컬 테스트나 정상 유휴 화면은 실제 전사 수행·DB 저장·실패 복구의 증거가 아니다.
 
+## 배포 식별과 실행 경계
+
+원격 작업 대화의 읽기 전용 점검 결과다. 재실행 전에는 현재 배포와 다시 비교한다.
+
+- 운영 AI: 소스 `98d458f56cb5a3ac6bbe2e5caebdceed3b1ef7fd`, JAR SHA-256 `fd94996b6e8da818858fef90278b242021ee40c73d7c1be118f974d9fabb96aa`. 17:47 KST 적용했다.
+- Dev 백엔드: 18:20 KST 확인 JAR SHA-256 `79afe04200209f3035b31b45d0d5b943ce35f7da6da0af58fe9008a3724d6943`. CodeDeploy `d-FYRP73BFL`은 18:07:50 KST 성공했다. JAR에 Git SHA 메타데이터가 없어 소스 SHA를 단정하지 않는다.
+- 최신 develop `60c835e9`의 FE는 PCM을 우선 요청하지만, 확인한 Dev 설정원에서 `audio-chunks.enabled`·`audio-finalization.enabled`는 false다. FE는 `AUDIO_MODE_DISABLED`에서 WebM으로 전환한다. 배포된 FE의 실제 동작은 미검증이며 WebM 성공을 PCM 성공으로 기록하지 않는다.
+- Alloy 재시작 전후 AI PID와 0 카운터가 유지됐다. 실제 처리 후 증가한 카운터의 보존은 미검증이다.
+- 백엔드는 persistent journal의 `knot-backend.service` 로그를 쓴다. AI·터널 로그는 각각 0600 파일이며 자동 회전·보존기간은 미확인이다. Alloy는 2MiB와 회전본 1개다.
+- 중앙 서버의 SSH 키는 확인하지 못했다. 기존 Dev 키를 중앙 서버 접속 권한으로 간주하지 않았다.
+
 ## 남은 검증
 
 - 전용 계정의 정상 인증 확보 후 실제 Dev 요청을 실행한다. 현재 frontend에 PCM 흐름이 추가됐으므로 배포 플래그와 실제 요청 모드를 먼저 확인한다.
