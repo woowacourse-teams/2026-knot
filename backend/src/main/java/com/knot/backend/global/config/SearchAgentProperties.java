@@ -19,6 +19,7 @@ public class SearchAgentProperties {
     private Duration budget = Duration.ofSeconds(120);
     private Duration cancellationPollInterval = Duration.ofMillis(250);
     private int toolCallLimit = 12;
+    private SearchRetrievalMode retrievalMode = SearchRetrievalMode.AGENT;
     private int readCodePoints = 6000;
     private int contextCharacterLimit = 48000;
 
@@ -38,8 +39,15 @@ public class SearchAgentProperties {
         if (contextCharacterLimit < readCodePoints || contextCharacterLimit > 200000) {
             throw new SearchException(SearchErrorCode.INVALID_SEARCH_CONFIGURATION);
         }
+        validateRetrievalMode();
         validateOrigin();
         validateCancellationInterval();
+    }
+
+    private void validateRetrievalMode() {
+        if (retrievalMode == null) {
+            throw new SearchException(SearchErrorCode.INVALID_SEARCH_CONFIGURATION);
+        }
     }
 
     private void validateCancellationInterval() {

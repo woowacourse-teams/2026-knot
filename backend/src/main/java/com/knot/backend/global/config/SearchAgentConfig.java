@@ -1,6 +1,7 @@
 package com.knot.backend.global.config;
 
 import com.knot.backend.search.application.SearchAnswerGenerator;
+import com.knot.backend.search.application.SearchDocumentQuery;
 import com.knot.backend.search.application.SearchDocumentRetriever;
 import com.knot.backend.search.application.SearchIntentClassifier;
 import com.knot.backend.search.infrastructure.llm.SearchQwenIntentClassifier;
@@ -10,6 +11,8 @@ import com.knot.backend.search.infrastructure.llm.SearchTransportCancellation;
 import com.knot.backend.search.infrastructure.persistence.SearchHistoryQuery;
 import com.knot.backend.search.infrastructure.llm.SearchLlmClient;
 import com.knot.backend.search.infrastructure.llm.SearchMcpDocumentRetriever;
+import com.knot.backend.search.infrastructure.llm.SearchFastPathDocumentRetriever;
+import com.knot.backend.search.infrastructure.llm.SearchQueryNormalizer;
 import com.knot.backend.search.infrastructure.llm.SearchStreamingAnswerGenerator;
 import com.knot.backend.search.infrastructure.mcp.SearchMcpClient;
 import com.knot.backend.search.infrastructure.mcp.SearchToolTokenCodec;
@@ -115,8 +118,16 @@ public class SearchAgentConfig {
             SearchHistoryQuery history,
             SearchToolAccess access,
             SearchAgentProperties properties,
-            ObjectMapper mapper
+            ObjectMapper mapper,
+            SearchDocumentQuery query
     ) {
+        if (properties.getRetrievalMode() == SearchRetrievalMode.FAST_PATH) {
+            return new SearchFastPathDocumentRetriever(
+                    query,
+                    access,
+                    new SearchQueryNormalizer()
+            );
+        }
         return new SearchMcpDocumentRetriever(
                 llm,
                 mcp,
