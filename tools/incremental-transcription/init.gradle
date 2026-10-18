@@ -1,0 +1,12 @@
+allprojects {
+    afterEvaluate {
+        if (plugins.hasPlugin('java')) {
+            def benchmarkSource = System.getenv('KNOT_E2E_SOURCE_DIR')
+            if (benchmarkSource == null || !file(benchmarkSource).isDirectory()) {
+                throw new GradleException('KNOT_E2E_SOURCE_DIR must name the benchmark Java directory')
+            }
+            sourceSets.test.java.srcDir(benchmarkSource)
+            tasks.named('integrationTest') { maxHeapSize = '2g' }
+        }
+    }
+}

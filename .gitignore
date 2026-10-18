@@ -18,6 +18,7 @@ __pycache__/
 /backend/.playwright-cli/
 /output/playwright/
 /tools/*
+!/tools/incremental-transcription/
 !/tools/discord-knot-assistant/
 /tools/discord-knot-assistant/*
 !/tools/discord-knot-assistant/*.py
