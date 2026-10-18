@@ -1,11 +1,17 @@
+import { AxiosError, type AxiosResponse } from "axios";
 import { http, HttpResponse, type PathParams } from "msw";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   reserveRecordingAudioChunkApi,
   uploadRecordingAudioChunkApi,
 } from "@api/fetch/api/v1/workspaces/[workspaceId]/recordings/[recordingId]/audioChunks";
 import { completeRecordingAudioChunkApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/recordings/[recordingId]/audioChunks/[sequence]/complete";
+import {
+  createHttpError,
+  HTTP_ERROR_TYPE,
+  type HttpErrorType,
+} from "@api/httpClient/error";
 import {
   MOCK_AUDIO_STORAGE_ORIGIN,
   recordingAudioChunkCompleteResponse,
@@ -14,7 +20,9 @@ import {
 import { mockServer } from "@api/mock/server";
 import type { RecordingAudioChunkReserveRequest } from "@api/mock/types/recording";
 
-import PcmChunkUploadQueue from "./pcmChunkUploadQueue";
+import PcmChunkUploadQueue, {
+  type PcmChunkUploadQueueParams,
+} from "./pcmChunkUploadQueue";
 
 const SESSION = { workspaceId: 1, recordingId: 10 };
 const CONTROL_PROOF = {
@@ -226,5 +234,155 @@ describe("PcmChunkUploadQueue", () => {
     expect(queue.verifiedThroughFrame).toBe(
       recordingAudioChunkCompleteResponse.verifiedThroughFrame,
     );
+  });
+
+  describe("실패 복구", () => {
+    const STORAGE_URL = (sequence: number) =>
+      `${MOCK_AUDIO_STORAGE_ORIGIN}/audio-chunks/${sequence}`;
+    const NOT_STORED = "AUDIO_CHUNK_NOT_STORED";
+
+    /** httpClient가 던지는 모양의 API 실패 */
+    const apiError = (type: HttpErrorType, code?: string) =>
+      createHttpError({ type, code });
+    /** 저장소 PUT이 던지는 axios 실패. 상태가 없으면 응답을 못 받은 거예요 */
+    const putError = (status?: number) =>
+      new AxiosError(
+        "PUT 실패",
+        undefined,
+        undefined,
+        undefined,
+        status === undefined ? undefined : ({ status } as AxiosResponse),
+      );
+
+    /** 가짜 요청 함수를 주입한 큐. 어떤 요청이 몇 ms에 나갔는지 순서대로 남겨요 */
+    const createFakeQueue = () => {
+      const calls: Array<[string, number]> = [];
+      const reserve = vi.fn<PcmChunkUploadQueueParams["reserve"]>(
+        async ({ sequence }) => ({
+          status: "RESERVED",
+          uploadUrl: STORAGE_URL(sequence),
+          requiredHeaders: {},
+        }),
+      );
+      const upload = vi.fn<PcmChunkUploadQueueParams["upload"]>(
+        async () => undefined,
+      );
+      const complete = vi.fn<PcmChunkUploadQueueParams["complete"]>(
+        async () => ({
+          status: "VERIFIED",
+          verifiedThroughFrame: CHUNK_FRAMES,
+        }),
+      );
+      const queue = new PcmChunkUploadQueue({
+        reserve: (descriptor) => {
+          calls.push(["reserve", Date.now()]);
+
+          return reserve(descriptor);
+        },
+        upload: (params) => {
+          calls.push(["upload", Date.now()]);
+
+          return upload(params);
+        },
+        complete: (sequence) => {
+          calls.push(["complete", Date.now()]);
+
+          return complete(sequence);
+        },
+      });
+
+      return { queue, reserve, upload, complete, calls };
+    };
+
+    beforeEach(() => {
+      vi.useFakeTimers();
+      vi.setSystemTime(0);
+      // 해시 계산이 실제 스레드를 타지 않게 해 가짜 타이머만으로 흐름이 진행되게 해요
+      vi.spyOn(crypto.subtle, "digest").mockResolvedValue(new ArrayBuffer(32));
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it("PUT 응답 유실과 412는 저장 확인으로 넘어가고, NOT_STORED면 같은 descriptor로 재예약해 같은 바이트를 다시 PUT한다", async () => {
+      const { queue, reserve, upload, complete } = createFakeQueue();
+      upload
+        .mockRejectedValueOnce(putError())
+        .mockRejectedValueOnce(putError(412));
+      complete
+        .mockRejectedValueOnce(apiError(HTTP_ERROR_TYPE.conflict, NOT_STORED))
+        .mockRejectedValueOnce(apiError(HTTP_ERROR_TYPE.conflict, NOT_STORED));
+      const pcm = silentPcm(CHUNK_FRAMES);
+
+      const task = queue.enqueue(pcm);
+      await vi.advanceTimersByTimeAsync(1_000);
+      await vi.advanceTimersByTimeAsync(2_000);
+      await task;
+
+      const [descriptor] = reserve.mock.calls[0];
+      expect(reserve.mock.calls).toEqual([
+        [descriptor],
+        [descriptor],
+        [descriptor],
+      ]);
+      expect(upload.mock.calls.map(([params]) => params.pcm)).toEqual([
+        pcm,
+        pcm,
+        pcm,
+      ]);
+      expect(complete).toHaveBeenCalledTimes(3);
+      expect(queue.pendingSequences).toEqual([]);
+      expect(queue.verifiedThroughFrame).toBe(CHUNK_FRAMES);
+    });
+
+    it("예약·저장 확인의 5xx와 PUT 403·500은 1, 2, 4, 4초 뒤 재예약으로 다시 시도하고 그동안 바이트를 들고 있다", async () => {
+      const { queue, reserve, upload, complete, calls } = createFakeQueue();
+      reserve.mockRejectedValueOnce(apiError(HTTP_ERROR_TYPE.serverError));
+      upload
+        .mockRejectedValueOnce(putError(403))
+        .mockRejectedValueOnce(putError(500));
+      complete.mockRejectedValueOnce(
+        apiError(HTTP_ERROR_TYPE.serverError, "AUDIO_STORAGE_UNAVAILABLE"),
+      );
+
+      const task = queue.enqueue(silentPcm(CHUNK_FRAMES));
+      await vi.advanceTimersByTimeAsync(10_999);
+      expect(queue.pendingSequences).toEqual([1]);
+      await vi.advanceTimersByTimeAsync(1);
+      await task;
+
+      expect(calls).toEqual([
+        ["reserve", 0],
+        ["reserve", 1_000],
+        ["upload", 1_000],
+        ["reserve", 3_000],
+        ["upload", 3_000],
+        ["reserve", 7_000],
+        ["upload", 7_000],
+        ["complete", 7_000],
+        ["complete", 11_000],
+      ]);
+      expect(queue.pendingSequences).toEqual([]);
+    });
+
+    it("재시도를 기다리는 조각은 전송 자리를 놓아 다른 조각의 PUT이 진행된다", async () => {
+      const { queue, upload } = createFakeQueue();
+      upload.mockRejectedValueOnce(putError(500));
+
+      for (let i = 0; i < 3; i += 1)
+        void queue.enqueue(silentPcm(CHUNK_FRAMES));
+      await vi.advanceTimersByTimeAsync(0);
+
+      // 1번이 1초를 기다리는 동안 자리를 비워 2·3번 PUT이 모두 나갔어요
+      expect(queue.pendingSequences).toEqual([1]);
+      await vi.advanceTimersByTimeAsync(1_000);
+      await queue.drain();
+
+      expect(upload.mock.calls.map(([params]) => params.uploadUrl)).toEqual(
+        [1, 2, 3, 1].map(STORAGE_URL),
+      );
+      expect(queue.pendingSequences).toEqual([]);
+    });
   });
 });
