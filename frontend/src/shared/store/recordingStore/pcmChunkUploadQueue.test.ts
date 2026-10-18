@@ -427,5 +427,42 @@ describe("PcmChunkUploadQueue", () => {
       );
       expect(queue.pendingSequences).toEqual([]);
     });
+
+    it("시한이 지나면 남은 조각의 재시도를 멈추고 바이트를 놓으며 drain은 그 이유로 끝난다", async () => {
+      const { queue, reserve } = createFakeQueue();
+      reserve.mockRejectedValue(apiError(HTTP_ERROR_TYPE.serverError));
+
+      void queue.enqueue(silentPcm(CHUNK_FRAMES));
+      queue.setAcceptUntil(new Date(2_500).toISOString());
+      const drained = expect(queue.drain()).rejects.toThrow(
+        "조각 접수 시한이 지났어요",
+      );
+      await vi.advanceTimersByTimeAsync(2_500);
+      await drained;
+
+      expect(queue.pendingSequences).toEqual([]);
+      await vi.advanceTimersByTimeAsync(10_000);
+      // 0초와 1초의 예약만 나가고 3초로 잡혀 있던 재시도는 나가지 않아요
+      expect(reserve).toHaveBeenCalledTimes(2);
+    });
+
+    it("비운 뒤에는 요청을 보내지 않고 새 조각도 바로 멈춘다", async () => {
+      const { queue, reserve, calls } = createFakeQueue();
+      reserve.mockRejectedValueOnce(apiError(HTTP_ERROR_TYPE.network));
+
+      const first = expect(
+        queue.enqueue(silentPcm(CHUNK_FRAMES)),
+      ).rejects.toThrow("전송 큐를 비웠어요");
+      await vi.advanceTimersByTimeAsync(0);
+      queue.clear();
+      await first;
+
+      await expect(queue.enqueue(silentPcm(CHUNK_FRAMES))).rejects.toThrow(
+        "전송 큐를 비웠어요",
+      );
+      await vi.advanceTimersByTimeAsync(10_000);
+      expect(calls).toHaveLength(1);
+      expect(queue.pendingSequences).toEqual([]);
+    });
   });
 });

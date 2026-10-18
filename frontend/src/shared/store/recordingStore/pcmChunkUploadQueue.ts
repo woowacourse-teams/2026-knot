@@ -103,6 +103,7 @@ const isUploadPossiblyStored = (error: unknown) =>
  * - 일시 실패는 같은 조각으로 1, 2, 4초 뒤, 그 뒤로는 4초 간격으로 횟수 제한 없이 다시 시도해요.
  *   다시 PUT할 일이 생기면 같은 descriptor로 재예약해 새 URL로 보내요
  * - 요청을 고쳐야 하는 실패(충돌, 권한 거절 같은 4xx)는 그 조각을 멈추고, 앞 조각의 예약이 멈추면 뒤 조각의 예약도 보내지 않아요
+ * - `setAcceptUntil`의 시한이 지나거나 `clear`하면 남은 조각을 모두 멈추고 바이트를 놓아요
  * - 서버 요청은 밖에서 받아요. 이 저장소는 브라우저 안의 녹음만 다루고 API 호출은 도메인 훅이 맡아요
  */
 export default class PcmChunkUploadQueue {
@@ -120,6 +121,9 @@ export default class PcmChunkUploadQueue {
   private transferring = 0;
   private readonly transferWaiters: Array<() => void> = [];
   private verifiedFrame = 0;
+  /** 큐 전체를 멈출 때 abort해요. 재시도를 기다리던 조각도 그 이유로 바로 깨어나요 */
+  private readonly stop = new AbortController();
+  private acceptUntilTimer: ReturnType<typeof setTimeout> | undefined;
 
   constructor({ reserve, upload, complete }: PcmChunkUploadQueueParams) {
     this.reserve = reserve;
@@ -149,7 +153,8 @@ export default class PcmChunkUploadQueue {
     };
     this.nextSequence += 1;
     this.nextSampleOffset += frameCount;
-    this.pending.set(chunk.sequence, pcm);
+    // 멈춘 뒤에 들어온 조각은 올릴 수 없어 들고 있지 않아요
+    if (!this.stopReason) this.pending.set(chunk.sequence, pcm);
 
     const task: Promise<void> = this.transfer(chunk).finally(() => {
       this.inflight.delete(task);
@@ -175,6 +180,37 @@ export default class PcmChunkUploadQueue {
     }
     if (failure) throw failure.reason;
   }
+
+  /** 종료 뒤 서버가 조각을 받아 주는 시한(ISO 8601). 지나면 남은 조각의 재시도를 멈추고 바이트를 놓아요 */
+  setAcceptUntil(acceptUntil: string) {
+    clearTimeout(this.acceptUntilTimer);
+    this.acceptUntilTimer = setTimeout(
+      () => this.stopAll(new Error("조각 접수 시한이 지났어요")),
+      Math.max(0, new Date(acceptUntil).getTime() - Date.now()),
+    );
+  }
+
+  /** 모든 조각을 멈추고 들고 있던 바이트를 놓아요. 그 뒤로는 요청을 보내지 않아요 */
+  clear() {
+    this.stopAll(new Error("전송 큐를 비웠어요"));
+  }
+
+  private stopAll(reason: Error) {
+    clearTimeout(this.acceptUntilTimer);
+    this.pending.clear();
+    this.stop.abort(reason);
+  }
+
+  private get stopReason() {
+    return this.stop.signal.aborted
+      ? (this.stop.signal.reason as Error)
+      : undefined;
+  }
+
+  private assertRunning() {
+    if (this.stopReason) throw this.stopReason;
+  }
+
   private async transfer(chunk: SealedPcmChunk) {
     const { pcm, ...descriptor } = chunk;
     const checksum = sha256Base64(pcm);
@@ -221,6 +257,7 @@ export default class PcmChunkUploadQueue {
     await this.acquireTransferSlot();
     try {
       if (uploadUrl !== null) {
+        this.assertRunning();
         try {
           await this.upload({ uploadUrl, requiredHeaders, pcm });
         } catch (error) {
@@ -230,6 +267,7 @@ export default class PcmChunkUploadQueue {
       }
 
       // 이미 VERIFIED인 조각도 저장 확인을 보내 watermark를 받아요. 서버는 같은 결과를 다시 돌려줘요
+      this.assertRunning();
       try {
         const completed = await this.complete(sequence);
         if (completed.status !== "VERIFIED") return "reserveAgain";
@@ -260,6 +298,7 @@ export default class PcmChunkUploadQueue {
     nextDelay: () => number,
   ) {
     for (;;) {
+      this.assertRunning();
       try {
         return await request();
       } catch (error) {
@@ -269,9 +308,22 @@ export default class PcmChunkUploadQueue {
     }
   }
 
-  /** 재시도 간격을 기다려요 */
+  /** 재시도 간격을 기다려요. 그 사이 큐가 멈추면 그 이유로 바로 깨어나요 */
   private wait(ms: number) {
-    return new Promise<void>((resolve) => setTimeout(resolve, ms));
+    this.assertRunning();
+    const { signal } = this.stop;
+
+    return new Promise<void>((resolve, reject) => {
+      const onAbort = () => {
+        clearTimeout(timer);
+        reject(signal.reason);
+      };
+      const timer = setTimeout(() => {
+        signal.removeEventListener("abort", onAbort);
+        resolve();
+      }, ms);
+      signal.addEventListener("abort", onAbort, { once: true });
+    });
   }
 
   private async acquireTransferSlot() {
