@@ -1,0 +1,4 @@
+interface:
+  display_name: "Knot QA"
+  short_description: "QA 시트로 구현 전 QA 계획을 만들고 실행 결과를 같은 기준으로 기록"
+  default_prompt: "Use $knot-qa to prepare the QA plan for this Knot issue before implementation, and run it before opening the PR."

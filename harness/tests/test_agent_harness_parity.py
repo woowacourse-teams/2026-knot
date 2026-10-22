@@ -3,7 +3,12 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[2]
-SKILL_NAMES = ("knot-issue-planning", "knot-deep-interview", "knot-grill-me")
+SKILL_NAMES = (
+    "knot-issue-planning",
+    "knot-deep-interview",
+    "knot-grill-me",
+    "knot-qa",
+)
 
 
 class AgentHarnessParityTest(unittest.TestCase):
@@ -32,6 +37,15 @@ class AgentHarnessParityTest(unittest.TestCase):
         self.assertIn("저장소 전역과 BE·FE 작업에 공통", agents_md)
         self.assertIn("Issue #167", agents_md)
         self.assertIn("Issue #165", agents_md)
+
+    def test_issue_implementation_runs_shared_qa_skill(self):
+        agents_md = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
+        skill_dir = ROOT / ".agents" / "skills" / "knot-qa"
+        canonical = (skill_dir / "SKILL.md").read_text(encoding="utf-8")
+
+        self.assertIn("$knot-qa", agents_md)
+        self.assertIn("references/qa-sheet-record.md", canonical)
+        self.assertTrue((skill_dir / "references" / "qa-sheet-record.md").is_file())
 
     def test_backend_instructions_preserve_common_adr_decision(self):
         agents_md = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
