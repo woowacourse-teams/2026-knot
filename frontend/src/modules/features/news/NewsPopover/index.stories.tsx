@@ -6,6 +6,8 @@ import { userEvent, within } from "storybook/test";
 
 import NewsPopover from ".";
 
+import { LAST_SEEN_NOTE_ID_KEY } from "./constants/lastSeenNote";
+
 /** GNB 오른쪽 끝처럼 버튼을 오른쪽 위에 두고, 아래로 열리는 패널이 들어갈 높이를 둬요 */
 const Stage = styled.div`
   display: flex;
@@ -31,6 +33,8 @@ const openPanel = async (canvasElement: HTMLElement) => {
  * - 버튼을 다시 누르거나, 패널 바깥을 누르거나, ESC를 누르면 닫아요. 패널 안을 눌러서는 닫히지 않아요.
  * - 열려 있는 동안 버튼은 채워진 모양이에요.
  * - 버튼 이름(「새 소식과 피드백」)은 화면에 쓰지 않고 스크린리더에만 알려요.
+ * - 이 기기에서 새 소식을 한 번도 열지 않았으면 처음 그릴 때 패널을 저절로 열어요. 녹음 중이거나 노트가 없으면 열지 않아요.
+ * - 패널이 열리면(저절로든 눌러서든) 맨 위 노트를 읽음으로 남겨 다음부터는 저절로 열지 않아요.
  *
  * **패널 내용**
  * - 노트는 기획자가 릴리즈 직전에 `shared/constants/releaseNote`에 써서 배포와 함께 내요. 서버에서 받아 오지 않아요.
@@ -69,6 +73,10 @@ const meta = {
       </MemoryRouter>
     ),
   ],
+  // 새 소식을 연 기록은 브라우저에 남아 스토리끼리 이어지므로, 이미 본 사용자로 시작해요
+  beforeEach: () => {
+    localStorage.setItem(LAST_SEEN_NOTE_ID_KEY, "v0.1.0");
+  },
   render: (args) => (
     <Stage>
       <NewsPopover {...args} />
@@ -82,6 +90,13 @@ type Story = StoryObj<typeof meta>;
 
 /** 처음에는 버튼만 보여요. 눌러서 새 소식 패널을 열어 봐요 */
 export const Default: Story = {};
+
+/** 이 기기에서 새 소식을 처음 확인하는 사용자예요. 누르지 않아도 패널이 열려 있어요 */
+export const FirstVisit: Story = {
+  beforeEach: () => {
+    localStorage.removeItem(LAST_SEEN_NOTE_ID_KEY);
+  },
+};
 
 /** 지금까지 낸 노트를 날짜별로 보여 줘요. 예: 「탐색」 항목의 「바로 가보기」, 마이크 권한 항목의 피드백 칩 */
 export const NoteList: Story = {
