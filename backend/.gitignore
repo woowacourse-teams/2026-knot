@@ -49,3 +49,4 @@ AGENTS.md
 
 ### Local configuration ###
 src/main/resources/application-local.properties
+/ops/document-category-local/
