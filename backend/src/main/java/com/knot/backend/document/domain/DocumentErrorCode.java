@@ -8,6 +8,11 @@ import lombok.RequiredArgsConstructor;
 @Getter
 @RequiredArgsConstructor
 public enum DocumentErrorCode implements ErrorCode {
+    INVALID_DOCUMENT_CATEGORY_RESPONSE(
+            ErrorCategory.INTERNAL_SERVER_ERROR,
+            "INVALID_DOCUMENT_CATEGORY_RESPONSE",
+            "문서 큰 주제 배정 응답이 올바르지 않습니다"
+    ),
     INVALID_GENERATION_WORKER_CONFIGURATION(
             ErrorCategory.INTERNAL_SERVER_ERROR,
             "INVALID_GENERATION_WORKER_CONFIGURATION",
