@@ -8,6 +8,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.net.http.HttpTimeoutException;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
@@ -44,7 +45,12 @@ public class LmStudioClient implements LlmClient {
     public String complete(LlmCompletionRequest request) {
         new LlmRequestValidator().validate(request);
         ObjectNode body = createRequestBody(request);
-        HttpResponse<String> response = awaitResponse(buildHttpRequest(body));
+        HttpResponse<String> response = awaitResponse(
+                buildHttpRequest(
+                        body,
+                        effectiveTimeout(request)
+                )
+        );
         validateCompletionStatus(response);
         return readAssistantContent(response.body());
     }
@@ -143,12 +149,24 @@ public class LmStudioClient implements LlmClient {
         }
     }
 
-    private HttpRequest buildHttpRequest(ObjectNode body) {
+    private Duration effectiveTimeout(LlmCompletionRequest request) {
+        Duration configured = properties.getRequestTimeout();
+        if (request.timeout() == null || request.timeout()
+                .compareTo(configured) > 0) {
+            return configured;
+        }
+        return request.timeout();
+    }
+
+    private HttpRequest buildHttpRequest(
+            ObjectNode body,
+            Duration timeout
+    ) {
         return HttpRequest.newBuilder(
                 properties.getBaseUrl()
                         .resolve("/v1/chat/completions")
         )
-                .timeout(properties.getRequestTimeout())
+                .timeout(timeout)
                 .header(
                         "Authorization",
                         "Bearer " + properties.getApiToken()
@@ -176,7 +194,8 @@ public class LmStudioClient implements LlmClient {
         );
         try {
             return future.get(
-                    properties.getRequestTimeout()
+                    request.timeout()
+                            .orElse(properties.getRequestTimeout())
                             .toMillis(),
                     TimeUnit.MILLISECONDS
             );
