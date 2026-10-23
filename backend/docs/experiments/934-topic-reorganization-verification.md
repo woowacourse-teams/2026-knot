@@ -49,6 +49,14 @@ DOCUMENT_TOPIC_REORGANIZATION_MAX_INPUT_CHARACTERS=60000
 
 ## 테스트 증거
 
+### PR #938 인수 테스트 CI 실패와 시각 정밀도 보정
+
+Backend CI [39905831871](https://github.com/woowacourse-teams/2026-knot/actions/runs/39905831871)의 `remaining` 작업에서 인수 테스트 1건이 실패했다. `DocumentTopicReorganizationAcceptanceTest.start_success_endToEnd`는 `SUCCEEDED`를 기대했지만 `QUEUED`를 반환했다. 같은 실행의 통합 테스트는 성공했다.
+
+원인은 테스트의 나노초 정밀도 고정 `Clock`과 PostgreSQL `timestamptz`의 마이크로초 정밀도 차이다. DB가 `next_attempt_at`을 위로 반올림하면 테스트 시계는 그 시각보다 앞선 상태로 고정되어, 작업을 여러 번 호출해도 실행 가능 조건을 만족하지 않는다. 로컬에서 소수초를 `123456789`로 고정해 같은 `QUEUED` 실패를 재현했고, 별도 진단 assertion으로 저장 전 `2026-10-23T05:36:11.123456789Z`와 DB 왕복 후 `2026-10-23T05:36:11.123457Z`의 차이를 확인했다. 진단용 assertion은 제거했다.
+
+인수 테스트의 고정 시각만 `ChronoUnit.MICROS`로 절삭했다. 기존 DB 통합 테스트와 같은 정밀도를 사용하며, API·실행 가능 시각 비교·재시도 정책·스케줄러는 변경하지 않았다. 테스트 제외, sleep, 무조건 재실행으로 실패를 숨기지 않았다. 보정 후 해당 클래스 5개와 `spotlessCheck`가 통과했다. 이어서 `./gradlew acceptanceTest spotlessCheck bootJar`가 2분 14초에 성공했고 인수 테스트 전체 596개에서 실패·오류·건너뜀은 0개였다.
+
 순수 도메인·파서 테스트를 먼저 실패시킨 뒤 구현했다. PostgreSQL 검증은 Docker의 실제 pgvector/pgvector:pg18과 Flyway V63을 사용했다. 모의 모델 응답은 실제 모델 품질 증거와 분리한다.
 
 최종 `./gradlew spotlessApply check bootJar` 성공: unit 2,055개(실모델 opt-in 2개 건너뜀), integration 917개(기존 환경 조건 4개 건너뜀), acceptance 596개. 전체 3,568개 중 실패·오류 0개, 건너뜀 6개. 새 재정리 DB 통합 테스트 19개 및 보안 인수 테스트 5개도 포함한다. 실행 시간은 7분 35초이며 배포·모델 성능 지표가 아닌 전체 검증 명령 소요 시간이다.

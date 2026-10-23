@@ -20,6 +20,7 @@ import com.knot.backend.testsupport.TestcontainersConfiguration;
 import jakarta.servlet.http.Cookie;
 import java.time.Clock;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.DisplayName;
@@ -71,7 +72,9 @@ class DocumentTopicReorganizationAcceptanceTest {
 
     @BeforeEach
     void setUp() throws Exception {
-        when(clock.instant()).thenReturn(Instant.now());
+        Instant now = Instant.now()
+                .truncatedTo(ChronoUnit.MICROS);
+        when(clock.instant()).thenReturn(now);
         jdbc.execute("TRUNCATE members,workspaces RESTART IDENTITY CASCADE");
         fixtures = new DocumentFixtures(jdbcClient);
         owner = fixtures.saveMember("OWNER");
