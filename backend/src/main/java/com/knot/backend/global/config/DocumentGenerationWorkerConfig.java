@@ -9,7 +9,8 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 
 @Configuration(proxyBeanMethods = false)
-@EnableConfigurationProperties({DocumentGenerationWorkerProperties.class, LlmProperties.class})
+@EnableConfigurationProperties({DocumentGenerationWorkerProperties.class, LlmProperties.class,
+        DocumentCategoryProperties.class})
 public class DocumentGenerationWorkerConfig {
 
     @Bean

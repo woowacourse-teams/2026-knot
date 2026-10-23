@@ -114,6 +114,57 @@ class DocumentListAcceptanceTest {
     }
 
     @Test
+    @DisplayName("응답 필드를 추가하지 않고 기존 topic 필드로 큰 주제를 표시한다")
+    void findDocuments_success_broadFolderContract() throws Exception {
+        // given
+        long category = jdbc.sql("""
+                INSERT INTO document_categories(workspace_id, name, normalized_name, description, kind, created_at)
+                VALUES (:workspace, '운영', '운영', '서비스 운영 범위', 'NORMAL', now()) RETURNING id
+                """)
+                .param(
+                        "workspace",
+                        workspaceId
+                )
+                .query(Long.class)
+                .single();
+        jdbc.sql("""
+                UPDATE documents SET category_id = :category, grouping_scheme = 'BROAD',
+                    assignment_source = 'AI_NEW', assignment_rule_version = 'test' WHERE id = :id
+                """)
+                .param(
+                        "category",
+                        category
+                )
+                .param(
+                        "id",
+                        documentId
+                )
+                .update();
+
+        // when & then
+        mvc.perform(request(memberId))
+                .andExpect(status().isOk())
+                .andExpect(
+                        jsonPath(
+                                "$",
+                                org.hamcrest.Matchers.aMapWithSize(3)
+                        )
+                )
+                .andExpect(
+                        jsonPath(
+                                "$.items[0]",
+                                org.hamcrest.Matchers.aMapWithSize(10)
+                        )
+                )
+                .andExpect(jsonPath("$.folders").doesNotExist())
+                .andExpect(jsonPath("$.items[0].folderKey").doesNotExist())
+                .andExpect(jsonPath("$.items[0].folderName").doesNotExist())
+                .andExpect(jsonPath("$.items[0].topic").value("운영"))
+                .andExpect(jsonPath("$.topics[0].topic").value("운영"))
+                .andExpect(jsonPath("$.topics[0].documentCount").value(1));
+    }
+
+    @Test
     @DisplayName("같은 녹음의 페이지를 이어 읽고 폴더 수는 마지막 페이지까지 전체 결과를 유지한다")
     void findDocuments_success_cursorAndFilters() throws Exception {
         long transcript = transcriptId;

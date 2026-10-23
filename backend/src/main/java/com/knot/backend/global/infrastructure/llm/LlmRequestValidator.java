@@ -19,6 +19,10 @@ final class LlmRequestValidator {
         validateOutputSchema(outputSchema);
         LlmGenerationOptions options = request.options();
         validateOptions(options);
+        if (request.timeout() != null && !request.timeout()
+                .isPositive()) {
+            throw invalidRequest();
+        }
     }
 
     private void validateMessages(List<LlmMessage> messages) {

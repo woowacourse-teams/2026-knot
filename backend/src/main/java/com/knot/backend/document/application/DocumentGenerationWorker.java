@@ -6,6 +6,9 @@ import com.knot.backend.document.domain.DocumentErrorCode;
 import com.knot.backend.document.domain.DocumentException;
 import com.knot.backend.document.domain.model.DocumentGenerationFailureCause;
 import com.knot.backend.document.domain.model.DocumentGenerationJobStage;
+import com.knot.backend.document.domain.model.DocumentGenerationPhase;
+import com.knot.backend.document.application.dto.result.DocumentGenerationResult;
+import com.knot.backend.global.config.DocumentCategoryProperties;
 import com.knot.backend.global.exception.LlmErrorCode;
 import com.knot.backend.global.exception.ErrorCode;
 import com.knot.backend.global.exception.LlmException;
@@ -30,6 +33,9 @@ public class DocumentGenerationWorker {
     private final DocumentClassificationResultService classificationResults;
     private final DocumentGenerationResultService generationResults;
     private final DocumentGenerationFailureService failures;
+    private final DocumentCategoryProperties categoryProperties;
+    private final DocumentCategoryCheckpointService checkpoints;
+    private final DocumentCategoryAssignmentService categoryAssignments;
 
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public void execute(
@@ -83,14 +89,38 @@ public class DocumentGenerationWorker {
             );
             return;
         }
+        executeGeneration(execution);
+    }
+
+    private void executeGeneration(DocumentGenerationExecution execution) {
+        if (execution.processingPhase() == DocumentGenerationPhase.ASSIGN_CATEGORY) {
+            categoryAssignments.assign(execution);
+            return;
+        }
+        if (execution.processingPhase() == DocumentGenerationPhase.PUBLISH) {
+            generationResults.completePreparedGeneration(
+                    execution.workspaceId(),
+                    execution.jobId(),
+                    execution.attemptCount()
+            );
+            return;
+        }
+        DocumentGenerationResult result = generator.generate(
+                execution.transcriptContent(),
+                execution.topic()
+        );
+        if (categoryProperties.isEnabled()) {
+            checkpoints.prepare(
+                    execution,
+                    result
+            );
+            return;
+        }
         generationResults.completeGeneration(
                 execution.workspaceId(),
                 execution.jobId(),
                 execution.attemptCount(),
-                generator.generate(
-                        execution.transcriptContent(),
-                        execution.topic()
-                )
+                result
         );
     }
 

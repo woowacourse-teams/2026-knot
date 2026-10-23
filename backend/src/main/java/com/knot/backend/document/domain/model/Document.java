@@ -46,6 +46,20 @@ public class Document {
     @Column(nullable = false, updatable = false, columnDefinition = "text")
     private String content;
 
+    @Column(name = "category_id", updatable = false)
+    private Long categoryId;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "grouping_scheme", nullable = false, updatable = false, length = 20)
+    private DocumentGroupingScheme groupingScheme = DocumentGroupingScheme.LEGACY;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "assignment_source", updatable = false, length = 20)
+    private DocumentCategoryAssignmentSource assignmentSource;
+
+    @Column(name = "assignment_rule_version", updatable = false, length = 40)
+    private String assignmentRuleVersion;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     private DocumentStatus status;
@@ -57,6 +71,23 @@ public class Document {
     private Instant archivedAt;
 
     protected Document() {}
+
+    public void assignCategory(
+            DocumentCategory category,
+            DocumentCategoryAssignmentSource source,
+            String ruleVersion
+    ) {
+        if (id != null || category == null || source == null || DocumentText.isBlank(ruleVersion)) {
+            throw new DocumentException(DocumentErrorCode.INVALID_DOCUMENT_DATA);
+        }
+        if (category.getId() == null || category.getWorkspaceId() != workspaceId) {
+            throw new DocumentException(DocumentErrorCode.INVALID_DOCUMENT_DATA);
+        }
+        categoryId = category.getId();
+        groupingScheme = DocumentGroupingScheme.BROAD;
+        assignmentSource = source;
+        assignmentRuleVersion = ruleVersion;
+    }
 
     public void validateGeneratedBy(
             DocumentGenerationJob job,

@@ -1,0 +1,10 @@
+{
+  "type": "object",
+  "properties": {
+    "existingCategoryId": {"type": ["integer", "null"]},
+    "newName": {"type": ["string", "null"], "maxLength": 80},
+    "newDescription": {"type": ["string", "null"], "maxLength": 500}
+  },
+  "required": ["existingCategoryId", "newName", "newDescription"],
+  "additionalProperties": false
+}
