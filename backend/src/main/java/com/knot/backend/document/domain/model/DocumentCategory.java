@@ -50,6 +50,16 @@ public class DocumentCategory {
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
+    @Column(name = "active_for_assignment", nullable = false)
+    private boolean activeForAssignment = true;
+
+    public void changeAssignmentAvailability(boolean available) {
+        if (isFallback()) {
+            throw new DocumentException(DocumentErrorCode.INVALID_DOCUMENT_DATA);
+        }
+        activeForAssignment = available;
+    }
+
     protected DocumentCategory() {}
 
     private DocumentCategory(
