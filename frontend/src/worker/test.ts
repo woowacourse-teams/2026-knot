@@ -50,6 +50,31 @@ describe("worker", () => {
     expect(env.ASSETS.fetch).not.toHaveBeenCalled();
   });
 
+  it("피드백 경로는 정적 파일로 넘기지 않고 Notion 접수함에 넣는다", async () => {
+    const env = { ...createEnv(), NOTION_FEEDBACK_TOKEN: "secret_test" };
+    mockServer.use(
+      http.post("https://api.notion.com/v1/pages", () =>
+        HttpResponse.json({ id: "page" }),
+      ),
+    );
+
+    const response = await worker.fetch(
+      new Request(`${SITE}/relay/f`, {
+        method: "POST",
+        headers: { Origin: SITE },
+        body: JSON.stringify({
+          type: "praise",
+          content: "",
+          pageUrl: `${SITE}/workspace/1`,
+        }),
+      }),
+      env,
+    );
+
+    expect(response.status).toBe(201);
+    expect(env.ASSETS.fetch).not.toHaveBeenCalled();
+  });
+
   it("중계 경로가 아닌 요청은 정적 파일로 돌려준다", async () => {
     const env = createEnv();
     const request = new Request(`${SITE}/workspace/1`);
