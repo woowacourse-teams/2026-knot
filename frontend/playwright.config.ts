@@ -29,7 +29,13 @@ export default defineConfig({
           sameSite: "Lax" as const,
         },
       ],
-      origins: [],
+      // 새 소식을 이미 본 사용자로 시작해요. 처음 온 사용자면 워크스페이스에 들어가자마자 새 소식 패널이 열려 화면을 가려요
+      origins: [
+        {
+          origin: BASE_URL,
+          localStorage: [{ name: "knot.releaseNote.lastSeenId", value: "e2e" }],
+        },
+      ],
     },
   },
   projects: [
