@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { mockServer } from "@api/mock/server";
 
-import { relayToPostHog, relayToSentry } from ".";
+import { relayToNotion, relayToPostHog, relayToSentry } from ".";
 
 const SITE = "https://dev.knoted.kr";
 
@@ -268,5 +268,202 @@ describe("relayToSentry", () => {
     expect(await response.text()).toBe("rate limited");
     expect(response.headers.get("Retry-After")).toBe("60");
     expect(response.headers.get("Set-Cookie")).toBeNull();
+  });
+});
+
+describe("relayToNotion", () => {
+  const NOTION_PAGES_URL = "https://api.notion.com/v1/pages";
+  const env = {
+    ASSETS: { fetch: vi.fn() },
+    NOTION_FEEDBACK_TOKEN: "secret_test",
+  };
+  const feedback = {
+    type: "bug",
+    content: "문서 복사 버튼을 눌렀는데\n표가 깨져요.",
+    pageUrl: `${SITE}/workspace/1/documents/3`,
+    replayUrl: "https://us.posthog.com/project/phc_test/replay/abc?t=10",
+  };
+
+  const toFeedbackRequest = (
+    body: unknown,
+    { origin = SITE, method = "POST" } = {},
+  ) =>
+    new Request(`${SITE}/relay/f`, {
+      method,
+      headers: { Origin: origin, "Content-Type": "application/json" },
+      body: method === "POST" ? JSON.stringify(body) : undefined,
+    });
+
+  /** Notion 페이지 생성으로 넘어간 요청을 남기고, 정해 둔 응답을 돌려줘요 */
+  const captureNotionRequests = (
+    createResponse = () => HttpResponse.json({ id: "page" }),
+  ) => {
+    const requests: Request[] = [];
+    mockServer.use(
+      http.post(NOTION_PAGES_URL, ({ request }) => {
+        requests.push(request.clone());
+
+        return createResponse();
+      }),
+    );
+
+    return requests;
+  };
+
+  it("피드백을 접수함에 새 줄로 넣고 201을 돌려준다", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    // 한국 시간으로는 이미 다음 날이에요
+    vi.setSystemTime(new Date("2026-10-22T15:30:00Z"));
+    const requests = captureNotionRequests();
+
+    const response = await relayToNotion(toFeedbackRequest(feedback), env);
+    vi.useRealTimers();
+
+    expect(response.status).toBe(201);
+    const [upstream] = requests;
+    expect(upstream.headers.get("Authorization")).toBe("Bearer secret_test");
+    expect(upstream.headers.get("Notion-Version")).toBe("2022-06-28");
+    expect(await upstream.json()).toEqual({
+      parent: { database_id: "98224ba95fff4abe81a4a9ee67591523" },
+      properties: {
+        피드백: { title: [{ text: { content: "문서 복사 버튼을 눌렀는데" } }] },
+        종류: { select: { name: "버그" } },
+        내용: { rich_text: [{ text: { content: feedback.content } }] },
+        "사용 상황": { rich_text: [{ text: { content: feedback.pageUrl } }] },
+        "원문 링크": { url: feedback.replayUrl },
+        "접수 경로": { select: { name: "앱 내" } },
+        "출처 유형": { select: { name: "사용자 제보" } },
+        "접수 상태": { select: { name: "신규" } },
+        접수일: { date: { start: "2026-10-23" } },
+      },
+    });
+  });
+
+  it.each([
+    { type: "inconvenience", kind: "불편" },
+    { type: "idea", kind: "요청" },
+    { type: "praise", kind: "칭찬" },
+  ])("유형 $type은 종류 「$kind」로 넣는다", async ({ type, kind }) => {
+    const requests = captureNotionRequests();
+
+    await relayToNotion(toFeedbackRequest({ ...feedback, type }), env);
+
+    const { properties } = await requests[0].json();
+    expect(properties.종류).toEqual({ select: { name: kind } });
+  });
+
+  it("내용 없이 보내면 제목은 「(내용 없음)」이고 내용 칸과 원문 링크는 비운다", async () => {
+    const requests = captureNotionRequests();
+
+    await relayToNotion(
+      toFeedbackRequest({ ...feedback, content: "", replayUrl: undefined }),
+      env,
+    );
+
+    const { properties } = await requests[0].json();
+    expect(properties.피드백).toEqual({
+      title: [{ text: { content: "(내용 없음)" } }],
+    });
+    expect(properties.내용).toEqual({ rich_text: [] });
+    expect(properties["원문 링크"]).toEqual({ url: null });
+  });
+
+  it("제목은 첫 줄의 앞 60자까지만 쓴다", async () => {
+    const requests = captureNotionRequests();
+
+    await relayToNotion(
+      toFeedbackRequest({ ...feedback, content: "가".repeat(80) }),
+      env,
+    );
+
+    const { properties } = await requests[0].json();
+    expect(properties.피드백.title[0].text.content).toBe("가".repeat(60));
+  });
+
+  it.each([
+    { reason: "Origin이 다른 주소", origin: "https://evil.example.com" },
+    { reason: "Origin이 없음", origin: "" },
+  ])("$reason이면 넣지 않고 403을 돌려준다", async ({ origin }) => {
+    const requests = captureNotionRequests();
+
+    const response = await relayToNotion(
+      toFeedbackRequest(feedback, { origin }),
+      env,
+    );
+
+    expect(response.status).toBe(403);
+    expect(requests).toHaveLength(0);
+  });
+
+  it.each([
+    {
+      reason: "유형이 넷 중 하나가 아니면",
+      body: { ...feedback, type: "toString" },
+    },
+    {
+      reason: "내용이 2000자를 넘으면",
+      body: { ...feedback, content: "가".repeat(2001) },
+    },
+    {
+      reason: "화면 주소가 우리 주소가 아니면",
+      body: { ...feedback, pageUrl: "https://evil.example.com/x" },
+    },
+    {
+      reason: "원문 링크가 PostHog 리플레이가 아니면",
+      body: { ...feedback, replayUrl: "https://evil.example.com/x" },
+    },
+    { reason: "본문이 객체가 아니면", body: "피드백" },
+  ])("$reason 넣지 않고 400을 돌려준다", async ({ body }) => {
+    const requests = captureNotionRequests();
+
+    const response = await relayToNotion(toFeedbackRequest(body), env);
+
+    expect(response.status).toBe(400);
+    expect(requests).toHaveLength(0);
+  });
+
+  it("본문이 너무 길면 넣지 않고 413을 돌려준다", async () => {
+    const requests = captureNotionRequests();
+
+    const response = await relayToNotion(
+      toFeedbackRequest({ ...feedback, padding: "x".repeat(8 * 1024) }),
+      env,
+    );
+
+    expect(response.status).toBe(413);
+    expect(requests).toHaveLength(0);
+  });
+
+  it("POST가 아니면 넣지 않고 405를 돌려준다", async () => {
+    const requests = captureNotionRequests();
+
+    const response = await relayToNotion(
+      toFeedbackRequest(undefined, { method: "GET" }),
+      env,
+    );
+
+    expect(response.status).toBe(405);
+    expect(requests).toHaveLength(0);
+  });
+
+  it("토큰이 없으면 넣지 않고 503을 돌려준다", async () => {
+    const requests = captureNotionRequests();
+
+    const response = await relayToNotion(toFeedbackRequest(feedback), {
+      ASSETS: env.ASSETS,
+    });
+
+    expect(response.status).toBe(503);
+    expect(requests).toHaveLength(0);
+  });
+
+  it("Notion이 거절하면 그 응답 코드를 그대로 돌려준다", async () => {
+    captureNotionRequests(
+      () => new HttpResponse('{"code":"unauthorized"}', { status: 401 }),
+    );
+
+    const response = await relayToNotion(toFeedbackRequest(feedback), env);
+
+    expect(response.status).toBe(401);
   });
 });
