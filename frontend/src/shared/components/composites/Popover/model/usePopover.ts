@@ -45,6 +45,7 @@ interface UsePopoverParams {
  * 내용 안이나 트리거와 관계없는 영역이 스크롤될 때는 닫지 않아요.
  *
  * `isDismissible`이 꺼져 있는 동안에는 위 방법으로 닫지 않고, 내용이 `close`를 불러야만 닫혀요.
+ * 닫힐 때 포커스가 내용 안에 있었거나 갈 곳 없이 비어 있으면 트리거로 돌려줘요. 내용이 사라지면서 포커스를 잃지 않게요.
  */
 const usePopover = ({
   placement,
@@ -71,6 +72,15 @@ const usePopover = ({
 
   const close = () => {
     clearCloseTimer();
+
+    const { activeElement } = document;
+    if (
+      activeElement === document.body ||
+      contentRef.current?.contains(activeElement)
+    ) {
+      triggerRef.current?.focus();
+    }
+
     setIsOpen(false);
   };
 
