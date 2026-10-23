@@ -33,7 +33,7 @@ interface NewsPopoverProps {
  * 누르면 버튼 아래에 메뉴(새 소식, 피드백 보내기)를 오른쪽 끝을 맞춰 열고, 고르면 같은 자리에 그 패널을 열어요(NEWS-R3, FEEDBACK-R3).
  * 다시 누르거나 바깥을 누르거나 ESC를 누르면 닫고, 닫으면 이 버튼으로 포커스를 돌려줘요(FEEDBACK-R4).
  * 피드백을 보내는 동안에는 이 방법으로 닫지 않아요(FEEDBACK-R8).
- * 열려 있는 동안 버튼은 채워진 모양이에요.
+ * 열려 있는 동안 버튼은 채워진 모양이고, 닫혀 있을 때 올리거나 포커스하면 툴팁 「새 소식과 피드백」을 보여 줘요.
  *
  * 이 기기에서 새 소식을 한 번도 열지 않은 사용자에게는 처음 그릴 때 메뉴 없이 새 소식 패널을 저절로 열어 줘요(NEWS-R6).
  * 휴대폰에서는 피드백을 사이드바에서 열어서(FEEDBACK-R2), 누르면 메뉴 없이 새 소식 패널을 바로 열어요.
@@ -68,14 +68,32 @@ export default function NewsPopover({
       {(triggerProps) => (
         <Trigger type="button" aria-label="새 소식과 피드백" {...triggerProps}>
           <LetterIcon size={18} />
+          <Tooltip aria-hidden>새 소식과 피드백</Tooltip>
         </Trigger>
       )}
     </Popover>
   );
 }
 
+/** 피그마 Tooltip: 버튼 8px 아래에 오른쪽 끝을 맞춰 떠요(FEEDBACK-R3) */
+const Tooltip = styled.span`
+  position: absolute;
+  top: calc(100% + 0.5rem); /* 8px */
+  right: 0;
+  z-index: 30; /* 화면 위에 떠 있는 패널(20)보다 위에 떠요 */
+  display: none;
+  padding: 0.375rem 0.625rem; /* 6px 10px */
+  border-radius: 0.375rem; /* 6px */
+  background-color: ${({ theme }) => theme.neutral[900]};
+  color: ${({ theme }) => theme.neutral[0]};
+  white-space: nowrap;
+  pointer-events: none;
+  ${({ theme }) => theme.text.caption01};
+`;
+
 /** 피그마 Btn/소식과 피드백: 36px 원 · 아이콘 18px */
 const Trigger = styled.button`
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -95,6 +113,19 @@ const Trigger = styled.button`
     color: ${({ theme }) => theme.neutral[0]};
   }
 
+  /* 메뉴나 패널이 같은 자리에 뜨므로 열려 있는 동안에는 툴팁을 띄우지 않아요 */
+  /* 툴팁은 버튼 안의 하나뿐인 span이에요 */
+  &:focus-visible:not([aria-expanded="true"]) > span {
+    display: block;
+  }
+
+  /* 손가락으로 누른 뒤 남는 호버로 툴팁이 뜨지 않게, 마우스를 올릴 수 있을 때만 띄워요 */
+  @media (hover: hover) {
+    &:hover:not([aria-expanded="true"]) > span {
+      display: block;
+    }
+  }
+
   &:focus-visible {
     outline: 2px solid ${({ theme }) => theme.sub.accent[500]};
     outline-offset: 2px;
@@ -102,8 +133,6 @@ const Trigger = styled.button`
 
   /* 손가락으로 누를 때는 보이는 크기(36px)는 그대로 두고 누르는 영역만 44px로 넓혀요(RESP-R9) */
   @media (pointer: coarse) {
-    position: relative;
-
     &::after {
       position: absolute;
       inset: -0.25rem; /* 4px */
