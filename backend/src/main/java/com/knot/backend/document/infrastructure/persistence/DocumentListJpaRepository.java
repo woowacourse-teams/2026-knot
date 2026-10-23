@@ -10,8 +10,9 @@ import org.springframework.data.repository.Repository;
 interface DocumentListJpaRepository extends Repository<Document, Long> {
 
     @Query("""
-            select new com.knot.backend.document.infrastructure.persistence.DocumentTopicRow(d.topic, count(d.id))
+            select new com.knot.backend.document.infrastructure.persistence.DocumentTopicRow(coalesce(category.name, d.topic), count(d.id))
             from Document d
+            left join DocumentCategory category on category.id = d.categoryId and category.workspaceId = d.workspaceId
             left join DocumentConfirmation mine
                 on mine.id.documentId = d.id and mine.id.memberId = :memberId
             where d.workspaceId = :workspaceId
@@ -20,8 +21,8 @@ interface DocumentListJpaRepository extends Repository<Document, Long> {
                     or (:confirmationState = 'PENDING' and mine.id.documentId is not null and mine.confirmedAt is null)
                     or (:confirmationState = 'CONFIRMED' and mine.confirmedAt is not null)
                     or (:confirmationState = 'NOT_REQUIRED' and mine.id.documentId is null))
-            group by d.topic
-            order by d.topic
+            group by coalesce(category.name, d.topic)
+            order by coalesce(category.name, d.topic)
             """)
     List<DocumentTopicRow> findTopics(
             long workspaceId,
@@ -31,14 +32,15 @@ interface DocumentListJpaRepository extends Repository<Document, Long> {
     );
 
     @Query("""
-            select new com.knot.backend.document.infrastructure.persistence.DocumentTopicRow(d.topic, count(d.id))
+            select new com.knot.backend.document.infrastructure.persistence.DocumentTopicRow(coalesce(category.name, d.topic), count(d.id))
             from Document d
+            left join DocumentCategory category on category.id = d.categoryId and category.workspaceId = d.workspaceId
             join DocumentConfirmation mine
                 on mine.id.documentId = d.id and mine.id.memberId = :memberId
             where d.workspaceId = :workspaceId and mine.confirmedAt is null
                 and (:recordingSessionId is null or d.recordingSessionId = :recordingSessionId)
-            group by d.topic
-            order by d.topic
+            group by coalesce(category.name, d.topic)
+            order by coalesce(category.name, d.topic)
             """)
     List<DocumentTopicRow> findPendingTopics(
             long workspaceId,
@@ -48,11 +50,12 @@ interface DocumentListJpaRepository extends Repository<Document, Long> {
 
     @Query("""
             select new com.knot.backend.document.infrastructure.persistence.DocumentCardRow(
-                d.id, d.recordingSessionId, d.topic, d.title, d.summary, d.status, d.createdAt,
+                d.id, d.recordingSessionId, coalesce(category.name, d.topic), d.title, d.summary, d.status, d.createdAt,
                 rs.accumulatedRecordingMillis,
                 case when mine.id.documentId is not null then true else false end, mine.confirmedAt
             )
             from Document d
+            left join DocumentCategory category on category.id = d.categoryId and category.workspaceId = d.workspaceId
             join RecordingSession rs on rs.id = d.recordingSessionId
             left join DocumentConfirmation mine
                 on mine.id.documentId = d.id and mine.id.memberId = :memberId
@@ -81,9 +84,10 @@ interface DocumentListJpaRepository extends Repository<Document, Long> {
     @Query("""
             with pending_candidates as materialized (
                 select d.id as id, d.recordingSessionId as recordingSessionId,
-                    d.topic as topic, d.title as title, d.summary as summary,
+                    coalesce(category.name, d.topic) as topic, d.title as title, d.summary as summary,
                     d.status as status, d.createdAt as createdAt, mine.confirmedAt as confirmedAt
                 from Document d
+                left join DocumentCategory category on category.id = d.categoryId and category.workspaceId = d.workspaceId
                 join DocumentConfirmation mine
                     on mine.id.documentId = d.id and mine.id.memberId = :memberId
                 where d.workspaceId = :workspaceId and mine.confirmedAt is null

@@ -77,6 +77,25 @@ public class DocumentGenerationJob {
     @Column(name = "failure_cause", length = 30)
     private DocumentGenerationFailureCause failureCause;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "processing_phase", nullable = false, length = 20)
+    private DocumentGenerationPhase processingPhase = DocumentGenerationPhase.WRITE_BODY;
+
+    @Column(name = "category_attempt_count", nullable = false)
+    private int categoryAttemptCount;
+
+    @Column(name = "phase_resume_count", nullable = false)
+    private int phaseResumeCount;
+
+    @Column(name = "category_started_at")
+    private Instant categoryStartedAt;
+
+    @Column(name = "category_deadline_at")
+    private Instant categoryDeadlineAt;
+
+    @Column(name = "category_last_failure", length = 40)
+    private String categoryLastFailure;
+
     protected DocumentGenerationJob() {}
 
     private DocumentGenerationJob(
@@ -138,6 +157,70 @@ public class DocumentGenerationJob {
 
     public boolean isSucceeded() {
         return status == DocumentGenerationJobStatus.SUCCEEDED;
+    }
+
+    public void beginCategoryAssignment(
+            Instant now,
+            Instant deadline
+    ) {
+        validateGenerationStage();
+        validateRunningAttemptAt(
+                attemptCount,
+                now
+        );
+        if (processingPhase != DocumentGenerationPhase.WRITE_BODY || deadline == null || !deadline.isAfter(now)) {
+            throw new DocumentException(DocumentErrorCode.GENERATION_REGISTRATION_CONFLICT);
+        }
+        processingPhase = DocumentGenerationPhase.ASSIGN_CATEGORY;
+        categoryStartedAt = now;
+        categoryDeadlineAt = deadline;
+    }
+
+    public void reserveCategoryAttempt(Instant now) {
+        validateRunningAttemptAt(
+                attemptCount,
+                now
+        );
+        if (processingPhase != DocumentGenerationPhase.ASSIGN_CATEGORY || !hasCategoryTimeAt(now)) {
+            throw new DocumentException(DocumentErrorCode.GENERATION_REGISTRATION_CONFLICT);
+        }
+        categoryAttemptCount++;
+        updatedAt = now;
+    }
+
+    public boolean hasCategoryTimeAt(Instant now) {
+        return categoryDeadlineAt != null && now.isBefore(categoryDeadlineAt);
+    }
+
+    public void recordCategoryFailure(String failure) {
+        categoryLastFailure = failure;
+    }
+
+    public void resumeGeneration(
+            Instant now,
+            Instant nextAt,
+            DocumentGenerationPhase phase
+    ) {
+        validateGenerationStage();
+        validateRunningAttempt(attemptCount);
+        validateFailureTime(now);
+        validateAttemptCapacity();
+        validatePreparedPhase();
+        if (phase == DocumentGenerationPhase.WRITE_BODY || nextAt == null || nextAt.isBefore(now)) {
+            throw new DocumentException(DocumentErrorCode.GENERATION_REGISTRATION_CONFLICT);
+        }
+        processingPhase = phase;
+        status = DocumentGenerationJobStatus.QUEUED;
+        updatedAt = now;
+        attemptCount++;
+        phaseResumeCount++;
+        resetExecution(nextAt);
+    }
+
+    private void validatePreparedPhase() {
+        if (processingPhase == DocumentGenerationPhase.WRITE_BODY || categoryStartedAt == null) {
+            throw new DocumentException(DocumentErrorCode.GENERATION_REGISTRATION_CONFLICT);
+        }
     }
 
     public boolean isFailed() {

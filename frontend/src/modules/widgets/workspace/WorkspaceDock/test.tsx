@@ -227,6 +227,7 @@ describe("WorkspaceDock", () => {
     // 전역 저장소라 테스트끼리 답변이 새지 않게 비워요
     useSearchAnswerStore.getState().abort();
     mockServer.events.removeAllListeners();
+    vi.mocked(captureAnalyticsEvent).mockReset();
   });
 
   /** 펼친 입력창에 질문을 적어 보내기를 눌러요 */
@@ -973,6 +974,138 @@ describe("WorkspaceDock", () => {
       expect(router.state.location.pathname).toBe(HOME_PATH);
     });
 
+    describe("녹음을 시작하지 못하면 사용 기록을 남긴다", () => {
+      type StartFailedProperties = Parameters<
+        typeof captureAnalyticsEvent<"recording_start_failed">
+      >[0]["properties"];
+
+      /** 브라우저의 권한 조회를 `query`로 바꿔요. jsdom에는 권한 조회가 없어요 */
+      const stubPermissions = (query: Permissions["query"]) => {
+        Object.defineProperty(navigator, "permissions", {
+          configurable: true,
+          value: { query },
+        });
+      };
+
+      const getStartFailedEvents = () =>
+        vi
+          .mocked(captureAnalyticsEvent)
+          .mock.calls.filter(
+            ([{ event }]) => event === "recording_start_failed",
+          )
+          .map(([{ properties }]) => properties as StartFailedProperties);
+
+      afterEach(() => {
+        Reflect.deleteProperty(navigator, "permissions");
+      });
+
+      it.each(["NotAllowedError", "NotFoundError"])(
+        "마이크를 받지 못하면(%s) 그 오류 이름으로 한 번 남긴다",
+        async (name) => {
+          vi.spyOn(
+            navigator.mediaDevices,
+            "getUserMedia",
+          ).mockRejectedValueOnce(new DOMException("", name));
+          renderDock();
+
+          await clickMic();
+
+          await waitFor(() =>
+            expect(getStartFailedEvents()).toEqual([
+              {
+                reason: "microphone_unavailable",
+                error_name: name,
+                permission_before: "unsupported",
+                permission_after: "unsupported",
+                attempt: expect.any(Number),
+                surface: "dock",
+                workspace_id: Number(WORKSPACE_ID),
+              },
+            ]),
+          );
+        },
+      );
+
+      it("권한 창을 보기 전과 본 뒤의 마이크 권한 상태를 함께 남긴다", async () => {
+        const getUserMedia = denyMicrophoneOnce();
+        // 권한 창(getUserMedia)이 열리기 전에 읽으면 prompt, 열린 뒤에 읽으면 denied예요
+        stubPermissions(
+          vi.fn().mockImplementation(async () => ({
+            state: getUserMedia.mock.calls.length === 0 ? "prompt" : "denied",
+          })),
+        );
+        renderDock();
+
+        await clickMic();
+
+        await waitFor(() =>
+          expect(getStartFailedEvents()).toEqual([
+            expect.objectContaining({
+              permission_before: "prompt",
+              permission_after: "denied",
+            }),
+          ]),
+        );
+      });
+
+      it("새로고침 전까지 시작하지 못한 횟수를 하나씩 늘려 남긴다", async () => {
+        denyMicrophoneOnce().mockRejectedValueOnce(
+          new DOMException("", "NotAllowedError"),
+        );
+        renderDock();
+        await clickMic();
+        confirmMicAlert();
+
+        await clickMic();
+
+        await waitFor(() => expect(getStartFailedEvents()).toHaveLength(2));
+        const [first, second] = getStartFailedEvents();
+        expect(second.attempt).toBe(first.attempt + 1);
+      });
+
+      it("녹음을 시작하면 남기지 않는다", async () => {
+        const { router } = renderDock();
+
+        await clickMic();
+
+        expect(router.state.location.pathname).toBe(RECORDING_PATH);
+        expect(getStartFailedEvents()).toEqual([]);
+      });
+
+      it("마이크 권한 상태를 읽는 데 오래 걸려도 기다리지 않고 안내 창을 띄운다", async () => {
+        stubPermissions(() => new Promise(() => {}));
+        denyMicrophoneOnce();
+        renderDock();
+
+        await clickMic();
+
+        expect(
+          screen.getByRole("alertdialog", { name: MIC_UNAVAILABLE }),
+        ).toBeInTheDocument();
+      });
+
+      it("사용 기록을 보내지 못해도 안내 창은 그대로 띄운다", async () => {
+        vi.mocked(captureAnalyticsEvent).mockImplementation(({ event }) => {
+          if (event === "recording_start_failed") {
+            throw new Error("PostHog를 불러오지 못했어요");
+          }
+        });
+        denyMicrophoneOnce();
+        renderDock();
+
+        await clickMic();
+
+        expect(
+          screen.getByRole("alertdialog", { name: MIC_UNAVAILABLE }),
+        ).toBeInTheDocument();
+        await waitFor(() =>
+          expect(captureAnalyticsEvent).toHaveBeenCalledWith(
+            expect.objectContaining({ event: "recording_start_failed" }),
+          ),
+        );
+      });
+    });
+
     it("이미 녹음 중이면 권한을 다시 묻지 않고 녹음 화면으로 간다", async () => {
       await startRecording();
       const getUserMedia = vi.spyOn(navigator.mediaDevices, "getUserMedia");
@@ -1051,6 +1184,27 @@ describe("WorkspaceDock", () => {
           expect(getRecordingStartProof().requestId).toBe(requestIds[0]);
         },
       );
+
+      it("409면 이유 refused로 사용 기록을 남긴다", async () => {
+        respondStart(conflict("ACTIVE_RECORDING_ALREADY_EXISTS"));
+        renderDock();
+
+        await clickMic();
+
+        await waitFor(() =>
+          expect(captureAnalyticsEvent).toHaveBeenCalledWith({
+            event: "recording_start_failed",
+            properties: {
+              reason: "refused",
+              permission_before: "unsupported",
+              permission_after: "unsupported",
+              attempt: expect.any(Number),
+              surface: "dock",
+              workspace_id: Number(WORKSPACE_ID),
+            },
+          }),
+        );
+      });
 
       it.each(["ENDED", "DISCARDED"])(
         "남은 증명의 응답이 %s면 새 증명으로 한 번 더 보내 녹음을 시작한다",
@@ -1150,6 +1304,23 @@ describe("WorkspaceDock", () => {
           expect(useRecordingStore.getState().status).toBe("idle");
           expect(useRecordingStore.getState().analyser).toBeNull();
           expect(router.state.location.pathname).toBe(HOME_PATH);
+        });
+
+        it("이유 network_failed로 사용 기록을 남긴다", async () => {
+          respondStart(failByNetwork);
+          renderDock();
+
+          await clickMic();
+
+          await waitFor(() =>
+            expect(captureAnalyticsEvent).toHaveBeenCalledWith({
+              event: "recording_start_failed",
+              properties: expect.objectContaining({
+                reason: "network_failed",
+                surface: "dock",
+              }),
+            }),
+          );
         });
 
         it("다시 시도는 같은 시작 증명으로 다시 보내, 열리면 녹음 화면으로 간다", async () => {

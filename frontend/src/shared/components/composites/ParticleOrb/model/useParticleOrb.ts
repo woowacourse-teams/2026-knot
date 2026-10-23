@@ -8,6 +8,7 @@ import {
   sampleLevelHistory,
   smoothLevel,
   stepSpring,
+  waveAmplitude,
 } from "@utils/particleMotion";
 import { measureAnalyserLevel } from "@utils/measureAudioLevel";
 import { sampleShapeTargets } from "@utils/sampleShapeTargets";
@@ -187,6 +188,7 @@ export const useParticleOrb = ({
     const pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
     const particles = createParticles(ORB_PARTICLE_COUNT);
     const waveHistory = createLevelHistory(WAVE_SHAPE_COLUMNS, WAVE_SHAPE_INTERVAL_MS);
+    const amplitudes = new Float32Array(WAVE_SHAPE_COLUMNS);
     let wavePhase = 0;
     let width = 0;
     let height = 0;
@@ -270,12 +272,19 @@ export const useParticleOrb = ({
         // 녹음 칩: 입자 전부가 소리 크기의 흐름을 이뤄요. 오른쪽 끝이 지금이고, 조용하면 가는 선, 말한 순간만 캔버스 끝까지 커져요
         assignedShape = null;
         const span = Math.min(width - 4, baseRadius * WAVE_SHAPE_SPAN_SCALE);
-        const limit = height / 2 - 1 - WAVE_SHAPE_FLAT_AMPLITUDE;
-        // 막대를 세우지 않고 입자가 가로로 고르게 흩어진 채 매끄러운 파형 윤곽을 따라요. 가운데가 빽빽하고 위아래 끝은 성겨 구름 같은 파형이에요
+        const limit = height / 2 - 1;
+        // 막대 모양은 랜딩 공식 그대로, 배율만 그 칸 시각의 소리 크기예요. 작은 칩이라 칸 사이는 매끄럽게 이어요
+        for (let column = 0; column < WAVE_SHAPE_COLUMNS; column++) {
+          const scale = sampleLevelHistory({ history: waveHistory, position: (column + 0.5) / WAVE_SHAPE_COLUMNS, phase: wavePhase });
+          amplitudes[column] = waveAmplitude({ column, columns: WAVE_SHAPE_COLUMNS, frame: frame * 1.5, maxAmplitude: limit, scale, taper: false, floor: WAVE_SHAPE_FLAT_AMPLITUDE });
+        }
+        // 입자가 가로로 고르게 흩어진 채 파형 윤곽을 따라요. 가운데가 빽빽하고 위아래 끝은 성겨 구름 같은 파형이에요
         particles.forEach((particle) => {
-          const amplitude =
-            WAVE_SHAPE_FLAT_AMPLITUDE +
-            limit * sampleLevelHistory({ history: waveHistory, position: particle.seed, phase: wavePhase });
+          const position = particle.seed * WAVE_SHAPE_COLUMNS - 0.5;
+          const left = Math.max(0, Math.min(WAVE_SHAPE_COLUMNS - 1, Math.floor(position)));
+          const right = Math.min(WAVE_SHAPE_COLUMNS - 1, left + 1);
+          const mix = Math.max(0, Math.min(1, position - left));
+          const amplitude = amplitudes[left] * (1 - mix) + amplitudes[right] * mix;
           particle.homeX = centerX - span / 2 + particle.seed * span + particle.jitter;
           particle.homeY = centerY + particle.waveLevel * amplitude;
           particle.depth = 1;

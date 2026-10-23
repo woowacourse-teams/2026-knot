@@ -58,6 +58,8 @@ interface RecordingState {
   analyser: AnalyserNode | null;
   /** 녹음 중에 마이크가 끊겨 저절로 일시정지했는지. 사용자가 알림을 확인하면 다시 `false`가 돼요 */
   isMicrophoneLost: boolean;
+  /** 마지막으로 마이크를 받지 못한 오류 이름(`NotAllowedError` 등). 받았으면 `null`이에요. 시작하지 못한 이유를 사용 기록으로 보낼 때 읽어요 */
+  microphoneErrorName: string | null;
   /** 녹음을 끝내는 중인지. 종료 요청을 보낼 때부터 업로드를 마치고 녹음을 비울 때까지 `true`예요 */
   isEnding: boolean;
   /** 끝낸 PCM 녹음의 조각을 아직 올리는 중인지. 큐가 비거나 멈추거나 시한이 지나면 `false`가 돼요 */
@@ -107,6 +109,7 @@ const IDLE_STATE: RecordingState = {
   resumedAt: null,
   analyser: null,
   isMicrophoneLost: false,
+  microphoneErrorName: null,
   isEnding: false,
   isUploadingChunks: false,
 };
@@ -177,6 +180,7 @@ export const useRecordingStore = create<RecordingState & RecordingActions>()((
       }
 
       const connection = await microphone.connect();
+      set({ microphoneErrorName: microphone.errorName });
       if (!connection) return false;
       // 수집기를 만들지 못해도 받아 둔 마이크로 WebM 녹음을 할 수 있게 파형은 먼저 둬요
       set({ analyser: connection.analyser });
@@ -232,6 +236,7 @@ export const useRecordingStore = create<RecordingState & RecordingActions>()((
       if (microphone.isLive() && (pcmCollector?.isLive ?? true)) return true;
 
       const connection = await microphone.connect();
+      set({ microphoneErrorName: microphone.errorName });
       if (!connection) return false;
 
       if (pcmCollector) {

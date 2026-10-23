@@ -1,14 +1,31 @@
 package com.knot.backend.global.infrastructure.llm;
 
 import java.util.List;
+import java.time.Duration;
 import tools.jackson.databind.JsonNode;
 
 public record LlmCompletionRequest(
         List<LlmMessage> messages,
         String schemaName,
         JsonNode outputSchema,
-        LlmGenerationOptions options
+        LlmGenerationOptions options,
+        Duration timeout
 ) {
+
+    public LlmCompletionRequest(
+            List<LlmMessage> messages,
+            String schemaName,
+            JsonNode outputSchema,
+            LlmGenerationOptions options
+    ) {
+        this(
+                messages,
+                schemaName,
+                outputSchema,
+                options,
+                null
+        );
+    }
 
     public LlmCompletionRequest {
         if (messages != null) {

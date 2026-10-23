@@ -26,6 +26,54 @@ class LmStudioClientTest {
     private final ObjectMapper mapper = new ObjectMapper();
 
     @Test
+    @DisplayName("요청별 남은 배정 예산을 전체 응답 대기 시간에도 적용한다")
+    void complete_failure_perRequestTimeout() throws Exception {
+        // given
+        CountDownLatch release = new CountDownLatch(1);
+        try (LlmHttpServer server = new LlmHttpServer()) {
+            server.respond(exchange -> {
+                exchange.sendResponseHeaders(
+                        200,
+                        0
+                );
+                exchange.getResponseBody()
+                        .write('{');
+                exchange.getResponseBody()
+                        .flush();
+                try {
+                    release.await(
+                            5,
+                            TimeUnit.SECONDS
+                    );
+                } catch (InterruptedException exception) {
+                    Thread.currentThread()
+                            .interrupt();
+                }
+            });
+            LmStudioClient client = client(
+                    server,
+                    Duration.ofSeconds(5),
+                    4096
+            );
+            LlmCompletionRequest baseline = request();
+            LlmCompletionRequest bounded = new LlmCompletionRequest(
+                    baseline.messages(),
+                    baseline.schemaName(),
+                    baseline.outputSchema(),
+                    baseline.options(),
+                    Duration.ofMillis(500)
+            );
+            long startedAt = System.nanoTime();
+
+            // when & then
+            assertThatThrownBy(() -> client.complete(bounded)).hasMessage(LlmErrorCode.LLM_TIMEOUT.getMessage());
+            assertThat(Duration.ofNanos(System.nanoTime() - startedAt)).isLessThan(Duration.ofSeconds(3));
+        } finally {
+            release.countDown();
+        }
+    }
+
+    @Test
     @DisplayName("전체 원문과 JSON 스키마 및 분류 옵션으로 한 번 호출한다")
     void complete_success() throws Exception {
         // given

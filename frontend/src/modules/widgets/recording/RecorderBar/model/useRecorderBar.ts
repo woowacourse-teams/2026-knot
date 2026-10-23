@@ -2,6 +2,7 @@ import useMicrophoneUnavailableDialog from "@hooks/domain/recording/useMicrophon
 import useRecordingState from "@hooks/domain/recording/useRecordingState";
 import useRecordingControl from "@hooks/domain/recording/useRecordingControl";
 import useRecordingElapsedTime from "@hooks/domain/recording/useRecordingElapsedTime";
+import useRecordingResumeAnalytics from "@hooks/domain/recording/useRecordingResumeAnalytics";
 import { formatRecordingTime } from "@utils/formatRecordingTime";
 
 /**
@@ -17,9 +18,14 @@ export const useRecorderBar = () => {
   const { elapsedSeconds } = useRecordingElapsedTime();
   const { pauseRecording, resumeRecording, endRecording } =
     useRecordingControl();
+  // 마이크를 다시 받지 못한 실패는 녹음 바에서 이어 가지 못한 사용 기록으로도 보내요
+  const { resumeAndTrackRecording } = useRecordingResumeAnalytics({
+    resumeRecording,
+    surface: "recorder_bar",
+  });
 
   const handleResume = async () => {
-    const isResumed = await resumeRecording();
+    const isResumed = await resumeAndTrackRecording();
     if (isResumed) return;
 
     openMicrophoneUnavailableDialog();

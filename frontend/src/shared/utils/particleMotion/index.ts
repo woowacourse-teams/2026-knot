@@ -211,18 +211,22 @@ interface WaveAmplitudeParams {
   frame: number;
   /** 소리가 가장 클 때 막대가 가운데에서 퍼지는 거리(px) */
   maxAmplitude: number;
-  /** 전체 배율(0~1). 랜딩은 `waveBreath`, 녹음 중엔 소리 크기를 넣어요 */
+  /** 전체 배율(0~1). 랜딩은 `waveBreath`, 녹음 중엔 그 칸 시각의 소리 크기를 넣어요 */
   scale: number;
+  /** 양 끝으로 갈수록 낮출지. 랜딩처럼 가운데에 놓인 파형은 낮추고, 오른쪽 끝이 지금인 소리 흐름은 낮추지 않아요 */
+  taper?: boolean;
+  /** 소리가 없을 때 남는 가장 낮은 높이(px). 랜딩은 2.5예요 */
+  floor?: number;
 }
 
-/** 파형 한 막대의 높이. 막대마다 다른 박자로 출렁이고 양 끝으로 갈수록 낮아져요. 랜딩 `updateWaveAmplitudes`와 같아요 */
-export const waveAmplitude = ({ column, columns, frame, maxAmplitude, scale }: WaveAmplitudeParams) => {
+/** 파형 한 막대의 높이. 막대마다 다른 박자로 출렁여 랜딩 녹음 장면과 같은 모양이에요. 랜딩 `updateWaveAmplitudes`와 같아요 */
+export const waveAmplitude = ({ column, columns, frame, maxAmplitude, scale, taper = true, floor = 2.5 }: WaveAmplitudeParams) => {
   const energy = Math.abs(
     Math.sin(column * 0.23 + frame * 0.05) * Math.sin(column * 0.071 - frame * 0.023) +
       0.35 * Math.sin(column * 0.87 + frame * 0.13),
   );
-  const taper = Math.pow(Math.sin((Math.PI * (column + 0.5)) / columns), 0.7);
-  return Math.max(2.5, maxAmplitude * Math.min(1, 0.1 + energy) * taper * scale);
+  const edge = taper ? Math.pow(Math.sin((Math.PI * (column + 0.5)) / columns), 0.7) : 1;
+  return Math.max(floor, maxAmplitude * Math.min(1, 0.1 + energy) * edge * scale);
 };
 
 interface PointerRepulsionParams {

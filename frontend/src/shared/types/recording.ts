@@ -16,6 +16,9 @@ export type CurrentRecordingStatus =
  */
 export type RecordingAudioMode = "FINAL_WEBM_V1" | "PCM16_CHUNKS_V1";
 
+/** 브라우저가 알려 주는 마이크 권한 상태. 마이크 권한을 조회할 수 없는 브라우저면 `unsupported`예요 */
+export type MicrophonePermission = PermissionState | "unsupported";
+
 /**
  * 녹음 시작을 시도한 결과. `useRecordingControl`의 시작 결과 중 서버에 녹음을 열려고 한 경우예요.
  *

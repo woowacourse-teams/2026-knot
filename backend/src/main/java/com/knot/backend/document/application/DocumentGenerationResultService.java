@@ -4,6 +4,10 @@ import com.knot.backend.document.application.dto.result.DocumentGenerationInputR
 import com.knot.backend.document.application.dto.result.DocumentGenerationResult;
 import com.knot.backend.document.domain.model.DocumentText;
 import com.knot.backend.document.domain.model.Document;
+import com.knot.backend.document.domain.model.DocumentCategory;
+import com.knot.backend.document.domain.model.DocumentGenerationPhase;
+import com.knot.backend.document.domain.model.PreparedDocument;
+import com.knot.backend.document.domain.repository.PreparedDocumentRepository;
 import com.knot.backend.document.domain.model.DocumentConfirmation;
 import com.knot.backend.document.domain.repository.DocumentConfirmationRepository;
 import com.knot.backend.document.domain.DocumentErrorCode;
@@ -22,8 +26,10 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
+import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -39,6 +45,9 @@ public class DocumentGenerationResultService {
     private final DocumentRepository documents;
     private final DocumentConfirmationRepository confirmations;
     private final Clock clock;
+    private final PreparedDocumentRepository prepared;
+    private final DocumentCategoryCatalogService categories;
+    private final ApplicationEventPublisher events;
 
     @Transactional(isolation = Isolation.READ_COMMITTED)
     public long completeGeneration(
@@ -60,6 +69,7 @@ public class DocumentGenerationResultService {
             ).getId();
         }
         job.validateRunningAttempt(expectedAttemptCount);
+        validateBodyPhase(job);
         DocumentGenerationInputResult input = lockRegisteredInput(
                 workspaceId,
                 job
@@ -78,7 +88,135 @@ public class DocumentGenerationResultService {
                 result,
                 completedAt
         );
-        List<Long> targets = findConfirmationTargets(workspaceId);
+        return persist(
+                draft,
+                job,
+                completedAt
+        );
+    }
+
+    @Transactional(isolation = Isolation.READ_COMMITTED)
+    public Optional<Long> completePreparedGeneration(
+            long workspaceId,
+            long jobId,
+            int expectedAttemptCount
+    ) {
+        lockWorkspace(workspaceId);
+        DocumentGenerationJob job = lockGenerationJob(
+                workspaceId,
+                jobId,
+                expectedAttemptCount
+        );
+        if (job.isSucceeded()) {
+            Document completed = findCompletedDocument(
+                    workspaceId,
+                    job
+            );
+            return Optional.of(completed.getId());
+        }
+        Instant now = clock.instant()
+                .truncatedTo(ChronoUnit.MICROS);
+        job.validateRunningAttemptAt(
+                expectedAttemptCount,
+                now
+        );
+        if (job.getProcessingPhase() != DocumentGenerationPhase.PUBLISH) {
+            throw new DocumentException(DocumentErrorCode.GENERATION_REGISTRATION_CONFLICT);
+        }
+        DocumentGenerationInputResult input = lockRegisteredInput(
+                workspaceId,
+                job
+        );
+        PreparedDocument body = prepared.findByJobId(jobId)
+                .orElseThrow(() -> new DocumentException(DocumentErrorCode.GENERATION_REGISTRATION_CONFLICT));
+        Optional<DocumentCategory> category = categories.resolveForPublication(
+                job,
+                body,
+                now
+        );
+        if (category.isEmpty()) {
+            resumeAssignment(
+                    job,
+                    now
+            );
+            return Optional.empty();
+        }
+        DocumentGenerationResult result = new DocumentGenerationResult(
+                body.getTitle(),
+                body.getSummary(),
+                body.getContent()
+        );
+        Document draft = createDocument(
+                workspaceId,
+                job,
+                input,
+                result,
+                now
+        );
+        var decision = body.getDecision();
+        draft.assignCategory(
+                category.orElseThrow(() -> new DocumentException(DocumentErrorCode.INVALID_DOCUMENT_CATEGORY_RESPONSE)),
+                decision.getSource(),
+                body.getRuleVersion()
+        );
+        long documentId = persist(
+                draft,
+                job,
+                now
+        );
+        prepared.delete(body);
+        jobs.flush();
+        events.publishEvent(
+                new DocumentCategoryPublished(
+                        workspaceId,
+                        jobId,
+                        documentId,
+                        decision.getSource(),
+                        body.getRuleVersion(),
+                        job.getCategoryLastFailure(),
+                        job.getCategoryAttemptCount(),
+                        java.time.Duration.between(
+                                job.getCategoryStartedAt(),
+                                now
+                        )
+                )
+        );
+        return Optional.of(documentId);
+    }
+
+    private void validateBodyPhase(DocumentGenerationJob job) {
+        if (job.getProcessingPhase() != DocumentGenerationPhase.WRITE_BODY) {
+            throw new DocumentException(DocumentErrorCode.GENERATION_REGISTRATION_CONFLICT);
+        }
+    }
+
+    private void resumeAssignment(
+            DocumentGenerationJob job,
+            Instant now
+    ) {
+        DocumentGenerationBatch batch = batches.findByIdForUpdate(job.getBatchId())
+                .orElseThrow(() -> new DocumentException(DocumentErrorCode.GENERATION_REGISTRATION_CONFLICT));
+        job.recordCategoryFailure("CATALOG_CHANGED");
+        job.resumeGeneration(
+                now,
+                now,
+                DocumentGenerationPhase.ASSIGN_CATEGORY
+        );
+        batch.recordJobTransition(
+                job.getStage(),
+                DocumentGenerationJobStatus.RUNNING,
+                job.getStatus(),
+                now
+        );
+        jobs.flush();
+    }
+
+    private long persist(
+            Document draft,
+            DocumentGenerationJob job,
+            Instant completedAt
+    ) {
+        List<Long> targets = findConfirmationTargets(draft.getWorkspaceId());
         Document document = documents.save(draft);
         saveConfirmationTargets(
                 document.getId(),

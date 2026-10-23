@@ -1,6 +1,9 @@
 import posthog from "posthog-js";
 
-import type { RecordingAudioMode } from "@/shared/types/recording";
+import type {
+  MicrophonePermission,
+  RecordingAudioMode,
+} from "@/shared/types/recording";
 
 /**
  * PostHog로 보내는 이벤트와 그 속성이에요. 클릭 · 페이지 이동은 PostHog가 자동으로 기록하므로, 클릭으로 셀 수 없는 결과만 여기에 둬요.
@@ -10,6 +13,21 @@ import type { RecordingAudioMode } from "@/shared/types/recording";
  * 문서 제목 · 내용은 넣지 않아요. 탐색 질문 글 · 답변 글은 MVP 단계에서 자세히 보려고 `search_answer_result`에만 넣어요.
  */
 interface AnalyticsEventMap {
+  /** 녹음을 시작하거나 이어 가지 못해 안내 창을 띄웠어요. 실패할 때마다 보내요 */
+  recording_start_failed: {
+    reason: "microphone_unavailable" | "refused" | "network_failed";
+    /** 마이크를 받지 못했을 때만 있어요. getUserMedia의 오류 이름(`NotAllowedError` · `NotFoundError` · `NotReadableError` 등)이에요 */
+    error_name?: string;
+    /** 녹음을 누를 때의 마이크 권한 상태 */
+    permission_before: MicrophonePermission;
+    /** 시작하지 못한 뒤의 마이크 권한 상태 */
+    permission_after: MicrophonePermission;
+    /** 이 탭에서 새로고침 전까지 몇 번째로 시작하지 못했는지. 1부터 세요 */
+    attempt: number;
+    /** 독의 마이크(`dock`) 또는 녹음 바의 「이어서 녹음」(`recorder_bar`) */
+    surface: "dock" | "recorder_bar";
+    workspace_id: number;
+  };
   /** 독의 녹음 버튼을 누른 뒤 녹음을 열었는지 결과가 정해졌어요. 누른 것은 자동 클릭으로 세고, 열렸는지와 기다린 시간은 여기서만 보여요 */
   recording_start_result: {
     result: "started" | "microphone_unavailable" | "refused" | "network_failed" | "failed" | "uploading";

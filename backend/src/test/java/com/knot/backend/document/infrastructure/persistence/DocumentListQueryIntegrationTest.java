@@ -133,6 +133,170 @@ class DocumentListQueryIntegrationTest extends SharedPostgresDocumentQueryTestSu
     }
 
     @Test
+    @DisplayName("기존 응답으로 여러 안건을 큰 주제에 모으고 저장된 안건은 보존한다")
+    void find_success_broadFoldersWithoutChangingAgendas() {
+        // given
+        long first = saveDocument(
+                workspaceId,
+                "녹음 안정성"
+        );
+        long second = saveDocument(
+                workspaceId,
+                "전사 품질"
+        );
+        long legacy = saveDocument(
+                workspaceId,
+                "녹음·전사"
+        );
+        var category = com.knot.backend.document.domain.model.DocumentCategory.create(
+                workspaceId,
+                "녹음·전사",
+                "음성 처리",
+                DocumentFixtures.CREATED_AT
+        );
+        entityManager.persist(category);
+        entityManager.flush();
+        jdbc.sql("""
+                UPDATE documents SET category_id = :categoryId, grouping_scheme = 'BROAD',
+                    assignment_source = 'AI_NEW', assignment_rule_version = 'test'
+                WHERE id IN (:ids)
+                """)
+                .param(
+                        "categoryId",
+                        category.getId()
+                )
+                .param(
+                        "ids",
+                        List.of(
+                                first,
+                                second
+                        )
+                )
+                .update();
+        var parameters = DocumentListParameters.of(
+                null,
+                1,
+                null,
+                null
+        );
+
+        // when
+        var folders = query.findTopics(
+                workspaceId,
+                memberId,
+                parameters
+        );
+        var cards = query.findPage(
+                workspaceId,
+                memberId,
+                parameters,
+                null
+        );
+
+        // then
+        assertThat(folders).extracting(folder -> folder.topic() + ":" + folder.documentCount())
+                .containsExactly("녹음·전사:3");
+        assertThat(cards).extracting(DocumentCardResult::id)
+                .containsExactly(
+                        legacy,
+                        second
+                );
+        assertThat(cards).extracting(DocumentCardResult::topic)
+                .containsExactly(
+                        "녹음·전사",
+                        "녹음·전사"
+                );
+        assertThat(
+                jdbc.sql("SELECT topic FROM documents WHERE id = :id")
+                        .param(
+                                "id",
+                                second
+                        )
+                        .query(String.class)
+                        .single()
+        ).isEqualTo("전사 품질");
+    }
+
+    @Test
+    @DisplayName("큰 주제 개수도 확인 필터 전체 기준이며 빈 주제와 다른 Workspace를 제외한다")
+    void find_success_folderFilterAndEmptyCategory() {
+        // given
+        long documentId = saveDocument(
+                workspaceId,
+                "안건"
+        );
+        saveDocument(
+                workspaceId,
+                "다른 안건"
+        );
+        saveDocument(
+                fixtures.saveWorkspace(),
+                "외부"
+        );
+        var category = com.knot.backend.document.domain.model.DocumentCategory.create(
+                workspaceId,
+                "테스트 큰 주제",
+                "테스트 범위",
+                DocumentFixtures.CREATED_AT
+        );
+        entityManager.persist(category);
+        entityManager.persist(
+                com.knot.backend.document.domain.model.DocumentCategory.create(
+                        workspaceId,
+                        "빈 큰 주제",
+                        "표시하지 않는 주제",
+                        DocumentFixtures.CREATED_AT
+                )
+        );
+        entityManager.persist(
+                DocumentConfirmation.require(
+                        documentId,
+                        memberId
+                )
+        );
+        entityManager.flush();
+        jdbc.sql("""
+                UPDATE documents SET category_id = :categoryId, grouping_scheme = 'BROAD',
+                    assignment_source = 'RULE_NEW', assignment_rule_version = 'test'
+                WHERE id = :id
+                """)
+                .param(
+                        "categoryId",
+                        category.getId()
+                )
+                .param(
+                        "id",
+                        documentId
+                )
+                .update();
+        var parameters = DocumentListParameters.of(
+                null,
+                1,
+                MyConfirmationState.PENDING,
+                null
+        );
+
+        // when
+        var folders = query.findTopics(
+                workspaceId,
+                memberId,
+                parameters
+        );
+        var cards = query.findPage(
+                workspaceId,
+                memberId,
+                parameters,
+                null
+        );
+
+        // then
+        assertThat(folders).extracting(folder -> folder.topic() + ":" + folder.documentCount())
+                .containsExactly("테스트 큰 주제:1");
+        assertThat(cards).extracting(DocumentCardResult::topic)
+                .containsExactly("테스트 큰 주제");
+    }
+
+    @Test
     @DisplayName("JPA로 등록한 확인 대상은 주제 필터와 카드 집계에 즉시 반영된다")
     void find_success_pendingJpaConfirmation() {
         long documentId = saveDocument(

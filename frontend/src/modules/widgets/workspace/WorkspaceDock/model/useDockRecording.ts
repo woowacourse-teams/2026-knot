@@ -3,6 +3,7 @@ import useNavigateToRecording from "@hooks/domain/recording/useNavigateToRecordi
 import useRecordingState from "@hooks/domain/recording/useRecordingState";
 import useRecordingControl from "@hooks/domain/recording/useRecordingControl";
 import useRecordingElapsedTime from "@hooks/domain/recording/useRecordingElapsedTime";
+import useRecordingStartAnalytics from "@hooks/domain/recording/useRecordingStartAnalytics";
 import useRecordingStartNetworkErrorDialog from "@hooks/domain/recording/useRecordingStartNetworkErrorDialog";
 import useRecordingStartRefusedDialog from "@hooks/domain/recording/useRecordingStartRefusedDialog";
 import useServerRecording from "@hooks/domain/recording/useServerRecording";
@@ -23,7 +24,7 @@ import { useMatch, useParams } from "react-router";
  * 녹음 화면에서는 갈 곳이 없어 마이크를 숨겨요.
  * 누른 뒤 녹음이 열릴 때까지(마이크 권한, 오디오 준비, 서버 시작 요청) 1~2초 걸릴 수 있어, 그동안은 `isRecordingStarting`으로 기다리는 중을 보여줘요.
  * 녹음이 열려도 녹음 화면에 들어가기 전까지는 마이크 자리를 그대로 두어, 홈에 녹음 칩과 파형이 잠깐 비쳤다 사라지지 않게 해요.
- * 누른 결과와 기다린 시간은 사용 기록(`recording_start_result`)으로 남겨요.
+ * 누른 결과와 기다린 시간은 사용 기록(`recording_start_result`)으로 남기고, 안내 창을 띄운 실패는 그 이유를 `recording_start_failed`로도 남겨요.
  *
  * 녹음 화면이 아닌 곳에서 녹음이 이어지고 있으면 마이크 대신 녹음 칩을 보여줘요.
  * 칩을 누르면 권한을 다시 묻지 않고 녹음 화면으로 가고, 중지를 누르면 녹음을 끝내 올린 뒤 그 녹음의 문서 정리 화면으로 가요.
@@ -53,6 +54,11 @@ export const useDockRecording = () => {
   const { status: serverStatus, elapsedTime: serverElapsedTime } =
     useServerRecording();
   const { startRecording, syncPause, endRecording } = useRecordingControl();
+  // 안내 창을 띄운 실패는 독에서 시작하지 못한 사용 기록으로도 보내요
+  const { startAndTrackRecording } = useRecordingStartAnalytics({
+    startRecording,
+    surface: "dock",
+  });
   const [isRecordingStarting, setIsRecordingStarting] = useState(false);
 
   const isOtherTabRecording =
@@ -87,7 +93,7 @@ export const useDockRecording = () => {
     const startedAt = performance.now();
     markRecordingStart("click");
     setIsRecordingStarting(true);
-    const result = await startRecording(Number(workspaceId));
+    const result = await startAndTrackRecording(Number(workspaceId));
     trackRecordingStartResult({
       workspaceId: Number(workspaceId),
       result,

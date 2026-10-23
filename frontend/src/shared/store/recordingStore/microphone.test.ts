@@ -52,3 +52,33 @@ describe("Microphone 연결 실패 보고", () => {
     },
   );
 });
+
+describe("Microphone 연결하지 못한 이유", () => {
+  it("마이크를 받지 못하면 그 오류 이름을 남긴다", async () => {
+    vi.spyOn(navigator.mediaDevices, "getUserMedia").mockRejectedValue(
+      new DOMException("", "NotFoundError"),
+    );
+    const microphone = createMicrophone();
+
+    await microphone.connect();
+
+    expect(microphone.errorName).toBe("NotFoundError");
+  });
+
+  it("권한을 기다리는 사이 끊은 뒤 거절되면 이유를 남기지 않는다", async () => {
+    let denyPermission = () => {};
+    vi.spyOn(navigator.mediaDevices, "getUserMedia").mockReturnValue(
+      new Promise((_, reject) => {
+        denyPermission = () => reject(new DOMException("", "NotAllowedError"));
+      }),
+    );
+    const microphone = createMicrophone();
+    const connecting = microphone.connect();
+
+    microphone.disconnect();
+    denyPermission();
+
+    expect(await connecting).toBeNull();
+    expect(microphone.errorName).toBeNull();
+  });
+});

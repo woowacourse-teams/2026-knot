@@ -17,8 +17,6 @@ export const SEED_WAVE_WIDTH_RATIO = 0.6;
 /** 소리가 가장 클 때 파형이 가운데에서 위아래로 퍼지는 거리(px). 알약 높이 60 안에 들어와요 */
 export const SEED_WAVE_AMPLITUDE = 22;
 
-/** 소리가 없을 때 남는 선의 두께(px). 녹음 화면 파형과 같아요 */
-export const SEED_WAVE_FLAT_AMPLITUDE = 1;
 
 /** 파형과 시간을 담는 알약의 높이(px). 독과 같은 60px이라 올리면 독으로 자연스럽게 이어져요 */
 export const SEED_PILL_HEIGHT = 60;

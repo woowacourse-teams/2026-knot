@@ -11,8 +11,5 @@ export const WAVEFORM_PARTICLE_RANGE = { min: 1200, max: 6500 } as const;
 /** 소리가 가장 클 때 입자가 가운데에서 퍼지는 거리. 높이에 곱해요 */
 export const WAVEFORM_AMPLITUDE_RATIO = 0.48;
 
-/** 소리가 없을 때 남는 선의 두께(px). 파형이 없는 게 아니라 「조용하다」로 읽히게 가는 선은 남겨요 */
-export const WAVEFORM_FLAT_AMPLITUDE = 1;
-
 /** 올리면 입자가 포인터를 피하는 반지름(px). 랜딩의 95를 녹음 바 높이에 맞춰 줄였어요 */
 export const WAVEFORM_POINTER_RADIUS = 48;
