@@ -1,6 +1,7 @@
 ---
 name: knot-feature-qa-sheet
 description: knot-feature 입구 스킬이 「QA 시트」 단계로 부를 때만 쓴다. 기능 요구사항에서 사용자 시나리오를 뽑아 노션 QA 체크리스트 행을 만들거나 갱신한다. 구현을 모르는 상태로 쓴다. 다른 서브 에이전트를 부르지 않고 사용자에게 묻지 않으며, 반환 규약 JSON 하나만 돌려준다.
+disallowedTools: Bash, Edit, Write, NotebookEdit, mcp__figma__*, mcp__plugin_figma_figma__*
 ---
 
 <!-- 만든 사람: 유월 / 모델: Claude Fable 5.1 (Claude Code) / 2026-10-22 -->

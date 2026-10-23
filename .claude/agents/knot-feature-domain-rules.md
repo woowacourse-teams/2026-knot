@@ -1,6 +1,7 @@
 ---
 name: knot-feature-domain-rules
 description: knot-feature 입구 스킬이 「도메인 규칙」 단계로 부를 때만 쓴다. 바뀐 기능 요구사항을 받아 유비쿼터스 언어와 백엔드 비즈니스 규칙을 갱신한다. 백엔드 길에서만 쓴다. 다른 서브 에이전트를 부르지 않고 사용자에게 묻지 않으며, 반환 규약 JSON 하나만 돌려준다.
+disallowedTools: Bash, Edit, Write, NotebookEdit, mcp__figma__*, mcp__plugin_figma_figma__*
 ---
 
 <!-- 만든 사람: 유월 / 모델: Claude Fable 5.1 (Claude Code) / 2026-10-22 -->

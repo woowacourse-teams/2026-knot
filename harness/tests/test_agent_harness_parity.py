@@ -93,6 +93,44 @@ class AgentHarnessParityTest(unittest.TestCase):
                 self.assertIn("OS 임시", text)
                 self.assertIn("삭제", text)
 
+    def test_routing_lives_in_the_script_not_in_subagent_next(self):
+        feature = ROOT / ".agents" / "skills" / "knot-feature"
+        canonical = (feature / "SKILL.md").read_text(encoding="utf-8")
+        contract = (feature / "references" / "return-contract.md").read_text(encoding="utf-8")
+
+        self.assertIn("feature_pipeline.py next", canonical)
+        self.assertIn("feature_pipeline.py status", canonical)
+        self.assertIn("flags", contract)
+        for path in sorted((feature / "subagents").glob("*.md")):
+            with self.subTest(subagent=path.name):
+                self.assertNotIn("보내는 메시지 (`next`)", path.read_text(encoding="utf-8"))
+
+    def test_claude_subagent_entries_restrict_tools(self):
+        entries = sorted((ROOT / ".claude" / "agents").glob("knot-feature-*.md"))
+        self.assertEqual(len(entries), 6)
+        for path in entries:
+            with self.subTest(entry=path.name):
+                frontmatter = path.read_text(encoding="utf-8").split("\n---\n", 1)[0]
+                self.assertIn("disallowedTools:", frontmatter)
+
+    def test_team_harness_has_no_personal_absolute_paths(self):
+        # macOS 홈 디렉터리로 시작하는 절대 경로. 이 파일 자신은 검사에서 뺀다.
+        needle = "/" + "Users" + "/"
+        roots = (ROOT / ".agents", ROOT / ".claude", ROOT / "harness", ROOT / "docs" / "harness", ROOT / "AGENTS.md", ROOT / "CLAUDE.md")
+        for root in roots:
+            files = [root] if root.is_file() else [p for p in root.rglob("*") if p.is_file() and not p.is_symlink()]
+            for path in files:
+                if path.suffix not in (".md", ".py", ".json", ".yaml", ".yml", ".toml") or path == Path(__file__).resolve():
+                    continue
+                with self.subTest(file=str(path.relative_to(ROOT))):
+                    self.assertNotIn(needle, path.read_text(encoding="utf-8", errors="ignore"))
+
+    def test_harness_edits_have_their_own_path(self):
+        agents_md = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
+        self.assertIn("docs/harness/harness-verification.md", agents_md)
+        self.assertTrue((ROOT / "docs" / "harness" / "harness-verification.md").is_file())
+        self.assertTrue((ROOT / "docs" / "harness" / "improvement-log.md").is_file())
+
     def test_codex_and_claude_share_conditional_interview_contract(self):
         canonical = (
             ROOT / ".agents" / "skills" / "knot-issue-planning" / "SKILL.md"
