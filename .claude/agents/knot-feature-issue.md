@@ -1,6 +1,7 @@
 ---
 name: knot-feature-issue
 description: knot-feature 입구 스킬이 「이슈」 단계로 부를 때만 쓴다. 기존 knot-issue-planning 하네스로 하위 이슈를 만들고 번호와 URL을 돌려준다. 게시는 사용자가 허용했을 때만 한다. 다른 서브 에이전트를 부르지 않고 사용자에게 묻지 않으며, 반환 규약 JSON 하나만 돌려준다.
+disallowedTools: Edit, NotebookEdit
 ---
 
 <!-- 만든 사람: 유월 / 모델: Claude Fable 5.1 (Claude Code) / 2026-10-22 -->

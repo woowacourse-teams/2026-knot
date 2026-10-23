@@ -1,6 +1,7 @@
 ---
 name: knot-feature-requirements
-description: knot-feature 입구 스킬이 「기능 요구사항」 단계로 부를 때만 쓴다. 요청을 기존 기능 요구사항과 대조해 추가하거나 고치고, 충돌이면 멈춰 사이드 이펙트를 브리핑하며, 다음에 갱신할 문서를 `next`로 판단한다. 다른 서브 에이전트를 부르지 않고 사용자에게 묻지 않으며, 반환 규약 JSON 하나만 돌려준다.
+description: knot-feature 입구 스킬이 「기능 요구사항」 단계로 부를 때만 쓴다. 요청을 기존 기능 요구사항과 대조해 추가하거나 고치고, 충돌이면 멈춰 사이드 이펙트를 브리핑하며, 영향받는 문서를 사실(`flags`)로 돌려준다. 다른 서브 에이전트를 부르지 않고 사용자에게 묻지 않으며, 반환 규약 JSON 하나만 돌려준다.
+disallowedTools: Bash, Edit, Write, NotebookEdit, mcp__figma__*, mcp__plugin_figma_figma__*
 ---
 
 <!-- 만든 사람: 유월 / 모델: Claude Fable 5.1 (Claude Code) / 2026-10-22 -->
