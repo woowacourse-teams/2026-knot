@@ -13,7 +13,7 @@
 
 | 보내는 쪽 | 메시지 | 조건 |
 | --- | --- | --- |
-| 기능 요구사항 또는 API 명세 | 「이슈 생성해」 | 문서 갱신이 끝났을 때. 입구 스킬이 상태 파일의 `changed` 목록과 사용자 답변을 함께 넘긴다. |
+| 입구 스킬 (`next`가 정함) | 「이슈 생성해」 | 문서 갱신이 끝났을 때. `fix`, `chore` 요청은 문서 단계 없이 바로 온다. 입구 스킬이 상태 파일의 `changed` 목록과 사용자 답변을 함께 넘긴다. |
 
 ## 보내는 메시지
 
@@ -28,7 +28,8 @@
   `$knot-deep-interview`와 `$knot-grill-me`, ADR 판단, `harness/issue_planning.py` 판정을 거친다.
   운영 규칙은 `docs/harness/issue-planning.md`다.
 - 인터뷰, Grill, 담당자 확인처럼 사용자에게 물을 것은 `needs_user_input`으로 한 질문씩 돌려준다.
-  입구가 답을 붙여 다시 부르면 상태 파일의 답을 읽고 이어서 진행한다.
+  입구가 답을 붙여 다시 부르면 상태 파일의 답을 읽고 이어서 진행한다. 담당자와 라벨처럼 공통 규칙에
+  기본값이 있는 것은 `question`에 권장안을 적어 입구가 묻지 않고 `assumptions`로 갈 수 있게 한다.
 - 이슈 템플릿의 세 섹션(구현 기능 설명, TODO, 메모)만 쓴다. 「노션 변경 사항」은 반드시 넣되
   `##`를 쓸 수 없으므로 `구현 기능 설명`의 첫 부분에 굵은 글씨 목록으로 둔다. 형식은
   `references/return-contract.md`다. 이번 요청으로 바뀐 기능 요구사항, 도메인 규칙, API 명세,
@@ -42,7 +43,8 @@
   코멘트가 아직 없으면 남긴다.
 - 실제 게시는 사용자가 현재 요청에서 명시적으로 허용한 경우에만 한다. 상태 파일의
   `remote_write_authorized`가 `true`일 때만 `--publish --repo woowacourse-teams/2026-Knot`를 쓴다.
-  `false`면 dry-run 본문을 `question`에 담아 `needs_user_input`으로 게시 여부를 묻는다.
+  이 값은 입구가 시작에서 받는다. `false`면 dry-run 본문을 `changed` 없이 `question`에 담아
+  `needs_user_input`으로 돌려주고, 입구는 본문을 보여 주고 끝낸다(중간에 다시 묻지 않는다).
 - 게시 뒤 공통 라벨 규칙(`docs/harness/issue-planning.md`의 「Issue 라벨 선택과 게시 후 확인」)
   대로 영역, 작업 성격, 담당자 라벨과 assignee를 붙이고 조회로 확인한다.
 - Issue 계약 snapshot은 저장소 밖 OS 임시 파일에만 만들고 판정이 끝나면 성공, 실패와 관계없이
@@ -51,7 +53,7 @@
 ## 반환
 
 `references/return-contract.md`의 규약 그대로. `changed`의 `kind`는 `issue`, `url`은 Issue 링크,
-`summary`는 번호와 제목. `next`는 비워 둔다. 구현 하네스를 부를지는 완료 조건을 아는 입구가 정한다.
+`summary`는 번호와 제목. `flags`는 없다. 구현 하네스를 부를지는 완료 조건을 보고 `next`가 정한다.
 
 ## 하지 않는 것
 
