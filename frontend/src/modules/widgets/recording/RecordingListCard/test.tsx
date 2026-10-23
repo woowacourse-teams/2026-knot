@@ -1,5 +1,8 @@
 import { GetMeResponseDto } from "@api/dto/auth";
-import { GetCurrentRecordingResponseDto } from "@api/dto/recording";
+import {
+  GetCurrentRecordingResponseDto,
+  GetRecordingResponseDto,
+} from "@api/dto/recording";
 import { AUTH_ME_API_PATH } from "@api/fetch/api/v1/auth/me";
 import { DOCUMENT_GENERATION_JOB_RETRY_API_PATH } from "@api/fetch/api/v1/workspaces/[workspaceId]/documentGenerationJobs/[jobId]/retry";
 import { RECORDING_API_PATH } from "@api/fetch/api/v1/workspaces/[workspaceId]/recordings/[recordingId]";
@@ -76,21 +79,68 @@ const TRANSCRIPTION_FAILED_TEXT = "녹음을 글로 옮기지 못했어요";
 const TRANSCRIPTION_FAILED_HINT = "녹음은 30일 동안 보관해요";
 const DOCUMENT_FAILED_TEXT = "문서를 만들지 못했어요";
 const DOCUMENT_FAILED_HINT = "녹음과 원문은 7일 동안 보관해요";
+type FailedStatus = "TRANSCRIPTION_FAILED" | "DOCUMENT_FAILED";
+
 // 녹음 상세 mock에서 전사가 실패한 녹음. 전사 다시 시도 mock은 이 녹음만 접수해요
-const TRANSCRIPTION_FAILED_RECORDING_ID = recordingDetailsResponse.find(
+const TRANSCRIPTION_FAILED_RECORDING = recordingDetailsResponse.find(
   ({ detail }) => detail.transcriptionStatus === "FAILED",
-)!.recordingId;
-// 녹음 상세 mock에서 문서 만들기가 실패한 녹음. 실패 작업이 다시 시도 mock 응답의 작업이에요
-const DOCUMENT_FAILED_RECORDING_ID = recordingDetailsResponse.find(
+)!;
+// 녹음 상세 mock에서 문서 만들기가 실패한 녹음. 실패 작업이 하나이고 다시 시도 mock이 접수하는 작업이에요
+const DOCUMENT_FAILED_RECORDING = recordingDetailsResponse.find(
   ({ detail }) =>
     detail.documentGeneration?.status === "FAILED" &&
     detail.documentGeneration.failedJobIds[0] ===
       documentGenerationJobRetryResponse.jobId,
-)!.recordingId;
-const FAILED_JOB_ID = documentGenerationJobRetryResponse.jobId;
-const TRANSCRIPTION_RETRY_URL = `*${RECORDING_TRANSCRIPTION_RETRY_API_PATH(WORKSPACE_ID, TRANSCRIPTION_FAILED_RECORDING_ID)}`;
-const DOCUMENT_JOB_RETRY_URL = `*${DOCUMENT_GENERATION_JOB_RETRY_API_PATH(WORKSPACE_ID, FAILED_JOB_ID)}`;
-const DOCUMENT_FAILED_RECORDING_URL = `*${RECORDING_API_PATH(WORKSPACE_ID, DOCUMENT_FAILED_RECORDING_ID)}`;
+)!;
+// 실패한 작업이 둘 이상인 녹음. 「모두」 다시 접수하는지와 일부만 접수된 경우는 작업이 둘 이상이어야 드러나요
+const MULTI_JOB_FAILED_RECORDING = recordingDetailsResponse.find(
+  ({ detail }) => (detail.documentGeneration?.failedJobIds.length ?? 0) > 1,
+)!;
+
+/** 녹음 상세 mock의 녹음을 앱이 받는 모양(응답 DTO)으로 바꿔 실패한 작업 ID를 꺼내요 */
+const expectedFailedJobIds = ({
+  detail,
+}: (typeof recordingDetailsResponse)[number]) =>
+  new GetRecordingResponseDto(detail).documentGeneration!.failedJobIds;
+
+interface FailedRecordingResponseParams {
+  status: FailedStatus;
+  /** 실패한 녹음의 ID. 생략하면 그 실패 상태의 기본 녹음이에요 */
+  recordingId?: number;
+  isRetryable?: boolean;
+}
+
+/** 현재 녹음 조회가 돌려줄, 정리에 실패한 녹음의 서버 응답 */
+const failedRecordingResponse = ({
+  status,
+  recordingId = status === "TRANSCRIPTION_FAILED"
+    ? TRANSCRIPTION_FAILED_RECORDING.recordingId
+    : DOCUMENT_FAILED_RECORDING.recordingId,
+  isRetryable = true,
+}: FailedRecordingResponseParams) => ({
+  ...currentRecordingResponse,
+  recordingId,
+  status,
+  retryable: isRetryable,
+});
+
+// 요청 주소의 ID는 컴포넌트가 받는 모양(응답 DTO)에서 가져와요
+const expectedTranscriptionFailed = new GetCurrentRecordingResponseDto(
+  failedRecordingResponse({ status: "TRANSCRIPTION_FAILED" }),
+);
+const expectedDocumentFailed = new GetCurrentRecordingResponseDto(
+  failedRecordingResponse({ status: "DOCUMENT_FAILED" }),
+);
+const [EXPECTED_FAILED_JOB_ID] = expectedFailedJobIds(
+  DOCUMENT_FAILED_RECORDING,
+);
+const MULTI_FAILED_JOB_IDS = expectedFailedJobIds(MULTI_JOB_FAILED_RECORDING);
+
+const TRANSCRIPTION_RETRY_URL = `*${RECORDING_TRANSCRIPTION_RETRY_API_PATH(WORKSPACE_ID, expectedTranscriptionFailed.recordingId)}`;
+const jobRetryUrl = (jobId: number) =>
+  `*${DOCUMENT_GENERATION_JOB_RETRY_API_PATH(WORKSPACE_ID, jobId)}`;
+const DOCUMENT_JOB_RETRY_URL = jobRetryUrl(EXPECTED_FAILED_JOB_ID);
+const DOCUMENT_FAILED_RECORDING_URL = `*${RECORDING_API_PATH(WORKSPACE_ID, expectedDocumentFailed.recordingId)}`;
 
 /** 응답의 누적 시간에 초를 더한 시간 표시예요 */
 const elapsedTimeAfter = (seconds: number) =>
@@ -149,50 +199,41 @@ const respondStatus = (status: "RECORDING" | "PAUSED" | "PROCESSING") =>
   );
 
 /** 현재 녹음 조회가 실패한 녹음으로 답하게 해요. 녹음 ID는 녹음 상세 mock의 같은 실패 녹음이에요 */
-const respondFailedRecording = ({
-  status,
-  isRetryable = true,
-}: {
-  status: "TRANSCRIPTION_FAILED" | "DOCUMENT_FAILED";
-  isRetryable?: boolean;
-}) =>
+const respondFailedRecording = (params: FailedRecordingResponseParams) =>
   respondCurrentRecording(() =>
-    HttpResponse.json({
-      ...currentRecordingResponse,
-      recordingId:
-        status === "TRANSCRIPTION_FAILED"
-          ? TRANSCRIPTION_FAILED_RECORDING_ID
-          : DOCUMENT_FAILED_RECORDING_ID,
-      status,
-      retryable: isRetryable,
-    }),
+    HttpResponse.json(failedRecordingResponse(params)),
   );
 
 /**
  * 현재 녹음 조회가 처음엔 실패한 녹음으로, 다시 시도가 접수된 뒤에는 정리 중으로 답하게 해요.
  * 서버는 다시 접수한 녹음을 정리 중으로 돌려주지만, 현재 녹음 mock은 다시 시도 기록을 보지 않아 순서로 흉내 내요
  */
-const respondFailedThenOrganizing = (
-  status: "TRANSCRIPTION_FAILED" | "DOCUMENT_FAILED",
-) => {
-  const recordingId =
-    status === "TRANSCRIPTION_FAILED"
-      ? TRANSCRIPTION_FAILED_RECORDING_ID
-      : DOCUMENT_FAILED_RECORDING_ID;
+const respondFailedThenOrganizing = (params: FailedRecordingResponseParams) => {
   let requestCount = 0;
   respondCurrentRecording(() => {
     requestCount += 1;
+    const response = failedRecordingResponse(params);
 
-    return HttpResponse.json({
-      ...currentRecordingResponse,
-      recordingId,
-      status: requestCount === 1 ? status : "PROCESSING",
-      retryable: true,
-    });
+    return HttpResponse.json(
+      requestCount === 1 ? response : { ...response, status: "PROCESSING" },
+    );
   });
 
   return () => requestCount;
 };
+
+/** 문서 생성 작업의 다시 시도가 이 상태 코드로 실패하게 해요 */
+const respondJobRetryError = (jobId: number, status: 409 | 500) =>
+  mockServer.use(
+    http.post(jobRetryUrl(jobId), () =>
+      HttpResponse.json(
+        status === 409
+          ? { code: "RETRY_NOT_ALLOWED", message: "재시도할 수 없습니다" }
+          : { code: "INTERNAL_SERVER_ERROR", message: "서버 오류" },
+        { status },
+      ),
+    ),
+  );
 
 /** 이 주소로 간 요청 수를 세요 */
 const countRequests = (method: "get" | "post", url: string) => {
@@ -638,12 +679,9 @@ describe("RecordingListCard", () => {
       respondCurrentRecording(() => {
         requestCount += 1;
 
-        return HttpResponse.json({
-          ...currentRecordingResponse,
-          recordingId: TRANSCRIPTION_FAILED_RECORDING_ID,
-          status: "TRANSCRIPTION_FAILED",
-          retryable: true,
-        });
+        return HttpResponse.json(
+          failedRecordingResponse({ status: "TRANSCRIPTION_FAILED" }),
+        );
       });
       vi.useFakeTimers();
       renderCard();
@@ -669,7 +707,7 @@ describe("RecordingListCard", () => {
     });
 
     it("전사 실패에서 「다시 시도」를 누르면 그 녹음의 전사를 다시 접수하고, 접수되면 현재 녹음을 다시 조회해 문서 정리 중으로 돌아간다", async () => {
-      respondFailedThenOrganizing("TRANSCRIPTION_FAILED");
+      respondFailedThenOrganizing({ status: "TRANSCRIPTION_FAILED" });
       const getRetryCount = countRequests("post", TRANSCRIPTION_RETRY_URL);
       renderCard();
 
@@ -683,18 +721,56 @@ describe("RecordingListCard", () => {
     });
 
     it("문서 만들기 실패에서 「다시 시도」를 누르면 녹음 상세의 실패한 작업을 모두 다시 접수하고, 접수되면 문서 정리 중으로 돌아간다", async () => {
-      respondFailedThenOrganizing("DOCUMENT_FAILED");
-      const getRetryCount = countRequests("post", DOCUMENT_JOB_RETRY_URL);
+      respondFailedThenOrganizing({
+        status: "DOCUMENT_FAILED",
+        recordingId: MULTI_JOB_FAILED_RECORDING.recordingId,
+      });
+      const getRetryCounts = MULTI_FAILED_JOB_IDS.map((jobId) =>
+        countRequests("post", jobRetryUrl(jobId)),
+      );
       renderCard();
 
       fireEvent.click(await screen.findByRole("button", { name: RETRY }));
 
       expect(await screen.findByText(ORGANIZING_TEXT)).toBeInTheDocument();
-      expect(getRetryCount()).toBe(1);
+      expect(getRetryCounts.map((getRetryCount) => getRetryCount())).toEqual(
+        MULTI_FAILED_JOB_IDS.map(() => 1),
+      );
+    });
+
+    it("문서 만들기 다시 시도에서 일부 작업만 접수돼도 오류 토스트 없이 문서 정리 중으로 돌아간다", async () => {
+      respondFailedThenOrganizing({
+        status: "DOCUMENT_FAILED",
+        recordingId: MULTI_JOB_FAILED_RECORDING.recordingId,
+      });
+      const [, serverErrorJobId] = MULTI_FAILED_JOB_IDS;
+      respondJobRetryError(serverErrorJobId, 500);
+      renderCard();
+
+      fireEvent.click(await screen.findByRole("button", { name: RETRY }));
+
+      expect(await screen.findByText(ORGANIZING_TEXT)).toBeInTheDocument();
+      expect(screen.queryByText(RETRY_FAILED_TOAST)).not.toBeInTheDocument();
+    });
+
+    it("문서 만들기 다시 시도가 하나도 접수되지 않고 거절이 아닌 실패(5xx)가 섞여 있으면 오류 토스트를 띄우고 버튼은 그대로 둔다", async () => {
+      respondFailedRecording({
+        status: "DOCUMENT_FAILED",
+        recordingId: MULTI_JOB_FAILED_RECORDING.recordingId,
+      });
+      const [rejectedJobId, serverErrorJobId] = MULTI_FAILED_JOB_IDS;
+      respondJobRetryError(rejectedJobId, 409);
+      respondJobRetryError(serverErrorJobId, 500);
+      renderCard();
+
+      fireEvent.click(await screen.findByRole("button", { name: RETRY }));
+
+      expect(await screen.findByText(RETRY_FAILED_TOAST)).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: RETRY })).toBeEnabled();
     });
 
     it("다시 시도의 응답을 기다리는 동안에는 버튼을 다시 누를 수 없다", async () => {
-      respondFailedThenOrganizing("TRANSCRIPTION_FAILED");
+      respondFailedThenOrganizing({ status: "TRANSCRIPTION_FAILED" });
       const getRetryCount = countRequests("post", TRANSCRIPTION_RETRY_URL);
       mockServer.use(
         http.post(TRANSCRIPTION_RETRY_URL, async () => {
@@ -764,17 +840,12 @@ describe("RecordingListCard", () => {
     });
 
     it("문서 만들기 다시 시도가 모두 거절되면 오류 토스트 없이 현재 녹음을 다시 조회한다", async () => {
-      vi.spyOn(console, "error").mockImplementation(() => {});
-      respondFailedRecording({ status: "DOCUMENT_FAILED" });
+      respondFailedRecording({
+        status: "DOCUMENT_FAILED",
+        recordingId: MULTI_JOB_FAILED_RECORDING.recordingId,
+      });
       const getCurrentCount = countRequests("get", CURRENT_URL);
-      mockServer.use(
-        http.post(DOCUMENT_JOB_RETRY_URL, () =>
-          HttpResponse.json(
-            { code: "RETRY_NOT_ALLOWED", message: "재시도할 수 없습니다" },
-            { status: 409 },
-          ),
-        ),
-      );
+      MULTI_FAILED_JOB_IDS.forEach((jobId) => respondJobRetryError(jobId, 409));
       renderCard();
 
       fireEvent.click(await screen.findByRole("button", { name: RETRY }));
@@ -787,9 +858,7 @@ describe("RecordingListCard", () => {
       respondFailedRecording({ status: "DOCUMENT_FAILED" });
       const getCurrentCount = countRequests("get", CURRENT_URL);
       const getRetryCount = countRequests("post", DOCUMENT_JOB_RETRY_URL);
-      const failedRecording = recordingDetailsResponse.find(
-        ({ recordingId }) => recordingId === DOCUMENT_FAILED_RECORDING_ID,
-      )!.detail;
+      const failedRecording = DOCUMENT_FAILED_RECORDING.detail;
       mockServer.use(
         http.get(DOCUMENT_FAILED_RECORDING_URL, () =>
           HttpResponse.json({
@@ -807,6 +876,46 @@ describe("RecordingListCard", () => {
 
       await waitFor(() => expect(getCurrentCount()).toBe(2));
       expect(getRetryCount()).toBe(0);
+    });
+
+    it("문서 만들기 실패에서 녹음 상세를 서버 오류로 받지 못하면 다시 시도 요청 없이 오류 토스트를 띄우고 버튼은 그대로 둔다", async () => {
+      respondFailedRecording({ status: "DOCUMENT_FAILED" });
+      const getRetryCount = countRequests("post", DOCUMENT_JOB_RETRY_URL);
+      mockServer.use(
+        http.get(DOCUMENT_FAILED_RECORDING_URL, () =>
+          HttpResponse.json(
+            { code: "INTERNAL_SERVER_ERROR", message: "서버 오류" },
+            { status: 500 },
+          ),
+        ),
+      );
+      renderCard();
+
+      fireEvent.click(await screen.findByRole("button", { name: RETRY }));
+
+      expect(await screen.findByText(RETRY_FAILED_TOAST)).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: RETRY })).toBeEnabled();
+      expect(getRetryCount()).toBe(0);
+    });
+
+    it("문서 만들기 실패에서 녹음 상세를 받다가 로그인이 풀렸으면(401) 오류 토스트 없이 로그인 화면으로 보낸다", async () => {
+      respondFailedRecording({ status: "DOCUMENT_FAILED" });
+      mockServer.use(
+        http.get(DOCUMENT_FAILED_RECORDING_URL, () =>
+          HttpResponse.json(
+            { code: "UNAUTHENTICATED", message: "로그인이 필요합니다" },
+            { status: 401 },
+          ),
+        ),
+      );
+      const { router } = renderCard();
+
+      fireEvent.click(await screen.findByRole("button", { name: RETRY }));
+
+      await waitFor(() =>
+        expect(router.state.location.pathname).toBe(PATH_ROUTE.LOGIN),
+      );
+      expect(screen.queryByText(RETRY_FAILED_TOAST)).not.toBeInTheDocument();
     });
 
     it("다시 시도에서 로그인이 풀렸으면(401) 오류 토스트 없이 로그인 화면으로 보낸다", async () => {

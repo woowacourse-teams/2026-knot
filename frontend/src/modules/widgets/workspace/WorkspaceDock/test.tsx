@@ -1628,23 +1628,28 @@ describe("WorkspaceDock", () => {
       });
 
       it.each(["TRANSCRIPTION_FAILED", "DOCUMENT_FAILED"] as const)(
-        "다른 탭 녹음의 정리가 실패해도(%s) 이미 끝난 녹음이라 칩 대신 마이크를 보여준다 (#926)",
+        "다른 탭 녹음의 정리가 실패하면(%s) 이미 끝난 녹음이라 칩 대신 마이크를 보여준다 (#926)",
         async (status) => {
-          respondCurrentRecordingStatus(status);
-
+          respondCurrentRecordingStatus("RECORDING");
           renderDock();
-          // 마이크는 응답을 받기 전에도 보여서, 실패 응답을 받은 뒤에도 칩으로 바뀌지 않는지 봐요
-          await screen.findByRole("button", { name: "회의 녹음 시작" });
-          await act(async () => {
-            await new Promise((resolve) => setTimeout(resolve, 50));
+          expect(
+            await screen.findByRole("img", { name: "녹음 중" }),
+          ).toBeInTheDocument();
+
+          // 마이크는 응답을 받기 전에도 보여서, 칩이 보이던 상태에서 실패 응답으로 바뀐 뒤 마이크가 새로 나타나는지 봐요
+          respondCurrentRecordingStatus(status);
+          act(() => {
+            focusManager.setFocused(false);
+            focusManager.setFocused(true);
           });
 
           expect(
-            screen.getByRole("button", { name: "회의 녹음 시작" }),
+            await screen.findByRole("button", { name: "회의 녹음 시작" }),
           ).toBeInTheDocument();
           expect(
             screen.queryByRole("img", { name: "녹음 중" }),
           ).not.toBeInTheDocument();
+          focusManager.setFocused(undefined);
         },
       );
     });

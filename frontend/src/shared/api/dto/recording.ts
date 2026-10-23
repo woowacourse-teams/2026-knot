@@ -189,7 +189,8 @@ export class RecordingAudioSaveDto {
 
 /**
  * 현재 녹음의 화면용 진행 상태. `PROCESSING`은 녹음을 끝낸 뒤 오디오 준비 · 전사 · 문서 생성을 기다리거나 하는 중이에요.
- * `TRANSCRIPTION_FAILED`는 전사가, `DOCUMENT_FAILED`는 문서 생성이 끝내 실패한 녹음이에요(백엔드가 더하기로 한 값, PR 전 서버는 두 실패를 204로 줘요).
+ * `TRANSCRIPTION_FAILED`는 전사가, `DOCUMENT_FAILED`는 문서 생성이 끝내 실패한 녹음이에요.
+ * 두 실패 값은 백엔드 제안을 앞서 반영한 값이에요(#926). 지금 서버는 ADR 867대로 두 실패도 204로 줘요.
  * 정리가 끝났거나(완료 · 내용 없음) 폐기된 녹음은 상태 대신 204로 와요(ADR 867)
  */
 export type CurrentRecordingStatus =

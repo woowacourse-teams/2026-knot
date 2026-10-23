@@ -1,9 +1,10 @@
-import { HTTP_ERROR_TYPE, isHttpError } from "@api/httpClient/error";
+import { isHttpError } from "@api/httpClient/error";
 import useRetryRecordingTranscriptionMutation from "@api/mutations/useRetryRecordingTranscriptionMutation";
 import type useRecordingQuery from "@api/queries/useRecordingQuery";
 import { TOAST_MESSAGES } from "@constants/toastMessages";
 import useRedirectToLoginOnUnauthorized from "@hooks/domain/auth/useRedirectToLoginOnUnauthorized";
 import { useToast } from "@provider/context/toastContext";
+import { isRetryRejectedError } from "@utils/isRetryRejectedError";
 import { isUnauthorizedError } from "@utils/isUnauthorizedError";
 import { useState } from "react";
 
@@ -15,11 +16,6 @@ interface UseTranscriptionRetryParams {
   /** 정리 화면의 녹음 조회를 다시 하는 함수. 거절 뒤 서버의 녹음 상태를 확인할 때 써요 */
   refetchRecording: ReturnType<typeof useRecordingQuery>["refetch"];
 }
-
-/** 더 시도할 수 없다는 응답. 보관 기간이 지남 · 이미 전사 중 · 전사 기능 꺼짐(409) · 음성 없음(404) */
-const isRetryRejectedError = (error: unknown) =>
-  isHttpError(error, HTTP_ERROR_TYPE.conflict) ||
-  isHttpError(error, HTTP_ERROR_TYPE.notFound);
 
 /**
  * 전사가 실패한 녹음의 전사를 다시 접수하는 훅(STT-R22).

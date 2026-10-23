@@ -1,7 +1,7 @@
 /** 녹음 세션 상태 */
 export type RecordingSessionStatus = "RECORDING" | "PAUSED" | "ENDED";
 
-/** 현재 녹음의 화면용 진행 상태. 두 실패는 백엔드가 더하기로 한 값이에요 */
+/** 현재 녹음의 화면용 진행 상태. 두 실패는 백엔드 제안을 앞서 반영한 값이에요(#926) */
 export type CurrentRecordingStatus =
   | "RECORDING"
   | "PAUSED"
