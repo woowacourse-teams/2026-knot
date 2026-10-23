@@ -33,6 +33,7 @@ public class DocumentCategoryCatalogService {
         return categories.findAllByWorkspaceId(workspaceId)
                 .stream()
                 .filter(category -> !category.isFallback())
+                .filter(DocumentCategory::isActiveForAssignment)
                 .toList();
     }
 
@@ -135,12 +136,27 @@ public class DocumentCategoryCatalogService {
         List<DocumentCategory> all = categories.findAllByWorkspaceId(body.getWorkspaceId());
         List<DocumentCategory> normal = all.stream()
                 .filter(category -> !category.isFallback())
+                .filter(DocumentCategory::isActiveForAssignment)
                 .toList();
-        DocumentCategoryDecision decision = validateDecision(
-                body.getDecision(),
+        DocumentCategoryDecision decision = body.getDecision();
+        String currentVersion = version(normal);
+        if (hasRetiredCandidate(
+                decision,
+                normal
+        )) {
+            return resolveChangedCatalog(
+                    job,
+                    body,
+                    normal,
+                    all,
+                    now,
+                    currentVersion
+            );
+        }
+        decision = validateDecision(
+                decision,
                 normal
         );
-        String currentVersion = version(normal);
         if (needsReview(
                 decision,
                 body.getCatalogVersion(),
@@ -211,6 +227,20 @@ public class DocumentCategoryCatalogService {
             String currentVersion
     ) {
         return decision.isNew() && !currentVersion.equals(expectedVersion);
+    }
+
+    public boolean hasRetiredCandidate(
+            DocumentCategoryDecision decision,
+            List<DocumentCategory> candidates
+    ) {
+        if (decision == null || decision.getExistingCategoryId() == null) {
+            return false;
+        }
+        return candidates.stream()
+                .noneMatch(
+                        category -> decision.getExistingCategoryId()
+                                .equals(category.getId())
+                );
     }
 
     private DocumentCategory resolve(

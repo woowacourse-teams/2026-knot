@@ -164,11 +164,23 @@ public class DocumentCategoryCheckpointService {
         );
         PreparedDocument body = requirePrepared(job);
         List<DocumentCategory> candidates = catalog.normalCategories(execution.workspaceId());
+        String currentVersion = catalog.version(candidates);
+        if (catalog.hasRetiredCandidate(
+                decision,
+                candidates
+        )) {
+            reviewChangedCatalog(
+                    job,
+                    body,
+                    candidates,
+                    now
+            );
+            return;
+        }
         DocumentCategoryDecision checked = catalog.validateDecision(
                 decision,
                 candidates
         );
-        String currentVersion = catalog.version(candidates);
         if (catalog.needsReview(
                 checked,
                 version,
