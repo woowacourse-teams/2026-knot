@@ -43,6 +43,7 @@ interface UsePopoverParams {
  * 위치는 팝오버를 그린 뒤 크기를 재서 정해요. 크기를 알아야 위로 뒤집을지 정할 수 있어서예요.
  * 열려 있는 동안 트리거를 품은 영역이 스크롤되거나 창 크기가 바뀌면 트리거와 자리가 어긋나므로 닫아요.
  * 내용 안이나 트리거와 관계없는 영역이 스크롤될 때는 닫지 않아요.
+ * 열린 동안 내용의 크기가 바뀌면(메뉴에서 패널로 바뀌는 등) 그 크기로 자리를 다시 맞춰요.
  *
  * `isDismissible`이 꺼져 있는 동안에는 위 방법으로 닫지 않고, 내용이 `close`를 불러야만 닫혀요.
  * 닫힐 때 포커스가 내용 안에 있었거나 갈 곳 없이 비어 있으면 트리거로 돌려줘요. 내용이 사라지면서 포커스를 잃지 않게요.
@@ -114,17 +115,29 @@ const usePopover = ({
       return;
     }
 
-    const { clientWidth, clientHeight } = document.documentElement;
+    const trigger = triggerRef.current;
+    const content = contentRef.current;
 
-    setPosition(
-      getPopoverPosition({
-        triggerRect: triggerRef.current.getBoundingClientRect(),
-        popoverSize: contentRef.current.getBoundingClientRect(),
-        // 스크롤바를 뺀, 실제로 보이는 영역 기준으로 가장자리를 재요
-        viewport: { width: clientWidth, height: clientHeight },
-        placement,
-      }),
-    );
+    const updatePosition = () => {
+      const { clientWidth, clientHeight } = document.documentElement;
+
+      setPosition(
+        getPopoverPosition({
+          triggerRect: trigger.getBoundingClientRect(),
+          popoverSize: content.getBoundingClientRect(),
+          // 스크롤바를 뺀, 실제로 보이는 영역 기준으로 가장자리를 재요
+          viewport: { width: clientWidth, height: clientHeight },
+          placement,
+        }),
+      );
+    };
+
+    updatePosition();
+
+    const resizeObserver = new ResizeObserver(updatePosition);
+    resizeObserver.observe(content);
+
+    return () => resizeObserver.disconnect();
   }, [isOpen, placement]);
 
   // 열린 순간에만 불러요. 쓰는 쪽이 렌더링마다 새 onOpen을 넘겨도 다시 부르지 않아요
