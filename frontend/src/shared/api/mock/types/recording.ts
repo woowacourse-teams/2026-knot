@@ -1,8 +1,13 @@
 /** 녹음 세션 상태 */
 export type RecordingSessionStatus = "RECORDING" | "PAUSED" | "ENDED";
 
-/** 현재 녹음의 화면용 진행 상태 */
-export type CurrentRecordingStatus = "RECORDING" | "PAUSED" | "PROCESSING";
+/** 현재 녹음의 화면용 진행 상태. 두 실패는 백엔드가 더하기로 한 값이에요 */
+export type CurrentRecordingStatus =
+  | "RECORDING"
+  | "PAUSED"
+  | "PROCESSING"
+  | "TRANSCRIPTION_FAILED"
+  | "DOCUMENT_FAILED";
 
 export interface CurrentRecordingResponse {
   recordingId: number;
@@ -11,6 +16,8 @@ export interface CurrentRecordingResponse {
   startedAt: string;
   /** 조회 시점까지 누적 녹음 시간(ms) */
   elapsedMillis: number;
+  /** 실패한 녹음을 다시 시도할 수 있는지. 실패 상태와 함께 더해진 값이라 그 전의 서버는 주지 않음 */
+  retryable?: boolean;
 }
 
 export interface RecordingStartResponse {

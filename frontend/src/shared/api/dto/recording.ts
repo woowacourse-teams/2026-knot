@@ -189,34 +189,50 @@ export class RecordingAudioSaveDto {
 
 /**
  * 현재 녹음의 화면용 진행 상태. `PROCESSING`은 녹음을 끝낸 뒤 오디오 준비 · 전사 · 문서 생성을 기다리거나 하는 중이에요.
- * 정리가 끝났거나(완료 · 내용 없음) 실패 · 폐기된 녹음은 상태 대신 204로 와요(ADR 867)
+ * `TRANSCRIPTION_FAILED`는 전사가, `DOCUMENT_FAILED`는 문서 생성이 끝내 실패한 녹음이에요(백엔드가 더하기로 한 값, PR 전 서버는 두 실패를 204로 줘요).
+ * 정리가 끝났거나(완료 · 내용 없음) 폐기된 녹음은 상태 대신 204로 와요(ADR 867)
  */
-export type CurrentRecordingStatus = "RECORDING" | "PAUSED" | "PROCESSING";
+export type CurrentRecordingStatus =
+  | "RECORDING"
+  | "PAUSED"
+  | "PROCESSING"
+  | "TRANSCRIPTION_FAILED"
+  | "DOCUMENT_FAILED";
 
-/** 내 현재 녹음 조회의 서버 응답 모양. 워크스페이스에서 내가 가장 최근에 시작한 녹음 한 건이에요 */
+/**
+ * 내 현재 녹음 조회의 서버 응답 모양. 워크스페이스에서 내가 가장 최근에 시작한 녹음 한 건이에요.
+ * `retryable`은 실패 상태와 함께 더해진 값이라, 그 전의 서버는 필드 자체를 주지 않아요
+ */
 export interface GetCurrentRecordingResponseRaw {
   recordingId: number;
   status: CurrentRecordingStatus;
   startedAt: string;
   elapsedMillis: number;
+  retryable?: boolean;
 }
 
 /** 내 현재 녹음 조회 응답. 표시할 녹음이 없으면 서버가 본문 없이 204로 답하고 요청 함수가 `null`을 돌려줘요 */
 export class GetCurrentRecordingResponseDto {
   /** 녹음 세션 ID */
   recordingId: number;
-  /** 화면용 진행 상태. 가장 최근 녹음이 녹음 중 · 일시정지 · 문서 정리 중일 때만 와요 */
+  /** 화면용 진행 상태. 가장 최근 녹음이 녹음 중 · 일시정지 · 문서 정리 중 · 전사 실패 · 문서 생성 실패일 때만 와요 */
   status: CurrentRecordingStatus;
   /** 녹음 시작 시각(ISO 8601) */
   startedAt: string;
   /** 조회 시점까지 누적 녹음 시간(ms). 일시정지 구간은 빠져요 */
   elapsedMillis: number;
+  /**
+   * 실패한 녹음을 다시 시도할 수 있으면 true. 실패 상태(`TRANSCRIPTION_FAILED` · `DOCUMENT_FAILED`)에서만 뜻이 있어요.
+   * 서버 필드 `retryable`을 이름만 바꿨고, 서버가 주지 않으면 false예요
+   */
+  isRetryable: boolean;
 
   constructor(raw: GetCurrentRecordingResponseRaw) {
     this.recordingId = raw.recordingId;
     this.status = raw.status;
     this.startedAt = raw.startedAt;
     this.elapsedMillis = raw.elapsedMillis;
+    this.isRetryable = raw.retryable ?? false;
   }
 }
 
