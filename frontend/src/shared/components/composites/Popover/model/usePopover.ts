@@ -28,6 +28,8 @@ interface UsePopoverParams {
   isInitiallyOpen: boolean;
   /** 열릴 때마다 부를 함수 */
   onOpen?: () => void;
+  /** 트리거 · 바깥 누름 · ESC · 스크롤 · 창 크기 변화로 닫을지 */
+  isDismissible: boolean;
 }
 
 /**
@@ -41,12 +43,17 @@ interface UsePopoverParams {
  * 위치는 팝오버를 그린 뒤 크기를 재서 정해요. 크기를 알아야 위로 뒤집을지 정할 수 있어서예요.
  * 열려 있는 동안 트리거를 품은 영역이 스크롤되거나 창 크기가 바뀌면 트리거와 자리가 어긋나므로 닫아요.
  * 내용 안이나 트리거와 관계없는 영역이 스크롤될 때는 닫지 않아요.
+ * 열린 동안 내용의 크기가 바뀌면(메뉴에서 패널로 바뀌는 등) 그 크기로 자리를 다시 맞춰요.
+ *
+ * `isDismissible`이 꺼져 있는 동안에는 위 방법으로 닫지 않고, 내용이 `close`를 불러야만 닫혀요.
+ * 닫힐 때 포커스가 내용 안에 있었거나 갈 곳 없이 비어 있으면 트리거로 돌려줘요. 내용이 사라지면서 포커스를 잃지 않게요.
  */
 const usePopover = ({
   placement,
   openOn,
   isInitiallyOpen,
   onOpen,
+  isDismissible,
 }: UsePopoverParams) => {
   const [isOpen, setIsOpen] = useState(isInitiallyOpen);
   const [position, setPosition] = useState({ top: 0, left: 0 });
@@ -66,7 +73,20 @@ const usePopover = ({
 
   const close = () => {
     clearCloseTimer();
+
+    const { activeElement } = document;
+    if (
+      activeElement === document.body ||
+      contentRef.current?.contains(activeElement)
+    ) {
+      triggerRef.current?.focus();
+    }
+
     setIsOpen(false);
+  };
+
+  const dismiss = () => {
+    if (isDismissible) close();
   };
 
   const handlePointerEnter = () => {
@@ -78,9 +98,16 @@ const usePopover = ({
     startCloseTimer();
   };
 
-  const handleClick = () => setIsOpen((prev) => !prev);
+  const handleClick = () => {
+    if (isOpen) dismiss();
+    else setIsOpen(true);
+  };
 
-  useKeyDown({ key: "Escape", isEnabled: isOpen, onKeyDown: close });
+  useKeyDown({
+    key: "Escape",
+    isEnabled: isOpen && isDismissible,
+    onKeyDown: close,
+  });
 
   // 여기서 바꾼 좌표는 브라우저가 그리기 전에 반영돼요. 그래서 이전 좌표나 (0, 0)에 잠깐 보이지 않아요
   useLayoutEffect(() => {
@@ -88,17 +115,29 @@ const usePopover = ({
       return;
     }
 
-    const { clientWidth, clientHeight } = document.documentElement;
+    const trigger = triggerRef.current;
+    const content = contentRef.current;
 
-    setPosition(
-      getPopoverPosition({
-        triggerRect: triggerRef.current.getBoundingClientRect(),
-        popoverSize: contentRef.current.getBoundingClientRect(),
-        // 스크롤바를 뺀, 실제로 보이는 영역 기준으로 가장자리를 재요
-        viewport: { width: clientWidth, height: clientHeight },
-        placement,
-      }),
-    );
+    const updatePosition = () => {
+      const { clientWidth, clientHeight } = document.documentElement;
+
+      setPosition(
+        getPopoverPosition({
+          triggerRect: trigger.getBoundingClientRect(),
+          popoverSize: content.getBoundingClientRect(),
+          // 스크롤바를 뺀, 실제로 보이는 영역 기준으로 가장자리를 재요
+          viewport: { width: clientWidth, height: clientHeight },
+          placement,
+        }),
+      );
+    };
+
+    updatePosition();
+
+    const resizeObserver = new ResizeObserver(updatePosition);
+    resizeObserver.observe(content);
+
+    return () => resizeObserver.disconnect();
   }, [isOpen, placement]);
 
   // 열린 순간에만 불러요. 쓰는 쪽이 렌더링마다 새 onOpen을 넘겨도 다시 부르지 않아요
@@ -114,7 +153,7 @@ const usePopover = ({
       if (!(event.target instanceof Node)) return;
       if (!event.target.contains(triggerRef.current)) return;
 
-      close();
+      dismiss();
     };
 
     // 트리거를 누를 때도 닫으면 이어지는 click이 다시 열어 버려서, 트리거 안은 바깥으로 보지 않아요
@@ -123,20 +162,20 @@ const usePopover = ({
       if (triggerRef.current?.contains(event.target)) return;
       if (contentRef.current?.contains(event.target)) return;
 
-      close();
+      dismiss();
     };
 
     // 캡처 단계에서 들어야 페이지뿐 아니라 안쪽 스크롤 영역의 스크롤도 잡혀요
     window.addEventListener("scroll", handleScroll, true);
-    window.addEventListener("resize", close);
+    window.addEventListener("resize", dismiss);
     document.addEventListener("pointerdown", handlePointerDown);
 
     return () => {
       window.removeEventListener("scroll", handleScroll, true);
-      window.removeEventListener("resize", close);
+      window.removeEventListener("resize", dismiss);
       document.removeEventListener("pointerdown", handlePointerDown);
     };
-  }, [isOpen]);
+  }, [isOpen, isDismissible]);
 
   /** 트리거와 내용 양쪽에 붙여요. 둘 사이를 오가는 동안에는 닫히지 않아요 */
   const hoverProps = {
@@ -153,7 +192,7 @@ const usePopover = ({
     ...(openOn === "hover" ? hoverProps : {}),
   };
 
-  return { isOpen, position, triggerProps, contentProps };
+  return { isOpen, position, triggerProps, contentProps, close };
 };
 
 export default usePopover;
