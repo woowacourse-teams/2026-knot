@@ -24,6 +24,10 @@ interface UsePopoverParams {
   placement: PopoverPlacement;
   /** 무엇으로 열지 */
   openOn: PopoverOpenOn;
+  /** 처음 그릴 때부터 열어 둘지 */
+  isInitiallyOpen: boolean;
+  /** 열릴 때마다 부를 함수 */
+  onOpen?: () => void;
 }
 
 /**
@@ -38,8 +42,13 @@ interface UsePopoverParams {
  * 열려 있는 동안 트리거를 품은 영역이 스크롤되거나 창 크기가 바뀌면 트리거와 자리가 어긋나므로 닫아요.
  * 내용 안이나 트리거와 관계없는 영역이 스크롤될 때는 닫지 않아요.
  */
-const usePopover = ({ placement, openOn }: UsePopoverParams) => {
-  const [isOpen, setIsOpen] = useState(false);
+const usePopover = ({
+  placement,
+  openOn,
+  isInitiallyOpen,
+  onOpen,
+}: UsePopoverParams) => {
+  const [isOpen, setIsOpen] = useState(isInitiallyOpen);
   const [position, setPosition] = useState({ top: 0, left: 0 });
 
   const triggerRef = useRef<HTMLElement | null>(null);
@@ -91,6 +100,11 @@ const usePopover = ({ placement, openOn }: UsePopoverParams) => {
       }),
     );
   }, [isOpen, placement]);
+
+  // 열린 순간에만 불러요. 쓰는 쪽이 렌더링마다 새 onOpen을 넘겨도 다시 부르지 않아요
+  useEffect(() => {
+    if (isOpen) onOpen?.();
+  }, [isOpen]);
 
   useEffect(() => {
     if (!isOpen) return;

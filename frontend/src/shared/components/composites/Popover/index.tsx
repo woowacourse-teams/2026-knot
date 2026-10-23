@@ -24,6 +24,10 @@ interface PopoverProps {
    * `click`이면 트리거를 다시 눌러도 닫혀요.
    */
   openOn?: PopoverOpenOn;
+  /** 처음 그릴 때부터 열어 둘지. 닫힌 뒤에는 다른 팝오버처럼 트리거로 여닫아요 */
+  isInitiallyOpen?: boolean;
+  /** 팝오버가 열릴 때마다 불러요. 처음부터 열린 채 그리면 그때도 불러요 */
+  onOpen?: () => void;
   /**
    * 트리거를 그리는 함수. 받은 `triggerProps`를 트리거로 쓸 요소에 그대로 펼쳐요.
    * 그 요소가 컴포넌트라면 받은 props를 DOM 요소까지 넘겨야 팝오버가 열려요.
@@ -57,11 +61,15 @@ export default function Popover({
   content,
   placement,
   openOn = "hover",
+  isInitiallyOpen = false,
+  onOpen,
   children,
 }: PopoverProps) {
   const { isOpen, position, triggerProps, contentProps } = usePopover({
     placement,
     openOn,
+    isInitiallyOpen,
+    onOpen,
   });
   const { renderedValue: isRendered, isExiting } = useExitAnimation({
     value: isOpen || null,

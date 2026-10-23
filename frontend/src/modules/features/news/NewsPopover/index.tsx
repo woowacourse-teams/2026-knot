@@ -5,6 +5,7 @@ import styled from "@emotion/styled";
 import LetterIcon from "@/assets/icons/letter.svg";
 import type { ReleaseNote } from "@/shared/types/releaseNote";
 
+import { useLastSeenNote } from "./model/useLastSeenNote";
 import NewsPanel from "./ui/NewsPanel";
 
 interface NewsPopoverProps {
@@ -17,14 +18,20 @@ interface NewsPopoverProps {
  *
  * 누르면 버튼 아래에 새 소식 패널을 오른쪽 끝을 맞춰 열고, 다시 누르거나 바깥을 누르거나 ESC를 누르면 닫아요.
  * 열려 있는 동안 버튼은 채워진 모양이에요.
+ *
+ * 이 기기에서 새 소식을 한 번도 열지 않은 사용자에게는 처음 그릴 때 패널을 저절로 열어 줘요(NEWS-R6).
  */
 export default function NewsPopover({
   notes = RELEASE_NOTES,
 }: NewsPopoverProps) {
+  const { isAutoOpen, markAsSeen } = useLastSeenNote({ notes });
+
   return (
     <Popover
       openOn="click"
       placement="bottom-end"
+      isInitiallyOpen={isAutoOpen}
+      onOpen={markAsSeen}
       content={<NewsPanel notes={notes} />}
     >
       {(triggerProps) => (

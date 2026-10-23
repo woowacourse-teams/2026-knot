@@ -2,14 +2,16 @@ import { RELEASE_NOTES } from "@constants/releaseNote";
 import { ThemeProvider } from "@emotion/react";
 import { theme } from "@provider/themeProvider";
 import { getRouterPath, PATH_ROUTE } from "@routes/PATH_ROUTE";
+import { useRecordingStore } from "@store/recordingStore";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { createMemoryRouter, RouterProvider } from "react-router";
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ReleaseNote } from "@/shared/types/releaseNote";
 
 import NewsPopover from ".";
 
+import { LAST_SEEN_NOTE_ID_KEY } from "./constants/lastSeenNote";
 import { formatReleaseDate } from "./utils/formatReleaseDate";
 
 const BUTTON_NAME = "새 소식과 피드백";
@@ -38,13 +40,17 @@ const renderPopover = (notes?: ReleaseNote[]) => {
     },
   );
 
-  render(
+  const rendered = render(
     <ThemeProvider theme={theme}>
       <RouterProvider router={router} />
     </ThemeProvider>,
   );
 
-  return { router, button: screen.getByRole("button", { name: BUTTON_NAME }) };
+  return {
+    ...rendered,
+    router,
+    button: screen.getByRole("button", { name: BUTTON_NAME }),
+  };
 };
 
 /** 버튼을 눌러 패널을 연 상태로 그려요 */
@@ -56,6 +62,73 @@ const renderOpenPanel = (notes?: ReleaseNote[]) => {
 };
 
 describe("NewsPopover", () => {
+  // 새 소식을 이미 열어 본 사용자로 두고, 처음 확인하는 사용자는 그 describe에서 지워요
+  beforeEach(() => localStorage.setItem(LAST_SEEN_NOTE_ID_KEY, "v0.0.1"));
+  afterEach(() => {
+    localStorage.clear();
+    useRecordingStore.setState(useRecordingStore.getInitialState());
+  });
+
+  describe("처음 확인하는 사용자", () => {
+    beforeEach(() => localStorage.removeItem(LAST_SEEN_NOTE_ID_KEY));
+
+    it("새 소식을 한 번도 열지 않았으면 처음 그릴 때 패널을 저절로 연다", () => {
+      const { button } = renderPopover();
+
+      expect(button).toHaveAttribute("aria-expanded", "true");
+      expect(screen.getByText(PANEL_DESCRIPTION)).toBeInTheDocument();
+    });
+
+    it("저절로 열면 맨 위 노트를 읽음으로 남겨 다음에는 저절로 열지 않는다", () => {
+      const { unmount } = renderPopover();
+
+      expect(localStorage.getItem(LAST_SEEN_NOTE_ID_KEY)).toBe(
+        RELEASE_NOTES[0].id,
+      );
+
+      unmount();
+      const { button } = renderPopover();
+
+      expect(button).toHaveAttribute("aria-expanded", "false");
+    });
+
+    it("노트가 없으면 저절로 열지 않는다", () => {
+      const { button } = renderPopover([]);
+
+      expect(button).toHaveAttribute("aria-expanded", "false");
+      expect(localStorage.getItem(LAST_SEEN_NOTE_ID_KEY)).toBeNull();
+    });
+
+    it("녹음 중이면 저절로 열지 않고 읽음도 남기지 않는다", () => {
+      useRecordingStore.setState({ status: "recording" });
+
+      const { button } = renderPopover();
+
+      expect(button).toHaveAttribute("aria-expanded", "false");
+      expect(localStorage.getItem(LAST_SEEN_NOTE_ID_KEY)).toBeNull();
+    });
+
+    it("localStorage를 쓸 수 없으면 저절로 열지 않는다", () => {
+      vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
+        throw new Error("SecurityError");
+      });
+
+      const { button } = renderPopover();
+
+      expect(button).toHaveAttribute("aria-expanded", "false");
+    });
+  });
+
+  describe("읽음", () => {
+    it("버튼을 눌러 열면 맨 위 노트를 읽음으로 남긴다", () => {
+      renderOpenPanel();
+
+      expect(localStorage.getItem(LAST_SEEN_NOTE_ID_KEY)).toBe(
+        RELEASE_NOTES[0].id,
+      );
+    });
+  });
+
   describe("여닫기", () => {
     it("처음에는 새 소식 패널을 닫아 둔다", () => {
       const { button } = renderPopover();
