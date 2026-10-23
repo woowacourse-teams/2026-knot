@@ -128,8 +128,9 @@ class AgentHarnessParityTest(unittest.TestCase):
     def test_harness_edits_have_their_own_path(self):
         agents_md = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
         self.assertIn("docs/harness/harness-verification.md", agents_md)
-        self.assertTrue((ROOT / "docs" / "harness" / "harness-verification.md").is_file())
-        self.assertTrue((ROOT / "docs" / "harness" / "improvement-log.md").is_file())
+        verification = ROOT / "docs" / "harness" / "harness-verification.md"
+        self.assertTrue(verification.is_file())
+        self.assertIn("규칙이 강제되는 곳", verification.read_text(encoding="utf-8"))
 
     def test_codex_and_claude_share_conditional_interview_contract(self):
         canonical = (

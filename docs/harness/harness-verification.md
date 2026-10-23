@@ -2,7 +2,8 @@
 
 하네스를 고치는 작업과 팀 하네스가 실제로 어떻게 도는지 확인하는 방법을 적는다. 2026-10-23 팀
 피드백 두 가지에서 나왔다. 하네스를 고치려고 하네스를 타야 하는 번거로움, 그리고 개인 설정이
-팀 하네스 검증 결과를 조용히 바꾸는 문제다. 배경은 `improvement-log.md`에 있다.
+팀 하네스 검증 결과를 조용히 바꾸는 문제다. 무엇을 왜 바꿨는지의 기록(개선 로그)은 노션에 있고,
+저장소에는 AI가 작업 중에 읽어야 하는 규칙만 둔다.
 
 ## 하네스 경로
 
@@ -32,8 +33,8 @@
    `test_feature_pipeline.py`가 반환 규약과 분기 규칙을, `test_issue_planning.py`가 Issue 계약을 본다.
 4. PR 본문은 기존 템플릿을 따르고 `작업 내용`에 「빈 프로필로 돌렸음」 여부를 한 줄 적는다(아래 절).
    `## 노션 변경 사항` 섹션은 하네스 수정에 없어도 된다.
-5. 규칙 문장을 바꿨으면 그 문장이 어디서 강제되는지(도구 제한, 검증기, CI, 아직 문장뿐)를
-   `improvement-log.md`에 적는다.
+5. 규칙 문장을 바꿨으면 그 문장이 어디서 강제되는지(도구 제한, 검증기, CI, 아직 문장뿐)를 아래
+   「규칙이 강제되는 곳」 표에 적는다.
 6. ADR은 기존 결정을 뒤집을 때만 손댄다. 보완이면 해당 ADR에 날짜와 이슈 번호로 한 문단 덧붙인다.
 
 하네스와 제품 코드를 한 PR에서 같이 고치지 않는다. 섞이면 제품 코드 쪽 규칙(Issue 계약, 리뷰)을 따른다.
@@ -82,3 +83,25 @@ Codex는 `CODEX_HOME`으로 같은 일을 한다. `CODEX_HOME="$(mktemp -d)" cod
 
 `harness/tests/test_agent_harness_parity.py`가 팀 하네스 파일에 macOS 홈 디렉터리로 시작하는 절대
 개인 경로가 없는지 본다. `~/` 참조는 위 표가 비워지면 같은 테스트로 막는다.
+
+## 규칙이 강제되는 곳
+
+AI는 지침 문장을 무시할 수 있다. 지켜져야 하는 규칙은 아래 셋 중 하나에 있어야 하고, 아직 문장뿐인
+규칙은 이 표에 남겨 두고 하나씩 옮긴다. 규칙 문장을 더하거나 바꾸면 이 표도 같이 고친다.
+
+| 규칙 | 강제 수단 | 상태 (2026-10-23) |
+| --- | --- | --- |
+| 서브 에이전트 반환값 형식, `next` 금지, `flags` 키와 형 | `harness/feature_pipeline.py result` | 있음 |
+| 다음 단계 분기 | `harness/feature_pipeline.py next` (`next_stage`) | 있음 |
+| 상태 파일 형식(`kind`, `assumptions`, `implementation_order`) | `harness/feature_pipeline.py state` | 있음 |
+| 노션 문서 서브 에이전트는 Figma와 저장소 파일을 못 고친다 | `.claude/agents/knot-feature-*.md`의 `disallowedTools` | 있음 (Claude Code만. Codex는 문장뿐) |
+| 디자인 서브 에이전트는 노션을 못 고친다 | 같은 `disallowedTools` | 있음 (Claude Code만) |
+| 이슈 서브 에이전트는 코드를 못 고친다 | 같은 `disallowedTools` | 있음 (Claude Code만) |
+| Issue 계약(위험도, 인터뷰, Grill, ADR, 게시 권한) | `harness/issue_planning.py` | 있음 |
+| Claude Code 진입점과 Codex 정본의 일치, 개인 절대 경로 금지 | `harness/tests/test_agent_harness_parity.py` | 있음 |
+| 기획서 수정 금지 | 문장뿐 | 옮길 곳: 노션 REST 스크립트가 허용 DB 목록만 받기 |
+| FE 길에서 `frontend/` 밖 수정 금지 | 문장뿐 | 옮길 곳: PreToolUse 훅이 상태 파일의 `area`를 보고 경로 밖 Edit, Write 거부 |
+| PR 첫 섹션 `## 노션 변경 사항` | 문장뿐 | 옮길 곳: Governance 검증기. knot-feature 흐름의 PR에만 적용해야 해서 표식이 먼저 필요 |
+| E2E 테스트 이름에 QA 행 ID | 문장뿐 | 옮길 곳: CI 스크립트가 QA 시트 캐시의 ID와 대조. 캐시 결정 뒤 |
+| 커밋 타입 5개 | 문장뿐 | 옮길 곳: Governance 또는 commit-msg 훅 |
+| 끝났다고 보고하기 전 상태 파일이 `finished` | 문장뿐 | 옮길 곳: Stop 훅이 `feature_pipeline.py next`를 실행 |
