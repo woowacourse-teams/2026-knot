@@ -137,7 +137,10 @@ public class DocumentGenerationClaimService {
         }
         job.startRunning(
                 now,
-                now.plus(properties.getExecutionLease())
+                executionDeadline(
+                        job,
+                        now
+                )
         );
         batch.recordJobTransition(
                 job.getStage(),
@@ -153,9 +156,25 @@ public class DocumentGenerationClaimService {
                         job.getAttemptCount(),
                         job.getStage(),
                         input.content(),
-                        job.getTopic()
+                        job.getTopic(),
+                        job.getProcessingPhase()
                 )
         );
+    }
+
+    private Instant executionDeadline(
+            DocumentGenerationJob job,
+            Instant now
+    ) {
+        Instant deadline = now.plus(properties.getExecutionLease());
+        if (job.getProcessingPhase() != com.knot.backend.document.domain.model.DocumentGenerationPhase.ASSIGN_CATEGORY) {
+            return deadline;
+        }
+        Instant categoryDeadline = job.getCategoryDeadlineAt();
+        if (categoryDeadline != null && categoryDeadline.isAfter(now) && categoryDeadline.isBefore(deadline)) {
+            return categoryDeadline;
+        }
+        return deadline;
     }
 
     private DocumentGenerationBatch findRequiredBatch(DocumentGenerationJob job) {

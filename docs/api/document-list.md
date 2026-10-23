@@ -56,12 +56,12 @@
 | Field | Type | Nullable | Description | Example |
 |---|---|---|---|---|
 | topics | Array | No | 모든 조회 조건을 만족하는 전체 주제 폴더. 0개 주제 제외 | 아래 예시 |
-| topics[].topic | String | No | AI 주제 폴더 이름 | 운영 정책 |
+| topics[].topic | String | No | 표시용 폴더 이름. 큰 주제 배정 문서는 큰 주제 이름, 기존 문서는 저장된 안건 이름 | 운영 정책 |
 | topics[].documentCount | Integer | No | 필터를 만족하는 주제 전체 문서 수. 페이지 범위 제외 | 12 |
 | items | Array | No | 최신순 문서 카드 페이지 | 아래 예시 |
 | items[].id | Long | No | Document ID | 301 |
 | items[].recordingSessionId | Long | No | 원본 RecordingSession ID. 같은 녹음의 문서 조회에 사용 | 42 |
-| items[].topic | String | No | 주제 폴더 이름 | 운영 정책 |
+| items[].topic | String | No | 카드의 표시용 폴더 이름. topics의 같은 문자열로 묶는다 | 운영 정책 |
 | items[].title | String | No | 읽기 전용 제목 | 문서 보관 정책 |
 | items[].summary | String | Yes | AI 요약. 없으면 null | null |
 | items[].status | String | No | DRAFT 또는 ARCHIVED | DRAFT |
@@ -122,7 +122,10 @@
 
 ## 처리 규칙
 
-- 폴더 Entity와 폴더 편집 API를 만들지 않는다. Document.topic으로 그룹화한다.
+- #913은 새 문서에 내부 큰 주제 Entity를 연결하며 기존 API 경로·요청·응답 필드를 그대로 사용한다. 폴더 편집 API는 제공하지 않는다.
+- 큰 주제가 연결된 문서는 큰 주제 이름, 기존 문서는 저장된 topic으로 그룹화한다. 문서의 원래 안건 topic은 내부에 보존한다.
+- 기존 topic과 새 큰 주제 이름이 같으면 화면에서는 한 그룹과 합산 개수로 보인다. 기존 문서를 DB에서 재분류하는 것은 아니다.
+- 본문과 큰 주제를 함께 저장한 문서만 반환한다. 배정 중인 비공개 본문은 목록·개수에 포함하지 않는다.
 - `topics`와 `documentCount`에는 필터만 적용하며 `cursor`·`size`를 적용하지 않는다. `items`에만 페이지 범위를 적용한다.
 - 카드는 `createdAt DESC, id DESC`로 정렬한다. 화면은 nextCursor가 null일 때까지 이어 조회한다. size는 한 응답의 카드 수다.
 - 추가 카드가 실제로 있을 때만 마지막 반환 카드 기준으로 nextCursor를 만든다. 정확히 size개이더라도 추가 카드가 없으면 null이다.
@@ -139,3 +142,7 @@
 조회 대상 데이터 생성·STT·자동 문서 생성 실행기·실패 보존 정리는 후속 작업이다.
 단위 테스트, 실제 PostgreSQL/Flyway 통합 테스트, Security/DB/OpenAPI를 포함한 MockMvc 인수 테스트로 조회 동작을 검증한다.
 운영 배포와 실제 STT 공급자·AI 생성 전체 흐름은 이 검증에 포함하지 않는다.
+
+#913은 V62에 큰 주제·비공개 본문과 배정 단계를 추가한다. 목록의 집계와 카드 조회는 같은 표시 이름을 사용한다.
+응답 최상위 `topics/items/nextCursor`와 기존 카드 10개 필드를 그대로 유지하며 새 필드를 추가하지 않는다.
+구현·장애 주입 증거와 실제 모델 평가의 범위는 [#913 QA 결과](../qa/913-document-broad-topic.md)를 따른다.
