@@ -86,6 +86,18 @@ interface AnalyticsEventMap {
     /** 질문을 보낸 뒤 떠날 때까지 기다린 시간(초, 소수 첫째 자리까지) */
     waited_seconds: number;
   };
+  /**
+   * 피드백 패널에서 보낸 피드백이 접수함에 저장됐어요. 저장에 실패하면 보내지 않아요(FEEDBACK-R7).
+   * 이름은 PostHog 설문 응답 이벤트 이름을 그대로 써서 snake_case가 아니에요. 화면 경로는 PostHog가 자동으로 붙여요
+   */
+  "survey sent": {
+    /** 고른 유형의 화면 문구. 예: `오류가 있어요` */
+    feedback_type: string;
+    /** 유형을 바꾼 점수(1~4). 화면에는 보이지 않아요. 매기는 법은 `shared/constants/feedback`에 있어요 */
+    feedback_score: number;
+    /** 적은 내용. 적었을 때만 있어요 */
+    feedback_content?: string;
+  };
   /** 답변을 기다리다 떠났던 그 대화 화면으로 같은 탭에서 돌아왔어요. 그사이 답변이 끊겼으면 보내지 않아요 */
   search_answer_returned: {
     /** 떠난 뒤 돌아올 때까지 걸린 시간(초, 소수 첫째 자리까지) */
