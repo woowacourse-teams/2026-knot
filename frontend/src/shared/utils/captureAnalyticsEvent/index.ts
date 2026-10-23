@@ -30,7 +30,13 @@ interface AnalyticsEventMap {
   };
   /** 독의 녹음 버튼을 누른 뒤 녹음을 열었는지 결과가 정해졌어요. 누른 것은 자동 클릭으로 세고, 열렸는지와 기다린 시간은 여기서만 보여요 */
   recording_start_result: {
-    result: "started" | "microphone_unavailable" | "refused" | "network_failed" | "failed" | "uploading";
+    result:
+      | "started"
+      | "microphone_unavailable"
+      | "refused"
+      | "network_failed"
+      | "failed"
+      | "uploading";
     /** 누른 뒤 결과가 정해질 때까지 기다린 시간(초, 소수 첫째 자리까지). 마이크 권한 창을 보고 있던 시간도 들어가요 */
     wait_seconds: number;
     workspace_id: number;
