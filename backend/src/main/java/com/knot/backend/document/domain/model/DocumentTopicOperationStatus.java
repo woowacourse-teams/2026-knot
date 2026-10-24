@@ -6,5 +6,12 @@ public enum DocumentTopicOperationStatus {
     APPLYING,
     SUCCEEDED,
     FAILED,
-    CANCELLED
+    CANCELLED;
+
+    public DocumentTopicOperationStatus reportedStatus(int retryCount) {
+        if (this == QUEUED && retryCount > 0) {
+            return RUNNING;
+        }
+        return this;
+    }
 }

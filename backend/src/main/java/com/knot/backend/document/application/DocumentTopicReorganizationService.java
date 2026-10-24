@@ -38,7 +38,7 @@ public class DocumentTopicReorganizationService {
             UUID requestId
     ) {
         Workspace workspace = workspaces.findByIdForUpdate(workspaceId)
-                .orElseThrow(() -> new WorkspaceException(WorkspaceErrorCode.WORKSPACE_ACCESS_DENIED));
+                .orElseThrow(() -> new WorkspaceException(WorkspaceErrorCode.WORKSPACE_NOT_FOUND));
         requireOwner(
                 workspace,
                 memberId
@@ -51,7 +51,7 @@ public class DocumentTopicReorganizationService {
             return replay(previous.orElseThrow(this::conflict));
         }
         if (operations.hasActive(workspaceId)) {
-            throw conflict();
+            throw new DocumentException(DocumentErrorCode.TOPIC_OPERATION_IN_PROGRESS);
         }
         Instant now = clock.instant();
         DocumentTopicOperation operation = operations.save(
@@ -66,6 +66,7 @@ public class DocumentTopicReorganizationService {
                 operation.getId(),
                 workspaceId
         );
+        requireTargets(count);
         operation.capture(count);
         return DocumentTopicOperationResult.from(
                 operation,
@@ -77,7 +78,10 @@ public class DocumentTopicReorganizationService {
             Workspace workspace,
             long memberId
     ) {
-        if (workspace.isDeleted() || !members.existsByWorkspaceIdAndMemberId(
+        if (workspace.isDeleted()) {
+            throw new WorkspaceException(WorkspaceErrorCode.WORKSPACE_NOT_FOUND);
+        }
+        if (!members.existsByWorkspaceIdAndMemberId(
                 workspace.getId(),
                 memberId
         )) {
@@ -103,6 +107,12 @@ public class DocumentTopicReorganizationService {
     }
 
     private DocumentException conflict() {
-        return new DocumentException(DocumentErrorCode.TOPIC_OPERATION_CONFLICT);
+        return new DocumentException(DocumentErrorCode.TOPIC_REQUEST_ID_CONFLICT);
+    }
+
+    private void requireTargets(int count) {
+        if (count == 0) {
+            throw new DocumentException(DocumentErrorCode.TOPIC_REORGANIZATION_TARGET_EMPTY);
+        }
     }
 }

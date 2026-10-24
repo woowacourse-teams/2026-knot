@@ -6,6 +6,8 @@ import java.time.Instant;
 import java.util.UUID;
 
 public record DocumentTopicOperationResult(
+        Long id,
+        long workspaceId,
         UUID operationId,
         DocumentTopicOperationStatus status,
         int targetCount,
@@ -21,8 +23,11 @@ public record DocumentTopicOperationResult(
             boolean replayed
     ) {
         return new DocumentTopicOperationResult(
+                operation.getId(),
+                operation.getWorkspaceId(),
                 operation.getOperationId(),
-                operation.getStatus(),
+                operation.getStatus()
+                        .reportedStatus(operation.getRetryCount()),
                 operation.getTargetCount(),
                 operation.getProcessedCount(),
                 operation.getChangedCount(),

@@ -7,6 +7,7 @@ import com.knot.backend.document.presentation.dto.request.DocumentTopicReorganiz
 import com.knot.backend.document.presentation.dto.response.DocumentTopicOperationResponse;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Positive;
+import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.ResponseEntity;
@@ -37,7 +38,7 @@ public class DocumentTopicReorganizationController implements DocumentTopicReorg
         DocumentTopicOperationResult result = service.start(
                 workspaceId,
                 member.getMemberId(),
-                request.requestId()
+                UUID.fromString(request.requestId())
         );
         HttpStatus status = HttpStatus.ACCEPTED;
         if (result.replayed()) {

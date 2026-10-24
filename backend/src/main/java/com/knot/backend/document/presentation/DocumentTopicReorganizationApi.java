@@ -31,10 +31,11 @@ public interface DocumentTopicReorganizationApi {
     @ApiResponses({
             @ApiResponse(responseCode = "202", description = "새 작업 접수 완료", content = @Content(schema = @Schema(implementation = DocumentTopicOperationResponse.class))),
             @ApiResponse(responseCode = "200", description = "같은 요청의 기존 작업 반환", content = @Content(schema = @Schema(implementation = DocumentTopicOperationResponse.class))),
-            @ApiResponse(responseCode = "400", description = "INVALID_PARAMETER: UUID 누락·형식 또는 경로 오류", content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+            @ApiResponse(responseCode = "400", description = "VALIDATION_ERROR: requestId 누락·UUID 형식·양수 범위 오류, INVALID_REQUEST_BODY: JSON 오류, INVALID_PARAMETER: 경로 타입 오류", content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
             @ApiResponse(responseCode = "401", description = "UNAUTHENTICATED: 인증 필요", content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
             @ApiResponse(responseCode = "403", description = "WORKSPACE_ACCESS_DENIED, WORKSPACE_OWNER_REQUIRED 또는 FORBIDDEN: 접근·OWNER·CSRF 검증 실패", content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
-            @ApiResponse(responseCode = "409", description = "TOPIC_OPERATION_CONFLICT: 다른 정리·복원 작업 진행 중 또는 다른 종류에 사용된 requestId", content = @Content(schema = @Schema(implementation = ErrorResponse.class)))})
+            @ApiResponse(responseCode = "404", description = "WORKSPACE_NOT_FOUND: 없거나 삭제된 Workspace", content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+            @ApiResponse(responseCode = "409", description = "TOPIC_OPERATION_IN_PROGRESS: 다른 작업 진행 중, TOPIC_REQUEST_ID_CONFLICT: 요청 식별자 충돌, TOPIC_REORGANIZATION_TARGET_EMPTY: 대상 문서 없음", content = @Content(schema = @Schema(implementation = ErrorResponse.class)))})
     ResponseEntity<DocumentTopicOperationResponse> start(
             @Parameter(description = "Workspace ID") @Positive long workspaceId,
             @Parameter(hidden = true) AuthenticatedMember member,
