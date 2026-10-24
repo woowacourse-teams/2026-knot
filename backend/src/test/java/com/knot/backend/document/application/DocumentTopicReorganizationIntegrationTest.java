@@ -331,6 +331,10 @@ class DocumentTopicReorganizationIntegrationTest {
                 "SELECT version_id FROM document_topic_recoveries",
                 UUID.class
         );
+        long publicVersion = jdbc.queryForObject(
+                "SELECT id FROM document_topic_recoveries",
+                Long.class
+        );
         jdbc.update(
                 "UPDATE documents SET status='ARCHIVED', archived_at=? WHERE id=?",
                 java.sql.Timestamp.from(NOW),
@@ -348,6 +352,12 @@ class DocumentTopicReorganizationIntegrationTest {
                         UUID.class
                 )
         ).isEqualTo(recovery);
+        assertThat(
+                jdbc.queryForObject(
+                        "SELECT id FROM document_topic_recoveries",
+                        Long.class
+                )
+        ).isEqualTo(publicVersion);
         assertThat(
                 jdbc.queryForObject(
                         "SELECT changed_count FROM document_topic_operations WHERE operation_id=?",

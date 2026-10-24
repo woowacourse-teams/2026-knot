@@ -223,7 +223,7 @@ public class DocumentTopicStoreAdapter implements DocumentTopicStore {
         jdbc.update(
                 """
                         INSERT INTO document_topic_recoveries(workspace_id,version_id,source_operation_id,created_at) VALUES (?,?,?,?)
-                        ON CONFLICT(workspace_id) DO UPDATE SET version_id=EXCLUDED.version_id,source_operation_id=EXCLUDED.source_operation_id,created_at=EXCLUDED.created_at
+                        ON CONFLICT(workspace_id) DO UPDATE SET id=EXCLUDED.id,version_id=EXCLUDED.version_id,source_operation_id=EXCLUDED.source_operation_id,created_at=EXCLUDED.created_at
                         """,
                 workspaceId,
                 UUID.randomUUID(),
