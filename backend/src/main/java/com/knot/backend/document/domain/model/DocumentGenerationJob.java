@@ -324,16 +324,32 @@ public class DocumentGenerationJob {
     }
 
     public void retryByUser(Instant acceptedAt) {
-        validateRetryState();
-        validateUserRetryLimit();
-        validateRetryTime(acceptedAt);
-        validateRetryDeadline(acceptedAt);
-        validateAttemptCapacity();
+        if (!canRetryByUser(acceptedAt)) {
+            throw new DocumentException(DocumentErrorCode.RETRY_NOT_ALLOWED);
+        }
         status = DocumentGenerationJobStatus.QUEUED;
         updatedAt = acceptedAt;
         attemptCount++;
         userRetryCount++;
         resetExecution(acceptedAt);
+    }
+
+    public boolean canRetryByUser(Instant acceptedAt) {
+        return isFailed() && userRetryCount < MAX_USER_RETRIES && attemptCount < Integer.MAX_VALUE && expiresAt != null
+                && isValidRetryTime(acceptedAt) && acceptedAt.isBefore(expiresAt);
+    }
+
+    private boolean isValidRetryTime(Instant acceptedAt) {
+        if (acceptedAt == null || acceptedAt.isBefore(updatedAt)) {
+            return false;
+        }
+        try {
+            int year = acceptedAt.atOffset(ZoneOffset.UTC)
+                    .getYear();
+            return year >= 1 && year <= 9999;
+        } catch (DateTimeException exception) {
+            return false;
+        }
     }
 
     public void retryAutomatically(
@@ -433,12 +449,6 @@ public class DocumentGenerationJob {
 
     private void validateRetryState() {
         if (status != DocumentGenerationJobStatus.FAILED) {
-            throw new DocumentException(DocumentErrorCode.RETRY_NOT_ALLOWED);
-        }
-    }
-
-    private void validateUserRetryLimit() {
-        if (userRetryCount >= MAX_USER_RETRIES) {
             throw new DocumentException(DocumentErrorCode.RETRY_NOT_ALLOWED);
         }
     }

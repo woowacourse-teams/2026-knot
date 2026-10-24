@@ -5,6 +5,11 @@ import java.util.Optional;
 
 public interface DocumentGenerationInputQuery {
 
+    Optional<DocumentGenerationInputResult> find(
+            long workspaceId,
+            long transcriptId
+    );
+
     Optional<DocumentGenerationInputResult> findForUpdate(
             long workspaceId,
             long transcriptId

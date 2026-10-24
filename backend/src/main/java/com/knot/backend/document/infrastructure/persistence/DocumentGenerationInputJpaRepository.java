@@ -10,6 +10,17 @@ import org.springframework.data.repository.Repository;
 
 interface DocumentGenerationInputJpaRepository extends Repository<Transcript, Long> {
 
+    @Query("""
+            SELECT t FROM Transcript t WHERE t.id = :transcriptId AND EXISTS (
+                SELECT rs.id FROM RecordingSession rs
+                WHERE rs.id = t.recordingSessionId AND rs.workspaceId = :workspaceId
+            )
+            """)
+    Optional<Transcript> findAvailableByWorkspaceIdAndId(
+            long workspaceId,
+            long transcriptId
+    );
+
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("""
             SELECT t FROM Transcript t WHERE t.id = :transcriptId AND EXISTS (

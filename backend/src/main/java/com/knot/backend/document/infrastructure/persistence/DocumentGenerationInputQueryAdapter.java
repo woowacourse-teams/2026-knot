@@ -13,6 +13,24 @@ public class DocumentGenerationInputQueryAdapter implements DocumentGenerationIn
     private final DocumentTranscriptTextReader transcriptTextReader = new DocumentTranscriptTextReader();
 
     @Override
+    public Optional<DocumentGenerationInputResult> find(
+            long workspaceId,
+            long transcriptId
+    ) {
+        return repository.findAvailableByWorkspaceIdAndId(
+                workspaceId,
+                transcriptId
+        )
+                .map(
+                        transcript -> new DocumentGenerationInputResult(
+                                transcript.getId(),
+                                transcript.getRecordingSessionId(),
+                                transcriptTextReader.read(transcript.getRawTranscriptJson())
+                        )
+                );
+    }
+
+    @Override
     public Optional<DocumentGenerationInputResult> findForUpdate(
             long workspaceId,
             long transcriptId
