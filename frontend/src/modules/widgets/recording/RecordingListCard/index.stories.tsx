@@ -39,9 +39,15 @@ const DOCUMENT_FAILED_RECORDING_ID = recordingDetailsResponse.find(
  * 정리에 실패한 녹음의 현재 녹음 응답. 다시 시도를 접수하면(mock 상태의 녹음 상세가 전사 중 · 대기로 바뀌면)
  * 서버처럼 「문서 정리 중」으로 답해, 스토리에서 다시 시도 흐름을 끝까지 볼 수 있어요
  */
-const respondFailedRecording = (
-  status: "TRANSCRIPTION_FAILED" | "DOCUMENT_FAILED",
-) =>
+interface RespondFailedRecordingParams {
+  status: "TRANSCRIPTION_FAILED" | "DOCUMENT_FAILED";
+  isRetryable?: boolean;
+}
+
+const respondFailedRecording = ({
+  status,
+  isRetryable = true,
+}: RespondFailedRecordingParams) =>
   http.get(CURRENT_URL, () => {
     const recordingId =
       status === "TRANSCRIPTION_FAILED"
@@ -56,7 +62,11 @@ const respondFailedRecording = (
       ...currentRecordingResponse,
       recordingId,
       status: isRetried ? "PROCESSING" : status,
-      retryable: true,
+      retryable: !isRetried && isRetryable,
+      retryableJobIds:
+        !isRetried && isRetryable && status === "DOCUMENT_FAILED"
+          ? (detail?.documentGeneration?.failedJobIds ?? [])
+          : [],
     });
   });
 
@@ -83,8 +93,8 @@ const resetRecording = () => {
  * - 녹음을 끝내고 문서를 정리하는 중이면 청록 점·청록 글자로 「문서 정리 중」을 보여 주고 시간은 두지 않아요. 「보기」로 그 녹음의 문서 정리 화면에 가요. 정리 화면은 어느 탭에서나 열 수 있어 버튼을 숨기지 않아요.
  * - 정리하는 동안에는 3초마다 다시 불러와, 정리가 끝나면 녹음이 없는 모습으로 돌아가요.
  * - 전사(녹음을 글로 옮기기)나 문서 생성이 끝내 실패하면 어두운 빨간 점·글자로 실패한 단계의 제목(「녹음을 글로 옮기지 못했어요」 · 「문서를 만들지 못했어요」)과 보관 안내를 보여 주고, 오른쪽에 「다시 시도」를 둬요.
- * - 「다시 시도」는 전사 실패면 전사를, 문서 생성 실패면 그 녹음의 실패한 문서 작업을 모두 다시 접수하고, 접수되면 「문서 정리 중」으로 돌아가요. 응답을 기다리는 동안 버튼은 로딩이에요.
- * - 다시 시도가 거절되면(더 시도할 수 없음) 알리지 않고 녹음을 다시 불러오고, 네트워크·서버 오류면 오류 토스트로 알려요. 다시 시도할 수 없는 실패(`retryable=false`)는 아직 시안이 없어 녹음이 없는 모습이에요.
+ * - 「다시 시도」는 전사 실패면 전사를, 문서 생성 실패면 서버가 지정한 재시도 가능한 작업만 접수해요. 응답을 기다리는 동안 버튼은 로딩이에요.
+ * - 접수·거절·응답 유실 후 상태를 다시 확인해요. 다시 시도할 수 없는 실패도 제목을 유지하고 버튼과 보관 안내만 숨겨요.
  * - 홈에 들어올 때와 다른 창에서 돌아올 때 녹음을 다시 불러와요.
  */
 const meta = {
@@ -197,7 +207,9 @@ export const TranscriptionFailed: Story = {
     docs: ISOLATED_DOCS,
     msw: {
       handlers: {
-        currentRecording: respondFailedRecording("TRANSCRIPTION_FAILED"),
+        currentRecording: respondFailedRecording({
+          status: "TRANSCRIPTION_FAILED",
+        }),
       },
     },
     design: {
@@ -208,7 +220,7 @@ export const TranscriptionFailed: Story = {
 };
 
 /**
- * 전사는 됐지만 문서 생성이 끝내 실패했을 때예요. 「다시 시도」를 누르면 그 녹음의 실패한 문서 작업을 모두 다시 접수해요.
+ * 전사는 됐지만 문서 생성이 끝내 실패했을 때예요. 「다시 시도」를 누르면 그 녹음의 재시도 가능한 문서 작업만 다시 접수해요.
  * 녹음 ID는 녹음 상세 mock의 문서 생성 실패 녹음이라 다시 시도가 실제로 접수되고, 접수 뒤에는 정리 중으로 바뀌어요
  */
 export const DocumentFailed: Story = {
@@ -216,7 +228,7 @@ export const DocumentFailed: Story = {
     docs: ISOLATED_DOCS,
     msw: {
       handlers: {
-        currentRecording: respondFailedRecording("DOCUMENT_FAILED"),
+        currentRecording: respondFailedRecording({ status: "DOCUMENT_FAILED" }),
       },
     },
     design: {
@@ -275,6 +287,44 @@ export const LoadFailed: Story = {
     design: {
       type: "figma",
       url: "https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=3892-15440",
+    },
+  },
+};
+
+/** 30일 경과나 파일 부재로 전사를 다시 접수할 수 없어도 실패 제목은 유지해요. */
+export const TranscriptionFailedNotRetryable: Story = {
+  parameters: {
+    docs: ISOLATED_DOCS,
+    msw: {
+      handlers: {
+        currentRecording: respondFailedRecording({
+          status: "TRANSCRIPTION_FAILED",
+          isRetryable: false,
+        }),
+      },
+    },
+    design: {
+      type: "figma",
+      url: "https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=4524-43789",
+    },
+  },
+};
+
+/** 표시 기한 안에 재시도 횟수를 소진한 문서 실패는 제목만 보여 줘요. */
+export const DocumentFailedNotRetryable: Story = {
+  parameters: {
+    docs: ISOLATED_DOCS,
+    msw: {
+      handlers: {
+        currentRecording: respondFailedRecording({
+          status: "DOCUMENT_FAILED",
+          isRetryable: false,
+        }),
+      },
+    },
+    design: {
+      type: "figma",
+      url: "https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=2067-26428",
     },
   },
 };

@@ -37,6 +37,9 @@ export default function CurrentRecordingItem({
   isRetrying = false,
 }: CurrentRecordingItemProps) {
   const { label, hint } = RECORDING_STATUS_COPY[recordingStatus];
+  const isFailed =
+    recordingStatus === "transcriptionFailed" ||
+    recordingStatus === "documentFailed";
 
   return (
     <Container>
@@ -52,7 +55,7 @@ export default function CurrentRecordingItem({
           </StatusText>
         </Status>
         <Title>{title}</Title>
-        <Hint>{hint}</Hint>
+        {(!isFailed || onRetry) && <Hint>{hint}</Hint>}
       </Info>
 
       {onOpenRecording && (

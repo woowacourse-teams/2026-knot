@@ -18,6 +18,8 @@ export interface CurrentRecordingResponse {
   elapsedMillis: number;
   /** 실패한 녹음을 다시 시도할 수 있는지. 실패 상태와 함께 더해진 값이라 그 전의 서버는 주지 않음 */
   retryable?: boolean;
+  /** 문서 실패에서 실제로 다시 접수할 수 있는 작업만 포함해요 */
+  retryableJobIds?: number[];
 }
 
 export interface RecordingStartResponse {

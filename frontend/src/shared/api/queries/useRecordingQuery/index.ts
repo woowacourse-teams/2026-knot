@@ -10,7 +10,7 @@ const POLL_INTERVAL_MS = 3000;
 interface UseRecordingQueryParams {
   workspaceId: number;
   recordingId: number;
-  /** `false`면 저절로 조회하지 않고 `refetch`로 부를 때만 조회해요. 홈 카드가 다시 시도를 누를 때만 실패 작업을 받으려고 써요. 기본값은 `true` */
+  /** `false`면 저절로 조회하지 않고 `refetch`로 부를 때만 조회해요. 기본값은 `true` */
   isEnabled?: boolean;
 }
 

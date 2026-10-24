@@ -1,7 +1,7 @@
 /**
  * 현재 녹음 조회에서 화면에 보여 주는 녹음 상태.
  * `organizing`은 녹음을 끝낸 뒤 문서를 정리하는 중이에요. 정리 화면과 같은 이름(`getRecordingDocumentsStatus`)을 써요.
- * `transcriptionFailed`는 전사(녹음을 글로 옮기기)가, `documentFailed`는 문서 생성이 끝내 실패해 다시 시도할 수 있는 녹음이에요
+ * `transcriptionFailed`는 전사(녹음을 글로 옮기기)가, `documentFailed`는 문서 생성이 실패한 녹음이에요. 재시도 가능 여부와 별개로 제목을 유지해요
  */
 export type CurrentRecordingStatus =
   | "recording"

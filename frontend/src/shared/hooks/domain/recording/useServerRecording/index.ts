@@ -25,19 +25,13 @@ const RECORDING_STATUS_BY_SERVER_STATUS = {
   DOCUMENT_FAILED: "documentFailed",
 } as const satisfies Record<ServerRecordingStatus, CurrentRecordingStatus>;
 
-/** 다시 시도할 수 있을 때만 화면에 보여 주는 상태. 다시 시도할 수 없는 실패는 아직 시안이 없어 녹음이 없는 것으로 봐요 */
-const RETRYABLE_ONLY_STATUSES: CurrentRecordingStatus[] = [
-  "transcriptionFailed",
-  "documentFailed",
-];
-
 /**
  * 현재 `:workspaceId`의 현재 녹음 조회 응답을 화면에 보여 줄 상태와 시간으로 바꿔요.
  *
  * 응답의 누적 시간에 응답을 받은 뒤 흐른 시간을 더해 녹음 중이면 매초 늘리고, 일시정지면 멈춰 둬요.
  * 녹음을 끝내고 문서를 정리하는 중이면 `organizing`이에요. 정리 화면으로 갈 수 있게 그 녹음의 `recordingId`도 함께 돌려줘요.
- * 전사나 문서 생성이 끝내 실패했으면 `transcriptionFailed` · `documentFailed`예요. 다시 시도할 수 있는 실패만 보여 주고,
- * 다시 시도할 수 없는 실패(`retryable=false`)는 아직 시안이 없어 표시할 녹음이 없는 것(`null`)으로 둬요.
+ * 전사나 문서 생성이 실패했으면 재시도 가능 여부와 관계없이 실패 상태를 유지해요.
+ * `isRetryable`과 `retryableJobIds`는 버튼과 실제 재접수 대상을 정하는 데 써요.
  * 표시할 녹음이 없거나(204) 처음 조회가 실패하면 `status`와 `recordingId`가 `null`이에요.
  * 조회 실패는 콘솔에 남기고, 받은 녹음이 아직 없을 때만 `isLoadFailed`로 알려요. 실패 안내는 쓰는 쪽이 정해요(홈 카드는 ERR-09).
  * 한 번 받은 뒤 다시 조회만 실패하면 받은 녹음을 그대로 보여 줘요.
@@ -65,19 +59,15 @@ const useServerRecording = () => {
   const now = useNow(isRecording);
 
   // 타입에 없는 상태를 서버가 보내면 표에서 undefined가 나와요
-  const mappedStatus: CurrentRecordingStatus | null = data
+  const status: CurrentRecordingStatus | null = data
     ? (RECORDING_STATUS_BY_SERVER_STATUS[data.status] ?? null)
     : null;
-  const status =
-    mappedStatus !== null &&
-    RETRYABLE_ONLY_STATUSES.includes(mappedStatus) &&
-    !data?.isRetryable
-      ? null
-      : mappedStatus;
 
   return {
     status,
     recordingId: status === null ? null : (data?.recordingId ?? null),
+    isRetryable: data?.isRetryable ?? false,
+    retryableJobIds: data?.retryableJobIds ?? [],
     elapsedTime: formatRecordingTime(
       calculateElapsedSeconds(
         data?.elapsedMillis ?? 0,

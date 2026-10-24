@@ -280,3 +280,70 @@ test.describe("팀원 초대 카드", () => {
     await expect(copyCodeButton).toBeVisible();
   });
 });
+
+test.describe("홈 녹음 실패 카드", () => {
+  const getRecordingCard = (page: Page) =>
+    page.getByRole("region", { name: "진행 중인 녹음" });
+
+  for (const { scenario, title } of [
+    { scenario: "transcriptionFailed", title: "녹음을 글로 옮기지 못했어요" },
+    { scenario: "documentFailed", title: "문서를 만들지 못했어요" },
+  ]) {
+    test(`[HOME-024-06] ${scenario}: 실패를 표시하고 재시도 접수 후 처리 중으로 돌아간다 @core`, async ({
+      page,
+    }) => {
+      await page.goto(`${HOME_PATH}?mock.currentRecording=${scenario}`);
+      const card = getRecordingCard(page);
+      await expect(card.getByText(title, { exact: true })).toBeVisible();
+      await expect(
+        page.getByRole("button", { name: "회의 녹음 시작" }),
+      ).toBeVisible();
+
+      await card.getByRole("button", { name: "다시 시도" }).click();
+
+      await expect(
+        card.getByText("문서 정리 중", { exact: true }),
+      ).toBeVisible();
+      await expect(card.getByRole("button", { name: "보기" })).toBeVisible();
+    });
+
+    test(`[HOME-024-06] ${scenario}: 재시도 불가 실패도 제목을 유지하고 버튼·보관 안내를 숨긴다`, async ({
+      page,
+    }) => {
+      await page.goto(
+        `${HOME_PATH}?mock.currentRecording=${scenario}NotRetryable`,
+      );
+      const card = getRecordingCard(page);
+
+      await expect(card.getByText(title, { exact: true })).toBeVisible();
+      await expect(card.getByRole("button", { name: "다시 시도" })).toHaveCount(
+        0,
+      );
+      await expect(card.getByText(/동안 보관해요/)).toHaveCount(0);
+      await expect(
+        card.getByText("진행 중인 녹음이 없어요", { exact: true }),
+      ).toHaveCount(0);
+    });
+  }
+
+  test("[HOME-024-03] 처리 완료 후 이전 실패가 다시 선택되면 빈 카드 대신 실패를 표시한다", async ({
+    page,
+  }) => {
+    await page.goto(`${HOME_PATH}?mock.currentRecording=processing`);
+    const card = getRecordingCard(page);
+    await expect(card.getByText("문서 정리 중", { exact: true })).toBeVisible();
+    await page.evaluate(() =>
+      localStorage.setItem(
+        "knot.mock.scenario",
+        JSON.stringify({ currentRecording: "transcriptionFailedNotRetryable" }),
+      ),
+    );
+
+    await expect(
+      card.getByText("녹음을 글로 옮기지 못했어요", { exact: true }),
+    ).toBeVisible({ timeout: 10_000 });
+    await expect(card.getByRole("button", { name: "다시 시도" })).toHaveCount(
+      0,
+    );
+  });
+});
