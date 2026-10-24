@@ -1,5 +1,28 @@
 # #934 주제 재정리 검증 기록
 
+## 2026-10-24 PR938 시작 API 계약 보정
+
+최신 사용자 지시에 따라 Notion 명세를 우선한다. 이 절은 아래 초기 구현 기록보다 우선하며, #935 로컬 구현 전체를 이 PR에 포함한 기록이 아니다.
+
+- 시작 응답은 operationId(Long), workspaceId, type(REORGANIZATION), status, createdAt의 5개 필드다. requestId는 UUID로 유지한다. 문서 수와 deadlineAt은 시작 응답에 노출하지 않는다.
+- 진행 충돌·요청 식별자 충돌·빈 대상을 각각 TOPIC_OPERATION_IN_PROGRESS, TOPIC_REQUEST_ID_CONFLICT, TOPIC_REORGANIZATION_TARGET_EMPTY로 구분한다. 빈 대상은 저장을 롤백하며 없거나 삭제된 Workspace는404다.
+- 주제 정리 경로에서 인증 쿠키 없음과 잘못된 인증을 UNAUTHENTICATED/INVALID_JWT로 구분한다. 다른 경로의 기존 인증 응답은 유지한다. 같은 요청 재전송의 재시도 대기는 RUNNING으로 표시한다.
+- [ADR](../adr/934-document-topic-reorganization.md)을 backend/docs/adr로 옮겼다. 상태 조회 #935와 V64/V65, 취소 #936, 되돌리기 #937은 이번 PR에서 제외한다. Notion 원문은 변경하지 않았다.
+- PR 전용 be/feature/#934 작업 폴더에서 시작 응답 계약과 잘못된 인증 쿠키 인수 테스트의 RED를 각각 확인한 뒤 수정했다. #935 작업 폴더의 미커밋 변경은 보존했다.
+
+Java25 `./gradlew check bootJar`: BUILD SUCCESSFUL, 4분59초. 실제 PostgreSQL/Flyway와 Security/MockMvc를 사용했다.
+
+| 검증 | 건수 | 실패·오류 | 기존 조건부 skip |
+| --- | ---: | ---: | ---: |
+| 단위 | 2057 | 0 | 2 |
+| 통합 | 917 | 0 | 4 |
+| 인수 | 600 | 0 | 0 |
+| 합계 | 3574 | 0 | 6 |
+
+Spotless·git diff --check, governance 단위10건과 실제 PR938 컨벤션 검사도 통과했다. 이 검증은 prod 배포·실제 FE·모델 품질·원격 CI 성공을 뜻하지 않는다.
+
+## 2026-10-23 초기 구현·실험 기록
+
 확인일: 2026-10-23 KST. 로컬 브랜치: `be/feature/#934`.
 이 문서는 구현·검증 증거이며 운영 배포 또는 처리 성능 보장 기록이 아니다.
 
