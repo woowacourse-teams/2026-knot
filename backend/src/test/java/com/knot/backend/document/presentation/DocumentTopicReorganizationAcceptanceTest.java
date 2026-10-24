@@ -1,6 +1,7 @@
 package com.knot.backend.document.presentation;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.aMapWithSize;
 import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.times;
@@ -120,9 +121,11 @@ class DocumentTopicReorganizationAcceptanceTest {
                 owner,
                 request.toString()
         ).andExpect(status().isAccepted())
-                .andExpect(jsonPath("$.targetCount").value(1))
+                .andExpect(jsonPath("$").value(aMapWithSize(5)))
+                .andExpect(jsonPath("$.workspaceId").value(workspace))
+                .andExpect(jsonPath("$.type").value("REORGANIZATION"))
                 .andExpect(jsonPath("$.status").value("QUEUED"))
-                .andExpect(jsonPath("$.operationId").isString());
+                .andExpect(jsonPath("$.operationId").isNumber());
         send(
                 owner,
                 request.toString()
@@ -227,7 +230,8 @@ class DocumentTopicReorganizationAcceptanceTest {
         send(
                 owner,
                 "bad-uuid"
-        ).andExpect(status().isBadRequest());
+        ).andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
         mvc.perform(
                 post(
                         PATH,
@@ -243,7 +247,8 @@ class DocumentTopicReorganizationAcceptanceTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{}")
         )
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
         mvc.perform(
                 post(
                         PATH,
@@ -258,6 +263,7 @@ class DocumentTopicReorganizationAcceptanceTest {
     @Test
     @DisplayName("진행 중 다른 요청은409이며 같은 요청은200이다")
     void start_failure_conflict() throws Exception {
+        saveDocument();
         UUID request = UUID.randomUUID();
         send(
                 owner,
@@ -268,11 +274,80 @@ class DocumentTopicReorganizationAcceptanceTest {
                 UUID.randomUUID()
                         .toString()
         ).andExpect(status().isConflict())
-                .andExpect(jsonPath("$.code").value("TOPIC_OPERATION_CONFLICT"));
+                .andExpect(jsonPath("$.code").value("TOPIC_OPERATION_IN_PROGRESS"));
         send(
                 owner,
                 request.toString()
         ).andExpect(status().isOk());
+    }
+
+    @Test
+    @DisplayName("빈 대상은 작업과 스냅샷을 남기지 않고 명세의 409를 반환한다")
+    void start_failure_emptyTarget() throws Exception {
+        send(
+                owner,
+                UUID.randomUUID()
+                        .toString()
+        ).andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("TOPIC_REORGANIZATION_TARGET_EMPTY"));
+        assertThat(
+                jdbc.queryForObject(
+                        "SELECT count(*) FROM document_topic_operations",
+                        Long.class
+                )
+        ).isZero();
+    }
+
+    @Test
+    @DisplayName("삭제된 Workspace는 명세의 404로 거절한다")
+    void start_failure_deletedWorkspace() throws Exception {
+        jdbc.update(
+                "UPDATE workspaces SET deleted_at=CURRENT_TIMESTAMP WHERE id=?",
+                workspace
+        );
+        send(
+                owner,
+                UUID.randomUUID()
+                        .toString()
+        ).andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("WORKSPACE_NOT_FOUND"));
+    }
+
+    @Test
+    @DisplayName("같은 requestId를 다른 종류에 재사용하면 진행 충돌과 구분한다")
+    void start_failure_requestIdConflict() throws Exception {
+        saveDocument();
+        UUID request = UUID.randomUUID();
+        send(
+                owner,
+                request.toString()
+        ).andExpect(status().isAccepted());
+        jdbc.update("UPDATE document_topic_operations SET kind='RESTORE'");
+        send(
+                owner,
+                request.toString()
+        ).andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("TOPIC_REQUEST_ID_CONFLICT"));
+    }
+
+    private void saveDocument() {
+        long recording = fixtures.saveRecording(
+                workspace,
+                owner,
+                60000
+        );
+        long transcript = fixtures.saveTranscript(recording);
+        long job = fixtures.saveJob(
+                transcript,
+                "SUCCEEDED"
+        );
+        fixtures.saveDocument(
+                workspace,
+                recording,
+                transcript,
+                job,
+                "녹음 품질"
+        );
     }
 
     private ResultActions send(

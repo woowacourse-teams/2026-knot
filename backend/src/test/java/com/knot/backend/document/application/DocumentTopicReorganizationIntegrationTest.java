@@ -208,6 +208,7 @@ class DocumentTopicReorganizationIntegrationTest {
     @Test
     @DisplayName("현재 OWNER가 아니면 같은 requestId도 조회할 수 없다")
     void start_failure_notOwner() {
+        document("STT");
         UUID request = UUID.randomUUID();
         start.start(
                 workspace,
@@ -230,6 +231,7 @@ class DocumentTopicReorganizationIntegrationTest {
     @Test
     @DisplayName("다른 요청의 활성 작업은 배타적이며 완료 요청 재전송은 먼저 해소한다")
     void start_success_replaysBeforeActiveConflict() {
+        document("STT");
         UUID old = UUID.randomUUID();
         DocumentTopicOperationResult first = start.start(
                 workspace,
@@ -262,6 +264,7 @@ class DocumentTopicReorganizationIntegrationTest {
     @Test
     @DisplayName("동시에 같은 요청을 보내도 한 번만 접수한다")
     void start_success_concurrentSameRequest() throws Exception {
+        document("STT");
         UUID request = UUID.randomUUID();
         CountDownLatch ready = new CountDownLatch(2);
         CountDownLatch release = new CountDownLatch(1);
@@ -586,6 +589,7 @@ class DocumentTopicReorganizationIntegrationTest {
     @Test
     @DisplayName("DB도 재정리와 복원의 활성 작업 동시 생성을 막는다")
     void persist_failure_activeRestoreConflict() {
+        document("STT");
         start.start(
                 workspace,
                 owner,
@@ -609,15 +613,27 @@ class DocumentTopicReorganizationIntegrationTest {
     }
 
     @Test
-    @DisplayName("문서가 없으면 AI 호출 없이 무변경 성공한다")
-    void execute_success_emptyWorkspace() {
-        DocumentTopicOperationResult operation = start.start(
-                workspace,
-                owner,
-                UUID.randomUUID()
+    @DisplayName("문서가 없으면 명세 오류를 반환하고 접수 데이터를 롤백한다")
+    void start_failure_emptyWorkspace() {
+        assertThatThrownBy(
+                () -> start.start(
+                        workspace,
+                        owner,
+                        UUID.randomUUID()
+                )
+        ).isInstanceOfSatisfying(
+                DocumentException.class,
+                exception -> assertThat(
+                        exception.getErrorCode()
+                                .getCode()
+                ).isEqualTo("TOPIC_REORGANIZATION_TARGET_EMPTY")
         );
-        finish(operation);
-        assertThat(state(operation)).isEqualTo("SUCCEEDED");
+        assertThat(
+                jdbc.queryForObject(
+                        "SELECT count(*) FROM document_topic_operations",
+                        Long.class
+                )
+        ).isZero();
         verifyNoInteractions(planner);
     }
 
