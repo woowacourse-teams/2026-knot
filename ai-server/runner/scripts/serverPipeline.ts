@@ -2,8 +2,8 @@ import { spawn, type ChildProcess } from 'node:child_process'
 import { access, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { assembleWindowResult, validWindow, type WindowInput } from './windowResult'
-import { assignSpeakers, mergeUtterances } from '../src/core/merge'
+import { assembleWindowResult, measuredWordGroups, validWindow, type WindowInput } from './windowResult'
+import { assignSpeakers, mergeUtterances, SERVER_SPEAKER_POLICY } from '../src/core/merge'
 import { buildDiarizeArgs, parseDiarizeOutput } from '../src/main/pipeline/diarize'
 import { normalizeWavFile } from '../src/main/pipeline/normalize'
 import { assertRestoredVadTimestamps, buildWhisperArgs, parseWhisperOutput } from '../src/main/pipeline/whisper'
@@ -65,7 +65,8 @@ export const validateManifest = (value: unknown): ServerManifest => {
 }
 
 export const assembleResult = (raw: Buffer, diarization: string, speakerCount?: number) => {
-  const segments = parseWhisperOutput(raw)
+  const segments = parseWhisperOutput(raw).map(segment => segment.words?.length
+    ? { ...segment, words: measuredWordGroups(segment.words) } : segment)
   const speakerSegments = parseDiarizeOutput(diarization)
   if (segments.some((item) => item.text.trim()) && !speakerSegments.length) {
     throw new Error('DIARIZATION_EMPTY')
@@ -74,8 +75,9 @@ export const assembleResult = (raw: Buffer, diarization: string, speakerCount?: 
     assignSpeakers({
       segments,
       speakerSegments,
-      isMinorSpeakerAbsorbed: !speakerCount
-    })
+      ...SERVER_SPEAKER_POLICY
+    }),
+    SERVER_SPEAKER_POLICY
   )
   if (
     utterances.some(

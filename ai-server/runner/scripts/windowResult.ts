@@ -1,5 +1,6 @@
 import { parseWhisperOutput } from '../src/main/pipeline/whisper'
 import type { SttWord } from '../src/core/types'
+import { assignSpeakers, mergeUtterances, SERVER_SPEAKER_POLICY } from '../src/core/merge'
 
 export interface WindowInput {
   pipelineVersion: string
@@ -25,7 +26,7 @@ const combineWords = (first: SttWord, second: SttWord): SttWord => ({
   text: `${first.text} ${second.text}`
 })
 
-const measuredWordGroups = (words: SttWord[], frames: number): SttWord[] => {
+export const measuredWordGroups = (words: SttWord[], frames = Number.MAX_SAFE_INTEGER): SttWord[] => {
   const groups: SttWord[] = []
   let leading: SttWord | undefined
   for (const word of words) {
@@ -69,22 +70,24 @@ export const assembleWindowResult = (raw:Buffer, evidence:Evidence, window:Windo
     if (!Number.isFinite(s.start) || !Number.isFinite(s.end) || s.start < 0 || s.end <= s.start
         || Math.round(s.end*16000)>frames || !ids.has(s.speaker)) throw new Error('INVALID_RESULT')
   }
-  const tokens = parseWhisperOutput(raw).flatMap(s => {
+  const segments = parseWhisperOutput(raw).map(s => {
     if (s.text.trim() && !s.words?.length) throw new Error('WORD_TIMESTAMPS_REQUIRED')
-    return measuredWordGroups(s.words??[], frames).map(w => {
-      const startFrame=Math.round(w.start*16000), endFrame=Math.min(frames,Math.round(w.end*16000))
-      const ranked=evidence.segments.map(s=>({speaker:s.speaker,
-        overlap:Math.max(0,Math.min(w.end,s.end)-Math.max(w.start,s.start))}))
-        .sort((a,b)=>b.overlap-a.overlap||a.speaker.localeCompare(b.speaker))
-      const speakerId=ranked[0]?.overlap>0?ranked[0].speaker:'unknown'
-      if(speakerId==='unknown'&&!ids.has(speakerId)) {
-        ids.add(speakerId);speakers.push({speakerId,embedding:[],voicedFrames:0})
-      }
-      return {startFrame,endFrame,text:w.text,speakerId}
-    })
+    return {...s, words: measuredWordGroups(s.words??[], frames).map(w => ({
+      ...w, start: Math.round(w.start*16000)/16000,
+      end: Math.min(frames, Math.round(w.end*16000))/16000
+    }))}
+  }).filter(s => s.words.length > 0)
+  const pieces = assignSpeakers({segments, speakerSegments: evidence.segments, ...SERVER_SPEAKER_POLICY})
+  const tokens = pieces.map(piece => {
+    const speakerId = piece.speaker
+    if (!ids.has(speakerId)) {
+      ids.add(speakerId)
+      speakers.push({speakerId, embedding: [], voicedFrames: 0})
+    }
+    return {startFrame: Math.round(piece.start*16000), endFrame: Math.round(piece.end*16000),
+      text: piece.text, speakerId}
   }).sort((a,b)=>a.startFrame-b.startFrame||a.endFrame-b.endFrame)
-  const utterances=tokens.map((t,ord)=>({ord,speakerLabel:t.speakerId,
-    startSec:t.startFrame/16000,endSec:t.endFrame/16000,text:t.text}))
+  const utterances = mergeUtterances(pieces, SERVER_SPEAKER_POLICY)
   return {schemaVersion:1,rawWhisperJson:raw.toString('utf8'),utterances,
     window:{schemaVersion:1,...window,modelVersion:evidence.modelVersion,tokens,speakers}}
 }
