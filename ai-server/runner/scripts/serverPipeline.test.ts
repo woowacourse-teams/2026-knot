@@ -34,6 +34,7 @@ test('manifest refuses relative paths and invalid speaker count', () => {
     audioPath: '/job/audio.wav',
     outputDirectory: '/job',
     profile: {
+      whisperVadEnabled: false,
       whisperBinary: '/models/whisper',
       diarizeBinary: '/models/diarize',
       whisperModel: '/models/whisper.bin',
@@ -64,7 +65,7 @@ const wav = () => {
   buffer.writeUInt32LE(32000, 40)
   return buffer
 }
-test('native arguments preserve Korean, VAD and speaker clustering defaults', () => {
+test('native arguments preserve Korean and clustering while keeping original audio time', () => {
   assert.deepEqual(
     buildWhisperArgs({
       modelPath: '/models/whisper.bin',
@@ -74,8 +75,7 @@ test('native arguments preserve Korean, VAD and speaker clustering defaults', ()
       vadModelPath: '/models/vad.bin'
     }),
     ['-m', '/models/whisper.bin', '-f', '/job/audio.wav', '-l', 'ko', '-t', '4',
-      '--output-json-full', '-of', '/job/whisper', '--no-prints', '--vad', '--vad-model',
-      '/models/vad.bin']
+      '--output-json-full', '-of', '/job/whisper', '--no-prints', '--vad', '--vad-model', '/models/vad.bin']
   )
   const parameters = {
     segmentationModelPath: '/models/segmentation.onnx',
@@ -133,6 +133,7 @@ test('headless fake engines produce an atomic complete artifact', async () => {
       outputDirectory: directory,
       speakerCount: 1,
       profile: {
+      whisperVadEnabled: false,
         whisperBinary: engine,
         diarizeBinary: engine,
         whisperModel: engine,
@@ -167,6 +168,7 @@ test('supervisor deadline terminates runner and SIGTERM-resistant native engines
       audioPath,
       outputDirectory: directory,
       profile: {
+      whisperVadEnabled: false,
         whisperBinary: engine,
         diarizeBinary: engine,
         whisperModel: engine,
@@ -228,7 +230,7 @@ test('split Korean token bytes use original latin1 parser, opaque UTF8 remains u
   assert.equal(result.rawWhisperJson, source.toString('utf8'))
   assert.ok(result.rawWhisperJson.includes('\ufffd'))
 })
-test('provided speaker count preserves a minor speaker instead of absorbing it', () => {
+test('shared server policy preserves a short speaker with automatic or fixed speaker count', () => {
   const source = Buffer.from(
     JSON.stringify({
       transcription: [
@@ -245,7 +247,7 @@ test('provided speaker count preserves a minor speaker instead of absorbing it',
   )
   assert.equal(
     new Set(assembleResult(source, diarization).utterances.map((item) => item.speakerLabel)).size,
-    1
+    2
   )
 })
 
@@ -266,6 +268,7 @@ for (const failedStage of ['STT_FAILED', 'DIARIZATION_FAILED'] as const) {
         audioPath,
         outputDirectory: directory,
         profile: {
+      whisperVadEnabled: false,
           whisperBinary: engine,
           diarizeBinary: engine,
           whisperModel: engine,
