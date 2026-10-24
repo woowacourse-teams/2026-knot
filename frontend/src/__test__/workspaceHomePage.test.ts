@@ -311,7 +311,7 @@ test.describe("홈 녹음 실패 카드", () => {
       await expect(card.getByRole("button", { name: "보기" })).toBeVisible();
     });
 
-    test(`[HOME-024-06] ${scenario}: 재시도 불가 실패도 제목을 유지하고 버튼·보관 안내를 숨긴다`, async ({
+    test(`[HOME-024-06] ${scenario}: 재시도 불가 실패도 제목을 유지하고 버튼·재시도 안내를 숨긴다`, async ({
       page,
     }) => {
       await page.goto(

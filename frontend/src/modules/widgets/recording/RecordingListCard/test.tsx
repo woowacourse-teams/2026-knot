@@ -637,7 +637,7 @@ describe("RecordingListCard", () => {
   });
 
   describe("정리에 실패한 녹음 (STT-R24 · STT-R22)", () => {
-    it("전사에 실패했으면 시간 없이 녹음을 글로 옮기지 못했다는 상태와 보관 안내, 녹음 이름, 「다시 시도」를 보여 준다", async () => {
+    it("전사에 실패했으면 시간 없이 녹음을 글로 옮기지 못했다는 상태와 재시도 안내, 녹음 이름, 「다시 시도」를 보여 준다", async () => {
       respondFailedRecording({ status: "TRANSCRIPTION_FAILED" });
 
       renderCard();
@@ -657,7 +657,7 @@ describe("RecordingListCard", () => {
       ).not.toBeInTheDocument();
     });
 
-    it("문서 만들기에 실패했으면 문서를 만들지 못했다는 상태와 보관 안내, 「다시 시도」를 보여 준다", async () => {
+    it("문서 만들기에 실패했으면 문서를 만들지 못했다는 상태와 재시도 안내, 「다시 시도」를 보여 준다", async () => {
       respondFailedRecording({ status: "DOCUMENT_FAILED" });
 
       renderCard();
@@ -669,7 +669,7 @@ describe("RecordingListCard", () => {
     });
 
     it.each(["TRANSCRIPTION_FAILED", "DOCUMENT_FAILED"] as const)(
-      "다시 시도할 수 없는 실패(%s · retryable=false)는 실패 제목을 유지하고 버튼과 보관 안내를 숨긴다",
+      "다시 시도할 수 없는 실패(%s · retryable=false)는 실패 제목을 유지하고 버튼과 재시도 안내를 숨긴다",
       async (status) => {
         respondFailedRecording({ status, isRetryable: false });
 
