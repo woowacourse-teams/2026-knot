@@ -16,6 +16,13 @@ import com.knot.backend.document.DocumentFixtures;
 import com.knot.backend.document.application.DocumentTopicWorker;
 import com.knot.backend.document.infrastructure.DocumentTopicScheduler;
 import com.knot.backend.global.infrastructure.llm.LlmClient;
+import com.knot.backend.global.infrastructure.llm.LlmCompletionRequest;
+import com.knot.backend.global.infrastructure.llm.LlmMessage;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.node.ObjectNode;
+import tools.jackson.databind.node.ArrayNode;
+import java.util.List;
 import com.knot.backend.testsupport.TestApplicationProperties;
 import com.knot.backend.testsupport.TestcontainersConfiguration;
 import jakarta.servlet.http.Cookie;
@@ -130,11 +137,7 @@ class DocumentTopicReorganizationAcceptanceTest {
                 owner,
                 request.toString()
         ).andExpect(status().isOk());
-        when(llm.complete(any())).thenReturn(
-                "{\"assignments\":[{\"documentId\":" + document
-                        + ",\"categoryKey\":\"n:recording\"}],\"newCategories\":[{\"key\":\"n:recording\",\"name\":\"녹음·전사\",\"description\":\"녹음 수집과 전사 품질\"}],\"categoryMapping\":[]}",
-                "{\"assignments\":[],\"newCategories\":[],\"categoryMapping\":[{\"sourceKey\":\"n:recording\",\"targetKey\":\"n:recording\"}]}"
-        );
+        when(llm.complete(any())).thenAnswer(invocation -> modelReply(invocation.getArgument(0)));
         long id = jdbc.queryForObject(
                 "SELECT id FROM document_topic_operations",
                 Long.class
@@ -322,7 +325,15 @@ class DocumentTopicReorganizationAcceptanceTest {
                 owner,
                 request.toString()
         ).andExpect(status().isAccepted());
-        jdbc.update("UPDATE document_topic_operations SET kind='RESTORE'");
+        long sourceId = fixtures.saveCompletedTopicOperation(
+                workspace,
+                owner
+        );
+        jdbc.update(
+                "UPDATE document_topic_operations SET kind='RESTORE',target_version_id=91,restoration_source_operation_id=? WHERE id<>?",
+                sourceId,
+                sourceId
+        );
         send(
                 owner,
                 request.toString()
@@ -353,6 +364,49 @@ class DocumentTopicReorganizationAcceptanceTest {
         )
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.code").value("INVALID_JWT"));
+    }
+
+    private String modelReply(LlmCompletionRequest request) {
+        ObjectMapper mapper = new ObjectMapper();
+        List<LlmMessage> messages = request.messages();
+        LlmMessage user = messages.get(1);
+        JsonNode input = mapper.readTree(user.content());
+        ObjectNode result = mapper.createObjectNode();
+        ObjectNode assignments = result.putObject("assignments");
+        ArrayNode fresh = result.putArray("newCategories");
+        ObjectNode mapping = result.putObject("categoryMapping");
+        JsonNode mode = input.path("mode");
+        if ("CONSOLIDATE".equals(mode.asString())) {
+            for (JsonNode category : input.path("categories")) {
+                JsonNode key = category.path("key");
+                mapping.put(
+                        key.asString(),
+                        key.asString()
+                );
+            }
+            return mapper.writeValueAsString(result);
+        }
+        for (JsonNode document : input.path("documents")) {
+            JsonNode id = document.path("documentId");
+            assignments.put(
+                    id.asString(),
+                    "n:1"
+            );
+        }
+        ObjectNode category = fresh.addObject();
+        category.put(
+                "key",
+                "n:1"
+        );
+        category.put(
+                "name",
+                "녹음·전사"
+        );
+        category.put(
+                "description",
+                "녹음 수집과 전사 품질"
+        );
+        return mapper.writeValueAsString(result);
     }
 
     private void saveDocument() {

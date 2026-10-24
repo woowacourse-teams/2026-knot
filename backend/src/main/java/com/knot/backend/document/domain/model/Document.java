@@ -110,6 +110,50 @@ public class Document {
         return true;
     }
 
+    public DocumentTopicAssignment topicAssignment() {
+        return new DocumentTopicAssignment(
+                groupingScheme,
+                categoryId,
+                assignmentSource,
+                assignmentRuleVersion
+        );
+    }
+
+    public boolean restoreTopicAssignment(
+            DocumentTopicAssignment assignment,
+            DocumentCategory category
+    ) {
+        if (id == null || assignment == null) {
+            throw new DocumentException(DocumentErrorCode.INVALID_TOPIC_RESTORATION_DATA);
+        }
+        validateRestoredCategory(
+                assignment,
+                category
+        );
+        boolean changed = !assignment.equals(topicAssignment());
+        categoryId = assignment.categoryId();
+        groupingScheme = assignment.groupingScheme();
+        assignmentSource = assignment.source();
+        assignmentRuleVersion = assignment.ruleVersion();
+        return changed;
+    }
+
+    private void validateRestoredCategory(
+            DocumentTopicAssignment assignment,
+            DocumentCategory category
+    ) {
+        if (assignment.groupingScheme() == DocumentGroupingScheme.LEGACY && category != null) {
+            throw new DocumentException(DocumentErrorCode.INVALID_TOPIC_RESTORATION_DATA);
+        }
+        if (assignment.groupingScheme() == DocumentGroupingScheme.LEGACY) {
+            return;
+        }
+        if (category == null || category.getWorkspaceId() != workspaceId || !assignment.categoryId()
+                .equals(category.getId())) {
+            throw new DocumentException(DocumentErrorCode.INVALID_TOPIC_RESTORATION_DATA);
+        }
+    }
+
     public void validateGeneratedBy(
             DocumentGenerationJob job,
             long workspaceId

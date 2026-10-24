@@ -17,8 +17,11 @@ public class DocumentTopicReorganizationProperties {
 
     private boolean enabled = false;
     @Min(1)
-    @Max(25)
-    private int batchSize = 25;
+    @Max(75)
+    private int batchSize = 75;
+    @Min(1)
+    @Max(4)
+    private int parallelism = 4;
     @Min(4096)
     @Max(120000)
     private int maxInputCharacters = 60000;

@@ -1,5 +1,7 @@
 package com.knot.backend.document.domain.model;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import com.knot.backend.document.domain.DocumentException;
 import java.util.Map;
@@ -8,6 +10,63 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.DisplayName;
 
 class DocumentTopicPlanTest {
+
+    @Test
+    @DisplayName("배치별 새 주제 키만 구분하고 원본 계획과 기존 주제는 유지한다")
+    void scopeNewKeys_success_preservesOriginalAndExistingKeys() {
+        // given
+        DocumentTopicPlan plan = new DocumentTopicPlan(
+                Map.of(
+                        1L,
+                        "n:1",
+                        2L,
+                        "e:7"
+                ),
+                Map.of(),
+                Map.of(
+                        "n:1",
+                        "채용"
+                ),
+                Map.of(
+                        "n:1",
+                        "채용 논의"
+                )
+        );
+        // when
+        DocumentTopicPlan first = plan.scopeNewKeys(1);
+        DocumentTopicPlan second = plan.scopeNewKeys(3);
+        // then
+        assertThat(first.getAssignments()).containsEntry(
+                1L,
+                "n:b1-1"
+        )
+                .containsEntry(
+                        2L,
+                        "e:7"
+                );
+        assertThat(second.getAssignments()).containsEntry(
+                1L,
+                "n:b3-1"
+        );
+        assertThat(plan.getAssignments()).containsEntry(
+                1L,
+                "n:1"
+        );
+    }
+
+    @Test
+    @DisplayName("문서 식별자가 잘못된 배치에는 주제 키를 부여하지 않는다")
+    void scopeNewKeys_failure_invalidDocumentId() {
+        // given
+        DocumentTopicPlan plan = new DocumentTopicPlan(
+                Map.of(),
+                Map.of(),
+                Map.of(),
+                Map.of()
+        );
+        // when & then
+        assertThatThrownBy(() -> plan.scopeNewKeys(0)).isInstanceOf(DocumentException.class);
+    }
 
     @Test
     @DisplayName("실제로 배정하지 않은 새 주제는 만들지 않는다")

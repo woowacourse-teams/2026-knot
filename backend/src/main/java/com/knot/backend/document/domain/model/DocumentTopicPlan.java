@@ -5,10 +5,12 @@ import com.knot.backend.document.domain.DocumentException;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
+import java.util.LinkedHashMap;
 import lombok.Getter;
 
 @Getter
 public class DocumentTopicPlan {
+    private static final int MAX_CANDIDATE_KEY_LENGTH = 80;
 
     private final Map<Long, String> assignments;
     private final Map<String, String> categoryMapping;
@@ -59,6 +61,75 @@ public class DocumentTopicPlan {
                 throw invalid();
             }
         }
+    }
+
+    public DocumentTopicPlan scopeNewKeys(long firstDocumentId) {
+        if (firstDocumentId <= 0) {
+            throw invalid();
+        }
+        Map<String, String> renamed = new LinkedHashMap<>();
+        for (String key : newNames.keySet()) {
+            renamed.put(
+                    key,
+                    scopedKey(
+                            firstDocumentId,
+                            key
+                    )
+            );
+        }
+        Map<Long, String> scopedAssignments = new LinkedHashMap<>();
+        assignments.forEach(
+                (
+                        id,
+                        key
+                ) -> scopedAssignments.put(
+                        id,
+                        renamed.getOrDefault(
+                                key,
+                                key
+                        )
+                )
+        );
+        Map<String, String> names = new LinkedHashMap<>();
+        Map<String, String> descriptions = new LinkedHashMap<>();
+        renamed.forEach(
+                (
+                        key,
+                        scoped
+                ) -> names.put(
+                        scoped,
+                        newNames.get(key)
+                )
+        );
+        renamed.forEach(
+                (
+                        key,
+                        scoped
+                ) -> descriptions.put(
+                        scoped,
+                        newDescriptions.get(key)
+                )
+        );
+        return new DocumentTopicPlan(
+                scopedAssignments,
+                categoryMapping,
+                names,
+                descriptions
+        );
+    }
+
+    private String scopedKey(
+            long firstDocumentId,
+            String key
+    ) {
+        if (!key.startsWith("n:") || key.length() <= 2) {
+            throw invalid();
+        }
+        String scoped = "n:b" + firstDocumentId + "-" + key.substring(2);
+        if (scoped.length() > MAX_CANDIDATE_KEY_LENGTH) {
+            throw invalid();
+        }
+        return scoped;
     }
 
     private void validateNew(Set<String> existingKeys) {

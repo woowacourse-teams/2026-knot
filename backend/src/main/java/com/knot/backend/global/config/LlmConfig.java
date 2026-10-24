@@ -17,6 +17,7 @@ public class LlmConfig {
     public HttpClient llmHttpClient(LlmProperties properties) {
         properties.validateEnabledConfiguration();
         return HttpClient.newBuilder()
+                .version(HttpClient.Version.HTTP_1_1)
                 .connectTimeout(properties.getConnectTimeout())
                 .followRedirects(HttpClient.Redirect.NEVER)
                 .build();

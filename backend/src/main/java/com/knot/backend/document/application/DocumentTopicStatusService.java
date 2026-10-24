@@ -75,7 +75,7 @@ public class DocumentTopicStatusService {
                 type(item.kind()),
                 item.status()
                         .reportedStatus(item.retryCount()),
-                null,
+                item.targetVersionId(),
                 item.targetCount(),
                 item.processedCount(),
                 changedCount(item),

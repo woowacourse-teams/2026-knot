@@ -14,6 +14,7 @@ public record DocumentTopicOperationSnapshot(
         long changedCount,
         Instant createdAt,
         Instant startedAt,
-        Instant finishedAt
+        Instant finishedAt,
+        Long targetVersionId
 ) {
 }

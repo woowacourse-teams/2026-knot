@@ -171,7 +171,15 @@ class DocumentTopicStatusAcceptanceTest {
                 1,
                 "private database error"
         );
-        jdbc.update("UPDATE document_topic_operations SET kind='RESTORE'");
+        long sourceId = fixtures.saveCompletedTopicOperation(
+                workspace,
+                owner
+        );
+        jdbc.update(
+                "UPDATE document_topic_operations SET kind='RESTORE',target_version_id=91,restoration_source_operation_id=? WHERE id<>?",
+                sourceId,
+                sourceId
+        );
         mvc.perform(
                 get(
                         PATH,

@@ -24,7 +24,7 @@ public class DocumentTopicStatusQueryAdapter implements DocumentTopicStatusQuery
     public Optional<DocumentTopicOperationSnapshot> findOperation(long workspaceId) {
         return jdbc.sql("""
                 SELECT id,kind,status,retry_count,target_count,processed_count,changed_count,
-                       created_at,started_at,finished_at
+                       created_at,started_at,finished_at,target_version_id
                 FROM document_topic_operations WHERE workspace_id=:workspaceId
                 ORDER BY CASE WHEN status IN ('QUEUED','RUNNING','CANCEL_REQUESTED','APPLYING') THEN 0 ELSE 1 END,
                          created_at DESC,id DESC LIMIT 1
@@ -91,6 +91,10 @@ public class DocumentTopicStatusQueryAdapter implements DocumentTopicStatusQuery
                 instant(
                         rs,
                         "finished_at"
+                ),
+                rs.getObject(
+                        "target_version_id",
+                        Long.class
                 )
         );
     }
