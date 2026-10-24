@@ -236,6 +236,13 @@ public class DocumentTopicStoreAdapter implements DocumentTopicStore {
     public void prune(long workspaceId) {
         jdbc.update(
                 """
+                        DELETE FROM document_topic_restoration_targets t USING document_topic_operations o
+                        WHERE t.operation_id=o.id AND o.workspace_id=? AND o.status IN ('SUCCEEDED','FAILED','CANCELLED')
+                        """,
+                workspaceId
+        );
+        jdbc.update(
+                """
                         DELETE FROM document_topic_operation_targets t USING document_topic_operations o
                         WHERE t.operation_id=o.id AND o.workspace_id=? AND o.status IN ('SUCCEEDED','FAILED','CANCELLED')
                         AND NOT EXISTS (SELECT 1 FROM document_topic_recoveries r WHERE r.source_operation_id=o.id)
