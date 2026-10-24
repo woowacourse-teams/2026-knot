@@ -46,18 +46,18 @@ public class Document {
     @Column(nullable = false, updatable = false, columnDefinition = "text")
     private String content;
 
-    @Column(name = "category_id", updatable = false)
+    @Column(name = "category_id")
     private Long categoryId;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "grouping_scheme", nullable = false, updatable = false, length = 20)
+    @Column(name = "grouping_scheme", nullable = false, length = 20)
     private DocumentGroupingScheme groupingScheme = DocumentGroupingScheme.LEGACY;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "assignment_source", updatable = false, length = 20)
+    @Column(name = "assignment_source", length = 20)
     private DocumentCategoryAssignmentSource assignmentSource;
 
-    @Column(name = "assignment_rule_version", updatable = false, length = 40)
+    @Column(name = "assignment_rule_version", length = 40)
     private String assignmentRuleVersion;
 
     @Enumerated(EnumType.STRING)
@@ -87,6 +87,27 @@ public class Document {
         groupingScheme = DocumentGroupingScheme.BROAD;
         assignmentSource = source;
         assignmentRuleVersion = ruleVersion;
+    }
+
+    public boolean reassignCategory(
+            DocumentCategory category,
+            String ruleVersion
+    ) {
+        if (id == null || category == null || DocumentText.isBlank(ruleVersion)) {
+            throw new DocumentException(DocumentErrorCode.INVALID_DOCUMENT_DATA);
+        }
+        if (category.getId() == null || category.getWorkspaceId() != workspaceId || category.isFallback()) {
+            throw new DocumentException(DocumentErrorCode.INVALID_DOCUMENT_DATA);
+        }
+        if (groupingScheme == DocumentGroupingScheme.BROAD && category.getId()
+                .equals(categoryId)) {
+            return false;
+        }
+        categoryId = category.getId();
+        groupingScheme = DocumentGroupingScheme.BROAD;
+        assignmentSource = DocumentCategoryAssignmentSource.REORGANIZATION;
+        assignmentRuleVersion = ruleVersion;
+        return true;
     }
 
     public void validateGeneratedBy(

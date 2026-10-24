@@ -8,6 +8,31 @@ import lombok.RequiredArgsConstructor;
 @Getter
 @RequiredArgsConstructor
 public enum DocumentErrorCode implements ErrorCode {
+    TOPIC_OPERATION_IN_PROGRESS(
+            ErrorCategory.CONFLICT,
+            "TOPIC_OPERATION_IN_PROGRESS",
+            "다른 주제 정리 작업이 진행 중입니다"
+    ),
+    TOPIC_REQUEST_ID_CONFLICT(
+            ErrorCategory.CONFLICT,
+            "TOPIC_REQUEST_ID_CONFLICT",
+            "같은 요청 식별자를 다른 작업에 사용할 수 없습니다"
+    ),
+    TOPIC_REORGANIZATION_TARGET_EMPTY(
+            ErrorCategory.CONFLICT,
+            "TOPIC_REORGANIZATION_TARGET_EMPTY",
+            "재정리할 문서가 없습니다"
+    ),
+    TOPIC_OPERATION_CONFLICT(
+            ErrorCategory.CONFLICT,
+            "TOPIC_OPERATION_CONFLICT",
+            "다른 주제 정리 작업이 진행 중이거나 요청이 일치하지 않습니다"
+    ),
+    INVALID_TOPIC_PLAN(
+            ErrorCategory.INTERNAL_SERVER_ERROR,
+            "INVALID_TOPIC_PLAN",
+            "주제 정리 결과가 올바르지 않습니다"
+    ),
     INVALID_DOCUMENT_CATEGORY_RESPONSE(
             ErrorCategory.INTERNAL_SERVER_ERROR,
             "INVALID_DOCUMENT_CATEGORY_RESPONSE",
