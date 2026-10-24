@@ -2,8 +2,7 @@
 
 # 정본 위치와 재사용하는 조각
 
-노션과 Figma가 정본이다. 하네스는 노션을 읽고 쓰며 Figma는 읽기만 한다. 문서를 저장소
-Markdown으로 옮기지 않는다. 디자인 작업은 Notion 요청 문서로 담당자에게 전달한다.
+노션과 Figma가 정본이다. 하네스는 읽고 쓰되 문서를 저장소 Markdown으로 옮기지 않는다.
 
 ## 정본 위치
 
@@ -24,8 +23,7 @@ Markdown으로 옮기지 않는다. 디자인 작업은 Notion 요청 문서로 
 
 노션과 Figma 접근: 설정 절차와 토큰 발급, 전달 규칙은 `docs/harness/mcp-access.md`에 있다. 노션은
 유월이 만든 내부 통합 토큰을 각자 환경 변수로 두고, Figma는 각자 계정으로 로그인한다. 토큰 값은
-문서나 저장소에 적지 않는다. 필요한 Notion 정본에 접근하지 못하면 해당 단계는 `blocked`다.
-Figma 연결이 없어도 디자인 요청 정리와 이슈 생성은 진행할 수 있다.
+문서나 저장소에 적지 않는다. 연결이 없는 세션의 서브 에이전트는 `blocked`로 돌아온다.
 
 ## 기획서는 읽기만
 
@@ -42,11 +40,11 @@ Figma 연결이 없어도 디자인 요청 정리와 이슈 생성은 진행할 
 | --- | --- | --- |
 | 이슈 생성(위험도, 인터뷰, Grill, ADR 판정, 게시) | `.agents/skills/knot-issue-planning`, `knot-deep-interview`, `knot-grill-me`, `harness/issue_planning.py`, `docs/harness/issue-planning.md` | 이슈 |
 | 제품 기획 기준(진입점, 정본은 노션) | `backend/docs/product/current-v2-mvp.md` | 기능 요구사항, 이슈, 구현 하네스 |
-| 백엔드 노션 근거 탐색 | `backend/docs/notion-context.md`, `docs/harness/mcp-access.md` | 도메인 규칙, API 명세, BE 구현 하네스 |
+| 백엔드 노션 근거 탐색 | `backend/docs/notion-context.md`, `harness/notion-sync-scope.json`, `harness/sync_notion_docs.py` | 도메인 규칙, API 명세, BE 구현 하네스 |
 | 백엔드 API 명세, 커밋, PR | `backend/.agents/skills/knot-api-spec`, `knot-commit`, `knot-pr` (진입점 `backend/.claude/skills`) | API 명세, BE 구현 하네스 |
 | 프론트 작업 절차와 규칙 | `frontend/CLAUDE.md`, `frontend/.claude/rules/*.md` | FE 구현 하네스 |
 | 프론트 스토리북, PR 본문, 리뷰, 폴더 구조 | `frontend/.claude/skills/create-story`, `create-pr-content`, `review`, `project-structure` | FE 구현 하네스 |
-| 디자인 요청과 기존 Figma 참조 | `.agents/skills/knot-feature/subagents/design.md` (Notion에 요청 정리, 유월 또는 편집 가능한 담당자가 디자인) | 디자인 |
+| Figma 변경 표시 | 공유 스킬 `knot-ux-journal`, `knot-marker-cleanup` (`~/.local/share/agent-skills/`) | 디자인 |
 | QA 시트 읽기와 E2E, PR CI 게이트 | `knot-qa` 스킬, `frontend/.claude/skills/qa-e2e`, `.github/workflows/frontend-e2e.yml`, PR 템플릿 「관련 QA」 (PR #855, 머지 대기) | QA (E2E) |
 | ADR 자산화 | `harness/materialize_adr.py` | BE, FE 구현 하네스 |
 | CI | `frontend-ci.yml`(필수 검사), `backend-ci.yml`, `storybook-preview.yml`, `governance.yml`, `issue-harness.yml` | 구현 하네스 |

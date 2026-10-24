@@ -26,10 +26,7 @@
 
 - 다른 단계에 메시지를 보내 정보를 받지 않는다. GitHub 이슈, Figma, 노션 QA 시트에 직접 접근해
   스스로 처리한다. 도메인 규칙은 읽지 않는다.
-- 이슈 본문의 「노션 변경 사항」 링크가 정본 위치다. 기존 Figma 디자인을 읽어 구현한다.
-  UI 변경에 필요한 디자인이 없으면 Notion 디자인 요청 링크와 필요한 결정을 제시해
-  `needs_user_input`으로 멈춘다. 디자인이 필요 없는 변경은 계속한다.
-  Figma를 자동 편집하거나 참고용 AI 초안을 확정 디자인으로 취급하지 않는다.
+- 이슈 본문의 「노션 변경 사항」 링크가 정본 위치다. 이슈와 Figma가 있으면 다 구현할 수 있다.
 - 기존 프론트 하네스를 그대로 쓴다. `frontend/CLAUDE.md`의 작업 절차와 `frontend/.claude/rules`,
   `project-structure`, `create-story`, `create-pr-content`, `review` 스킬, `code-reviewer` 에이전트.
   저장소 루트 `.claude/skills`에 이 스킬들의 링크가 있어 루트 세션에서도 찾는다. 브랜치는

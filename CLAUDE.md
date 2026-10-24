@@ -2,8 +2,7 @@
 
 # Claude Code
 
-기능 추가·기존 Issue 구현은 저장소의 `/knot-feature`에서 시작한다.
-독립적인 BE·FE Issue 기획과 기능 흐름의 Issue 단계에는 `/knot-issue-planning`을 사용한다. 자료가 부족한
+Knot 저장소의 BE·FE Issue 기획에는 `/knot-issue-planning`을 사용한다. 자료가 부족한
 고위험 작업의 인터뷰에는 `/knot-deep-interview`를 사용하고, 모든 고위험 계약의 압박
 검증에는 `/knot-grill-me`를 사용한다.
 
