@@ -25,16 +25,18 @@ const hasSeenNotes = () => {
  * - `isAutoOpen`: 처음 그릴 때 패널을 저절로 열지. 이 기기에서 새 소식을 한 번도 열지 않았고 노트가 있을 때만 열어요.
  *   녹음 중에는 방해가 되므로 열지 않아요. 이때는 읽음도 남기지 않아 녹음 뒤에 들어오면 열려요.
  * - `markAsSeen`: 패널이 열리면(저절로든 눌러서든) 맨 위 노트 id를 남겨 다음부터는 저절로 열지 않아요.
+ *   부르면 `isAutoOpen`도 꺼져, 저절로 연 패널을 닫은 뒤 버튼으로 다시 열면 메뉴부터 보여요.
  *
  * 판단은 처음 그릴 때 한 번만 해요. 열린 채로 녹음을 시작해도 닫지 않아요.
  */
 export const useLastSeenNote = ({ notes }: UseLastSeenNoteParams) => {
   const { isRecordingActive } = useRecordingState();
-  const [isAutoOpen] = useState(
+  const [isAutoOpen, setIsAutoOpen] = useState(
     () => notes.length > 0 && !isRecordingActive && !hasSeenNotes(),
   );
 
   const markAsSeen = () => {
+    setIsAutoOpen(false);
     if (notes.length === 0) return;
 
     try {

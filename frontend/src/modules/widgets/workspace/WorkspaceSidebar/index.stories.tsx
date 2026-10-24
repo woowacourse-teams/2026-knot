@@ -5,6 +5,7 @@ import { ToastProvider } from "@provider/context/toastContext";
 import { getRouterPath, PATH_ROUTE } from "@routes/PATH_ROUTE";
 import type { Meta, StoryObj } from "@storybook/react-webpack5";
 import { MemoryRouter, Outlet, Route, Routes } from "react-router";
+import { userEvent, within } from "storybook/test";
 
 import WorkspaceSidebar from ".";
 
@@ -32,6 +33,8 @@ const DOCUMENT_PATH = getRouterPath({
  * - 이름을 누르면 다른 워크스페이스로 옮겨 가거나 새로 만들 수 있는 메뉴가 열려요. 메뉴의 동작은 「Workspace/WorkspaceSwitcher」에 있어요.
  * - 「문서」 아래에는 워크스페이스의 문서가 폴더별로 나와요. 폴더를 누르면 펼치고, 문서를 누르면 그 문서 보기로 가요.
  *   지금 보는 문서의 폴더만 펼친 채로 시작해요.
+ * - 휴대폰(767 이하)에서만 맨 아래에 「피드백」이 있어요. 휴대폰 상단 메뉴에는 피드백 메뉴가 없어서 여기서 피드백 패널을 화면 아래 시트로 열어요.
+ *   패널의 동작은 「Feedback/FeedbackPanel」에 있어요.
  */
 const meta = {
   title: "Workspace/WorkspaceSidebar",
@@ -59,10 +62,11 @@ const meta = {
     },
   ],
   decorators: [
+    // 앱(AppProviders)처럼 모달을 토스트 안에 둬요. 피드백 시트가 보낸 뒤 토스트를 띄워요
     (Story, { parameters }) => (
-      <DialogProvider>
-        <MemoryRouter initialEntries={[parameters.initialPath]}>
-          <ToastProvider>
+      <MemoryRouter initialEntries={[parameters.initialPath]}>
+        <ToastProvider>
+          <DialogProvider>
             <Routes>
               <Route
                 element={
@@ -83,9 +87,9 @@ const meta = {
                 />
               </Route>
             </Routes>
-          </ToastProvider>
-        </MemoryRouter>
-      </DialogProvider>
+          </DialogProvider>
+        </ToastProvider>
+      </MemoryRouter>
     ),
   ],
 } satisfies Meta<typeof WorkspaceSidebar>;
@@ -100,4 +104,14 @@ export const Default: Story = {};
 /** 문서 보기 화면에서 사이드바를 연 모습이에요. 지금 보는 「스프린트 회고」가 든 「주간 회의」 폴더가 펼쳐져 있고, 그 문서 행이 배경으로 표시돼요. */
 export const DocumentOpened: Story = {
   parameters: { initialPath: DOCUMENT_PATH },
+};
+
+/** 휴대폰에서 맨 아래 「피드백」을 눌러 피드백 패널을 시트로 연 모습이에요. 흐린 바깥이나 ESC로 닫혀요 */
+export const MobileFeedback: Story = {
+  globals: { viewport: { value: "mobile390", isRotated: false } },
+  play: async ({ canvasElement }) => {
+    await userEvent.click(
+      within(canvasElement).getByRole("button", { name: "피드백" }),
+    );
+  },
 };

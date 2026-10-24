@@ -151,7 +151,7 @@ def test_pass_or_fail_labels_require_reviewer_and_all_quality_dimensions() -> No
 def test_human_review_template_covers_every_independent_workload_turn() -> None:
     # Given: the checked-in pending template for the independent workload
     rows = load_human_review(
-        Path("docs/llm-search-benchmark-human-review-template.jsonl")
+        Path("backend/docs/llm-search-benchmark-human-review-template.jsonl")
     )
 
     # Then: every workload turn has one pending row ready for a reviewer

@@ -136,8 +136,8 @@ python3 harness/materialize_adr.py <snapshot.json> \
 
 `--implementation`은 Issue 기획 단계의 실수로 파일이 생기는 것을 막는 실행 단계
 표시다. 새 Issue 번호가 정해지기 전에는 본문에
-`docs/adr/{ISSUE_NUMBER}-<slug>.md`만 표시하고 실제 파일을 만들지 않는다. 번호가 정해진
-뒤 materializer가 `docs/adr/<Issue 번호>-<slug>.md`를 만든다. 파일은 코드와 같은 PR에
+`backend/docs/adr/{ISSUE_NUMBER}-<slug>.md`만 표시하고 실제 파일을 만들지 않는다. 번호가 정해진
+뒤 materializer가 `backend/docs/adr/<Issue 번호>-<slug>.md`를 만든다. 파일은 코드와 같은 PR에
 포함하고 팀 리뷰 후에만 `Accepted`로 바꾼다. materializer는 commit, push, Issue 게시와
 PR merge를 실행하지 않는다.
 

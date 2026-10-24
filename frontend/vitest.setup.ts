@@ -16,6 +16,14 @@ beforeAll(() => installFakeMedia());
 beforeAll(() => {
   HTMLCanvasElement.prototype.getContext = () => null;
 });
+// jsdom에는 ResizeObserver가 없어요. 크기가 바뀌지 않는 환경이라 알릴 일이 없는 빈 구현을 둬요
+beforeAll(() => {
+  globalThis.ResizeObserver ??= class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  };
+});
 afterEach(() => {
   mockServer.resetHandlers();
   // 요청으로 바뀐 mock 상태가 다음 테스트의 응답을 바꾸지 않게 지워요
