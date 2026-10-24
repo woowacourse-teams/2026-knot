@@ -24,6 +24,19 @@ pnpm --dir runner test
 
 FFmpeg, `whisper-cli`, sherpa-onnx 화자 분리 실행 파일과 모델 파일을 별도로 준비합니다. 도구·모델의 출처는 [외부 코드와 실행 도구](THIRD_PARTY_NOTICES.md)를 참고합니다.
 
+VAD를 사용하려면 원음 기준 단어 시각을 출력하는 CLI가 필요합니다. upstream v1.9.4의 JSON은
+VAD로 압축된 token 시각을 그대로 출력하므로 문장 끝에 맞춰 추정 복원하면 안 됩니다.
+[패치](runner/native/whisper-original-timestamps.patch)는 공식
+`whisper_full_get_token_t0/t1`로 JSON 시각만 복원합니다. 모델·추론 알고리즘은 변경하지 않습니다.
+upstream commit `927cfce34f31707e17f2bff35c349632fb9e2c3a`에 적용한 뒤 기존 CMake 도구로 빌드합니다.
+
+```sh
+git -C /path/to/whisper.cpp checkout 927cfce34f31707e17f2bff35c349632fb9e2c3a
+git -C /path/to/whisper.cpp apply /path/to/2026-Knot/ai-server/runner/native/whisper-original-timestamps.patch
+cmake -S /path/to/whisper.cpp -B /path/to/whisper-build -DCMAKE_BUILD_TYPE=Release
+cmake --build /path/to/whisper-build --target whisper-cli -j 4
+```
+
 1. [프로필 예시](examples/profile.example.json)를 `ai-server/profile.json`으로 복사하고 바이너리·모델의 절대 경로와 스레드 수를 설정합니다.
 2. [.env.example](.env.example)을 `ai-server/.env`로 복사하고 인증 토큰과 허용할 S3 호스트를 설정합니다. EC2도 같은 토큰을 사용합니다.
 3. `ai-server/`에서 환경 변수를 읽고 빌드한 JAR를 실행합니다. Spring은 `.env`를 자동으로 읽지 않습니다.
