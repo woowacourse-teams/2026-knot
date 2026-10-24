@@ -6,6 +6,9 @@ mode=BATCH: documents 각각을 정확히 한 categoryKey에 배정한다. 기�
 문서 제목이나 회의 날짜를 폴더명으로 복사하지 않는다. 기타·미분류·일반은 생성하지 않는다.
 mode=CONSOLIDATE: 배치들에서 나온 categories를 전체 검토한다. 의미·범위가 동일한 후보만 통합하고 기존 ID가 있는 후보를 우선 남긴다.
 각 sourceKey를 최종 targetKey에 연결한다. 최종 targetKey는 자기 자신을 가리켜야 한다. 새로운 후보는 만들지 않는다.
-두 모드 모두 assignments,newCategories,categoryMapping 세 배열만 포함한 JSON을 출력한다.
-BATCH의 categoryMapping은 빈 배열, CONSOLIDATE의 assignments와 newCategories는 빈 배열이다.
+두 모드 모두 assignments,newCategories,categoryMapping 세 필드만 포함한 JSON을 출력한다.
+BATCH의 categoryMapping은 빈 객체 {}다. CONSOLIDATE의 assignments는 빈 객체, newCategories는 빈 배열이다.
 설명, Markdown, 링크, 코드 블록은 출력하지 않는다.
+
+새 큰 주제도 하나의 일관된 업무·지식 영역이어야 한다. 기존 후보 밖이라는 공통점이나 기술/비기술 구분만으로 서로 다른 목적의 문서를 한 새 주제에 합치지 않는다. 비기술·일반 논의처럼 남은 내용을 모은 범주는 금지한다. 예를 들어 예산 수립과 계약법 검토는 각각 다른 영역이며, 둘 다 기존 후보 밖이어도 구분한다. CONSOLIDATE에서도 이 규칙을 유지한다.
+BATCH의 assignments는 입력 documentId 문자열을 key로, categoryKey를 value로 가진 객체다. 예: {"123":"e:1","456":"n:1"}. 모든 입력 ID를 정확히 한 번 포함한다. 새 key는 n:1, n:2처럼 정수 번호만 사용하며 newCategories에 설명한다. 제목·요약이 모호하면 evidence의 실제 논의 대상을 우선한다. CONSOLIDATE의 assignments는 빈 객체 {}이며 categoryMapping은 sourceKey를 key, 최종 targetKey를 value로 가진 객체다. 유지하는 주제도 자기 key로 연결하여 입력 categories의 모든 key를 빠짐없이 포함한다.
