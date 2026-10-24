@@ -606,11 +606,15 @@ class DocumentTopicReorganizationIntegrationTest {
                 owner,
                 UUID.randomUUID()
         );
+        long sourceId = fixtures.saveCompletedTopicOperation(
+                workspace,
+                owner
+        );
         assertThatThrownBy(
                 () -> jdbc.update(
                         """
-                                INSERT INTO document_topic_operations(operation_id,workspace_id,requester_id,request_id,kind,status,created_at,deadline_at,next_attempt_at)
-                                VALUES (?,?,?,?,'RESTORE','QUEUED',?,?,?)
+                                INSERT INTO document_topic_operations(operation_id,workspace_id,requester_id,request_id,kind,status,created_at,deadline_at,next_attempt_at,target_version_id,restoration_source_operation_id)
+                                VALUES (?,?,?,?,'RESTORE','QUEUED',?,?,?,91,?)
                                 """,
                         UUID.randomUUID(),
                         workspace,
@@ -618,7 +622,8 @@ class DocumentTopicReorganizationIntegrationTest {
                         UUID.randomUUID(),
                         java.sql.Timestamp.from(NOW),
                         java.sql.Timestamp.from(NOW.plusSeconds(1800)),
-                        java.sql.Timestamp.from(NOW)
+                        java.sql.Timestamp.from(NOW),
+                        sourceId
                 )
         ).isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
     }
@@ -735,10 +740,14 @@ class DocumentTopicReorganizationIntegrationTest {
     @DisplayName("복원에 사용한 requestId를 재정리에 재사용하면409로 거절한다")
     void start_failure_requestKindConflict() {
         UUID request = UUID.randomUUID();
+        long sourceId = fixtures.saveCompletedTopicOperation(
+                workspace,
+                owner
+        );
         jdbc.update(
                 """
-                        INSERT INTO document_topic_operations(operation_id,workspace_id,requester_id,request_id,kind,status,created_at,deadline_at,next_attempt_at,finished_at)
-                        VALUES (?,?,?,?,'RESTORE','SUCCEEDED',?,?,?,?)
+                        INSERT INTO document_topic_operations(operation_id,workspace_id,requester_id,request_id,kind,status,created_at,deadline_at,next_attempt_at,finished_at,target_version_id,restoration_source_operation_id)
+                        VALUES (?,?,?,?,'RESTORE','SUCCEEDED',?,?,?,?,91,?)
                         """,
                 UUID.randomUUID(),
                 workspace,
@@ -747,7 +756,8 @@ class DocumentTopicReorganizationIntegrationTest {
                 java.sql.Timestamp.from(NOW),
                 java.sql.Timestamp.from(NOW.plusSeconds(1800)),
                 java.sql.Timestamp.from(NOW),
-                java.sql.Timestamp.from(NOW)
+                java.sql.Timestamp.from(NOW),
+                sourceId
         );
         assertThatThrownBy(
                 () -> start.start(

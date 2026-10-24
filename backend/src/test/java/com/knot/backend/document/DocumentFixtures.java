@@ -15,6 +15,44 @@ public class DocumentFixtures {
         this.jdbc = jdbc;
     }
 
+    public long saveCompletedTopicOperation(
+            long workspaceId,
+            long ownerId
+    ) {
+        return jdbc.sql("""
+                INSERT INTO document_topic_operations(operation_id,workspace_id,requester_id,request_id,kind,status,
+                    created_at,deadline_at,next_attempt_at,finished_at)
+                VALUES (:operationId,:workspaceId,:ownerId,:requestId,'REORGANIZE','SUCCEEDED',
+                    :time,:deadline,:time,:time) RETURNING id
+                """)
+                .param(
+                        "operationId",
+                        UUID.randomUUID()
+                )
+                .param(
+                        "workspaceId",
+                        workspaceId
+                )
+                .param(
+                        "ownerId",
+                        ownerId
+                )
+                .param(
+                        "requestId",
+                        UUID.randomUUID()
+                )
+                .param(
+                        "time",
+                        Timestamp.from(CREATED_AT)
+                )
+                .param(
+                        "deadline",
+                        Timestamp.from(CREATED_AT.plusSeconds(1800))
+                )
+                .query(Long.class)
+                .single();
+    }
+
     public long saveMember(String nickname) {
         return jdbc.sql("INSERT INTO members (nickname) VALUES (:nickname) RETURNING id")
                 .param(
