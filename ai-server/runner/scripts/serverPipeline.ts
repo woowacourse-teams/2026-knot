@@ -4,6 +4,7 @@ import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { assembleWindowResult, measuredWordGroups, validWindow, type WindowInput } from './windowResult'
 import { assignSpeakers, mergeUtterances, SERVER_SPEAKER_POLICY } from '../src/core/merge'
+import type { SttWord } from '../src/core/types'
 import { buildDiarizeArgs, parseDiarizeOutput } from '../src/main/pipeline/diarize'
 import { normalizeWavFile } from '../src/main/pipeline/normalize'
 import { assertRestoredVadTimestamps, buildWhisperArgs, parseWhisperOutput } from '../src/main/pipeline/whisper'
@@ -64,9 +65,13 @@ export const validateManifest = (value: unknown): ServerManifest => {
   return manifest
 }
 
+/** 원음 길이를 가진 단어가 없는 전체 전사 segment는 단어 없이 segment 시각으로 화자를 배정한다. */
+const hasMeasuredWord = (words: SttWord[]) =>
+  words.some(word => Math.round(word.end * 16000) > Math.round(word.start * 16000))
+
 export const assembleResult = (raw: Buffer, diarization: string, speakerCount?: number) => {
-  const segments = parseWhisperOutput(raw).map(segment => segment.words?.length
-    ? { ...segment, words: measuredWordGroups(segment.words) } : segment)
+  const segments = parseWhisperOutput(raw).map(segment => segment.words && hasMeasuredWord(segment.words)
+    ? { ...segment, words: measuredWordGroups(segment.words) } : { ...segment, words: [] })
   const speakerSegments = parseDiarizeOutput(diarization)
   if (segments.some((item) => item.text.trim()) && !speakerSegments.length) {
     throw new Error('DIARIZATION_EMPTY')
