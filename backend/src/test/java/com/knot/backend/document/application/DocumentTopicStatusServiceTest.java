@@ -109,7 +109,8 @@ class DocumentTopicStatusServiceTest {
                                 0,
                                 Instant.EPOCH,
                                 null,
-                                Instant.EPOCH
+                                Instant.EPOCH,
+                                null
                         )
                 )
         );
