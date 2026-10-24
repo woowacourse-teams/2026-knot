@@ -47,7 +47,7 @@ OWNER가 미리보기 없이 전체 재정리를 승인하고 기존 목록을 �
 
 ## 확인
 
-- 예정 경로: `docs/adr/934-document-topic-reorganization.md`
+- 예정 경로: `backend/docs/adr/934-document-topic-reorganization.md`
 - 결정 주체: 흑곰
 - AI 하네스가 Proposed ADR 파일을 생성했다.
 - 팀이 PR에서 승인한 뒤 Accepted로 바꾼다.
