@@ -157,7 +157,7 @@ export class RecordingAudioSaveDto {
   acceptUntil: string | null;
   /** `FAILED`일 때의 실패 이유 코드(예: `AUDIO_NO_CONTENT`). 최종화 작업이 없거나 실패가 아니면 null */
   failureCode: string | null;
-  /** 저장 재시도 API로 다시 시도할 수 있으면 true. 최종화 작업이 없거나, 폐기됐거나, 종료 30일이 지났으면 false */
+  /** 저장 재시도 API로 다시 시도할 수 있으면 true. 최종화 작업이 없거나, 폐기됐거나, 실제 재접수 조건을 충족하지 않으면 false. 경과 일수 제한은 없어요 */
   canRetry: boolean;
   /** 최종화 작업 ID. 작업이 만들어지기 전이면 null. 재시도해도 같은 ID예요 */
   jobId: number | null;

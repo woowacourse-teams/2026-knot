@@ -76,9 +76,9 @@ const RETRY = "다시 시도";
 const RETRY_FAILED_TOAST =
   "다시 시도하지 못했어요. 잠시 후 다시 시도해 주세요.";
 const TRANSCRIPTION_FAILED_TEXT = "녹음을 글로 옮기지 못했어요";
-const TRANSCRIPTION_FAILED_HINT = "녹음은 30일 동안 보관해요";
+const TRANSCRIPTION_FAILED_HINT = "다시 시도할 수 있어요";
 const DOCUMENT_FAILED_TEXT = "문서를 만들지 못했어요";
-const DOCUMENT_FAILED_HINT = "녹음과 원문은 7일 동안 보관해요";
+const DOCUMENT_FAILED_HINT = "다시 시도할 수 있어요";
 type FailedStatus = "TRANSCRIPTION_FAILED" | "DOCUMENT_FAILED";
 
 // 녹음 상세 mock에서 전사가 실패한 녹음. 전사 다시 시도 mock은 이 녹음만 접수해요

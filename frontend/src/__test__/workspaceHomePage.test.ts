@@ -299,6 +299,10 @@ test.describe("홈 녹음 실패 카드", () => {
         page.getByRole("button", { name: "회의 녹음 시작" }),
       ).toBeVisible();
 
+      await expect(
+        card.getByText("다시 시도할 수 있어요", { exact: true }),
+      ).toBeVisible();
+      await expect(card.getByText(/보관해요/)).toHaveCount(0);
       await card.getByRole("button", { name: "다시 시도" }).click();
 
       await expect(
@@ -319,7 +323,9 @@ test.describe("홈 녹음 실패 카드", () => {
       await expect(card.getByRole("button", { name: "다시 시도" })).toHaveCount(
         0,
       );
-      await expect(card.getByText(/동안 보관해요/)).toHaveCount(0);
+      await expect(
+        card.getByText("다시 시도할 수 있어요", { exact: true }),
+      ).toHaveCount(0);
       await expect(
         card.getByText("진행 중인 녹음이 없어요", { exact: true }),
       ).toHaveCount(0);
