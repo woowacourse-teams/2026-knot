@@ -543,7 +543,9 @@ class RecordingStartServiceTest {
                 mock(com.knot.backend.recording.domain.repository.RecordingAudioFinalizationRepository.class),
                 mock(com.knot.backend.recording.domain.repository.RecordingAudioCleanupRepository.class),
                 mock(com.knot.backend.recording.domain.repository.RecordingTranscriptionRepository.class),
-                mock(com.knot.backend.document.application.DocumentGenerationProgressService.class)
+                mock(com.knot.backend.document.application.DocumentGenerationProgressService.class),
+                mock(com.knot.backend.recording.domain.repository.RecordingAudioUploadRepository.class),
+                mock(com.knot.backend.global.config.TranscriptionProperties.class)
         );
     }
 

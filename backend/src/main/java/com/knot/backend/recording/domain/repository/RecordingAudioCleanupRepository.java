@@ -15,14 +15,8 @@ public interface RecordingAudioCleanupRepository {
             long recordingId,
             Instant now
     );
-    List<Long> findCandidates(
-            Instant now,
-            int limit
-    );
-    RecordingAudioCleanupPolicy policy(
-            long recordingId,
-            Instant now
-    );
+    List<Long> findCandidates(int limit);
+    RecordingAudioCleanupPolicy policy(long recordingId);
     List<Long> findReady(
             Instant now,
             int limit

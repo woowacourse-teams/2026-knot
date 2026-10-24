@@ -187,58 +187,51 @@ class RecordingAudioCleanupIntegrationTest {
     }
 
     @Test
-    void failedRetentionClosesAtExactLogicalThirtyDays() {
-        // given
-        when(clock.instant()).thenReturn(
-                NOW.plus(Duration.ofDays(30))
-                        .minusNanos(1000)
-        );
-        state.schedule(1);
-        assertThat(scope()).isEqualTo("DORMANT");
-        when(clock.instant()).thenReturn(NOW.plus(Duration.ofDays(30)));
-        // when
-        state.schedule(1);
-        // then
-        assertThat(scope()).isEqualTo("ALL");
+    void failedAudioRemainsAvailableAfterThirtyDays() {
+        jdbc.sql("UPDATE recording_audio_finalizations SET status='FAILED',retryable=TRUE")
+                .update();
+        for (int days : new int[]{30, 31, 365}) {
+            when(clock.instant()).thenReturn(NOW.plus(Duration.ofDays(days)));
+            state.schedule(1);
+            assertThat(scope()).isEqualTo("DORMANT");
+            assertThat(repository.findCandidates(20)).isEmpty();
+            assertThat(state.claim(1)).isEmpty();
+        }
         assertThat(
                 column(
                         "frozen",
                         Boolean.class,
                         "recording_audio_streams"
                 )
-        ).isTrue();
+        ).isFalse();
         assertThat(
                 column(
                         "status",
                         String.class,
                         "recording_audio_finalizations"
                 )
-        ).isEqualTo("DISCARDED");
+        ).isEqualTo("FAILED");
         assertThat(
                 column(
                         "retryable",
                         Boolean.class,
                         "recording_audio_finalizations"
                 )
-        ).isFalse();
+        ).isTrue();
     }
 
     @Test
-    void readyRetentionUsesCompletionTimeAndRetainsHistoricalQuality() {
-        // given
+    void readyAudioSurvivesYearAndOnlyRawChunksAreCleaned() {
         ready();
         completedUpload(NOW.plusSeconds(10));
-        when(clock.instant()).thenReturn(NOW.plus(Duration.ofDays(30)));
+        when(clock.instant()).thenReturn(NOW.plus(Duration.ofDays(365)));
         state.schedule(1);
         assertThat(scope()).isEqualTo("RAW");
-        when(clock.instant()).thenReturn(
-                NOW.plusSeconds(10)
-                        .plus(Duration.ofDays(30))
-        );
-        // when
-        state.schedule(1);
-        // then
-        assertThat(scope()).isEqualTo("ALL");
+        assertThat(
+                state.claim(1)
+                        .orElseThrow()
+                        .storagePrefix()
+        ).isEqualTo("recordings/1/chunks/");
         assertThat(
                 column(
                         "status",
@@ -253,6 +246,37 @@ class RecordingAudioCleanupIntegrationTest {
                         "recording_audio_finalizations"
                 )
         ).isEqualTo("PARTIAL");
+        assertThat(
+                jdbc.sql("SELECT revoked_at FROM recording_audio_uploads")
+                        .query(java.sql.Timestamp.class)
+                        .optional()
+        ).isEmpty();
+    }
+
+    @Test
+    void previouslyScheduledAgeOnlyPrefixDeletionDoesNotRun() {
+        new TransactionTemplate(transactions).executeWithoutResult(
+                status -> repository.findForUpdate(1)
+                        .orElseThrow()
+                        .request(
+                                com.knot.backend.recording.domain.model.RecordingAudioCleanupScope.ALL,
+                                null,
+                                NOW
+                        )
+        );
+        when(clock.instant()).thenReturn(NOW.plus(Duration.ofDays(365)));
+        assertThat(
+                repository.findReady(
+                        clock.instant(),
+                        20
+                )
+        ).isEmpty();
+        assertThat(state.claim(1)).isEmpty();
+        worker.executeCleanup(1);
+        verify(
+                storage,
+                org.mockito.Mockito.never()
+        ).deleteRecordingPrefix(anyString());
     }
 
     @Test

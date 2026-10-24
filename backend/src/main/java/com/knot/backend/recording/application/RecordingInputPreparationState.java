@@ -1,5 +1,7 @@
 package com.knot.backend.recording.application;
 
+import com.knot.backend.recording.domain.model.RecordingAudioUpload;
+
 import com.knot.backend.recording.domain.model.RecordingTranscriptionInput;
 import com.knot.backend.recording.domain.model.RecordingAudioCleanupScope;
 import com.knot.backend.recording.domain.model.StoredAudioChunk;
@@ -156,18 +158,10 @@ public class RecordingInputPreparationState {
                                 session.getMemberId()
                         )
                 )
-                .filter(
-                        session -> session.getEndedAt() != null && now().isBefore(
-                                session.getEndedAt()
-                                        .plus(Duration.ofDays(30))
-                        )
-                )
+                .filter(session -> session.getEndedAt() != null)
                 .isPresent()
                 && uploads.findByRecordingIdForUpdate(id)
-                        .filter(
-                                upload -> upload.isAudioAvailable() && upload.getRevokedAt() == null
-                                        && !upload.isRetentionExpired(now())
-                        )
+                        .filter(RecordingAudioUpload::isAudioAvailable)
                         .isPresent()
                 && cleanup.findForUpdate(id)
                         .map(task -> task.getScope() != RecordingAudioCleanupScope.ALL)

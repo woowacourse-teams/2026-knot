@@ -91,7 +91,7 @@ class RecordingCurrentControllerTest {
     }
 
     @Test
-    @DisplayName("문서 생성 중이면 PROCESSING과 기존 네 개 필드만 반환한다")
+    @DisplayName("문서 생성 중이면 PROCESSING과 재시도 불가를 반환한다")
     void findCurrent_success_processing() throws Exception {
         // given
         when(
@@ -124,7 +124,9 @@ class RecordingCurrentControllerTest {
                 .andExpect(jsonPath("$.status").value("PROCESSING"))
                 .andExpect(jsonPath("$.startedAt").value("2026-10-05T00:00:00Z"))
                 .andExpect(jsonPath("$.elapsedMillis").value(125_000L))
-                .andExpect(jsonPath("$.length()").value(4));
+                .andExpect(jsonPath("$.retryable").value(false))
+                .andExpect(jsonPath("$.retryableJobIds").isEmpty())
+                .andExpect(jsonPath("$.length()").value(6));
     }
 
     @Test
@@ -173,6 +175,48 @@ class RecordingCurrentControllerTest {
         // then
         result.andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.code").value("WORKSPACE_ACCESS_DENIED"));
+    }
+
+    @Test
+    void findCurrent_success_documentFailureContract() throws Exception {
+        when(
+                recordingService.findCurrent(
+                        WORKSPACE_ID,
+                        MEMBER_ID
+                )
+        ).thenReturn(
+                Optional.of(
+                        new RecordingCurrentResult(
+                                RECORDING_ID,
+                                CurrentRecordingStatus.DOCUMENT_FAILED,
+                                STARTED_AT,
+                                125_000L,
+                                true,
+                                List.of(
+                                        7L,
+                                        9L
+                                )
+                        )
+                )
+        );
+        mockMvc.perform(
+                get(
+                        "/api/v1/workspaces/{workspaceId}/recordings/current",
+                        WORKSPACE_ID
+                )
+        )
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("DOCUMENT_FAILED"))
+                .andExpect(jsonPath("$.retryable").value(true))
+                .andExpect(
+                        jsonPath("$.retryableJobIds").value(
+                                org.hamcrest.Matchers.contains(
+                                        7,
+                                        9
+                                )
+                        )
+                )
+                .andExpect(jsonPath("$.length()").value(6));
     }
 
     private UsernamePasswordAuthenticationToken memberAuthentication() {

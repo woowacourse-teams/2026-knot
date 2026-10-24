@@ -1,6 +1,10 @@
 package com.knot.backend.recording.application;
 
 import com.knot.backend.document.application.DocumentGenerationProgressService;
+import com.knot.backend.document.application.dto.result.DocumentGenerationHomeResult;
+import com.knot.backend.recording.domain.model.RecordingAudioUpload;
+import com.knot.backend.recording.domain.repository.RecordingAudioUploadRepository;
+import java.util.List;
 import com.knot.backend.document.domain.model.DocumentGenerationProcessingStatus;
 import com.knot.backend.recording.application.dto.result.CurrentRecordingStatus;
 import com.knot.backend.recording.domain.model.AudioFinalizationStatus;
@@ -59,6 +63,8 @@ public class RecordingService {
     private final RecordingAudioCleanupRepository audioCleanup;
     private final RecordingTranscriptionRepository transcriptions;
     private final DocumentGenerationProgressService documentProgress;
+    private final RecordingAudioUploadRepository uploads;
+    private final com.knot.backend.global.config.TranscriptionProperties transcriptionProperties;
 
     @Transactional
     public RecordingStartResult start(
@@ -143,18 +149,18 @@ public class RecordingService {
                 workspaceId,
                 memberId
         );
-        Optional<RecordingSession> latestSession = recordingSessionRepository.findLatestByWorkspaceIdAndMemberId(
+        Instant decidedAt = now();
+        Optional<RecordingSession> candidate = recordingSessionRepository.findCurrentByWorkspaceIdAndMemberId(
                 workspaceId,
-                memberId
+                memberId,
+                decidedAt
         );
-        Instant now = clock.instant();
-        return latestSession.flatMap(
-                session -> currentStatus(session).map(
-                        status -> RecordingCurrentResult.of(
-                                session,
-                                status,
-                                now
-                        )
+        Instant measuredAt = now();
+        return candidate.flatMap(
+                session -> currentResult(
+                        session,
+                        decidedAt,
+                        measuredAt
                 )
         );
     }
@@ -331,49 +337,119 @@ public class RecordingService {
         });
     }
 
-    private Optional<CurrentRecordingStatus> currentStatus(RecordingSession session) {
+    private Optional<RecordingCurrentResult> currentResult(
+            RecordingSession session,
+            Instant decidedAt,
+            Instant measuredAt
+    ) {
         if (session.isActive()) {
             return Optional.of(
-                    CurrentRecordingStatus.valueOf(
-                            session.getStatus()
-                                    .name()
+                    RecordingCurrentResult.of(
+                            session,
+                            CurrentRecordingStatus.valueOf(
+                                    session.getStatus()
+                                            .name()
+                            ),
+                            measuredAt
                     )
             );
         }
         if (session.getStatus() != RecordingStatus.ENDED) {
             return Optional.empty();
         }
-        boolean processing = documentProgress.findProgress(
+        Optional<DocumentGenerationHomeResult> progress = documentProgress.findHomeProgress(
                 session.getWorkspaceId(),
-                session.getId()
-        )
-                .map(progress -> isDocumentProcessing(progress.status()))
-                .orElseGet(() -> isRecordingProcessing(session.getId()));
-        if (!processing) {
-            return Optional.empty();
+                session.getId(),
+                decidedAt
+        );
+        if (progress.isPresent()) {
+            return documentCurrentResult(
+                    session,
+                    progress.orElseThrow(),
+                    measuredAt
+            );
         }
-        return Optional.of(CurrentRecordingStatus.PROCESSING);
-    }
-
-    private boolean isDocumentProcessing(DocumentGenerationProcessingStatus status) {
-        return status == DocumentGenerationProcessingStatus.QUEUED
-                || status == DocumentGenerationProcessingStatus.RUNNING;
-    }
-
-    private boolean isRecordingProcessing(long recordingId) {
-        boolean transcriptionFailed = transcriptions.findByRecordingSessionId(recordingId)
+        boolean transcriptionFailed = transcriptions.findByRecordingSessionId(session.getId())
                 .map(RecordingTranscription::getStatus)
                 .filter(TranscriptionStatus.FAILED::equals)
                 .isPresent();
         if (transcriptionFailed) {
-            return false;
+            boolean retryable = transcriptionProperties.enabled() && uploads.findByRecordingId(session.getId())
+                    .filter(RecordingAudioUpload::isAudioAvailable)
+                    .isPresent();
+            return Optional.of(
+                    failedResult(
+                            session,
+                            CurrentRecordingStatus.TRANSCRIPTION_FAILED,
+                            retryable,
+                            List.of(),
+                            measuredAt
+                    )
+            );
         }
-        return finalizations.findByRecordingId(recordingId)
+        boolean audioProcessing = finalizations.findByRecordingId(session.getId())
                 .map(
                         finalization -> finalization.getStatus() != AudioFinalizationStatus.FAILED
                                 && finalization.getStatus() != AudioFinalizationStatus.DISCARDED
                 )
                 .orElse(true);
+        if (audioProcessing) {
+            return Optional.of(
+                    RecordingCurrentResult.of(
+                            session,
+                            CurrentRecordingStatus.PROCESSING,
+                            measuredAt
+                    )
+            );
+        }
+        return Optional.empty();
+    }
+
+    private Optional<RecordingCurrentResult> documentCurrentResult(
+            RecordingSession session,
+            DocumentGenerationHomeResult progress,
+            Instant measuredAt
+    ) {
+        if (progress.status() == DocumentGenerationProcessingStatus.QUEUED
+                || progress.status() == DocumentGenerationProcessingStatus.RUNNING) {
+            return Optional.of(
+                    RecordingCurrentResult.of(
+                            session,
+                            CurrentRecordingStatus.PROCESSING,
+                            measuredAt
+                    )
+            );
+        }
+        if (progress.status() == DocumentGenerationProcessingStatus.FAILED && progress.hasVisibleFailure()) {
+            return Optional.of(
+                    failedResult(
+                            session,
+                            CurrentRecordingStatus.DOCUMENT_FAILED,
+                            !progress.retryableJobIds()
+                                    .isEmpty(),
+                            progress.retryableJobIds(),
+                            measuredAt
+                    )
+            );
+        }
+        return Optional.empty();
+    }
+
+    private RecordingCurrentResult failedResult(
+            RecordingSession session,
+            CurrentRecordingStatus status,
+            boolean retryable,
+            List<Long> retryableJobIds,
+            Instant measuredAt
+    ) {
+        return new RecordingCurrentResult(
+                session.getId(),
+                status,
+                session.getStartedAt(),
+                session.getRecordingDurationMillis(measuredAt),
+                retryable,
+                retryableJobIds
+        );
     }
 
     private void normalSeal(

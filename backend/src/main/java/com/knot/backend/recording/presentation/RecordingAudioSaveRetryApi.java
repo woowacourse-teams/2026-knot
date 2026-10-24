@@ -54,7 +54,7 @@ public interface RecordingAudioSaveRetryApi {
             @ApiResponse(responseCode = "404", description = "Workspace·녹음 또는 저장 작업 없음",
                     content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE,
                             schema = @Schema(implementation = ErrorResponse.class))),
-            @ApiResponse(responseCode = "409", description = "READY·폐기·영구 실패·내용 없음·보관 만료 등 재접수 불가",
+            @ApiResponse(responseCode = "409", description = "READY·폐기·영구 실패·내용 없음 등 재접수 불가",
                     content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE,
                             schema = @Schema(implementation = ErrorResponse.class)))
     })

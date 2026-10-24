@@ -232,7 +232,7 @@ class RecordingTranscriptionStateIntegrationTest {
     }
 
     @Test
-    @DisplayName("실패 재시도 후 이전 시도의 결과와 실패 통지는 무시한다")
+    @DisplayName("1년 된 오디오도 실패 재시도하고 이전 시도의 결과·실패 통지는 무시한다")
     void retry_success_ignoresOldAttempt() {
         // given
         register(
@@ -244,6 +244,16 @@ class RecordingTranscriptionStateIntegrationTest {
                 previous,
                 "AI_TIMEOUT"
         );
+        jdbc.sql("UPDATE recording_audio_uploads SET completed_at=:at,reserved_at=:at WHERE recording_id=:id")
+                .param(
+                        "at",
+                        java.sql.Timestamp.from(NOW.minus(java.time.Duration.ofDays(365)))
+                )
+                .param(
+                        "id",
+                        recordingId
+                )
+                .update();
         // when
         RecordingTranscriptionRetryResult retry = recordingTranscriptionStateService.retry(
                 workspaceId,
@@ -1066,8 +1076,8 @@ class RecordingTranscriptionStateIntegrationTest {
     }
 
     @Test
-    @DisplayName("원본 정리 배치 전에도 30일이 지난 음원은 전사나 문서로 채택하지 않는다")
-    void complete_success_retentionExpiredBeforeCleanup() {
+    @DisplayName("30일이 지난 사용 가능한 음원도 전사와 문서로 채택한다")
+    void complete_success_oldAudioStillAdopted() {
         // given
         register(
                 workspaceId,
@@ -1093,12 +1103,12 @@ class RecordingTranscriptionStateIntegrationTest {
                 transcript()
         );
         // then
-        assertThat(count("transcripts")).isZero();
-        assertThat(count("document_generation_jobs")).isZero();
+        assertThat(count("transcripts")).isEqualTo(1);
+        assertThat(count("document_generation_jobs")).isPositive();
         assertThat(
                 recordingTranscriptionStateService.findSnapshot(recordingId)
-                        .failureCode()
-        ).isEqualTo("RECORDING_UNAVAILABLE");
+                        .status()
+        ).isEqualTo(TranscriptionStatus.SUCCEEDED);
     }
 
     @Test

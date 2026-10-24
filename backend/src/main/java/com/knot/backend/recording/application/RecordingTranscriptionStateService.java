@@ -795,15 +795,11 @@ public class RecordingTranscriptionStateService {
 
     private void validateAvailableUpload(RecordingAudioUpload upload) {
         upload.validateAudioAvailable();
-        if (upload.isRetentionExpired(now())) {
-            throw new RecordingException(RecordingErrorCode.AUDIO_UPLOAD_NOT_COMPLETED);
-        }
     }
 
     private boolean hasAvailableUpload(long recordingId) {
         return recordingAudioUploadRepository.findByRecordingId(recordingId)
                 .filter(RecordingAudioUpload::isAudioAvailable)
-                .filter(upload -> !upload.isRetentionExpired(now()))
                 .isPresent();
     }
 

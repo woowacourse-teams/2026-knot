@@ -2,7 +2,6 @@ package com.knot.backend.document.infrastructure;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.timeout;
 
 import com.knot.backend.document.DocumentFixtures;
 import com.knot.backend.recording.application.RecordingAudioStorage;
@@ -40,7 +39,7 @@ class RetentionCleanupSchedulerIntegrationTest {
     private RecordingAudioStorage storage;
 
     @Test
-    @DisplayName("활성 스케줄러는 만료 입력 정리와 30일 오디오 삭제를 자동 실행한다")
+    @DisplayName("활성 스케줄러는 문서 실패 입력만 만료 정리하고 오래된 오디오는 보존한다")
     void scheduler_successCleansAndDeletesAutomatically() throws Exception {
         // given
         transactions.executeWithoutResult(status -> {
@@ -88,14 +87,15 @@ class RetentionCleanupSchedulerIntegrationTest {
         });
 
         // when
+        awaitRetentionCleanup();
         verify(
                 storage,
-                timeout(10000)
+                org.mockito.Mockito.after(500)
+                        .never()
         ).deleteStoredObject("recordings/automatic");
-        awaitRetentionCleanup();
 
         // then
-        assertThat(countDeletedUploads()).isEqualTo(1);
+        assertThat(countDeletedUploads()).isZero();
         assertThat(countTranscripts()).isZero();
         assertThat(countGenerationJobs()).isZero();
         assertThat(
@@ -118,7 +118,7 @@ class RetentionCleanupSchedulerIntegrationTest {
     }
 
     private boolean isRetentionCleanupComplete() {
-        return countDeletedUploads() == 1 && countTranscripts() == 0 && countGenerationJobs() == 0;
+        return countDeletedUploads() == 0 && countTranscripts() == 0 && countGenerationJobs() == 0;
     }
 
     private int countTranscripts() {

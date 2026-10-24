@@ -9,10 +9,7 @@ import java.util.Optional;
 
 public interface RecordingAudioDeletionRepository {
 
-    List<Long> findRetentionCandidates(
-            Instant completedBefore,
-            int limit
-    );
+    List<Long> findNoContentCandidates(int limit);
 
     List<Long> findReadyTasks(
             Instant now,

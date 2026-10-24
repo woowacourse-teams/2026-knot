@@ -114,6 +114,18 @@ class RecordingInputPreparationStateIntegrationTest {
     }
 
     @Test
+    void preparationDoesNotExpireAfterOneYear() {
+        register(1);
+        when(clock.instant()).thenReturn(NOW.plus(Duration.ofDays(365)));
+        assertThat(
+                state.claim(
+                        1,
+                        LEASE
+                )
+        ).isPresent();
+    }
+
+    @Test
     void claim_recoversSameAttemptAndRejectsStaleReadyResult() {
         // given
         register(1);

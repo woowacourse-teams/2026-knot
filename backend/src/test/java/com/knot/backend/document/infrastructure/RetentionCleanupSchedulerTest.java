@@ -19,7 +19,6 @@ import com.knot.backend.recording.application.RecordingAudioDeletionWorker;
 import com.knot.backend.recording.application.RecordingAudioRetentionService;
 import com.knot.backend.recording.domain.repository.RecordingAudioDeletionRepository;
 import java.time.Clock;
-import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
@@ -93,12 +92,7 @@ class RetentionCleanupSchedulerTest {
                         )
                 )
         );
-        when(
-                audio.findRetentionCandidates(
-                        NOW.minus(Duration.ofDays(30)),
-                        20
-                )
-        ).thenReturn(List.of(10L));
+        when(audio.findNoContentCandidates(20)).thenReturn(List.of(10L));
         doThrow(new RuntimeException("DB 오류")).when(cleanup)
                 .cleanup(
                         1,
@@ -199,12 +193,7 @@ class RetentionCleanupSchedulerTest {
     @Test
     void cleanupPrefixSchedulingFailureContinuesNextCandidate() {
         // given
-        when(
-                audioCleanup.findCandidates(
-                        NOW,
-                        20
-                )
-        ).thenReturn(
+        when(audioCleanup.findCandidates(20)).thenReturn(
                 List.of(
                         1L,
                         2L
@@ -271,12 +260,7 @@ class RetentionCleanupSchedulerTest {
             return scheduler::cleanupExpiredData;
         }
         if ("audio-retention".equals(phase)) {
-            when(
-                    audio.findRetentionCandidates(
-                            NOW.minus(Duration.ofDays(30)),
-                            20
-                    )
-            ).thenThrow(failure)
+            when(audio.findNoContentCandidates(20)).thenThrow(failure)
                     .thenReturn(List.of());
             return scheduler::cleanupExpiredData;
         }
@@ -305,10 +289,7 @@ class RetentionCleanupSchedulerTest {
             verify(
                     audio,
                     org.mockito.Mockito.times(2)
-            ).findRetentionCandidates(
-                    NOW.minus(Duration.ofDays(30)),
-                    20
-            );
+            ).findNoContentCandidates(20);
             return;
         }
         verify(

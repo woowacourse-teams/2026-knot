@@ -98,7 +98,7 @@ class DocumentRetentionAcceptanceTest {
     }
 
     @Test
-    @DisplayName("성공 문서는 실패 Job 정리와 오디오 삭제 이후에도 원문을 조회한다")
+    @DisplayName("이전 정책으로 오디오가 삭제됐어도 성공 문서의 원문을 조회한다")
     void findTranscript_successAfterAudioDeletion() throws Exception {
         // given
         fixtures.saveJob(
@@ -148,11 +148,16 @@ class DocumentRetentionAcceptanceTest {
                 recording,
                 batch
         );
-        retention.schedule(upload);
-        long task = jdbc.sql("SELECT id FROM recording_audio_deletion_tasks")
-                .query(Long.class)
-                .single();
-        worker.execute(task);
+        jdbc.sql("UPDATE recording_audio_uploads SET deleted_at=:at WHERE id=:id")
+                .param(
+                        "at",
+                        Timestamp.from(clock.instant())
+                )
+                .param(
+                        "id",
+                        upload
+                )
+                .update();
 
         // then
         assertThat(

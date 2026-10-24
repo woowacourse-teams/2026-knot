@@ -25,7 +25,6 @@ import com.knot.backend.recording.domain.repository.RecordingTranscriptionWindow
 import com.knot.backend.workspace.domain.repository.WorkspaceMemberRepository;
 import com.knot.backend.workspace.domain.repository.WorkspaceRepository;
 import java.time.Clock;
-import java.time.Duration;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
@@ -209,13 +208,9 @@ public class IncrementalTranscriptionCoordinator {
     }
 
     private boolean available(RecordingSession session) {
-        boolean retained = session.isActive()
-                || (session.getStatus() == RecordingStatus.ENDED && session.getEndedAt() != null && clock.instant()
-                        .isBefore(
-                                session.getEndedAt()
-                                        .plus(Duration.ofDays(30))
-                        ));
-        return retained && workspaces.findById(session.getWorkspaceId())
+        boolean recordingAvailable = session.isActive()
+                || (session.getStatus() == RecordingStatus.ENDED && session.getEndedAt() != null);
+        return recordingAvailable && workspaces.findById(session.getWorkspaceId())
                 .isPresent()
                 && members.existsByWorkspaceIdAndMemberId(
                         session.getWorkspaceId(),

@@ -107,6 +107,19 @@ public class RecordingSessionRepositoryAdapter implements RecordingSessionReposi
     }
 
     @Override
+    public Optional<RecordingSession> findCurrentByWorkspaceIdAndMemberId(
+            long workspaceId,
+            long memberId,
+            Instant now
+    ) {
+        return recordingSessionJpaRepository.findCurrentByWorkspaceIdAndMemberId(
+                workspaceId,
+                memberId,
+                now
+        );
+    }
+
+    @Override
     public List<RecordingSession> findAllActiveByWorkspaceIdAndMemberIdForUpdate(
             long workspaceId,
             long memberId

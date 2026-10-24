@@ -64,6 +64,40 @@ interface RecordingSessionJpaRepository extends JpaRepository<RecordingSession, 
             long memberId
     );
 
+    @Query(value = """
+            WITH candidates AS (
+                SELECT s.id, s.started_at,
+                    CASE
+                        WHEN s.status IN ('RECORDING', 'PAUSED') THEN 0
+                        WHEN b.processing_status IN ('QUEUED', 'RUNNING') THEN 1
+                        WHEN b.id IS NULL AND COALESCE(t.status, '') <> 'FAILED'
+                            AND (f.id IS NULL OR f.status NOT IN ('FAILED', 'DISCARDED')) THEN 1
+                        WHEN b.id IS NULL AND t.status = 'FAILED' THEN 2
+                        WHEN b.processing_status = 'FAILED' AND EXISTS (
+                            SELECT 1 FROM document_generation_jobs j
+                            WHERE j.batch_id = b.id AND j.status = 'FAILED' AND j.expires_at > :now
+                        ) THEN 2
+                        ELSE 3
+                    END AS priority
+                FROM recording_sessions s
+                LEFT JOIN recording_transcriptions t ON t.recording_session_id = s.id
+                LEFT JOIN document_generation_batches b ON b.recording_session_id = s.id
+                LEFT JOIN recording_audio_finalizations f ON f.recording_id = s.id
+                WHERE s.workspace_id = :workspaceId AND s.member_id = :memberId
+                    AND s.status IN ('RECORDING', 'PAUSED', 'ENDED')
+            )
+            SELECT s.* FROM candidates c
+            JOIN recording_sessions s ON s.id = c.id
+            WHERE c.priority < 3
+            ORDER BY c.priority, c.started_at DESC, c.id DESC
+            LIMIT 1
+            """, nativeQuery = true)
+    Optional<RecordingSession> findCurrentByWorkspaceIdAndMemberId(
+            long workspaceId,
+            long memberId,
+            Instant now
+    );
+
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     List<RecordingSession> findAllByWorkspaceIdAndStatusInOrderByIdAsc(
             long workspaceId,
