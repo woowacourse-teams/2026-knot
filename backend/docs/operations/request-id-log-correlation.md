@@ -1,7 +1,7 @@
 # Nginx·Spring 요청 ID로 API 단건 로그 연결
 
 - 구현 이슈: [#672](https://github.com/woowacourse-teams/2026-knot/issues/672), 담당자 `jyt6640`
-- 결정 기록: 저장소 루트 `docs/adr/672-request-id-log-correlation-first.md` (Proposed)
+- 결정 기록: 저장소 루트 `backend/docs/adr/672-request-id-log-correlation-first.md` (Proposed)
 - 범위: HTTP 요청별 로그 연결. OpenTelemetry·Tempo·DB 큐 업무 추적은 후속 단계다.
 - 현재 검증은 로컬 실행이다. 이 문서는 Dev/Prod에 이미 적용됐다는 기록이 아니다.
 

@@ -52,7 +52,7 @@ class DocumentationContractTest(unittest.TestCase):
         self.assertIn("ADR 형식을 보여주는 가상 예시", adr_example)
 
     def test_proposed_lifecycle_adr_uses_actual_issue_number(self):
-        path = ROOT / "docs" / "adr" / "167-short-issue-and-proposed-adr-lifecycle.md"
+        path = ROOT / "backend" / "docs" / "adr" / "167-short-issue-and-proposed-adr-lifecycle.md"
         adr = path.read_text(encoding="utf-8")
 
         self.assertTrue(path.is_file())

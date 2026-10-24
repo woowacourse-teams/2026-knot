@@ -448,7 +448,7 @@ def render_issue_body(
     memo_items = ["없음"]
     if adr_required:
         planned_path, _ = resolve_adr_path(snapshot)
-        displayed_path = planned_path or f"docs/adr/{{ISSUE_NUMBER}}-{adr['slug']}.md"
+        displayed_path = planned_path or f"backend/docs/adr/{{ISSUE_NUMBER}}-{adr['slug']}.md"
         memo_items = [
             f"ADR: {adr['decision']} — 예정 경로: `{displayed_path}` (Proposed)",
         ]

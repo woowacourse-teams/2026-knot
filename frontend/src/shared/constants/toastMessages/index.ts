@@ -103,6 +103,11 @@ export const TOAST_MESSAGES = {
     variant: "error",
     message: "복사하지 못했어요. 다시 시도해 주세요.",
   },
+  /** 피드백 패널에서 보낸 피드백이 접수함에 저장됐을 때(FEEDBACK-R8). Figma 4694:48682 */
+  FEEDBACK_SENT: {
+    variant: "success",
+    message: "피드백을 보냈어요. 팀이 평일에 모아서 확인해요",
+  },
   WORKSPACE_ACCESS_DENIED: {
     variant: "error",
     message: "이 워크스페이스에 더 이상 들어갈 수 없어요.",

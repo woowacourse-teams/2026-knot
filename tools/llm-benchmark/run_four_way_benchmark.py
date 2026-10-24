@@ -55,7 +55,7 @@ from run_benchmark import (
 )
 
 _DEFAULT_SNAPSHOT = Path(".benchmark-data/notion-export")
-_DEFAULT_GOLD_SET = Path("docs/llm-search-benchmark-gold-set.md")
+_DEFAULT_GOLD_SET = Path("backend/docs/llm-search-benchmark-gold-set.md")
 _DEFAULT_OUTPUT = Path(".benchmark-data/four-way-results.jsonl")
 _DEFAULT_DATABASE_URL = "postgresql://knot_benchmark:knot_benchmark@localhost:55432/knot_benchmark"
 _DEFAULT_CORPUS_KEY: Final[str] = "notion-export"

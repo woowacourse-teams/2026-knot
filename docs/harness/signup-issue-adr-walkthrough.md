@@ -77,7 +77,7 @@
 - 실제로 논의한 대안이 확인되지 않았으므로 `메모`는 `없음`이고 ADR을 만들지 않는다.
 
 검증 결과는 `high / pass / render_draft`이며 `remote_write_authorized=false`다. 실제 GitHub
-Issue #10과 `docs/adr`은 변경하지 않는다.
+Issue #10과 `backend/docs/adr`은 변경하지 않는다.
 
 ## ADR 형식을 보여주기 위한 가상 추가 대화
 

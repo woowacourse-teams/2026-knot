@@ -34,7 +34,7 @@ NCP 서버에 모으고, 사용자가 제공한 팀 Discord Webhook으로 알림
 | 양쪽 배포 파이프라인 | Dev develop 배포 성공 기록. Prod CodeDeploy 앱·그룹·S3 revision·설치 JAR과 현재 Nginx/Docker 대조 | Prod 기존 파이프라인은 Spring 배포 경로이며 현재 프로토타입 자동 배포 증거가 없음. 미완료 |
 | 실제 장애 사례 | 구축 중 TLS 인증서 선택 오류로 수집 실패, 조치 후 양쪽 지표·로그 복구 | 아래 사례에 기록 |
 
-이 문서는 기존 [AWS Dev·Prod 배포 구성 기록](../../../docs/operations/aws-dev-and-prod-environments.md)의
+이 문서는 기존 [AWS Dev·Prod 배포 구성 기록](aws-dev-and-prod-environments.md)의
 9/30 관측을 지우지 않고 10/1 실제 런타임 확인과 관측 구성을 추가한다.
 9/30에 Prod의 Spring 경로가 404였다는 기록은 당시 사실이지만, 그 경로만으로
 현재 Prod 서비스 장애를 판정하지 않는다.

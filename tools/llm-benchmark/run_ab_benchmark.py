@@ -37,7 +37,7 @@ from rich.console import Console
 from run_benchmark import _run_case
 
 _DEFAULT_SNAPSHOT = Path(".benchmark-data/notion-export")
-_DEFAULT_GOLD_SET = Path("docs/llm-search-benchmark-gold-set.md")
+_DEFAULT_GOLD_SET = Path("backend/docs/llm-search-benchmark-gold-set.md")
 _DEFAULT_OUTPUT = Path(".benchmark-data/ab-results.jsonl")
 _DEFAULT_CASES: Final[tuple[str, ...]] = (
     "G-001",

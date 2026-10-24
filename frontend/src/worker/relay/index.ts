@@ -1,6 +1,8 @@
 export interface Env {
   /** 정적 파일(빌드한 앱)을 돌려주는 Cloudflare Workers 정적 자산 바인딩 */
   ASSETS: { fetch: (request: Request) => Promise<Response> };
+  /** 피드백 접수함에만 연결한 Notion 연동의 토큰. dev · prod Worker에 비밀값으로 넣어요(ADR 930) */
+  NOTION_FEEDBACK_TOKEN?: string;
 }
 
 /** Worker가 받는 중계 경로. wrangler의 `run_worker_first`와 맞춰야 해요 */
@@ -148,8 +150,165 @@ export const relayToSentry = async (request: Request) => {
   });
 };
 
+/** 피드백을 Notion에 넣는 경로. `src/shared/api/fetch/relay/f`의 `FEEDBACK_RELAY_PATH`와 맞춰야 해요 */
+const FEEDBACK_RELAY_PATH = `${RELAY_PATH}/f`;
+
+// Notion 「사용자 피드백 접수함」 데이터베이스예요. 2022-06-28 판은 데이터베이스 ID를 부모로 받아요
+const NOTION_PAGES_URL = "https://api.notion.com/v1/pages";
+const NOTION_VERSION = "2022-06-28";
+const NOTION_FEEDBACK_DATABASE_ID = "98224ba95fff4abe81a4a9ee67591523";
+
+/** 앱의 피드백 유형을 접수함 「종류」 선택지로 바꿔요. 키는 `src/shared/types/feedback`의 `FeedbackType`과 맞춰야 해요 */
+const FEEDBACK_KIND = {
+  bug: "버그",
+  inconvenience: "불편",
+  idea: "요청",
+  praise: "칭찬",
+} as const;
+
+/** 적은 내용의 최대 길이. Notion 글 칸 한 덩어리의 한도이고, 패널 입력창도 같은 길이로 막아요 */
+const MAX_FEEDBACK_CONTENT_LENGTH = 2000;
+const MAX_FEEDBACK_URL_LENGTH = 2000;
+/** 요청 본문의 최대 길이. 내용과 주소 둘을 다 채워도 넘지 않아요 */
+const MAX_FEEDBACK_BODY_LENGTH = 8 * 1024;
+const MAX_FEEDBACK_TITLE_LENGTH = 60;
+/** 원문 링크로 받는 PostHog 리플레이 주소. `src/index.tsx`의 `ui_host`와 맞춰요 */
+const POSTHOG_REPLAY_URL_PREFIX = "https://us.posthog.com/";
+/** 한국 시간 오프셋. 접수일을 한국 날짜로 남겨요 */
+const KST_OFFSET_MS = 9 * 60 * 60 * 1000;
+
+interface Feedback {
+  type: keyof typeof FEEDBACK_KIND;
+  content: string;
+  pageUrl: string;
+  replayUrl?: string;
+}
+
+const isShortString = (value: unknown, maxLength: number): value is string =>
+  typeof value === "string" && value.length <= maxLength;
+
+const isFeedbackType = (value: unknown): value is Feedback["type"] =>
+  typeof value === "string" && Object.keys(FEEDBACK_KIND).includes(value);
+
+const hasOrigin = (value: string, origin: string) => {
+  try {
+    return new URL(value).origin === origin;
+  } catch {
+    return false;
+  }
+};
+
+/** 본문을 피드백으로 읽어요. 모양이 다르거나, 너무 길거나, 화면 주소가 우리 주소가 아니거나, 원문 링크가 PostHog가 아니면 null이에요 */
+const readFeedback = (text: string, origin: string): Feedback | null => {
+  let body: unknown;
+  try {
+    body = JSON.parse(text);
+  } catch {
+    return null;
+  }
+  if (typeof body !== "object" || body === null) return null;
+
+  const { type, content, pageUrl, replayUrl } = body as Record<string, unknown>;
+  if (
+    !isFeedbackType(type) ||
+    !isShortString(content, MAX_FEEDBACK_CONTENT_LENGTH) ||
+    !isShortString(pageUrl, MAX_FEEDBACK_URL_LENGTH) ||
+    !hasOrigin(pageUrl, origin)
+  ) {
+    return null;
+  }
+  if (
+    replayUrl !== undefined &&
+    !(
+      isShortString(replayUrl, MAX_FEEDBACK_URL_LENGTH) &&
+      replayUrl.startsWith(POSTHOG_REPLAY_URL_PREFIX)
+    )
+  ) {
+    return null;
+  }
+
+  return { type, content, pageUrl, replayUrl };
+};
+
+const toRichText = (content: string) =>
+  content ? [{ text: { content } }] : [];
+
+/** 접수함에 한 줄로 넣을 Notion 페이지. 제목은 적은 내용의 첫 줄 앞부분이고, 닉네임은 적지 않아요 */
+const toNotionPage = ({ type, content, pageUrl, replayUrl }: Feedback) => {
+  const title =
+    content.trim().split("\n")[0].slice(0, MAX_FEEDBACK_TITLE_LENGTH) ||
+    "(내용 없음)";
+  const receivedOn = new Date(Date.now() + KST_OFFSET_MS)
+    .toISOString()
+    .slice(0, 10);
+
+  return {
+    parent: { database_id: NOTION_FEEDBACK_DATABASE_ID },
+    properties: {
+      피드백: { title: toRichText(title) },
+      종류: { select: { name: FEEDBACK_KIND[type] } },
+      내용: { rich_text: toRichText(content) },
+      "사용 상황": { rich_text: toRichText(pageUrl) },
+      "원문 링크": { url: replayUrl ?? null },
+      "접수 경로": { select: { name: "앱 내" } },
+      "출처 유형": { select: { name: "사용자 제보" } },
+      "접수 상태": { select: { name: "신규" } },
+      접수일: { date: { start: receivedOn } },
+    },
+  };
+};
+
 /**
- * @description Worker가 받은 요청을 경로에 따라 PostHog · Sentry 중계 · 404 · 정적 파일로 나눠요
+ * @description 우리 화면에서 `/relay/f`로 보낸 피드백을 Notion 「사용자 피드백 접수함」에 한 줄로 넣어요(ADR 930)
+ * @param request - 피드백 패널이 보낸 요청. 예: `POST /relay/f`, 본문 `{ type, content, pageUrl, replayUrl? }`
+ * @param env - Worker 바인딩. Notion 토큰은 `env.NOTION_FEEDBACK_TOKEN`이에요
+ * @returns 넣었으면 201, Notion이 거절하면 Notion의 응답 코드 그대로
+ * @example
+ * if (pathname === "/relay/f") return relayToNotion(request, env);
+ *
+ * 누구나 이 경로로 보낼 수 있어서 우리 화면(Origin)에서 온 요청인지, 유형이 넷 중 하나인지, 길이만 봐요. 로그인 확인과 횟수 제한은 하지 않아요.
+ * 다른 주소에서 오면 403, 본문이 맞지 않으면 400, 본문이 너무 길면 413, POST가 아니면 405, 토큰이 없으면 503이에요.
+ * Notion이 거절한 코드(401 토큰 오류, 404 연결 안 됨, 400 칸 이름 불일치 등)는 그대로 돌려줘, 화면이 그 코드를 Sentry에 남겨요.
+ */
+export const relayToNotion = async (request: Request, env: Env) => {
+  if (request.method !== "POST") {
+    return new Response("Method Not Allowed", { status: 405 });
+  }
+
+  const { origin } = new URL(request.url);
+  if (request.headers.get("Origin") !== origin) {
+    return new Response("Forbidden", { status: 403 });
+  }
+
+  const text = await request.text();
+  if (text.length > MAX_FEEDBACK_BODY_LENGTH) {
+    return new Response("Payload Too Large", { status: 413 });
+  }
+
+  const feedback = readFeedback(text, origin);
+  if (!feedback) return new Response("Bad Request", { status: 400 });
+
+  if (!env.NOTION_FEEDBACK_TOKEN) {
+    return new Response("Service Unavailable", { status: 503 });
+  }
+
+  const notionResponse = await fetch(NOTION_PAGES_URL, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${env.NOTION_FEEDBACK_TOKEN}`,
+      "Notion-Version": NOTION_VERSION,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(toNotionPage(feedback)),
+  });
+
+  return new Response(null, {
+    status: notionResponse.ok ? 201 : notionResponse.status,
+  });
+};
+
+/**
+ * @description Worker가 받은 요청을 경로에 따라 PostHog · Sentry · Notion 중계 · 404 · 정적 파일로 나눠요
  * @param request - Worker가 받은 요청
  * @param env - Worker 바인딩. 정적 파일은 `env.ASSETS`로 돌려줘요
  * @returns 경로에 맞는 응답
@@ -157,7 +316,7 @@ export const relayToSentry = async (request: Request) => {
  * export default { fetch: handleRequest };
  *
  * wrangler 설정이 `/relay` 아래 요청만 Worker를 먼저 거치게 하고, 나머지 화면 · 파일 주소는 정적 파일로 바로 나가요.
- * `/relay` 아래는 목적지마다 하위 경로로 나눠요. PostHog(`/relay/p` 아래)와 Sentry(`/relay/s` 하나)가 있고, 목적지가 없는 하위 경로는 404예요.
+ * `/relay` 아래는 목적지마다 하위 경로로 나눠요. PostHog(`/relay/p` 아래), Sentry(`/relay/s` 하나), Notion 피드백(`/relay/f` 하나)이 있고, 목적지가 없는 하위 경로는 404예요.
  */
 export const handleRequest = (request: Request, env: Env) => {
   const { pathname } = new URL(request.url);
@@ -167,6 +326,8 @@ export const handleRequest = (request: Request, env: Env) => {
   }
 
   if (pathname === SENTRY_RELAY_PATH) return relayToSentry(request);
+
+  if (pathname === FEEDBACK_RELAY_PATH) return relayToNotion(request, env);
 
   if (pathname === RELAY_PATH || pathname.startsWith(`${RELAY_PATH}/`)) {
     return new Response("Not Found", { status: 404 });

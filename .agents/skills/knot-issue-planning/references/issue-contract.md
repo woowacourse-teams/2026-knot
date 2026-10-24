@@ -84,7 +84,7 @@ ADR이 필요하지 않으면 다음 구조를 사용한다.
 파일에 표시할 선택 필드이며 생략하면 `Knot 팀`을 사용한다.
 
 새 Issue를 기획할 때는 아직 번호를 알 수 없으므로 snapshot에 실제 ADR 경로를 만들지
-않는다. Issue 본문에는 `docs/adr/{ISSUE_NUMBER}-<slug>.md`를 표시하고, Issue가 생성된 뒤
+않는다. Issue 본문에는 `backend/docs/adr/{ISSUE_NUMBER}-<slug>.md`를 표시하고, Issue가 생성된 뒤
 materializer에 `--issue-number <실제 번호>`를 전달해 경로를 확정한다. 기존 Issue를
 다루거나 snapshot을 복구할 때는 최상위 `issue_number`를 양의 정수로 넣을 수 있다.
 선택 필드 `adr.planned_path`를 함께 넣으면 번호와 slug가 모두 일치해야 한다.

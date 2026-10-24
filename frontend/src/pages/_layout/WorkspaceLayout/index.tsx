@@ -2,6 +2,7 @@ import DockablePanel from "@composites/DockablePanel";
 import { MEDIA_QUERY, SCREEN_CONDITION } from "@constants/breakpoint";
 import styled from "@emotion/styled";
 import TranscriptToggle from "@features/document/TranscriptToggle";
+import FeedbackPanel from "@features/feedback/FeedbackPanel";
 import NewsPopover from "@features/news/NewsPopover";
 import SearchEvidenceToggle from "@features/search/SearchEvidenceToggle";
 import useKeyDown from "@hooks/common/useKeyDown";
@@ -177,7 +178,13 @@ export default function WorkspaceLayout() {
               {isChatActive && <SearchEvidenceToggle />}
               {isDocumentActive && <TranscriptToggle />}
               {/* 워크스페이스에 들어간 뒤에만 그려요. 들어가지 못하고 나가는 사이에 저절로 열려 읽음으로 남지 않게요 */}
-              {isReady && <NewsPopover />}
+              {isReady && (
+                <NewsPopover
+                  renderFeedbackPanel={({ onClose }) => (
+                    <FeedbackPanel onClose={onClose} />
+                  )}
+                />
+              )}
             </>
           }
         />
