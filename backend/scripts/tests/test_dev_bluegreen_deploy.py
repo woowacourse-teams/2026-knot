@@ -9,7 +9,12 @@ from pathlib import Path
 BACKEND_ROOT = Path(__file__).resolve().parents[2]
 DEPLOY_SCRIPT = BACKEND_ROOT / "scripts" / "dev_bluegreen_deploy.sh"
 PRESERVE_SCRIPT = BACKEND_ROOT / "scripts" / "dev_bluegreen_preserve_legacy.sh"
+CORE_DEPLOY_SCRIPT = BACKEND_ROOT / "scripts" / "bluegreen_deploy.sh"
+CORE_PRESERVE_SCRIPT = BACKEND_ROOT / "scripts" / "bluegreen_preserve_legacy.sh"
+PROD_DEPLOY_SCRIPT = BACKEND_ROOT / "scripts" / "prod_bluegreen_deploy.sh"
+PROD_PRESERVE_SCRIPT = BACKEND_ROOT / "scripts" / "prod_bluegreen_preserve_legacy.sh"
 SYSTEMD_SOURCES = BACKEND_ROOT / "ops" / "systemd"
+PROD_SYSTEMD_SOURCES = BACKEND_ROOT / "ops" / "systemd" / "prod"
 PACKAGE_SCRIPT = BACKEND_ROOT / "ops" / "codebuild" / "package-deployment-artifact.sh"
 
 
@@ -33,15 +38,20 @@ class DevBlueGreenDeployTest(unittest.TestCase):
         self.scripts.mkdir(parents=True)
         (self.scripts / "systemd").mkdir()
         (self.scripts / "nginx").mkdir()
+        (self.scripts / "certs").mkdir()
         self.fake_bin.mkdir()
         self.app_root.mkdir()
         self.systemd_dir.mkdir()
         self.bundle.joinpath("app.jar").write_bytes(b"candidate")
         self.scripts.joinpath("dev_bluegreen_deploy.sh").write_bytes(DEPLOY_SCRIPT.read_bytes())
         self.scripts.joinpath("dev_bluegreen_preserve_legacy.sh").write_bytes(PRESERVE_SCRIPT.read_bytes())
+        self.scripts.joinpath("prod_bluegreen_deploy.sh").write_bytes(PROD_DEPLOY_SCRIPT.read_bytes())
+        self.scripts.joinpath("prod_bluegreen_preserve_legacy.sh").write_bytes(PROD_PRESERVE_SCRIPT.read_bytes())
+        self.scripts.joinpath("bluegreen_deploy.sh").write_bytes(CORE_DEPLOY_SCRIPT.read_bytes())
+        self.scripts.joinpath("bluegreen_preserve_legacy.sh").write_bytes(CORE_PRESERVE_SCRIPT.read_bytes())
         shutil.copy2(
-            BACKEND_ROOT / "ops" / "nginx" / "knot-backend-dev-metrics.conf",
-            self.scripts / "nginx" / "knot-backend-dev-metrics.conf",
+            BACKEND_ROOT / "ops" / "nginx" / "knot-backend-metrics.conf",
+            self.scripts / "nginx" / "knot-backend-metrics.conf",
         )
         for unit_name in ("knot-backend-blue.service", "knot-backend-green.service"):
             shutil.copy2(SYSTEMD_SOURCES / unit_name, self.scripts / "systemd" / unit_name)
@@ -77,6 +87,11 @@ class DevBlueGreenDeployTest(unittest.TestCase):
         self.assertNotIn("knot-backend.service", self._read_lines(self.enabled_services))
         self.assertIn("knot-backend-green.service", self._read_lines(self.enabled_services))
         self.assertTrue((self.app_root / "slots" / "green" / "app.jar").is_file())
+        curl_calls = [
+            line for line in self.command_log.read_text().splitlines() if line.startswith("curl ")
+        ]
+        self.assertTrue(any("--resolve dev-api.knoted.kr:443:127.0.0.1" in line for line in curl_calls))
+        self.assertFalse(any("--cacert" in line for line in curl_calls))
 
     def test_before_install_preserves_legacy_jar_before_code_deploy_cleanup(self):
         result = self._run_preserve()
@@ -316,7 +331,183 @@ class DevBlueGreenDeployTest(unittest.TestCase):
         self.assertIn("proxy_pass http://127.0.0.1:8080;", self.nginx_config.read_text())
         self.assertEqual(self._read_lines(self.active_services), {"knot-backend.service"})
 
+    def test_prod_profile_switches_traffic_and_uses_the_prod_group_and_health_host(self):
+        for unit_name in ("knot-backend-blue.service", "knot-backend-green.service"):
+            shutil.copy2(PROD_SYSTEMD_SOURCES / unit_name, self.scripts / "systemd" / unit_name)
+        shutil.copy2(
+            BACKEND_ROOT / "ops" / "certificates" / "cloudflare-origin-rsa-root.pem",
+            self.scripts / "certs" / "cloudflare-origin-rsa-root.pem",
+        )
+        environment = self._deployment_environment()
+        environment.update(
+            {
+                "KNOT_BLUEGREEN_PROFILE": "prod",
+                "DEPLOYMENT_GROUP_NAME": "knot-backend-deployment-group",
+                "KNOT_BLUEGREEN_HEALTH_HOST": "api.knoted.kr",
+            }
+        )
+
+        result = subprocess.run(
+            ["bash", str(self.scripts / "prod_bluegreen_deploy.sh")],
+            check=False,
+            capture_output=True,
+            text=True,
+            env=environment,
+        )
+
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("[blue-green:prod]", result.stdout)
+        self.assertIn("proxy_pass http://127.0.0.1:8081;", self.nginx_config.read_text())
+        self.assertIn("knot-backend-green.service", self._read_lines(self.active_services))
+        self.assertIn("-Xmx256m", (self.systemd_dir / "knot-backend-green.service").read_text())
+        self.assertIn('__address__ = "127.0.0.1:18080"', self.alloy_config.read_text())
+        curl_urls = [
+            line for line in self.command_log.read_text().splitlines() if line.startswith("curl ")
+        ]
+        self.assertTrue(any("https://api.knoted.kr/actuator/health" in line for line in curl_urls))
+        self.assertTrue(
+            any(
+                "--cacert "
+                + str(self.scripts / "certs" / "cloudflare-origin-rsa-root.pem")
+                in line
+                and "https://api.knoted.kr/actuator/health" in line
+                for line in curl_urls
+            )
+        )
+
+    def test_prod_deploy_fails_before_starting_green_when_origin_ca_is_missing(self):
+        for unit_name in ("knot-backend-blue.service", "knot-backend-green.service"):
+            shutil.copy2(PROD_SYSTEMD_SOURCES / unit_name, self.scripts / "systemd" / unit_name)
+        environment = self._deployment_environment()
+        environment.update(
+            {
+                "KNOT_BLUEGREEN_PROFILE": "prod",
+                "DEPLOYMENT_GROUP_NAME": "knot-backend-deployment-group",
+                "KNOT_BLUEGREEN_HEALTH_HOST": "api.knoted.kr",
+            }
+        )
+
+        result = subprocess.run(
+            ["bash", str(self.scripts / "prod_bluegreen_deploy.sh")],
+            check=False,
+            capture_output=True,
+            text=True,
+            env=environment,
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("Prod Cloudflare Origin RSA CA root is missing", result.stdout)
+        self.assertIn("proxy_pass http://127.0.0.1:8080;", self.nginx_config.read_text())
+        self.assertEqual(self._read_lines(self.active_services), {"knot-backend.service"})
+        commands = self.command_log.read_text().splitlines() if self.command_log.exists() else []
+        self.assertNotIn("systemctl start knot-backend-green.service", commands)
+
+    def test_prod_deploy_keeps_blue_route_when_current_nginx_health_fails(self):
+        for unit_name in ("knot-backend-blue.service", "knot-backend-green.service"):
+            shutil.copy2(PROD_SYSTEMD_SOURCES / unit_name, self.scripts / "systemd" / unit_name)
+        shutil.copy2(
+            BACKEND_ROOT / "ops" / "certificates" / "cloudflare-origin-rsa-root.pem",
+            self.scripts / "certs" / "cloudflare-origin-rsa-root.pem",
+        )
+        environment = self._deployment_environment()
+        environment.update(
+            {
+                "KNOT_BLUEGREEN_PROFILE": "prod",
+                "DEPLOYMENT_GROUP_NAME": "knot-backend-deployment-group",
+                "KNOT_BLUEGREEN_HEALTH_HOST": "api.knoted.kr",
+                "TEST_FAIL_PROXY": "1",
+            }
+        )
+
+        result = subprocess.run(
+            ["bash", str(self.scripts / "prod_bluegreen_deploy.sh")],
+            check=False,
+            capture_output=True,
+            text=True,
+            env=environment,
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("Current Prod Nginx health check failed before deployment", result.stdout)
+        self.assertIn("proxy_pass http://127.0.0.1:8080;", self.nginx_config.read_text())
+        self.assertEqual(self._read_lines(self.active_services), {"knot-backend.service"})
+        commands = self.command_log.read_text().splitlines()
+        self.assertNotIn("systemctl start knot-backend-green.service", commands)
+
+    def test_prod_slot_units_keep_runtime_environment_and_set_the_requested_heap_limit(self):
+        for slot_name, port in (("blue", "8080"), ("green", "8081")):
+            unit = (PROD_SYSTEMD_SOURCES / f"knot-backend-{slot_name}.service").read_text()
+            self.assertIn("EnvironmentFile=/etc/knot-backend/knot-backend.env", unit)
+            self.assertIn("EnvironmentFile=/etc/knot-backend/recording-storage.env", unit)
+            self.assertIn("EnvironmentFile=/etc/knot-backend/recording-ai.env", unit)
+            self.assertIn("Environment=SPRING_PROFILES_INCLUDE=observability", unit)
+            self.assertIn(
+                "Environment=SPRING_CONFIG_ADDITIONAL_LOCATION=file:/etc/knot-backend/recording-streaming.properties",
+                unit,
+            )
+            self.assertIn(f"java -Xmx256m -XX:NativeMemoryTracking=summary", unit)
+            self.assertIn(f"--server.port={port}", unit)
+
+    def test_prod_deploy_rejects_a_non_prod_deployment_group(self):
+        environment = self._deployment_environment()
+        environment.update(
+            {
+                "KNOT_BLUEGREEN_PROFILE": "prod",
+                "DEPLOYMENT_GROUP_NAME": "knot-backend-dev-deployment-group",
+            }
+        )
+
+        result = subprocess.run(
+            ["bash", str(self.scripts / "prod_bluegreen_deploy.sh")],
+            check=False,
+            capture_output=True,
+            text=True,
+            env=environment,
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("Refusing deployment group", result.stdout)
+        self.assertEqual(self._read_lines(self.active_services), {"knot-backend.service"})
+
+    def test_prod_preserve_rejects_the_dev_deployment_group(self):
+        environment = self._preserve_environment()
+        environment.update({"KNOT_BLUEGREEN_PROFILE": "prod"})
+
+        result = subprocess.run(
+            ["bash", str(self.scripts / "prod_bluegreen_preserve_legacy.sh")],
+            check=False,
+            capture_output=True,
+            text=True,
+            env=environment,
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("Refusing deployment group", result.stdout)
+        self.assertTrue(self.legacy_jar.is_file())
+
     def _run_deploy(self, **extra_environment):
+        environment = self._deployment_environment()
+        environment.update(extra_environment)
+        return subprocess.run(
+            ["bash", str(self.scripts / "dev_bluegreen_deploy.sh")],
+            check=False,
+            capture_output=True,
+            text=True,
+            env=environment,
+        )
+
+    def _run_preserve(self, **extra_environment):
+        environment = self._preserve_environment()
+        environment.update(extra_environment)
+        return subprocess.run(
+            ["bash", str(self.scripts / "dev_bluegreen_preserve_legacy.sh")],
+            check=False,
+            capture_output=True,
+            text=True,
+            env=environment,
+        )
+
+    def _deployment_environment(self):
         environment = os.environ.copy()
         environment.update(
             {
@@ -344,16 +535,9 @@ class DevBlueGreenDeployTest(unittest.TestCase):
                 "TEST_COMMAND_LOG": str(self.command_log),
             }
         )
-        environment.update(extra_environment)
-        return subprocess.run(
-            ["bash", str(self.scripts / "dev_bluegreen_deploy.sh")],
-            check=False,
-            capture_output=True,
-            text=True,
-            env=environment,
-        )
+        return environment
 
-    def _run_preserve(self, **extra_environment):
+    def _preserve_environment(self):
         environment = os.environ.copy()
         environment.update(
             {
@@ -367,14 +551,7 @@ class DevBlueGreenDeployTest(unittest.TestCase):
                 "TEST_COMMAND_LOG": str(self.command_log),
             }
         )
-        environment.update(extra_environment)
-        return subprocess.run(
-            ["bash", str(self.scripts / "dev_bluegreen_preserve_legacy.sh")],
-            check=False,
-            capture_output=True,
-            text=True,
-            env=environment,
-        )
+        return environment
 
     def _read_lines(self, path):
         return {line for line in path.read_text().splitlines() if line}
@@ -443,6 +620,8 @@ import os
 import sys
 
 url = sys.argv[-1]
+with open(os.environ["TEST_COMMAND_LOG"], "a") as output:
+    output.write("curl " + " ".join(sys.argv[1:]).replace("\\n", "\\\\n") + "\\n")
 if url.endswith("/-/ready"):
     print("ready")
     sys.exit(0)
@@ -585,18 +764,29 @@ class DeploymentArtifactPackagingTest(unittest.TestCase):
         (self.backend / "scripts").mkdir()
         (self.backend / "scripts" / "tests").mkdir()
         (self.backend / "ops" / "systemd").mkdir(parents=True)
+        (self.backend / "ops" / "systemd" / "prod").mkdir(parents=True)
         (self.backend / "ops" / "codebuild").mkdir(parents=True)
         (self.backend / "ops" / "nginx").mkdir(parents=True)
+        (self.backend / "ops" / "certificates").mkdir(parents=True)
         (self.backend / "scripts" / "sample-hook.sh").write_text("#!/bin/sh\nexit 0\n")
         (self.backend / "scripts" / "dev_bluegreen_preserve_legacy.sh").write_text(
             "#!/bin/sh\nprintf 'preserve\\n'\n"
         )
+        (self.backend / "scripts" / "prod_bluegreen_deploy.sh").write_text(
+            "#!/bin/sh\nprintf 'prod deploy\\n'\n"
+        )
         (self.backend / "scripts" / "tests" / "fixture.py").write_text("print('test')\n")
         (self.backend / "appspec.yml").write_text("legacy-appspec\n")
         (self.backend / "appspec-dev-bluegreen.yml").write_text("bluegreen-appspec\n")
+        (self.backend / "appspec-prod-bluegreen.yml").write_text("prod-bluegreen-appspec\n")
         (self.backend / "ops" / "systemd" / "knot-backend-blue.service").write_text("blue-unit\n")
         (self.backend / "ops" / "systemd" / "knot-backend-green.service").write_text("green-unit\n")
-        (self.backend / "ops" / "nginx" / "knot-backend-dev-metrics.conf").write_text("metrics-route\n")
+        (self.backend / "ops" / "systemd" / "prod" / "knot-backend-blue.service").write_text("prod-blue-unit\n")
+        (self.backend / "ops" / "systemd" / "prod" / "knot-backend-green.service").write_text("prod-green-unit\n")
+        (self.backend / "ops" / "nginx" / "knot-backend-metrics.conf").write_text("metrics-route\n")
+        (self.backend / "ops" / "certificates" / "cloudflare-origin-rsa-root.pem").write_text(
+            "cloudflare-origin-root\n"
+        )
 
     def tearDown(self):
         self.temp_dir.cleanup()
@@ -610,6 +800,7 @@ class DeploymentArtifactPackagingTest(unittest.TestCase):
         self.assertFalse((self.root / "scripts" / "tests").exists())
         self.assertFalse((self.root / "scripts" / "systemd").exists())
         self.assertFalse((self.root / "scripts" / "nginx").exists())
+        self.assertFalse((self.root / "scripts" / "certs").exists())
 
     def test_unset_mode_defaults_to_legacy_artifact(self):
         result = self._package(None)
@@ -633,10 +824,57 @@ class DeploymentArtifactPackagingTest(unittest.TestCase):
             "green-unit\n",
         )
         self.assertEqual(
-            (self.root / "scripts" / "nginx" / "knot-backend-dev-metrics.conf").read_text(),
+            (self.root / "scripts" / "nginx" / "knot-backend-metrics.conf").read_text(),
             "metrics-route\n",
         )
+        self.assertFalse((self.root / "scripts" / "certs").exists())
         self.assertTrue((self.root / "scripts" / "dev_bluegreen_preserve_legacy.sh").is_file())
+
+    def test_prod_bluegreen_mode_packages_prod_hooks_units_and_metrics(self):
+        result = self._package("prod-bluegreen")
+
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual((self.root / "appspec.yml").read_text(), "prod-bluegreen-appspec\n")
+        self.assertEqual(
+            (self.root / "scripts" / "systemd" / "knot-backend-blue.service").read_text(),
+            "prod-blue-unit\n",
+        )
+        self.assertEqual(
+            (self.root / "scripts" / "systemd" / "knot-backend-green.service").read_text(),
+            "prod-green-unit\n",
+        )
+        self.assertEqual(
+            (self.root / "scripts" / "nginx" / "knot-backend-metrics.conf").read_text(),
+            "metrics-route\n",
+        )
+        self.assertEqual(
+            (
+                self.root
+                / "scripts"
+                / "certs"
+                / "cloudflare-origin-rsa-root.pem"
+            ).read_text(),
+            "cloudflare-origin-root\n",
+        )
+        self.assertTrue((self.root / "scripts" / "prod_bluegreen_deploy.sh").is_file())
+
+    def test_legacy_mode_removes_stale_bluegreen_files(self):
+        stale_systemd = self.root / "scripts" / "systemd"
+        stale_nginx = self.root / "scripts" / "nginx"
+        stale_certs = self.root / "scripts" / "certs"
+        stale_systemd.mkdir(parents=True)
+        stale_nginx.mkdir(parents=True)
+        stale_certs.mkdir(parents=True)
+        (stale_systemd / "old.service").write_text("stale\n")
+        (stale_nginx / "old.conf").write_text("stale\n")
+        (stale_certs / "old.pem").write_text("stale\n")
+
+        result = self._package("legacy-in-place")
+
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertFalse(stale_systemd.exists())
+        self.assertFalse(stale_nginx.exists())
+        self.assertFalse(stale_certs.exists())
 
     def test_unknown_mode_fails_before_creating_an_appspec(self):
         result = self._package("unsupported")

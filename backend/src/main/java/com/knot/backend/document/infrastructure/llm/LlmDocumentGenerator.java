@@ -64,8 +64,7 @@ public class LlmDocumentGenerator implements DocumentGenerator {
                 summary,
                 content
         );
-        validator.validate(result);
-        return result;
+        return validator.normalizeAndValidate(result);
     }
 
     private JsonNode readResponse(String response) {

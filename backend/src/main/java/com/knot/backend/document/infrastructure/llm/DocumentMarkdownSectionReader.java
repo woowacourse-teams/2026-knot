@@ -4,6 +4,7 @@ import com.knot.backend.document.domain.model.DocumentText;
 import com.knot.backend.document.domain.DocumentErrorCode;
 import com.knot.backend.document.domain.DocumentException;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -11,24 +12,74 @@ import java.util.regex.Pattern;
 class DocumentMarkdownSectionReader {
     private static final Pattern HEADING = Pattern.compile("^ {0,3}##[ \\t]+(.+?)[ \\t]*#*[ \\t]*$");
     private static final Pattern FENCE = Pattern.compile("^ {0,3}(`{3,}|~{3,})(.*)$");
+    private static final Pattern LINE_BREAK = Pattern.compile("\\R");
 
     private final Map<String, StringBuilder> sections = new LinkedHashMap<>();
+    private final Map<String, Integer> sectionOffsets = new LinkedHashMap<>();
     private StringBuilder body;
     private String fence;
 
     Map<String, StringBuilder> read(String content) {
         validateOpeningHeading(content);
-        for (String line : content.split(
-                "\\R",
-                -1
-        )) {
-            readLine(line);
+        Matcher lineBreak = LINE_BREAK.matcher(content);
+        int lineStart = 0;
+        while (lineBreak.find()) {
+            readLine(
+                    content.substring(
+                            lineStart,
+                            lineBreak.start()
+                    ),
+                    lineStart
+            );
+            lineStart = lineBreak.end();
         }
+        readLine(
+                content.substring(lineStart),
+                lineStart
+        );
         validateClosedFence();
         return sections;
     }
 
-    private void readLine(String line) {
+    Map<String, String> readBlocks(String content) {
+        read(content);
+        List<String> names = List.copyOf(sectionOffsets.keySet());
+        Map<String, String> blocks = new LinkedHashMap<>();
+        for (int index = 0; index < names.size(); index++) {
+            String name = names.get(index);
+            int start = sectionOffsets.get(name);
+            int end = sectionEnd(
+                    names,
+                    index,
+                    content.length()
+            );
+            blocks.put(
+                    name,
+                    content.substring(
+                            start,
+                            end
+                    )
+            );
+        }
+        return blocks;
+    }
+
+    private int sectionEnd(
+            List<String> names,
+            int index,
+            int contentLength
+    ) {
+        if (index + 1 == names.size()) {
+            return contentLength;
+        }
+        String nextName = names.get(index + 1);
+        return sectionOffsets.get(nextName);
+    }
+
+    private void readLine(
+            String line,
+            int lineStart
+    ) {
         Matcher marker = FENCE.matcher(line);
         if (marker.matches()) {
             updateFence(marker);
@@ -41,17 +92,27 @@ class DocumentMarkdownSectionReader {
         }
         Matcher heading = HEADING.matcher(line);
         if (heading.matches()) {
-            startSection(heading);
+            startSection(
+                    heading,
+                    lineStart
+            );
             return;
         }
         validateBodyHeading(line);
         appendBody(line);
     }
 
-    private void startSection(Matcher heading) {
+    private void startSection(
+            Matcher heading,
+            int lineStart
+    ) {
         String name = heading.group(1);
         name = name.strip();
         validateUniqueSection(name);
+        sectionOffsets.put(
+                name,
+                lineStart
+        );
         body = new StringBuilder();
         sections.put(
                 name,
