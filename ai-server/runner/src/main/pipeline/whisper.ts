@@ -83,47 +83,26 @@ const groupTokensIntoWords = (tokens: NormalizedToken[]) =>
     return words.with(words.length - 1, [...words[words.length - 1], token])
   }, [])
 
-interface RemapParams {
-  value: number
-  tokenFrom: number
-  tokenTo: number
-  segmentFrom: number
-  segmentTo: number
-}
-
 /**
- * VAD를 켜면 세그먼트 시간만 원본 시간축으로 복원되고 토큰 시간은 압축된 시간축에 남는다.
- * 세그먼트의 from은 직전 세그먼트의 to를 그대로 쓴 값이라 믿을 수 없고, to만 실제 발화 끝을 가리킨다.
- * 그래서 끝을 기준으로 되돌려 토큰 구간 길이를 보존한다.
- * 세그먼트 안에서 무음이 많이 제거돼 토큰 구간이 더 길어지면 선형 재매핑으로 되돌아간다.
+ * VAD 미사용 또는 native API로 복원한 token 시각을 원래 시간축 그대로 쓴다.
+ * segment 끝에 맞춰 이동하거나 segment 길이에 맞춰 늘리면 무음 위에 단어를 놓게 된다.
+ * whisper.cpp v1.9.4 CLI는 VAD 사용 시 segment만 원래 시간축으로 변환하고
+ * JSON token에는 압축 시간축을 출력한다. JSON에 VAD mapping도 활성화 표시도 없으므로
+ * 그 결과를 이 파서로 정확히 복원할 수 없다. VAD 사용 시 runner는 복원 marker를 요구한다.
+ * 근거: https://github.com/ggml-org/whisper.cpp/blob/v1.9.4/examples/cli/cli.cpp#L685-L740
  */
-const remapToSegment = ({ value, tokenFrom, tokenTo, segmentFrom, segmentTo }: RemapParams) => {
-  const tokenSpan = tokenTo - tokenFrom
-  if (tokenSpan <= 0) return segmentFrom
-
-  const segmentSpan = segmentTo - segmentFrom
-  if (tokenSpan >= segmentSpan) {
-    return segmentFrom + ((value - tokenFrom) / tokenSpan) * segmentSpan
-  }
-
-  return Math.max(segmentFrom, segmentTo - (tokenTo - value))
-}
-
-const buildWords = ({ segment, tokens }: { segment: WhisperSegment; tokens: WhisperToken[] }) => {
+const buildWords = (tokens: WhisperToken[]) => {
   const normalized = normalizeTokens(tokens)
-  const tokenFrom = Math.min(...normalized.map((token) => token.from)) / MS_PER_SEC
-  const tokenTo = Math.max(...normalized.map((token) => token.to)) / MS_PER_SEC
-  const segmentFrom = segment.offsets.from / MS_PER_SEC
-  const segmentTo = segment.offsets.to / MS_PER_SEC
-
-  const toSec = (value: number) =>
-    remapToSegment({ value: value / MS_PER_SEC, tokenFrom, tokenTo, segmentFrom, segmentTo })
 
   return groupTokensIntoWords(normalized).reduce<SttWord[]>((words, group) => {
     const text = decodeUtf8(group.map((token) => token.text).join('')).trim()
     if (!text) return words
 
-    return [...words, { start: toSec(group[0].from), end: toSec(group[group.length - 1].to), text }]
+    return [...words, {
+      start: group[0].from / MS_PER_SEC,
+      end: group[group.length - 1].to / MS_PER_SEC,
+      text
+    }]
   }, [])
 }
 
@@ -138,7 +117,7 @@ export const parseWhisperOutput = (raw: Buffer): SttSegment[] => {
 
   return toWhisperSegments(parsed).map((segment) => {
     const tokens = (segment.tokens ?? []).filter((token) => !isSpecialToken(token))
-    const words = tokens.length ? buildWords({ segment, tokens }) : []
+    const words = tokens.length ? buildWords(tokens) : []
 
     return {
       start: segment.offsets.from / MS_PER_SEC,
@@ -151,6 +130,14 @@ export const parseWhisperOutput = (raw: Buffer): SttSegment[] => {
   })
 }
 
+/** VAD 압축 좌표가 표시되지 않는 기존 CLI 결과를 원음 좌표로 오인하지 않는다. */
+export const assertRestoredVadTimestamps = (raw: Buffer) => {
+  const parsed = JSON.parse(raw.toString('latin1'))
+  if (parsed?.params?.vad !== true || parsed?.params?.token_timestamps !== 'original') {
+    throw new Error('VAD_TOKEN_TIMESTAMPS_NOT_RESTORED')
+  }
+}
+
 interface BuildWhisperArgsParams {
   modelPath: string
   audioPath: string
@@ -158,6 +145,8 @@ interface BuildWhisperArgsParams {
   outputPath: string
   threads: number
   vadModelPath?: string
+  /** native token getter로 원음 시각을 출력하는 CLI에서만 켠다. */
+  vadEnabled?: boolean
 }
 
 export const buildWhisperArgs = ({
@@ -165,8 +154,11 @@ export const buildWhisperArgs = ({
   audioPath,
   outputPath,
   threads,
-  vadModelPath
-}: BuildWhisperArgsParams) => [
+  vadModelPath,
+  vadEnabled = Boolean(vadModelPath)
+}: BuildWhisperArgsParams) => {
+  if (vadEnabled && !vadModelPath) throw new Error('VAD_MODEL_REQUIRED')
+  return [
   '-m',
   modelPath,
   '-f',
@@ -179,5 +171,6 @@ export const buildWhisperArgs = ({
   '-of',
   outputPath,
   '--no-prints',
-  ...(vadModelPath ? ['--vad', '--vad-model', vadModelPath] : [])
-]
+  ...(vadEnabled ? ['--vad', '--vad-model', vadModelPath!] : [])
+  ]
+}

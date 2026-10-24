@@ -6,7 +6,7 @@ import { assembleWindowResult, validWindow, type WindowInput } from './windowRes
 import { assignSpeakers, mergeUtterances } from '../src/core/merge'
 import { buildDiarizeArgs, parseDiarizeOutput } from '../src/main/pipeline/diarize'
 import { normalizeWavFile } from '../src/main/pipeline/normalize'
-import { buildWhisperArgs, parseWhisperOutput } from '../src/main/pipeline/whisper'
+import { assertRestoredVadTimestamps, buildWhisperArgs, parseWhisperOutput } from '../src/main/pipeline/whisper'
 
 export interface ServerManifest {
   audioPath: string
@@ -19,6 +19,7 @@ export interface ServerManifest {
     whisperBinary: string
     diarizeBinary: string
     whisperModel: string
+    whisperVadEnabled?: boolean
     vadModel: string
     segmentationModel: string
     embeddingModel: string
@@ -35,6 +36,7 @@ export const validateManifest = (value: unknown): ServerManifest => {
   if (
     !manifest ||
     !manifest.profile ||
+    (manifest.profile.whisperVadEnabled !== undefined && typeof manifest.profile.whisperVadEnabled !== 'boolean') ||
     (manifest.speakerCount !== undefined && !positiveInteger(manifest.speakerCount)) ||
     !positiveInteger(manifest.profile.sttThreads) ||
     !positiveInteger(manifest.profile.diarizeThreads)
@@ -177,6 +179,7 @@ export const runServerPipeline = async (manifest: ServerManifest) => {
           audioPath: normalized,
           outputPath: prefix,
           threads: p.sttThreads,
+          vadEnabled: p.whisperVadEnabled ?? true,
           vadModelPath: p.vadModel
         }),
         false,
@@ -204,6 +207,7 @@ export const runServerPipeline = async (manifest: ServerManifest) => {
     }
     const [, diarization] = await Promise.all([stt(), diarize()])
     const raw = await readFile(`${prefix}.json`)
+    if (p.whisperVadEnabled ?? true) assertRestoredVadTimestamps(raw)
     const result = manifest.window ? assembleWindowResult(raw,
       JSON.parse(await readFile(evidencePath,'utf8')), manifest.window)
       : assembleResult(raw, diarization, manifest.speakerCount)
