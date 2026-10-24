@@ -2,6 +2,7 @@
   "name": "knot-frontend",
   // /relay 아래 요청만 받는 중계 Worker예요(ADR 838). 나머지 주소는 아래 run_worker_first에 걸리지 않아 정적 파일로 바로 나가요
   // 피드백을 Notion 접수함에 넣는 토큰(ADR 930)은 저장소에 두지 않고 `wrangler secret put NOTION_FEEDBACK_TOKEN --env dev|prod`로 넣어요
+  // 새 소식 DB를 읽는 토큰과 DB ID(ADR 956)도 같은 방법으로 `NOTION_RELEASE_NOTE_TOKEN`, `NOTION_RELEASE_NOTE_DATABASE_ID`에 넣어요
   "main": "src/worker/index.ts",
   "compatibility_date": "2026-08-01",
   "assets": {
