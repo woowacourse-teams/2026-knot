@@ -52,3 +52,6 @@ src/main/resources/application-local.properties
 /ops/document-category-local/
 /ops/document-topic-local/
 /docs/experiments/.local/
+/docs/implement-plan/
+/docs/adr/
+/docs/qa/
