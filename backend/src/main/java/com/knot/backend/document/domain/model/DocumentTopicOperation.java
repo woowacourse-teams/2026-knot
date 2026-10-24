@@ -62,6 +62,8 @@ public class DocumentTopicOperation {
 
     private Instant startedAt;
 
+    private Instant cancelRequestedAt;
+
     private String failureCode;
 
     private int retryCount;
@@ -200,7 +202,7 @@ public class DocumentTopicOperation {
     }
 
     public void expire(Instant now) {
-        if (!isActive() || now.isBefore(deadlineAt)) {
+        if (!isActive() || isCancellationPendingOrCompleted() || now.isBefore(deadlineAt)) {
             return;
         }
         fail(
@@ -219,7 +221,7 @@ public class DocumentTopicOperation {
             String code,
             Instant now
     ) {
-        if (!isActive()) {
+        if (!isActive() || isCancellationPendingOrCompleted()) {
             return;
         }
         status = DocumentTopicOperationStatus.FAILED;
@@ -232,7 +234,7 @@ public class DocumentTopicOperation {
             int changed,
             Instant now
     ) {
-        validateClaim(
+        validateApplyingClaim(
                 token,
                 now
         );
@@ -243,6 +245,121 @@ public class DocumentTopicOperation {
         status = DocumentTopicOperationStatus.SUCCEEDED;
         failureCode = null;
         finish(now);
+    }
+
+    public boolean isCancellationPendingOrCompleted() {
+        return status == DocumentTopicOperationStatus.CANCEL_REQUESTED
+                || status == DocumentTopicOperationStatus.CANCELLED;
+    }
+
+    public void requestCancellation(Instant now) {
+        if (isCancellationPendingOrCompleted()) {
+            return;
+        }
+        if (status != DocumentTopicOperationStatus.QUEUED && status != DocumentTopicOperationStatus.RUNNING) {
+            throw new DocumentException(DocumentErrorCode.TOPIC_OPERATION_NOT_CANCELLABLE);
+        }
+        status = DocumentTopicOperationStatus.CANCEL_REQUESTED;
+        cancelRequestedAt = now;
+        claimToken = null;
+        leaseUntil = null;
+        failureCode = null;
+    }
+
+    public void completeCancellation(Instant now) {
+        if (status != DocumentTopicOperationStatus.CANCEL_REQUESTED) {
+            return;
+        }
+        status = DocumentTopicOperationStatus.CANCELLED;
+        failureCode = null;
+        finish(now);
+    }
+
+    public void beginApplying(
+            UUID token,
+            Instant now
+    ) {
+        if (ownsApplying(
+                token,
+                now
+        )) {
+            return;
+        }
+        validateClaim(
+                token,
+                now
+        );
+        if (processedCount != targetCount || !consolidated) {
+            throw conflict();
+        }
+        status = DocumentTopicOperationStatus.APPLYING;
+        nextAttemptAt = now;
+        leaseUntil = now.plusSeconds(LEASE_SECONDS);
+    }
+
+    public boolean ownsApplying(
+            UUID token,
+            Instant now
+    ) {
+        return status == DocumentTopicOperationStatus.APPLYING && token != null && token.equals(claimToken)
+                && now.isBefore(leaseUntil) && now.isBefore(deadlineAt);
+    }
+
+    public void validateApplyingClaim(
+            UUID token,
+            Instant now
+    ) {
+        if (!ownsApplying(
+                token,
+                now
+        )) {
+            throw conflict();
+        }
+    }
+
+    public boolean canReclaimApplying(Instant now) {
+        return status == DocumentTopicOperationStatus.APPLYING && !now.isBefore(leaseUntil)
+                && !now.isBefore(nextAttemptAt) && now.isBefore(deadlineAt);
+    }
+
+    public UUID reclaimApplying(Instant now) {
+        if (!canReclaimApplying(now)) {
+            throw conflict();
+        }
+        if (retryCount >= 1) {
+            fail(
+                    "LEASE_EXHAUSTED",
+                    now
+            );
+            return null;
+        }
+        retryCount++;
+        claimToken = UUID.randomUUID();
+        leaseUntil = now.plusSeconds(LEASE_SECONDS);
+        return claimToken;
+    }
+
+    public void deferApplyingRetry(
+            UUID token,
+            Instant now,
+            String code
+    ) {
+        if (!ownsApplying(
+                token,
+                now
+        )) {
+            return;
+        }
+        if (retryCount >= 1) {
+            fail(
+                    code,
+                    now
+            );
+            return;
+        }
+        failureCode = code;
+        leaseUntil = now;
+        nextAttemptAt = now.plusSeconds(5);
     }
 
     private void requeue(Instant at) {

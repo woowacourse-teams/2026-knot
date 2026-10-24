@@ -8,6 +8,16 @@ import lombok.RequiredArgsConstructor;
 @Getter
 @RequiredArgsConstructor
 public enum DocumentErrorCode implements ErrorCode {
+    TOPIC_OPERATION_NOT_FOUND(
+            ErrorCategory.NOT_FOUND,
+            "TOPIC_OPERATION_NOT_FOUND",
+            "해당 Workspace의 주제 정리 작업을 찾을 수 없습니다"
+    ),
+    TOPIC_OPERATION_NOT_CANCELLABLE(
+            ErrorCategory.CONFLICT,
+            "TOPIC_OPERATION_NOT_CANCELLABLE",
+            "현재 상태에서는 주제 정리 작업을 취소할 수 없습니다"
+    ),
     TOPIC_OPERATION_IN_PROGRESS(
             ErrorCategory.CONFLICT,
             "TOPIC_OPERATION_IN_PROGRESS",
