@@ -163,22 +163,22 @@ class DocumentTopicCancellationTest {
                 first,
                 NOW.plusSeconds(1)
         );
-        UUID next = operation.reclaimApplying(NOW.plusSeconds(92));
+        UUID next = operation.reclaimApplying(NOW.plusSeconds(182));
         // when & then
         assertThatThrownBy(
                 () -> operation.succeed(
                         first,
                         0,
-                        NOW.plusSeconds(93)
+                        NOW.plusSeconds(183)
                 )
         ).isInstanceOf(DocumentException.class);
         operation.succeed(
                 next,
                 0,
-                NOW.plusSeconds(93)
+                NOW.plusSeconds(183)
         );
         assertThat(operation.getStatus()).isEqualTo(DocumentTopicOperationStatus.SUCCEEDED);
-        assertThatThrownBy(() -> operation.requestCancellation(NOW.plusSeconds(94)))
+        assertThatThrownBy(() -> operation.requestCancellation(NOW.plusSeconds(184)))
                 .isInstanceOf(DocumentException.class);
     }
 

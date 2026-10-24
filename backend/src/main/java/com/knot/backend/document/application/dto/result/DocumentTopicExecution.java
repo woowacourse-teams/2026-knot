@@ -19,6 +19,27 @@ public record DocumentTopicExecution(
                 1,
                 targets.size() / 2
         );
+        return slice(
+                0,
+                count
+        );
+    }
+
+    public DocumentTopicExecution secondHalf() {
+        int count = Math.max(
+                1,
+                targets.size() / 2
+        );
+        return slice(
+                count,
+                targets.size()
+        );
+    }
+
+    private DocumentTopicExecution slice(
+            int from,
+            int to
+    ) {
         return new DocumentTopicExecution(
                 workspaceId,
                 operationId,
@@ -27,8 +48,8 @@ public record DocumentTopicExecution(
                 false,
                 List.copyOf(
                         targets.subList(
-                                0,
-                                count
+                                from,
+                                to
                         )
                 ),
                 categories

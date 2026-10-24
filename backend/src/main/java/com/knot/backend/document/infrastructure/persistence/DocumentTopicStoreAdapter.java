@@ -10,6 +10,10 @@ import java.util.List;
 import java.util.ArrayList;
 import java.util.Map;
 import java.util.UUID;
+import java.util.Set;
+import org.springframework.jdbc.core.RowMapper;
+import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
+import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
@@ -17,14 +21,147 @@ import org.springframework.stereotype.Repository;
 @Repository
 @RequiredArgsConstructor
 public class DocumentTopicStoreAdapter implements DocumentTopicStore {
-    private static final String TARGET_SELECT = """
+    private static final String TARGET_FROM = """
             SELECT t.document_id,d.topic,d.title,d.summary,substring(d.content,1,2000) evidence,
               t.before_category_id,t.before_grouping_scheme,t.before_assignment_source,t.before_rule_version,t.after_key
             FROM document_topic_operation_targets t JOIN documents d ON d.id=t.document_id AND d.workspace_id=t.workspace_id
-            WHERE t.operation_id=?
             """;
+    private static final String TARGET_SELECT = TARGET_FROM + " WHERE t.operation_id=?";
 
     private final JdbcTemplate jdbc;
+    private final NamedParameterJdbcTemplate named;
+
+    @Override
+    public List<DocumentTopicTarget> readyPending(
+            long operationId,
+            int limit,
+            Set<Long> excluded,
+            Instant now
+    ) {
+        String exclusion = "";
+        if (!excluded.isEmpty()) {
+            exclusion = " AND t.document_id NOT IN (:excluded)";
+        }
+        MapSqlParameterSource parameters = parameters(
+                operationId,
+                excluded
+        );
+        parameters.addValue(
+                "limit",
+                limit
+        );
+        parameters.addValue(
+                "now",
+                Timestamp.from(now)
+        );
+        return named.query(
+                TARGET_FROM + """
+                        WHERE t.operation_id=:operationId AND t.after_key IS NULL
+                          AND (t.next_attempt_at IS NULL OR t.next_attempt_at<=:now)
+                        """ + exclusion + " ORDER BY t.document_id LIMIT :limit",
+                parameters,
+                targetMapper()
+        );
+    }
+
+    @Override
+    public boolean allPending(
+            long operationId,
+            Set<Long> documentIds
+    ) {
+        if (documentIds.isEmpty()) {
+            return false;
+        }
+        Integer count = named.queryForObject(
+                """
+                        SELECT count(*) FROM document_topic_operation_targets
+                        WHERE operation_id=:operationId AND document_id IN (:ids) AND after_key IS NULL
+                        """,
+                parameters(
+                        operationId,
+                        documentIds
+                ),
+                Integer.class
+        );
+        return Integer.valueOf(documentIds.size())
+                .equals(count);
+    }
+
+    @Override
+    public boolean retryBatch(
+            long operationId,
+            Set<Long> documentIds,
+            Instant retryAt
+    ) {
+        MapSqlParameterSource parameters = parameters(
+                operationId,
+                documentIds
+        );
+        Integer available = named.queryForObject(
+                """
+                        SELECT count(*) FROM document_topic_operation_targets
+                        WHERE operation_id=:operationId AND document_id IN (:ids) AND after_key IS NULL AND retry_count=0
+                        """,
+                parameters,
+                Integer.class
+        );
+        if (!Integer.valueOf(documentIds.size())
+                .equals(available)) {
+            return false;
+        }
+        parameters.addValue(
+                "retryAt",
+                Timestamp.from(retryAt)
+        );
+        named.update(
+                """
+                        UPDATE document_topic_operation_targets SET retry_count=1,next_attempt_at=:retryAt
+                        WHERE operation_id=:operationId AND document_id IN (:ids) AND after_key IS NULL
+                        """,
+                parameters
+        );
+        return true;
+    }
+
+    @Override
+    public Instant nextBatchAttempt(long operationId) {
+        return jdbc.queryForObject(
+                """
+                        SELECT min(next_attempt_at) FROM document_topic_operation_targets
+                        WHERE operation_id=? AND after_key IS NULL
+                        """,
+                (
+                        row,
+                        index
+                ) -> {
+                    Timestamp time = row.getTimestamp(1);
+                    if (time == null) {
+                        return null;
+                    }
+                    return time.toInstant();
+                },
+                operationId
+        );
+    }
+
+    private MapSqlParameterSource parameters(
+            long operationId,
+            Set<Long> ids
+    ) {
+        MapSqlParameterSource parameters = new MapSqlParameterSource(
+                "operationId",
+                operationId
+        );
+        parameters.addValue(
+                "ids",
+                ids
+        );
+        parameters.addValue(
+                "excluded",
+                ids
+        );
+        return parameters;
+    }
 
     @Override
     public int capture(
@@ -78,25 +215,29 @@ public class DocumentTopicStoreAdapter implements DocumentTopicStore {
     ) {
         return jdbc.query(
                 sql,
-                (
-                        row,
-                        index
-                ) -> new DocumentTopicTarget(
-                        row.getLong("document_id"),
-                        row.getString("topic"),
-                        row.getString("title"),
-                        row.getString("summary"),
-                        row.getString("evidence"),
-                        row.getObject(
-                                "before_category_id",
-                                Long.class
-                        ),
-                        row.getString("before_grouping_scheme"),
-                        row.getString("before_assignment_source"),
-                        row.getString("before_rule_version"),
-                        row.getString("after_key")
-                ),
+                targetMapper(),
                 args
+        );
+    }
+
+    private RowMapper<DocumentTopicTarget> targetMapper() {
+        return (
+                row,
+                index
+        ) -> new DocumentTopicTarget(
+                row.getLong("document_id"),
+                row.getString("topic"),
+                row.getString("title"),
+                row.getString("summary"),
+                row.getString("evidence"),
+                row.getObject(
+                        "before_category_id",
+                        Long.class
+                ),
+                row.getString("before_grouping_scheme"),
+                row.getString("before_assignment_source"),
+                row.getString("before_rule_version"),
+                row.getString("after_key")
         );
     }
 
