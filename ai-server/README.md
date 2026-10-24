@@ -40,6 +40,8 @@ cmake --build /path/to/whisper-build --target whisper-cli -j 4
 프로필의 `whisperBinary`를 해당 빌드로 지정합니다. `whisperVadEnabled`를 생략하면 VAD를 사용하며,
 runner는 결과의 `params.vad: true`와 `params.token_timestamps: "original"`을 확인해 표시가 없는
 CLI 결과를 거절합니다. VAD 없이 실행하려면 명시적으로 false를 설정합니다.
+VAD를 사용하는 서버는 시작할 때 1초 무음으로 `whisperBinary`를 한 번 실행해 이 표시를 확인하고,
+없으면 `/health`를 `DOWN`으로 두고 작업을 받지 않습니다. 패치한 CLI를 코드보다 먼저 배포합니다.
 
 1. [프로필 예시](examples/profile.example.json)를 `ai-server/profile.json`으로 복사하고 바이너리·모델의 절대 경로와 스레드 수를 설정합니다.
 2. [.env.example](.env.example)을 `ai-server/.env`로 복사하고 인증 토큰과 허용할 S3 호스트를 설정합니다. EC2도 같은 토큰을 사용합니다.

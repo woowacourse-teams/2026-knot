@@ -59,7 +59,7 @@ public class HeadlessTranscriptionEngine implements TranscriptionEngine {
         );
         audioInspector = new AudioInspector();
         preflight();
-        ready = true;
+        ready = new WhisperTimestampCheck(mapper).restoresOriginalTimestamps(profile);
     }
 
     @Override
