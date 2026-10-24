@@ -287,7 +287,7 @@ class DocumentTopicCancellationIntegrationTest {
         DocumentTopicExecution previous = prepare(id);
         checkpoints.beginApply(previous);
         reset(planner);
-        when(clock.instant()).thenReturn(NOW.plusSeconds(91));
+        when(clock.instant()).thenReturn(NOW.plusSeconds(181));
         // when
         DocumentTopicExecution next = checkpoints.claim(
                 workspace,

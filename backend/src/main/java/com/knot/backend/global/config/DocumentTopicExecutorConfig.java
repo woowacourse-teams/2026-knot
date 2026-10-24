@@ -9,6 +9,16 @@ import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 @ConditionalOnProperty(prefix = "knot.document-topic-reorganization", name = "enabled", havingValue = "true")
 public class DocumentTopicExecutorConfig {
 
+    @Bean("documentTopicPlanningExecutor")
+    public ThreadPoolTaskExecutor planningExecutor(DocumentTopicReorganizationProperties properties) {
+        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+        executor.setCorePoolSize(properties.getParallelism());
+        executor.setMaxPoolSize(properties.getParallelism());
+        executor.setQueueCapacity(properties.getParallelism());
+        executor.setThreadNamePrefix("document-topic-plan-");
+        return executor;
+    }
+
     @Bean("documentTopicExecutor")
     public ThreadPoolTaskExecutor executor() {
         ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();

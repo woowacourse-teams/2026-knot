@@ -89,7 +89,7 @@ class DocumentTopicReorganizationIntegrationTest {
                         Integer.class,
                         operation
                 )
-        ).isEqualTo(2);
+        ).isEqualTo(4);
         worker.execute(
                 workspace,
                 operation
@@ -469,7 +469,7 @@ class DocumentTopicReorganizationIntegrationTest {
                 id(operation)
         )
                 .orElseThrow();
-        when(clock.instant()).thenReturn(NOW.plusSeconds(91));
+        when(clock.instant()).thenReturn(NOW.plusSeconds(181));
         DocumentTopicExecution next = checkpoints.claim(
                 workspace,
                 id(operation)

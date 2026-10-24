@@ -81,6 +81,11 @@ public class DocumentTopicCheckpointService {
         boolean consolidate = operation.getProcessedCount() == operation.getTargetCount()
                 && !operation.isConsolidated();
         List<DocumentTopicCandidate> candidates = store.categories(id);
+        if (!consolidate) {
+            candidates = candidates.stream()
+                    .filter(DocumentTopicCandidate::wasCandidate)
+                    .toList();
+        }
         if (operation.getTargetCount() == 0) {
             candidates = List.of();
         }
@@ -295,6 +300,8 @@ public class DocumentTopicCheckpointService {
                     "WORKSPACE_DELETED",
                     clock.instant()
             );
+            operations.save(operation);
+            store.prune(execution.workspaceId());
         }
         return operation;
     }
