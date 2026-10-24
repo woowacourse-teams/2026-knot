@@ -10,7 +10,7 @@ on:
       - ".github/workflows/issue-harness.yml"
       - "AGENTS.md"
       - "CLAUDE.md"
-      - "docs/adr/**"
+      - "backend/docs/adr/**"
       - "docs/harness/**"
       - "harness/**"
 
@@ -25,7 +25,7 @@ on:
       - ".github/workflows/issue-harness.yml"
       - "AGENTS.md"
       - "CLAUDE.md"
-      - "docs/adr/**"
+      - "backend/docs/adr/**"
       - "docs/harness/**"
       - "harness/**"
 

@@ -3,7 +3,7 @@
 ## 현재 제품 기획
 
 제품 요구사항을 사용하는 Issue 기획·구현·리뷰 전에
-[현재 V2 MVP 기획 기준](docs/product/current-v2-mvp.md)을 읽고, 작업 항목에 해당하는
+[현재 V2 MVP 기획 기준](backend/docs/product/current-v2-mvp.md)을 읽고, 작업 항목에 해당하는
 원문과 적용 범위를 확인한다. 출처 충돌·미확정·접근 불가 시 처리도 이 문서를 따른다.
 Notion 후보와 저장소 문서·GitHub Issue·실제 구현을 대조하고 queue 상태를 처리할 때는
 [Notion 정합성 워크플로](docs/harness/notion-alignment.md)를 따른다.

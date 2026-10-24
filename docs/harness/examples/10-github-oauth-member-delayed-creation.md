@@ -1,7 +1,7 @@
 # GitHub OAuth 신원과 Member 지연 생성 정책
 
 > ADR 형식을 보여주는 가상 예시다. 실제 대화에서 확인되지 않은 추가 문답을 사용했으며,
-> 실제 `docs/adr`의 결정 기록이나 materializer의 정확한 출력이라고 주장하지 않는다.
+> 실제 `backend/docs/adr`의 결정 기록이나 materializer의 정확한 출력이라고 주장하지 않는다.
 
 ## 상태
 
@@ -63,7 +63,7 @@ GitHub OAuth로 확인한 신원을 가입 세션에 보관하고, 닉네임 입
 
 ## 확인
 
-- 예정 경로: `docs/adr/10-github-oauth-member-delayed-creation.md`
+- 예정 경로: `backend/docs/adr/10-github-oauth-member-delayed-creation.md`
 - 결정 주체: 시연용 가정
 - 실제 팀이 같은 대안과 선택 이유를 확인한 경우에만 AI 하네스가 Proposed ADR을 생성한다.
 - 팀은 구현 PR에서 ADR과 코드를 함께 리뷰한 뒤에만 `Accepted`로 변경한다.

@@ -15,8 +15,8 @@ ADR이 필요하면 Issue의 `구현 기능 설명`에 구체적인 문제 상�
 넣지 않는다.
 
 Issue 단계에서는 파일을 만들지 않는다. 새 Issue의 번호가 정해지기 전에는 `메모`에
-`docs/adr/{ISSUE_NUMBER}-<slug>.md`를 표시한다. Issue 생성 뒤 실제 번호를 확인하고,
-구현을 시작한 작업 브랜치에서 AI가 `docs/adr/<Issue 번호>-<slug>.md`를 `Proposed`로
+`backend/docs/adr/{ISSUE_NUMBER}-<slug>.md`를 표시한다. Issue 생성 뒤 실제 번호를 확인하고,
+구현을 시작한 작업 브랜치에서 AI가 `backend/docs/adr/<Issue 번호>-<slug>.md`를 `Proposed`로
 만들어 코드와 같은 PR에 포함한다. 리뷰에서 팀이 승인한 뒤에만 상태를 `Accepted`로
 바꾼다. AI는 merge하지 않는다.
 
