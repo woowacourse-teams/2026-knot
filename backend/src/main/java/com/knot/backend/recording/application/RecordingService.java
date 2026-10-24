@@ -376,7 +376,6 @@ public class RecordingService {
         if (transcriptionFailed) {
             boolean retryable = transcriptionProperties.enabled() && uploads.findByRecordingId(session.getId())
                     .filter(RecordingAudioUpload::isAudioAvailable)
-                    .filter(upload -> !upload.isRetentionExpired(decidedAt))
                     .isPresent();
             return Optional.of(
                     failedResult(

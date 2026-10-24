@@ -12,7 +12,6 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.time.Instant;
-import java.time.Duration;
 import java.util.Optional;
 import lombok.Getter;
 
@@ -20,7 +19,6 @@ import lombok.Getter;
 @Entity
 @Table(name = "recording_audio_uploads")
 public class RecordingAudioUpload {
-    private static final Duration AUDIO_RETENTION = Duration.ofDays(30);
     private static final String ALLOWED_CONTENT_TYPE = "audio/webm";
     private static final long MAX_CONTENT_LENGTH = 500L * 1024 * 1024;
 
@@ -162,14 +160,6 @@ public class RecordingAudioUpload {
         if (!isAudioAvailable()) {
             throw new RecordingException(RecordingErrorCode.AUDIO_UPLOAD_NOT_COMPLETED);
         }
-    }
-
-    public boolean isRetentionExpired(Instant now) {
-        validateTimeNotBeforeReservation(now);
-        if (!isAudioAvailable()) {
-            return false;
-        }
-        return !now.isBefore(completedAt.plus(AUDIO_RETENTION));
     }
 
     public void revoke(Instant revokedAt) {

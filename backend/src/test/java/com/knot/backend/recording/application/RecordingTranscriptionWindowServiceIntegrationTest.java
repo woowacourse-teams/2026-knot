@@ -94,6 +94,21 @@ class RecordingTranscriptionWindowServiceIntegrationTest {
     }
 
     @Test
+    void endedRecordingCanClaimExistingWindowAfterOneYear() {
+        assertThat(register()).isEqualTo(1);
+        jdbc.sql(
+                "UPDATE recording_sessions SET status='ENDED',ended_at=CAST(:at AS TIMESTAMPTZ),current_interval_started_at=NULL,end_reason='USER_ENDED' WHERE id=1"
+        )
+                .param(
+                        "at",
+                        NOW.toString()
+                )
+                .update();
+        when(clock.instant()).thenReturn(NOW.plus(Duration.ofDays(365)));
+        assertThat(claimFirst()).isNotNull();
+    }
+
+    @Test
     @DisplayName("활성 PCM 검증 조각을 등록하고 같은 요청은 입력 계약과 시도 ID를 보존한다")
     void registerAvailable_success_idempotent() {
         // given

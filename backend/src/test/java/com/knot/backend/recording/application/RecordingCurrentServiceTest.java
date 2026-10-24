@@ -549,23 +549,36 @@ class RecordingCurrentServiceTest {
     }
 
     @org.junit.jupiter.params.ParameterizedTest
-    @org.junit.jupiter.params.provider.CsvSource({"true,true,false,true", "true,true,true,false",
-            "true,false,false,false", "false,true,false,false"})
-    @DisplayName("전사 재접수는 기능 활성화와 사용 가능한 미만료 오디오가 모두 필요하다")
+    @org.junit.jupiter.params.provider.CsvSource({"true,true,true", "true,false,false", "false,true,false"})
+    @DisplayName("전사 재접수는 기능 활성화와 사용 가능한 오디오가 모두 필요하다")
     void findCurrent_success_retryableTranscription(
             boolean enabled,
             boolean available,
-            boolean expired,
             boolean expected
     ) {
         prepareEndedRecording();
         RecordingTranscription transcription = mock(RecordingTranscription.class);
         when(transcription.getStatus()).thenReturn(TranscriptionStatus.FAILED);
         when(transcriptions.findByRecordingSessionId(RECORDING_ID)).thenReturn(Optional.of(transcription));
-        RecordingAudioUpload upload = mock(RecordingAudioUpload.class);
+        Instant old = NOW.minus(java.time.Duration.ofDays(365));
+        RecordingAudioUpload upload = RecordingAudioUpload.reserve(
+                RECORDING_ID,
+                "recordings/old.webm",
+                "audio/webm",
+                100,
+                old
+        );
+        upload.complete(
+                com.knot.backend.recording.domain.model.StoredAudioObject.of(
+                        100,
+                        "audio/webm",
+                        "old-v1"
+                ),
+                old.plusSeconds(60)
+        );
+        if (!available)
+            upload.recordDeleted(NOW);
         when(transcriptionProperties.enabled()).thenReturn(enabled);
-        when(upload.isAudioAvailable()).thenReturn(available);
-        when(upload.isRetentionExpired(NOW)).thenReturn(expired);
         when(uploads.findByRecordingId(RECORDING_ID)).thenReturn(Optional.of(upload));
 
         assertThat(

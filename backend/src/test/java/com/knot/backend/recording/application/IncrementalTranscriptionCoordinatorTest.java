@@ -134,6 +134,13 @@ class IncrementalTranscriptionCoordinatorTest {
     }
 
     @Test
+    void endedRecordingStillPlansWindowsAfterOneYear() {
+        when(session.getEndedAt()).thenReturn(NOW.minus(java.time.Duration.ofDays(365)));
+        coordinator.advance(1);
+        verify(windows).save(any(RecordingTranscriptionWindow.class));
+    }
+
+    @Test
     @DisplayName("활성 녹음은 30초 core와 5초 문맥으로 새 구간을 등록한다")
     void advance_success_activeRegistration() {
         // given

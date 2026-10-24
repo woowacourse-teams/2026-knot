@@ -406,7 +406,7 @@ class RecordingAudioFinalizationIntegrationTest {
     }
 
     @Test
-    void retentionCutoffBlocksAdoptionEvenWithLiveLease() {
+    void adoptionCanCrossThirtyDaysWithLiveLease() {
         // given
         when(clock.instant()).thenReturn(
                 NOW.plus(java.time.Duration.ofDays(30))
@@ -445,16 +445,16 @@ class RecordingAudioFinalizationIntegrationTest {
         );
 
         // then
-        assertThat(failure).isInstanceOf(AudioFinalizationLeaseLostException.class);
+        assertThat(failure).isNull();
         assertThat(
                 jdbc.sql("SELECT count(*) FROM recording_audio_uploads")
                         .query(Long.class)
                         .single()
-        ).isZero();
+        ).isEqualTo(1);
     }
 
     @Test
-    void retentionCutoffBlocksNewClaim() {
+    void oldRecordingCanStillBeClaimed() {
         // given
         when(clock.instant()).thenReturn(NOW.plus(java.time.Duration.ofDays(30)));
 
@@ -462,13 +462,13 @@ class RecordingAudioFinalizationIntegrationTest {
         java.util.Optional<AudioFinalizationClaim> result = transaction.claim(recordingId);
 
         // then
-        assertThat(result).isEmpty();
+        assertThat(result).isPresent();
         assertThat(
                 jobs.findByRecordingId(recordingId)
                         .orElseThrow()
                         .getStatus()
                         .name()
-        ).isEqualTo("DISCARDED");
+        ).isEqualTo("PROCESSING");
     }
 
     @Test

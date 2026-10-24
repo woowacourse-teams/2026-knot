@@ -333,11 +333,7 @@ public class RecordingAudioFinalizationTransaction {
 
     private boolean available(RecordingSession session) {
         return session.getAudioMode() == RecordingAudioMode.PCM16_CHUNKS_V1
-                && session.getStatus() == RecordingStatus.ENDED && session.getEndedAt() != null && clock.instant()
-                        .isBefore(
-                                session.getEndedAt()
-                                        .plus(Duration.ofDays(30))
-                        )
+                && session.getStatus() == RecordingStatus.ENDED && session.getEndedAt() != null
                 && workspaces.findById(session.getWorkspaceId())
                         .isPresent()
                 && members.existsByWorkspaceIdAndMemberId(

@@ -5,9 +5,6 @@ import com.knot.backend.recording.application.dto.result.RecordingAudioSaveResul
 import com.knot.backend.recording.domain.model.AudioManifestPart;
 import com.knot.backend.recording.domain.model.RecordingAudioFinalization;
 import com.knot.backend.recording.domain.repository.RecordingAudioFinalizationRepository;
-import com.knot.backend.recording.domain.repository.RecordingSessionRepository;
-import java.time.Clock;
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
@@ -19,9 +16,7 @@ import tools.jackson.databind.ObjectMapper;
 @RequiredArgsConstructor
 public class RecordingAudioFinalizationQuery {
     private final RecordingAudioFinalizationRepository jobs;
-    private final RecordingSessionRepository sessions;
     private final ObjectMapper mapper;
-    private final Clock clock;
     private final com.knot.backend.recording.domain.repository.RecordingAudioStreamRepository streams;
 
     @Transactional(readOnly = true)
@@ -46,15 +41,6 @@ public class RecordingAudioFinalizationQuery {
             RecordingAudioFinalization job
     ) {
         String status = job.audioSaveStatus();
-        boolean expired = sessions.findById(recordingId)
-                .map(
-                        session -> session.getEndedAt() != null && !clock.instant()
-                                .isBefore(
-                                        session.getEndedAt()
-                                                .plus(Duration.ofDays(30))
-                                )
-                )
-                .orElse(true);
         if ("DISCARDED".equals(state.audioSaveStatus())) {
             status = "DISCARDED";
         }
@@ -78,7 +64,7 @@ public class RecordingAudioFinalizationQuery {
                 state.expectedLastSequence(),
                 state.acceptUntil(),
                 job.getFailureCode(),
-                !expired && !"DISCARDED".equals(status) && job.canRetry(),
+                !"DISCARDED".equals(status) && job.canRetry(),
                 job.getId(),
                 job.getQuality()
         );

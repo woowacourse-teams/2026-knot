@@ -16,7 +16,6 @@ interface RecordingAudioFinalizationJpaRepository extends JpaRepository<Recordin
             JOIN recording_sessions r ON r.id = s.recording_id
             JOIN workspaces w ON w.id = r.workspace_id AND w.deleted_at IS NULL
             WHERE s.sealed_at IS NOT NULL AND NOT s.frozen AND r.status = 'ENDED'
-                AND r.ended_at + INTERVAL '30 days' > CURRENT_TIMESTAMP
                 AND EXISTS (SELECT 1 FROM workspace_members m
                     WHERE m.workspace_id = r.workspace_id AND m.member_id = r.member_id)
                 AND NOT EXISTS (SELECT 1 FROM recording_audio_finalizations j WHERE j.recording_id = s.recording_id)

@@ -10,8 +10,6 @@ import com.knot.backend.recording.domain.model.AudioManifestPart;
 import com.knot.backend.recording.domain.model.RecordingAudioFinalization;
 import com.knot.backend.recording.domain.repository.RecordingAudioFinalizationRepository;
 import com.knot.backend.recording.domain.repository.RecordingAudioStreamRepository;
-import com.knot.backend.recording.domain.repository.RecordingSessionRepository;
-import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
@@ -58,9 +56,7 @@ class RecordingAudioFinalizationQueryTest {
         when(jobs.findByRecordingId(1)).thenReturn(Optional.of(job));
         RecordingAudioFinalizationQuery query = new RecordingAudioFinalizationQuery(
                 jobs,
-                mock(RecordingSessionRepository.class),
                 mapper,
-                Clock.systemUTC(),
                 mock(RecordingAudioStreamRepository.class)
         );
 

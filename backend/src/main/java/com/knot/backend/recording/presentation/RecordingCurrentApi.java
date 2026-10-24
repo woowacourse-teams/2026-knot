@@ -25,7 +25,7 @@ public interface RecordingCurrentApi {
             summary = "내 현재 녹음 조회",
             description = "요청한 Workspace에서 본인의 녹음을 RECORDING·PAUSED, PROCESSING, 실패 순으로 선택한다. "
                     + "같은 우선순위에서는 시작 시각, ID 내림차순으로 선택하며 새 녹음 완료 후 이전 실패를 복원한다. "
-                    + "전사 실패는 30일 후에도 표시하되 오디오가 없거나 만료되면 retryable=false다. "
+                    + "전사 실패는 경과 일수와 관계없이 표시하며 실제 사용할 오디오가 없으면 retryable=false다. "
                     + "문서 실패는 마지막 실패 후 168시간 이내에 표시하고 기존 재시도 조건을 만족하는 retryableJobIds만 반환한다. "
                     + "다른 탭·기기에서도 조회할 수 있지만 생존 신호를 갱신하거나 제어 권한을 넘기지 않고 제어 비밀값을 반환하지 않는다. "
                     + "다른 Workspace의 녹음과 완료·내용 없음·폐기는 제외한다"

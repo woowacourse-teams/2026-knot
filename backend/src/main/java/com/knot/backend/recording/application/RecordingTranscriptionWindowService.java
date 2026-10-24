@@ -374,13 +374,9 @@ public class RecordingTranscriptionWindowService {
         boolean purged = cleanup.findForUpdate(session.getId())
                 .map(task -> task.getScope() == RecordingAudioCleanupScope.ALL)
                 .orElse(false);
-        boolean retained = session.isActive()
-                || (session.getStatus() == RecordingStatus.ENDED && session.getEndedAt() != null
-                        && now().isBefore(
-                                session.getEndedAt()
-                                        .plus(Duration.ofDays(30))
-                        ));
-        return !revoked && !purged && retained && workspaces.findById(session.getWorkspaceId())
+        boolean recordingAvailable = session.isActive()
+                || (session.getStatus() == RecordingStatus.ENDED && session.getEndedAt() != null);
+        return !revoked && !purged && recordingAvailable && workspaces.findById(session.getWorkspaceId())
                 .isPresent()
                 && members.existsByWorkspaceIdAndMemberId(
                         session.getWorkspaceId(),
