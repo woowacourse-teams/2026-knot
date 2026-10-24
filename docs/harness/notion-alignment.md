@@ -12,14 +12,14 @@
 
 운영 Team Notion의 사용자 지정 기준 root는 [Knot](https://app.notion.com/p/knot-3aeb4351752280a29797de8949496356)이다. 이전에 복제한 `자바의 Notion`은 레거시 참고 자료이며 운영 원문을 대신하지 않는다.
 
-작업 전에 [현재 V2 MVP 기획 기준](../product/current-v2-mvp.md)과 영향이 있는 Notion
+작업 전에 [현재 V2 MVP 기획 기준](../../backend/docs/product/current-v2-mvp.md)과 영향이 있는 Notion
 원문을 확인한다. 기획 문서 모음의 상태를 다음처럼 해석한다.
 
 2026-10-06 사용자가 최신 API 명세를 우선 기준으로 지정했다. 같은 항목을 명시적으로
 다루는 최신 API와 도메인·ERD·화면 정책·이전 저장소 요약이 다르면 API의 규칙을 적용한다.
 이 우선순위로 해소된 차이는 같은 질문을 반복하지 않는다. API 안의 미정·제안, API가
 다루지 않은 정책, 접근 불가와 실제 구현 상태는 별도로 확인한다. 상세 적용과 대체 관계는
-[현재 V2 MVP 기획 기준](../product/current-v2-mvp.md#2026-10-06-최신-api-기준)에 둔다.
+[현재 V2 MVP 기획 기준](../../backend/docs/product/current-v2-mvp.md#2026-10-06-최신-api-기준)에 둔다.
 
 | Notion 상태 | 처리 |
 | --- | --- |
@@ -84,7 +84,7 @@ API 내부의 충돌 또는 영향이 큰 정책이 정해지지 않았다면 �
 - 원문·DB 속성의 갱신은 ignored 캐시에 보존한다. 관련 내용을 실제로 읽고 선별한 적용 규칙·
   출처·확정/미확정 상태만 추적되는 주제별 문서나 구현 계획에 반영한다.
   캐시 복사 완료를 문서 정제나 의미 검토 완료로 보고하지 않는다.
-- 확정된 제품 방향은 `docs/product/current-v2-mvp.md`에 범위·출처·날짜·대체 관계와
+- 확정된 제품 방향은 `backend/docs/product/current-v2-mvp.md`에 범위·출처·날짜·대체 관계와
   미해결 차이를 요약한다.
 - BE API 문서는 원문 상태와 서버 구현을 분리한다. 구현 계약은 Controller·DTO·보안 설정·
   예외 처리와 검증 결과에 맞추며 미구현 후보에는 `미구현` 또는 `초안`을 표시한다.
@@ -216,7 +216,7 @@ API 내부의 미정·제안 또는 실제 구현과의 차이, 연구 원자료
 `Knot-Notion-Snapshot-2026-10-06` 패키지에 `full-review.md`, `full-review-ledger.csv`,
 `full-review-pending-before.csv`, `full-review-pending-after.csv`,
 `full-review-sources.csv`, `full-review-sources-after.csv`로 보관했다. 개인 연구 원문을
-저장소에 복제하지 않았다. 로컬 문서 변경은 이 문서와 `docs/product/current-v2-mvp.md`뿐이며,
+저장소에 복제하지 않았다. 로컬 문서 변경은 이 문서와 `backend/docs/product/current-v2-mvp.md`뿐이며,
 구현·GitHub·Notion 원문·commit·push는 변경하지 않았다.
 
 ## 2026-10-07 processed 정리 및 예약 게시 checkpoint

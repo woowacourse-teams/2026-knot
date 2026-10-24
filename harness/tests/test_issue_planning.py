@@ -193,7 +193,7 @@ class IssuePlanningTest(unittest.TestCase):
             result["issue_body"],
         )
         self.assertIn(
-            "docs/adr/{ISSUE_NUMBER}-auth-account-linking.md", result["issue_body"]
+            "backend/docs/adr/{ISSUE_NUMBER}-auth-account-linking.md", result["issue_body"]
         )
         self.assertNotIn("## ADR 결정", result["issue_body"])
         self.assertNotIn("### 검토한 대안", result["issue_body"])
@@ -217,7 +217,7 @@ class IssuePlanningTest(unittest.TestCase):
         self.assertEqual("pass", result["status"])
         self.assertEqual("finalized", result["adr_path_status"])
         self.assertEqual("none", result["next_after_issue_created"])
-        self.assertIn("docs/adr/123-auth-account-linking.md", result["issue_body"])
+        self.assertIn("backend/docs/adr/123-auth-account-linking.md", result["issue_body"])
         self.assertNotIn("{ISSUE_NUMBER}", result["issue_body"])
 
     def test_wrong_scalar_type_is_held_without_crashing(self):
@@ -485,10 +485,10 @@ class IssuePlanningTest(unittest.TestCase):
         self.assertEqual("pass", result["status"])
         self.assertEqual("finalized", result["adr_path_status"])
         self.assertEqual("none", result["next_after_issue_created"])
-        self.assertIn("docs/adr/459-auth-account-linking.md", result["issue_body"])
+        self.assertIn("backend/docs/adr/459-auth-account-linking.md", result["issue_body"])
         edit_command, edit_kwargs = runner.calls[2]
         self.assertEqual(["gh", "issue", "edit", "459"], edit_command[:4])
-        self.assertIn("docs/adr/459-auth-account-linking.md", edit_kwargs["input"])
+        self.assertIn("backend/docs/adr/459-auth-account-linking.md", edit_kwargs["input"])
 
     def test_adr_edit_failure_preserves_created_issue_as_partial(self):
         runner = FakeRunner(
@@ -620,17 +620,17 @@ class IssuePlanningTest(unittest.TestCase):
         result = issue_planning.plan(snapshot)
 
         self.assertEqual("hold", result["status"])
-        self.assertIn("adr.planned_path must stay under docs/adr", result["errors"])
+        self.assertIn("adr.planned_path must stay under backend/docs/adr", result["errors"])
 
-    def test_malformed_adr_path_is_held(self):
+    def test_legacy_adr_path_is_held(self):
         snapshot = fixture("high-risk-create.json")
-        snapshot["adr"]["planned_path"] = "docs/adr/auth-account-linking.md"
+        snapshot["adr"]["planned_path"] = "docs/adr/123-auth-account-linking.md"
 
         result = issue_planning.plan(snapshot)
 
         self.assertEqual("hold", result["status"])
         self.assertIn(
-            "adr.planned_path must match docs/adr/<issue-number>-<slug>.md",
+            "adr.planned_path must match backend/docs/adr/<issue-number>-<slug>.md",
             result["errors"],
         )
 
@@ -638,12 +638,12 @@ class IssuePlanningTest(unittest.TestCase):
         cases = (
             (
                 "issue-number",
-                "docs/adr/124-auth-account-linking.md",
+                "backend/docs/adr/124-auth-account-linking.md",
                 "adr.planned_path issue number must match issue_number",
             ),
             (
                 "slug",
-                "docs/adr/123-different-slug.md",
+                "backend/docs/adr/123-different-slug.md",
                 "adr.planned_path slug must match adr.slug",
             ),
         )
@@ -660,7 +660,7 @@ class IssuePlanningTest(unittest.TestCase):
 
     def test_create_contract_cannot_finalize_adr_path_without_issue_number(self):
         snapshot = fixture("high-risk-create.json")
-        snapshot["adr"]["planned_path"] = "docs/adr/123-auth-account-linking.md"
+        snapshot["adr"]["planned_path"] = "backend/docs/adr/123-auth-account-linking.md"
 
         result = issue_planning.plan(snapshot)
 
@@ -721,7 +721,7 @@ class IssuePlanningTest(unittest.TestCase):
             self.assertEqual(0, completed.returncode)
             self.assertEqual("created", result["action"])
             self.assertTrue(
-                (Path(tmp) / "docs/adr/123-auth-account-linking.md").is_file()
+                (Path(tmp) / "backend/docs/adr/123-auth-account-linking.md").is_file()
             )
 
     def test_materializer_rejects_conflicting_issue_number(self):
@@ -769,7 +769,7 @@ class IssuePlanningTest(unittest.TestCase):
     def test_materializer_rejects_draft_planned_path_without_issue_number(self):
         snapshot = fixture("high-risk-create.json")
         snapshot["operation"] = "draft"
-        snapshot["adr"]["planned_path"] = "docs/adr/123-auth-account-linking.md"
+        snapshot["adr"]["planned_path"] = "backend/docs/adr/123-auth-account-linking.md"
 
         with tempfile.TemporaryDirectory() as tmp:
             result = materialize_adr.materialize(
@@ -814,7 +814,7 @@ class IssuePlanningTest(unittest.TestCase):
         snapshot = materializable_snapshot()
 
         with tempfile.TemporaryDirectory() as tmp:
-            target = Path(tmp) / "docs/adr/123-auth-account-linking.md"
+            target = Path(tmp) / "backend/docs/adr/123-auth-account-linking.md"
             target.parent.mkdir(parents=True)
             target.write_text("# existing\n", encoding="utf-8")
 

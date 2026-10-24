@@ -63,7 +63,7 @@ python3 harness/issue_planning.py \
 
 예상 결과는 `status=pass`, `action=render_draft`,
 `requested_action=publish_issue`다. 출력된 `issue_body`의 `메모`에는 ADR 결정 한 줄과 예정
-경로 `docs/adr/{ISSUE_NUMBER}-auth-account-linking.md`가 포함된다.
+경로 `backend/docs/adr/{ISSUE_NUMBER}-auth-account-linking.md`가 포함된다.
 `adr_path_status=pending_issue_number`, `next_after_issue_created=finalize_adr_path`이며
 `interview_status=skipped`, `interview_notice=자료 충분으로 인터뷰 생략`,
 `remote_write_authorized=false`다. 저장소에 ADR 파일은 생성되지 않는다.
@@ -94,7 +94,7 @@ python3 harness/materialize_adr.py \
   --repo-root "$work_dir" --issue-number 123 --implementation --pretty
 ```
 
-`$work_dir/docs/adr/123-auth-account-linking.md`가 `Proposed`로 생성돼야 한다. 실제 Issue
+`$work_dir/backend/docs/adr/123-auth-account-linking.md`가 `Proposed`로 생성돼야 한다. 실제 Issue
 번호 없이 `--implementation`만 실행하면 `require_final_adr_path`로 Hold해야 한다. 같은
 명령을 다시 실행하면 파일을 덮어쓰지 않고 `unchanged`를 반환해야 한다. 작업이 끝나면
 생성한 임시 디렉터리만 삭제한다.
