@@ -15,7 +15,7 @@ Mac에서 실행되는 개발 생산성 봇이다. Knot 서버에서 봇을 멘�
 
 `DISCORD_FE_ROLE_ID`, `DISCORD_BE_ROLE_ID`, `DISCORD_MEETING_CHANNEL_ID`는 `.env.example`에 현재 서버 기본값이 있다. 게시된 내역은 저장소 밖의 `~/Library/Application Support/KnotDiscordAssistant/meetings.sqlite3`에 0600으로 보관하고 재시작 후 버튼을 복원한다. AI·Notion 호출과 자동 리마인더는 이 흐름에 없다. Mac이 꺼지면 버튼 처리도 멈춘다.
 
-사용법·장애 처리·실제 검증 범위는 [회의 명령 운영 기록](../../backend/docs/operations/discord-meeting-command.md), 설계는 [#505 구현 계획](../../backend/docs/implement-plan/505-discord-meeting-command.md)을 참고한다.
+사용법·장애 처리·실제 검증 범위는 [회의 명령 운영 기록](../../backend/docs/operations/discord-meeting-command.md)을 참고한다.
 
 ## 전체 흐름
 

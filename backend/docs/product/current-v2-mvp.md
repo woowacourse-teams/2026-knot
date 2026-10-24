@@ -247,7 +247,7 @@ API 페이지는 9/30 source/pending snapshot과 응답 예시·403 설명·추�
 후보 흐름과 현재 코드의 차이는
 [백엔드 로그인·API 정합 메모](../notion-api-alignment.md#인증로그인-2026-09-30-후보)에,
 저장·동시성 제안과 미정 결정은
-[Persona 로그인 세션 draft](../../.persona/decisions/draft/refresh-token-session-lifecycle.md)에
+Persona 로그인 세션 draft(현재 저장소에 없는 과거 로컬 문서)에
 기록했다. 로그인 Issue에 적힌 사용자 결정은 이번 기획 대조의 현재 지침으로 쓰되, 팀 승인과
 Notion의 서로 다른 상태 표기는 구분한다.
 
@@ -345,7 +345,7 @@ Harudeul 메모에는 Codex CLI 연결과 기기 소음의 불편이 있다. Ril
 최초 탭의 신호 간격은 30초, 2분 무응답이면 종료한다. 명시적 종료는 즉시 처리하며,
 닫기와 새로고침 구분·이탈 신호 실패는 유예 만료로 회수한다.
 
-[시작 API 구현 계약](../api/recording-start.md)은 멱등 키와 탭 증명을 구체화한다.
+[시작 API 구현 계약](https://github.com/woowacourse-teams/2026-knot/blob/45d6b99993222ea4953b6f498294d8533b17fc6e/backend/docs/api/recording-start.md)은 멱등 키와 탭 증명을 구체화한다.
 종료·복구·만료·오디오 후속 처리는 #381·#384·#385 등 후속 Issue에서 완성한다.
 9월 30일 로컬 사본은 청크 대신 최종 파일 업로드와 `200 ENDED`인 세션 종료를 사용한다.
 세션 종료만으로 문서 처리 중 상태를 반환하지 않는다. 팀 Notion 실시간 동기화는 미확인이다.
@@ -364,7 +364,7 @@ Harudeul 메모에는 Codex CLI 연결과 기기 소음의 불편이 있다. Ril
 - 최초 탭은 30초마다 신호를 보내고, 서버는 마지막 유효 신호 + 120초가 지나면 `CONNECTION_EXPIRED`로 종료한다.
   종료 시각은 판정한 시각이 아니라 마지막 신호 + 120초다.
 - 신호·제어·시작 요청이 같은 판정을 먼저 하므로 늦은 요청은 끊긴 녹음을 되살리지 않는다.
-- 브라우저 음성 보존과 이탈 시 수집 중지는 FE가 맡는다. 계약은 [녹음 생존 신호 API](../api/recording-heartbeat.md)에 있다.
+- 브라우저 음성 보존과 이탈 시 수집 중지는 FE가 맡는다. 계약은 [녹음 생존 신호 API](https://github.com/woowacourse-teams/2026-knot/blob/45d6b99993222ea4953b6f498294d8533b17fc6e/backend/docs/api/recording-heartbeat.md)에 있다.
 
 ### 2026-10-15 녹음 연결 끊김 기준 변경 (#695)
 
@@ -414,7 +414,7 @@ V2 전환은 모든 기술 규칙과 ADR의 일괄 폐기가 아니다.
 팀 Notion에 반영됐거나 팀 리뷰가 승인했다는 의미는 아니다.
 
 - 종료 요청은 일시정지·재개와 같은 `{tabId, controlToken}` 증명을 보내야 한다.
-  계약은 [녹음 종료 API](../api/recording-end.md)에 있다.
+  계약은 [녹음 종료 API](https://github.com/woowacourse-teams/2026-knot/blob/45d6b99993222ea4953b6f498294d8533b17fc6e/backend/docs/api/recording-end.md)에 있다.
 - 다른 탭과 틀린 증명은 `403 RECORDING_CONTROL_DENIED`다. 이미 종료된 녹음의 재요청도 증명을 먼저 확인한다.
 - 본문 없는 기존 호출과 호환되는 경로는 두지 않는다. 2026-10-09 결정에 따라 이 변경을 먼저 배포하고,
   FE가 종료 호출을 고쳐 배포할 때까지 개발 서버의 종료가 실패하는 공백은 감수한다.
@@ -470,7 +470,7 @@ Transcript·오디오·생성 중/실패 Job은 직접 검색하지 않는다. D
 | --- | --- |
 | [SEARCH-R15·R16](https://www.notion.so/3edb4351752281b2b973f1190485efd4), 10월 19일 19:54 UTC | 완료 답변의 피드백과 짧은 결론·출처 중심 형식이 추가됐다. 원문은 기획 반영과 GitHub Issue·구현 보류를 구분한다. 현재 탐색 코드와 API에서 피드백 저장 계약을 확인하지 못했다. 5초 목표·10초 상한도 측정 전 목표로 취급한다. |
 | [STT-R30 문서 스타일 비교](https://www.notion.so/3edb43517522814d9fc8e75b53c5a12d), 10월 19일 20:22 UTC | 확정 전 제안이다. 두 번째 문서 생성·선택 저장은 현재 생성 계약에 추가하지 않는다. 원문의 데스크톱 한정과 [반응형 제안](https://www.notion.so/3feb4351752281a0ba76fd4618434b43)의 모바일 비교 방식은 적용 범위 확인이 필요하다. |
-| [MCP 연결·개인 토큰](https://www.notion.so/3feb43517522816699f4cf1141938829), 10월 19일 21:05 UTC | 토큰 수·만료·공개 경로는 확인 대기 제안이다. 기존 [#563 내부 검색 MCP 계획](../implement-plan/563-search-document-mcp.md)의 실행 인증과 별도 계약이다. 외부 개인 토큰에 대한 확정 구현 계획은 이번 대조에서 확인하지 못했다. |
+| [MCP 연결·개인 토큰](https://www.notion.so/3feb43517522816699f4cf1141938829), 10월 19일 21:05 UTC | 토큰 수·만료·공개 경로는 확인 대기 제안이다. 기존 [#563 내부 검색 MCP 계획](https://github.com/woowacourse-teams/2026-knot/blob/45d6b99993222ea4953b6f498294d8533b17fc6e/backend/docs/implement-plan/563-search-document-mcp.md)의 실행 인증과 별도 계약이다. 외부 개인 토큰에 대한 확정 구현 계획은 이번 대조에서 확인하지 못했다. |
 | [이용약관](https://www.notion.so/3feb4351752281d78708edaf6e8b6c13)·[개인정보 처리방침](https://www.notion.so/3feb435175228178982eebd889b6936c), 10월 20일 06:02·06:10 UTC | 원문 표기가 초안에서 시행일 2026-10-19인 문서로 바뀌었다. 이 표기는 실제 배포·동의 기록 저장·법률 검토 완료의 증거가 아니다. 아래 동의 정책과 BE 계약 제안을 함께 확인한다. 음성 삭제는 `RetentionCleanupProperties.enabled`의 기본값이 false이며 운영 설정은 확인하지 못했으므로, 원문의 30일 삭제 문구를 운영 사실로 인용하지 않는다. |
 | [릴리즈 노트](https://www.notion.so/3feb435175228125a4bac00f35c39df5)·[피드백 창구](https://www.notion.so/3feb4351752281f78de6dcb0cfcb46b5), 10월 19일 20:21·22:49 UTC | 확인 대기 제안이다. PR 체크리스트 추가, PostHog Surveys·Discord 연동과 화면 기록 수집을 기존 컨벤션·API·운영 사실로 확정하지 않는다. 관련 확정 주제 문서가 없는 항목은 제품 판단과 별도 구현 계약이 필요하다. |
 

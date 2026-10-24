@@ -59,7 +59,7 @@ Knot은 Workspace 소유자가 지정한 Notion 문서를 동기화하고, 팀�
 - 관측된 live 요청의 end-to-end 완료 시간은 약 38~77초였고 후속 질문은 약 190초였다. 5초 목표를 만족한 것으로 판정하지 않는다.
 - 이번 smoke test는 LM Studio-managed OAuth 연결만 검증했다. Java가 Workspace별 MCP token을 선택·전달하는 운영 경계, Workspace 격리, 30개 이상 독립 질문 품질 평가는 남아 있다.
 
-상세 원시 결과와 통계는 `backend/docs/llm-search-ab-test-report.md`에 기록한다.
+상세 원시 결과와 통계는 Git에서 제외한 `.benchmark-data/`에 기록한다.
 
 ## 다시 논의해야 할 조건
 
