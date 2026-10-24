@@ -60,6 +60,8 @@ public class DocumentTopicOperation {
 
     private Instant finishedAt;
 
+    private Instant startedAt;
+
     private String failureCode;
 
     private int retryCount;
@@ -113,6 +115,7 @@ public class DocumentTopicOperation {
             throw conflict();
         }
         status = DocumentTopicOperationStatus.RUNNING;
+        recordFirstStart(now);
         claimToken = UUID.randomUUID();
         leaseUntil = now.plusSeconds(LEASE_SECONDS);
         return claimToken;
@@ -247,6 +250,12 @@ public class DocumentTopicOperation {
         nextAttemptAt = at;
         claimToken = null;
         leaseUntil = null;
+    }
+
+    private void recordFirstStart(Instant now) {
+        if (startedAt == null) {
+            startedAt = now;
+        }
     }
 
     private void finish(Instant now) {
