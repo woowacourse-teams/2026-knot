@@ -1,0 +1,79 @@
+/**
+ * 새 소식 노트 DTO. 우리 API가 아니라 프론트 Worker가 Notion 새 소식 DB를 읽어 돌려줘요(ADR 956)
+ *
+ * - GET /relay/n
+ */
+import type { WorkspaceRouteKey } from "@/shared/types/route";
+
+/** 노트 항목 하나의 Worker 응답 모양 */
+export interface ReleaseNoteItemRaw {
+  title: string;
+  description: string;
+  image?: string;
+  link?: WorkspaceRouteKey;
+  isFromFeedback?: boolean;
+  isHighlight?: boolean;
+}
+
+/** 새 소식 노트의 항목 하나. 사용자가 알아챌 만한 변화 하나를 적어요 */
+export class ReleaseNoteItemDto {
+  /** 무엇을 할 수 있게 됐는지 한 줄. 해요체로 써요 */
+  title: string;
+  /** 짧은 설명 */
+  description: string;
+  /** 변화를 보여 주는 이미지 주소. 새 소식 DB에 이미지 칸이 없어 지금 Worker는 보내지 않아요 */
+  image?: string;
+  /** 「바로 가보기」로 옮길 화면 키. 지금 보고 있는 워크스페이스의 화면으로 가요. Worker가 앱 화면 키가 아닌 줄은 빼요 */
+  link?: WorkspaceRouteKey;
+  /** 사용자가 알려 준 문제를 고친 항목이면 true. 「피드백 덕분에 바뀌었어요」 칩을 붙여요 */
+  isFromFeedback?: boolean;
+  /** 큰 변화면 true. 노트마다 하나까지만 둬요 */
+  isHighlight?: boolean;
+
+  constructor(raw: ReleaseNoteItemRaw) {
+    this.title = raw.title;
+    this.description = raw.description;
+    this.image = raw.image;
+    this.link = raw.link;
+    this.isFromFeedback = raw.isFromFeedback;
+    this.isHighlight = raw.isHighlight;
+  }
+}
+
+/** 노트 하나의 Worker 응답 모양 */
+export interface ReleaseNoteRaw {
+  id: string;
+  releasedAt: string;
+  items: ReleaseNoteItemRaw[];
+}
+
+/** 머지 하나(또는 옮겨 온 릴리즈 하나)에 낸 새 소식 노트 */
+export class ReleaseNoteDto {
+  /** 노트 id. Actions가 쓴 노트는 머지 PR 번호(`pr-947`), 상수 파일에서 옮긴 노트는 릴리즈 버전(`v0.2.0`)이에요. 화면에는 보이지 않고 읽음 기억에만 써요 */
+  id: string;
+  /** 배포 날짜(YYYY-MM-DD). 예: `2026-10-21` */
+  releasedAt: string;
+  /** 항목 목록. 하나 이상이에요 */
+  items: ReleaseNoteItemDto[];
+
+  constructor(raw: ReleaseNoteRaw) {
+    this.id = raw.id;
+    this.releasedAt = raw.releasedAt;
+    this.items = raw.items.map((item) => new ReleaseNoteItemDto(item));
+  }
+}
+
+// GET /relay/n
+
+/** 새 소식 노트 목록의 Worker 응답 모양. 객체로 감싸지 않은 노트 배열이에요 */
+export type GetReleaseNotesResponseRaw = ReleaseNoteRaw[];
+
+/** 새 소식 노트 목록 응답 */
+export class GetReleaseNotesResponseDto {
+  /** 노트 목록. 최신 노트가 맨 앞이고, 노트가 없으면 빈 배열이에요. Worker의 배열 응답을 `notes`로 감쌌어요 */
+  notes: ReleaseNoteDto[];
+
+  constructor(raw: GetReleaseNotesResponseRaw) {
+    this.notes = raw.map((note) => new ReleaseNoteDto(note));
+  }
+}
