@@ -281,17 +281,14 @@ class DocumentRetentionIntegrationTest {
     }
 
     @Test
-    @DisplayName("오디오는 완료 확인 후 30일에 접수하고 저장소 장애 후 재실행한다")
+    @DisplayName("오디오는 일수로 삭제하지 않고 내용 없음 삭제의 저장소 장애를 재시도한다")
     void audioDeletion_retriesOutsideTransactionAndKeepsTranscript() {
         long uploadId = saveAudio(CREATED);
-        when(clock.instant()).thenReturn(
-                CREATED.plus(Duration.ofDays(30))
-                        .minusNanos(1000)
-        );
+        Instant expired = CREATED.plus(Duration.ofDays(365));
+        when(clock.instant()).thenReturn(expired);
         audioRetention.schedule(uploadId);
         assertThat(count("recording_audio_deletion_tasks")).isZero();
-        Instant expired = CREATED.plus(Duration.ofDays(30));
-        when(clock.instant()).thenReturn(expired);
+        markNoContent();
         audioRetention.schedule(uploadId);
         audioRetention.schedule(uploadId);
         assertThat(count("recording_audio_deletion_tasks")).isEqualTo(1);
@@ -338,6 +335,58 @@ class DocumentRetentionIntegrationTest {
                         .query(Integer.class)
                         .single()
         ).isEqualTo(1);
+    }
+
+    private void markNoContent() {
+        long batch = fixtures.saveGenerationBatch(transcriptId);
+        jdbc.sql("""
+                UPDATE document_generation_batches SET topic_registration_state='NO_CONTENT',
+                    processing_status='NO_CONTENT', cleanup_requested_at=registered_at, finished_at=registered_at,
+                    queued_count=0,running_count=0,succeeded_count=0,failed_count=0 WHERE id=:id
+                """)
+                .param(
+                        "id",
+                        batch
+                )
+                .update();
+    }
+
+    @Test
+    void previouslyScheduledAgeOnlyDeletionIsNotClaimedOrExecuted() {
+        long upload = saveAudio(CREATED);
+        long task = jdbc.sql("""
+                INSERT INTO recording_audio_deletion_tasks
+                    (upload_id,storage_key,status,requested_at,next_attempt_at)
+                VALUES (:id,'recordings/test-key','PENDING',:at,:at) RETURNING id
+                """)
+                .param(
+                        "id",
+                        upload
+                )
+                .param(
+                        "at",
+                        Timestamp.from(CREATED)
+                )
+                .query(Long.class)
+                .single();
+        when(clock.instant()).thenReturn(CREATED.plus(Duration.ofDays(365)));
+        assertThat(
+                audioRepository.findReadyTasks(
+                        clock.instant(),
+                        10
+                )
+        ).isEmpty();
+        assertThat(deletionState.claim(task)).isEmpty();
+        deletion.execute(task);
+        verify(
+                storage,
+                org.mockito.Mockito.never()
+        ).deleteStoredObject(anyString());
+        assertThat(
+                jdbc.sql("SELECT count(*) FROM recording_audio_uploads WHERE deleted_at IS NOT NULL")
+                        .query(Integer.class)
+                        .single()
+        ).isZero();
     }
 
     private long batchId() {
@@ -580,7 +629,8 @@ class DocumentRetentionIntegrationTest {
     @DisplayName("동시 삭제 접수와 claim은 각각 하나만 성공한다")
     void audioDeletion_concurrentSchedulingAndClaim() throws Exception {
         long upload = saveAudio(CREATED);
-        when(clock.instant()).thenReturn(CREATED.plus(Duration.ofDays(30)));
+        markNoContent();
+        when(clock.instant()).thenReturn(CREATED.plusSeconds(60));
         CyclicBarrier scheduling = new CyclicBarrier(2);
         try (ExecutorService executor = Executors.newFixedThreadPool(2)) {
             Future<?> first = executor.submit(() -> {
@@ -637,7 +687,8 @@ class DocumentRetentionIntegrationTest {
     @DisplayName("파일 삭제 후 완료 기록 전에 중단돼도 lease 만료 후 다시 삭제한다")
     void audioDeletion_reclaimsExpiredLease() {
         long upload = saveAudio(CREATED);
-        Instant expired = CREATED.plus(Duration.ofDays(30));
+        markNoContent();
+        Instant expired = CREATED.plusSeconds(60);
         when(clock.instant()).thenReturn(expired);
         audioRetention.schedule(upload);
         long task = jdbc.sql("SELECT id FROM recording_audio_deletion_tasks")
@@ -756,7 +807,7 @@ class DocumentRetentionIntegrationTest {
     }
 
     @Test
-    @DisplayName("후보 조회는 실패 만료·내용 없음·오디오 30일 및 lease 상태를 구분한다")
+    @DisplayName("후보 조회는 문서 실패 만료·내용 없음과 삭제 lease를 구분하며 오래된 오디오는 보존한다")
     void candidates_selectOnlyEligibleRows() {
         fixtures.saveJob(
                 transcriptId,
@@ -775,19 +826,12 @@ class DocumentRetentionIntegrationTest {
                 )
         ).hasSize(1);
         long upload = saveAudio(CREATED);
-        assertThat(
-                audioRepository.findRetentionCandidates(
-                        CREATED.minusNanos(1000),
-                        10
-                )
-        ).isEmpty();
-        assertThat(
-                audioRepository.findRetentionCandidates(
-                        CREATED,
-                        10
-                )
-        ).containsExactly(upload);
-        when(clock.instant()).thenReturn(CREATED.plus(Duration.ofDays(30)));
+        when(clock.instant()).thenReturn(CREATED.plus(Duration.ofDays(365)));
+        assertThat(audioRepository.findNoContentCandidates(10)).isEmpty();
+        audioRetention.schedule(upload);
+        assertThat(count("recording_audio_deletion_tasks")).isZero();
+        markNoContent();
+        assertThat(audioRepository.findNoContentCandidates(10)).containsExactly(upload);
         audioRetention.schedule(upload);
         long task = jdbc.sql("SELECT id FROM recording_audio_deletion_tasks")
                 .query(Long.class)

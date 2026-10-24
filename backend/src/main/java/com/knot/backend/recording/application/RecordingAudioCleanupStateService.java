@@ -68,10 +68,7 @@ public class RecordingAudioCleanupStateService {
             return;
         }
         Instant now = now();
-        RecordingAudioCleanupPolicy policy = cleanup.policy(
-                recordingId,
-                now
-        );
+        RecordingAudioCleanupPolicy policy = cleanup.policy(recordingId);
         if (policy.scope() == RecordingAudioCleanupScope.DORMANT) {
             return;
         }
@@ -100,11 +97,14 @@ public class RecordingAudioCleanupStateService {
     @Transactional
     public Optional<CleanupExecution> claim(long recordingId) {
         Optional<RecordingAudioCleanup> found = cleanup.findForUpdate(recordingId);
-        if (found.isEmpty() || !found.orElseThrow()
-                .claim(
-                        now(),
-                        properties.getExecutionLease()
-                )) {
+        if (found.isEmpty() || found.orElseThrow()
+                .getScope() != cleanup.policy(recordingId)
+                        .scope()
+                || !found.orElseThrow()
+                        .claim(
+                                now(),
+                                properties.getExecutionLease()
+                        )) {
             return Optional.empty();
         }
         RecordingAudioCleanup task = found.orElseThrow();

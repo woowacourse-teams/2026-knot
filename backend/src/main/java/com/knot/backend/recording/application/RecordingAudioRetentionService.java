@@ -27,8 +27,7 @@ public class RecordingAudioRetentionService {
         }
         RecordingAudioUpload audioUpload = upload.orElseThrow();
         Instant now = now();
-        if (audioUpload.isRetentionExpired(now)
-                || recordingAudioDeletionRepository.hasNoContentResult(audioUpload.getRecordingId())) {
+        if (recordingAudioDeletionRepository.hasNoContentResult(audioUpload.getRecordingId())) {
             scheduleLocked(
                     audioUpload,
                     now

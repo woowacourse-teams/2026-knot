@@ -13,7 +13,6 @@ import com.knot.backend.recording.application.RecordingAudioDeletionWorker;
 import com.knot.backend.recording.application.RecordingAudioRetentionService;
 import com.knot.backend.recording.domain.repository.RecordingAudioDeletionRepository;
 import java.time.Clock;
-import java.time.Duration;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -96,10 +95,7 @@ public class RetentionCleanupScheduler {
                 );
             }
         }
-        for (Long recordingId : audioCleanup.findCandidates(
-                clock.instant(),
-                properties.getCandidateLimit()
-        )) {
+        for (Long recordingId : audioCleanup.findCandidates(properties.getCandidateLimit())) {
             try {
                 audioCleanupState.schedule(recordingId);
             } catch (RuntimeException exception) {
@@ -110,11 +106,7 @@ public class RetentionCleanupScheduler {
                 );
             }
         }
-        for (Long uploadId : audio.findRetentionCandidates(
-                clock.instant()
-                        .minus(Duration.ofDays(30)),
-                properties.getCandidateLimit()
-        )) {
+        for (Long uploadId : audio.findNoContentCandidates(properties.getCandidateLimit())) {
             try {
                 audioRetention.schedule(uploadId);
             } catch (RuntimeException exception) {

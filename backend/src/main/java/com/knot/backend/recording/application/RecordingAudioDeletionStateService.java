@@ -29,6 +29,11 @@ public class RecordingAudioDeletionStateService {
         }
         Instant now = now();
         RecordingAudioDeletionTask deletionTask = task.orElseThrow();
+        RecordingAudioUpload upload = recordingAudioDeletionRepository.findUploadForUpdate(deletionTask.getUploadId())
+                .orElseThrow();
+        if (!recordingAudioDeletionRepository.hasNoContentResult(upload.getRecordingId())) {
+            return Optional.empty();
+        }
         if (!deletionTask.isReadyAt(now)) {
             return Optional.empty();
         }

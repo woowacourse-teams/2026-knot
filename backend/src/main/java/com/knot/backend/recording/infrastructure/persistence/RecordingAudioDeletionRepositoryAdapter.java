@@ -20,28 +20,21 @@ public class RecordingAudioDeletionRepositoryAdapter implements RecordingAudioDe
 
     @Override
     @Transactional(readOnly = true)
-    public List<Long> findRetentionCandidates(
-            Instant completedBefore,
-            int limit
-    ) {
+    public List<Long> findNoContentCandidates(int limit) {
         return entityManager.createQuery(
                 """
                         SELECT u.id FROM RecordingAudioUpload u
                         WHERE u.status = com.knot.backend.recording.domain.model.RecordingAudioUploadStatus.COMPLETED
                             AND u.deletedAt IS NULL AND NOT EXISTS (
                                 SELECT d.id FROM RecordingAudioDeletionTask d WHERE d.uploadId = u.id)
-                            AND (u.completedAt <= :before OR EXISTS (
+                            AND EXISTS (
                                 SELECT b.id FROM DocumentGenerationBatch b WHERE b.recordingSessionId = u.recordingId
                                     AND b.processingStatus =
-                                        com.knot.backend.document.domain.model.DocumentGenerationProcessingStatus.NO_CONTENT))
+                                        com.knot.backend.document.domain.model.DocumentGenerationProcessingStatus.NO_CONTENT)
                         ORDER BY u.completedAt, u.id
                         """,
                 Long.class
         )
-                .setParameter(
-                        "before",
-                        completedBefore
-                )
                 .setMaxResults(limit)
                 .getResultList();
     }
@@ -56,8 +49,11 @@ public class RecordingAudioDeletionRepositoryAdapter implements RecordingAudioDe
                 .createQuery(
                         """
                                 SELECT t.id FROM RecordingAudioDeletionTask t WHERE
-                                    (t.status = com.knot.backend.recording.domain.model.RecordingAudioDeletionStatus.PENDING AND t.nextAttemptAt <= :now)
-                                    OR (t.status = com.knot.backend.recording.domain.model.RecordingAudioDeletionStatus.RUNNING AND t.executionDeadlineAt <= :now)
+                                    EXISTS (SELECT b.id FROM DocumentGenerationBatch b, RecordingAudioUpload u
+                                        WHERE u.id = t.uploadId AND b.recordingSessionId = u.recordingId
+                                            AND b.processingStatus = com.knot.backend.document.domain.model.DocumentGenerationProcessingStatus.NO_CONTENT)
+                                    AND ((t.status = com.knot.backend.recording.domain.model.RecordingAudioDeletionStatus.PENDING AND t.nextAttemptAt <= :now)
+                                    OR (t.status = com.knot.backend.recording.domain.model.RecordingAudioDeletionStatus.RUNNING AND t.executionDeadlineAt <= :now))
                                 ORDER BY t.id
                                 """,
                         Long.class

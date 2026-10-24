@@ -28,8 +28,6 @@ public class RecordingAudioCleanupRepositoryAdapter implements RecordingAudioCle
                     OR EXISTS (SELECT 1 FROM document_generation_batches b WHERE b.recording_session_id = r.id
                         AND b.processing_status = 'NO_CONTENT')
                     OR j.failure_code = 'AUDIO_NO_CONTENT'
-                    OR (j.status IS DISTINCT FROM 'READY' AND r.ended_at <= :cutoff)
-                    OR (j.status = 'READY' AND u.completed_at <= :cutoff)
                 THEN 'ALL' WHEN j.status = 'READY' THEN 'RAW' ELSE 'DORMANT' END AS desired_scope,
                 (SELECT MAX(c.upload_url_expires_at) FROM recording_audio_chunks c
                     WHERE c.recording_id = t.recording_id)
@@ -38,7 +36,6 @@ public class RecordingAudioCleanupRepositoryAdapter implements RecordingAudioCle
             LEFT JOIN recording_sessions r ON r.id = t.recording_id
             LEFT JOIN workspaces w ON w.id = r.workspace_id
             LEFT JOIN recording_audio_finalizations j ON j.recording_id = t.recording_id
-            LEFT JOIN recording_audio_uploads u ON u.recording_id = t.recording_id
             """;
     private final EntityManager entityManager;
 
@@ -94,10 +91,7 @@ public class RecordingAudioCleanupRepositoryAdapter implements RecordingAudioCle
 
     @Override
     @Transactional(readOnly = true)
-    public List<Long> findCandidates(
-            Instant now,
-            int limit
-    ) {
+    public List<Long> findCandidates(int limit) {
         return entityManager.createNativeQuery(
                 """
                         SELECT p.recording_id FROM (
@@ -110,10 +104,6 @@ public class RecordingAudioCleanupRepositoryAdapter implements RecordingAudioCle
                 Long.class
         )
                 .setParameter(
-                        "cutoff",
-                        now.minus(java.time.Duration.ofDays(30))
-                )
-                .setParameter(
                         "limit",
                         limit
                 )
@@ -121,15 +111,8 @@ public class RecordingAudioCleanupRepositoryAdapter implements RecordingAudioCle
     }
 
     @Override
-    public RecordingAudioCleanupPolicy policy(
-            long recordingId,
-            Instant now
-    ) {
+    public RecordingAudioCleanupPolicy policy(long recordingId) {
         Object[] result = (Object[]) entityManager.createNativeQuery(POLICY_SQL + " WHERE t.recording_id = :id")
-                .setParameter(
-                        "cutoff",
-                        now.minus(java.time.Duration.ofDays(30))
-                )
                 .setParameter(
                         "id",
                         recordingId
@@ -148,12 +131,13 @@ public class RecordingAudioCleanupRepositoryAdapter implements RecordingAudioCle
             Instant now,
             int limit
     ) {
-        return entityManager.createQuery(
-                """
-                        SELECT t.recordingId FROM RecordingAudioCleanup t
-                        WHERE t.scope <> com.knot.backend.recording.domain.model.RecordingAudioCleanupScope.DORMANT
-                            AND t.nextAttemptAt <= :now AND (t.leaseUntil IS NULL OR t.leaseUntil <= :now)
-                        ORDER BY t.nextAttemptAt, t.recordingId
+        return entityManager.createNativeQuery(
+                "SELECT current.recording_id FROM (" + POLICY_SQL + """
+                        ) p JOIN recording_audio_cleanup current ON current.recording_id = p.recording_id
+                        WHERE current.scope <> 'DORMANT' AND current.scope = p.desired_scope
+                            AND current.next_attempt_at <= :now
+                            AND (current.lease_until IS NULL OR current.lease_until <= :now)
+                        ORDER BY current.next_attempt_at, current.recording_id LIMIT :limit
                         """,
                 Long.class
         )
@@ -161,7 +145,10 @@ public class RecordingAudioCleanupRepositoryAdapter implements RecordingAudioCle
                         "now",
                         now
                 )
-                .setMaxResults(limit)
+                .setParameter(
+                        "limit",
+                        limit
+                )
                 .getResultList();
     }
 
