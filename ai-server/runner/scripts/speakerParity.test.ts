@@ -122,3 +122,18 @@ test('whole legacy segments without word timestamps still use segment-level assi
   assert.deepEqual(result.utterances, [{ ord: 0, speakerLabel: 'speaker_0',
     startSec: 0, endSec: 1, text: '단어 시각 없는 기존 결과.' }])
 })
+
+test('whole segments with only zero-duration words fall back to segment-level assignment', () => {
+  // given
+  const raw = Buffer.from(JSON.stringify({ transcription: [
+    { offsets: { from: 0, to: 1000 }, text: ' 네 맞아요.',
+      tokens: [{ text: ' 네', offsets: { from: 500, to: 500 } }, { text: ' 맞아요.', offsets: { from: 500, to: 500 } }] }
+  ] }))
+
+  // when
+  const result = assembleResult(raw, '0 -- 1 speaker_0')
+
+  // then
+  assert.deepEqual(result.utterances, [{ ord: 0, speakerLabel: 'speaker_0',
+    startSec: 0, endSec: 1, text: '네 맞아요.' }])
+})
