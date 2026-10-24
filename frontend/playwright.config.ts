@@ -14,6 +14,8 @@ export default defineConfig({
   use: {
     baseURL: BASE_URL,
     trace: "on-first-retry", // 재시도할 때만 트레이스를 남겨요
+    screenshot: isCI ? "only-on-failure" : "off",
+    video: isCI ? "retain-on-failure" : "off",
     // dev 서버 mock이 이 쿠키로 로그인 상태를 판정해요(src/shared/api/mock/handlers/dev).
     // E2E는 로그인 플로우가 아니라 화면 플로우를 확인하므로 로그인된 상태에서 시작해요
     storageState: {
@@ -49,5 +51,6 @@ export default defineConfig({
     url: BASE_URL,
     reuseExistingServer: !isCI, // 로컬에서 이미 떠 있는 dev 서버가 있으면 재사용해요
     timeout: 120_000,
+    env: { API_MOCKING: "true" },
   },
 });
