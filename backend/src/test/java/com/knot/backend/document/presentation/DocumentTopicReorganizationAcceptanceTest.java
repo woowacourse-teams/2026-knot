@@ -330,6 +330,20 @@ class DocumentTopicReorganizationAcceptanceTest {
                 .andExpect(jsonPath("$.code").value("TOPIC_REQUEST_ID_CONFLICT"));
     }
 
+    @Test
+    @DisplayName("유효 CSRF가 있어도 잘못된 인증 쿠키는 INVALID_JWT로 거절한다")
+    void start_failure_invalidJwt() throws Exception {
+        mvc.perform(
+                post(PATH, workspace)
+                        .cookie(new Cookie("KNOT_ACCESS_TOKEN", "invalid-token"), csrf)
+                        .header("X-XSRF-TOKEN", csrf.getValue())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"requestId\":\"" + UUID.randomUUID() + "\"}")
+        )
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("INVALID_JWT"));
+    }
+
     private void saveDocument() {
         long recording = fixtures.saveRecording(
                 workspace,
