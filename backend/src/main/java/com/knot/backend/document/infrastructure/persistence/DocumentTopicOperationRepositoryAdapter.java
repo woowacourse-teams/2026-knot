@@ -53,4 +53,13 @@ public class DocumentTopicOperationRepositoryAdapter implements DocumentTopicOpe
                 )
         );
     }
+
+    public List<DocumentTopicOperation> findCancellationRequested() {
+        return repository.findCancellationRequested(
+                PageRequest.of(
+                        0,
+                        32
+                )
+        );
+    }
 }

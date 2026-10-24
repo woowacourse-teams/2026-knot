@@ -60,7 +60,7 @@ public class DocumentTopicApplyService {
             store.prune(execution.workspaceId());
             return;
         }
-        operation.validateClaim(
+        operation.validateApplyingClaim(
                 execution.token(),
                 clock.instant()
         );

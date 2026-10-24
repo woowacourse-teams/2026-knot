@@ -53,7 +53,15 @@ public class DocumentTopicWorker {
                 .orElseThrow(() -> new DocumentException(DocumentErrorCode.TOPIC_OPERATION_CONFLICT));
         long started = System.nanoTime();
         try {
-            executeClaimed(execution);
+            if (!executeClaimed(execution)) {
+                metrics.counter(
+                        "knot.document.topic.steps",
+                        "result",
+                        "discarded"
+                )
+                        .increment();
+                return;
+            }
             metrics.counter(
                     "knot.document.topic.steps",
                     "result",
@@ -95,15 +103,14 @@ public class DocumentTopicWorker {
         }
     }
 
-    private void executeClaimed(DocumentTopicExecution execution) {
+    private boolean executeClaimed(DocumentTopicExecution execution) {
         if (!execution.consolidate() && execution.targets()
                 .isEmpty()) {
-            applyService.apply(execution);
-            return;
+            return apply(execution);
         }
         if (execution.consolidate() && execution.categories()
                 .isEmpty()) {
-            checkpoints.complete(
+            return checkpoints.complete(
                     execution,
                     new DocumentTopicPlan(
                             Map.of(),
@@ -112,22 +119,32 @@ public class DocumentTopicWorker {
                             Map.of()
                     )
             );
-            return;
         }
-        planAndCheckpoint(execution);
+        return planAndCheckpoint(execution);
     }
 
-    private void planAndCheckpoint(DocumentTopicExecution execution) {
+    private boolean apply(DocumentTopicExecution execution) {
+        if (!checkpoints.beginApply(execution)) {
+            return false;
+        }
+        applyService.apply(execution);
+        return true;
+    }
+
+    private boolean planAndCheckpoint(DocumentTopicExecution execution) {
         try {
-            completePlan(execution);
+            return completePlan(execution);
         } catch (LlmException exception) {
+            if (!checkpoints.isClaimCurrent(execution)) {
+                return false;
+            }
             if (!canSplit(
                     execution,
                     exception
             )) {
                 throw exception;
             }
-            planAndCheckpoint(execution.firstHalf());
+            return planAndCheckpoint(execution.firstHalf());
         }
     }
 
@@ -139,9 +156,9 @@ public class DocumentTopicWorker {
                 .size() > 1 && exception.getErrorCode() == LlmErrorCode.LLM_INPUT_LIMIT_EXCEEDED;
     }
 
-    private void completePlan(DocumentTopicExecution execution) {
+    private boolean completePlan(DocumentTopicExecution execution) {
         DocumentTopicPlan plan = planner.plan(execution);
-        checkpoints.complete(
+        return checkpoints.complete(
                 execution,
                 plan
         );
