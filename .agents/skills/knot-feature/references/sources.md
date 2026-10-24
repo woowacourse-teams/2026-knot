@@ -39,7 +39,7 @@
 | 단계 | 저장소 위치 | 쓰는 서브 에이전트 |
 | --- | --- | --- |
 | 이슈 생성(위험도, 인터뷰, Grill, ADR 판정, 게시) | `.agents/skills/knot-issue-planning`, `knot-deep-interview`, `knot-grill-me`, `harness/issue_planning.py`, `docs/harness/issue-planning.md` | 이슈 |
-| 제품 기획 기준(진입점, 정본은 노션) | `docs/product/current-v2-mvp.md` | 기능 요구사항, 이슈, 구현 하네스 |
+| 제품 기획 기준(진입점, 정본은 노션) | `backend/docs/product/current-v2-mvp.md` | 기능 요구사항, 이슈, 구현 하네스 |
 | 백엔드 노션 근거 탐색 | `backend/docs/notion-context.md`, `harness/notion-sync-scope.json`, `harness/sync_notion_docs.py` | 도메인 규칙, API 명세, BE 구현 하네스 |
 | 백엔드 API 명세, 커밋, PR | `backend/.agents/skills/knot-api-spec`, `knot-commit`, `knot-pr` (진입점 `backend/.claude/skills`) | API 명세, BE 구현 하네스 |
 | 프론트 작업 절차와 규칙 | `frontend/CLAUDE.md`, `frontend/.claude/rules/*.md` | FE 구현 하네스 |

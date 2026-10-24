@@ -48,8 +48,8 @@ sum(increase(knot_document_category_publications_total{source="FALLBACK"}[15m]))
 clamp_min(sum(increase(knot_document_category_publications_total[15m])), 1)
 ```
 
-[구현 계획](../../docs/implement-plan/document-broad-topic-assignment.md)과
-[실제 로컬 검증 결과](../../docs/qa/913-document-broad-topic.md)를 함께 확인한다. Docker LLM은 HTTP fault fixture이며 실제 모델 품질 평가는 별도다.
+[구현 계획](implement-plan/document-broad-topic-assignment.md)과
+[실제 로컬 검증 결과](qa/913-document-broad-topic.md)를 함께 확인한다. Docker LLM은 HTTP fault fixture이며 실제 모델 품질 평가는 별도다.
 Docker 실행 자료는 사용자 요청으로 로컬에만 보관하고 Git 추적에서 제외한다.
 
 ## 기존 #525 기본 흐름

@@ -34,3 +34,9 @@ export interface PopoverTriggerProps {
   /** `click`일 때만 있어요. 트리거가 연 팝오버가 열려 있는지 보조기기에 알려요 */
   "aria-expanded"?: boolean;
 }
+
+/** 함수로 넘긴 팝오버 내용이 받는 값 */
+export interface PopoverContentControls {
+  /** 팝오버를 닫아요. `isDismissible`이 꺼져 있어도 닫혀요 */
+  close: () => void;
+}

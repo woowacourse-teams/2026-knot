@@ -25,9 +25,9 @@ __pycache__/
 !/tools/discord-knot-assistant/.env.example
 !/tools/discord-knot-assistant/README.md
 /backend/docs/api-persona-harness-plan.md
-/docs/api-endpoint-contracts.md
-/docs/api-reference.md
-/docs/realtime-document-collaboration-proposal.md
+/backend/docs/api-endpoint-contracts.md
+/backend/docs/api-reference.md
+/backend/docs/realtime-document-collaboration-proposal.md
 
 # Local Notion exports and LLM benchmark results
 /.benchmark-data/

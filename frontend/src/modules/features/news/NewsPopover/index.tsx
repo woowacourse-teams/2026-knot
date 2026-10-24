@@ -1,50 +1,99 @@
+import { SCREEN_CONDITION } from "@constants/breakpoint";
 import { RELEASE_NOTES } from "@constants/releaseNote";
 import Popover from "@composites/Popover";
 import styled from "@emotion/styled";
+import useMediaQuery from "@hooks/common/useMediaQuery";
+import useIsSendingFeedback from "@hooks/domain/feedback/useIsSendingFeedback";
+import type { ReactNode } from "react";
 
 import LetterIcon from "@/assets/icons/letter.svg";
 import type { ReleaseNote } from "@/shared/types/releaseNote";
 
 import { useLastSeenNote } from "./model/useLastSeenNote";
-import NewsPanel from "./ui/NewsPanel";
+import NewsPopoverContent from "./ui/NewsPopoverContent";
+
+interface RenderFeedbackPanelParams {
+  /** 팝오버를 닫아요. 피드백 패널의 X와 보낸 뒤에 불러요 */
+  onClose: () => void;
+}
 
 interface NewsPopoverProps {
   /** 패널에 보여 줄 노트. 기본은 `shared/constants/releaseNote`의 노트이고, 빈 상태를 보려면 빈 배열을 넘겨요 */
   notes?: ReleaseNote[];
+  /**
+   * 메뉴에서 「피드백 보내기」를 고르면 같은 자리에 그릴 피드백 패널.
+   * 피드백은 다른 도메인이라 이 버튼이 직접 그리지 않고, 버튼을 놓는 레이아웃이 넘겨요
+   */
+  renderFeedbackPanel: (params: RenderFeedbackPanelParams) => ReactNode;
 }
 
 /**
- * Knot 서비스의 새 소식(릴리즈 노트)을 여는 버튼. GNB 오른쪽 프로필 바로 왼쪽에 두는 버튼이에요(NEWS-R1).
+ * Knot의 새 소식(릴리즈 노트)과 피드백 보내기를 여는 「소식과 피드백」 버튼. GNB 오른쪽 프로필 바로 왼쪽에 둬요(FEEDBACK-R1).
  *
- * 누르면 버튼 아래에 새 소식 패널을 오른쪽 끝을 맞춰 열고, 다시 누르거나 바깥을 누르거나 ESC를 누르면 닫아요.
- * 열려 있는 동안 버튼은 채워진 모양이에요.
+ * 누르면 버튼 아래에 메뉴(새 소식, 피드백 보내기)를 오른쪽 끝을 맞춰 열고, 고르면 같은 자리에 그 패널을 열어요(NEWS-R3, FEEDBACK-R3).
+ * 다시 누르거나 바깥을 누르거나 ESC를 누르면 닫고, 닫으면 이 버튼으로 포커스를 돌려줘요(FEEDBACK-R4).
+ * 피드백을 보내는 동안에는 이 방법으로 닫지 않아요(FEEDBACK-R8).
+ * 열려 있는 동안 버튼은 채워진 모양이고, 닫혀 있을 때 올리거나 포커스하면 툴팁 「새 소식과 피드백」을 보여 줘요.
  *
- * 이 기기에서 새 소식을 한 번도 열지 않은 사용자에게는 처음 그릴 때 패널을 저절로 열어 줘요(NEWS-R6).
+ * 이 기기에서 새 소식을 한 번도 열지 않은 사용자에게는 처음 그릴 때 메뉴 없이 새 소식 패널을 저절로 열어 줘요(NEWS-R6).
+ * 휴대폰에서는 피드백을 사이드바에서 열어서(FEEDBACK-R2), 누르면 메뉴 없이 새 소식 패널을 바로 열어요.
  */
 export default function NewsPopover({
   notes = RELEASE_NOTES,
+  renderFeedbackPanel,
 }: NewsPopoverProps) {
   const { isAutoOpen, markAsSeen } = useLastSeenNote({ notes });
+  const { isMatched: isMobile } = useMediaQuery(SCREEN_CONDITION.mobile);
+  const { isSendingFeedback } = useIsSendingFeedback();
+  const initialView = isAutoOpen || isMobile ? "news" : "menu";
 
   return (
     <Popover
       openOn="click"
       placement="bottom-end"
       isInitiallyOpen={isAutoOpen}
-      onOpen={markAsSeen}
-      content={<NewsPanel notes={notes} />}
+      isDismissible={!isSendingFeedback}
+      onOpen={() => {
+        if (initialView === "news") markAsSeen();
+      }}
+      content={({ close }) => (
+        <NewsPopoverContent
+          initialView={initialView}
+          notes={notes}
+          onNewsOpen={markAsSeen}
+          feedbackPanel={renderFeedbackPanel({ onClose: close })}
+        />
+      )}
     >
       {(triggerProps) => (
         <Trigger type="button" aria-label="새 소식과 피드백" {...triggerProps}>
           <LetterIcon size={18} />
+          <Tooltip aria-hidden>새 소식과 피드백</Tooltip>
         </Trigger>
       )}
     </Popover>
   );
 }
 
+/** 피그마 Tooltip: 버튼 8px 아래에 오른쪽 끝을 맞춰 떠요(FEEDBACK-R3) */
+const Tooltip = styled.span`
+  position: absolute;
+  top: calc(100% + 0.5rem); /* 8px */
+  right: 0;
+  z-index: 30; /* 화면 위에 떠 있는 패널(20)보다 위에 떠요 */
+  display: none;
+  padding: 0.375rem 0.625rem; /* 6px 10px */
+  border-radius: 0.375rem; /* 6px */
+  background-color: ${({ theme }) => theme.neutral[900]};
+  color: ${({ theme }) => theme.neutral[0]};
+  white-space: nowrap;
+  pointer-events: none;
+  ${({ theme }) => theme.text.caption01};
+`;
+
 /** 피그마 Btn/소식과 피드백: 36px 원 · 아이콘 18px */
 const Trigger = styled.button`
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -64,6 +113,19 @@ const Trigger = styled.button`
     color: ${({ theme }) => theme.neutral[0]};
   }
 
+  /* 메뉴나 패널이 같은 자리에 뜨므로 열려 있는 동안에는 툴팁을 띄우지 않아요 */
+  /* 툴팁은 버튼 안의 하나뿐인 span이에요 */
+  &:focus-visible:not([aria-expanded="true"]) > span {
+    display: block;
+  }
+
+  /* 손가락으로 누른 뒤 남는 호버로 툴팁이 뜨지 않게, 마우스를 올릴 수 있을 때만 띄워요 */
+  @media (hover: hover) {
+    &:hover:not([aria-expanded="true"]) > span {
+      display: block;
+    }
+  }
+
   &:focus-visible {
     outline: 2px solid ${({ theme }) => theme.sub.accent[500]};
     outline-offset: 2px;
@@ -71,8 +133,6 @@ const Trigger = styled.button`
 
   /* 손가락으로 누를 때는 보이는 크기(36px)는 그대로 두고 누르는 영역만 44px로 넓혀요(RESP-R9) */
   @media (pointer: coarse) {
-    position: relative;
-
     &::after {
       position: absolute;
       inset: -0.25rem; /* 4px */
