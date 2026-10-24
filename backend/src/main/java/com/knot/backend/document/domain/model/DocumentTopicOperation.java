@@ -37,6 +37,12 @@ public class DocumentTopicOperation {
     @Column(nullable = false, updatable = false)
     private UUID requestId;
 
+    @Column(updatable = false)
+    private Long targetVersionId;
+
+    @Column(updatable = false)
+    private Long restorationSourceOperationId;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, updatable = false)
     private DocumentTopicOperationKind kind;
@@ -97,6 +103,29 @@ public class DocumentTopicOperation {
         operation.createdAt = now;
         operation.deadlineAt = now.plusSeconds(DEADLINE_SECONDS);
         operation.nextAttemptAt = now;
+        return operation;
+    }
+
+    public static DocumentTopicOperation restoration(
+            long workspaceId,
+            long requesterId,
+            UUID requestId,
+            long versionId,
+            long sourceOperationId,
+            Instant now
+    ) {
+        if (versionId <= 0 || sourceOperationId <= 0) {
+            throw new DocumentException(DocumentErrorCode.INVALID_PARAMETER);
+        }
+        DocumentTopicOperation operation = reorganize(
+                workspaceId,
+                requesterId,
+                requestId,
+                now
+        );
+        operation.kind = DocumentTopicOperationKind.RESTORE;
+        operation.targetVersionId = versionId;
+        operation.restorationSourceOperationId = sourceOperationId;
         return operation;
     }
 
