@@ -76,6 +76,21 @@ class AiMetricsContractTest(unittest.TestCase):
                 self.assertRegex(target["legendFormat"], r"[가-힣]")
                 self.assertNotIn("{{", target["legendFormat"])
 
+    def test_mac_folder_and_dashboard_uids_are_distinct(self):
+        # given
+        provider = (ROOT / "provisioning/dashboards/knot-mac.yml").read_text()
+        folders = [line.split(":", 1)[1].strip() for line in provider.splitlines()
+                   if "folderUid:" in line]
+        dashboards = [json.loads(path.read_text())["uid"]
+                      for path in (ROOT / "provisioning/mac-dashboards").glob("*.json")]
+        # when
+        collisions = set(folders) & set(dashboards)
+        # then
+        self.assertTrue(folders)
+        self.assertTrue(dashboards)
+        self.assertFalse(collisions)
+        self.assertEqual(len(dashboards), len(set(dashboards)))
+
     def test_module_uses_local_authenticated_bounded_scrapes_and_existing_receiver(self):
         # given / when
         module = MODULE.read_text()

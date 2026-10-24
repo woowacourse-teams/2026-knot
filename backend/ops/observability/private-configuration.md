@@ -8,7 +8,6 @@
 | --- | --- | --- |
 | `KNOT_INGEST_BASE_URL` | 각 Alloy 서버의 비공개 환경파일 또는 실행 환경 | HTTPS 수집 주소. 마지막 `/` 없이 지정하며 인증서 SAN과 일치해야 한다. |
 | `KNOT_INGEST_IP` | IP SAN 인증서 생성 시 OpenSSL 실행 환경 | `tls/server.ext`가 읽는 IP. 실제 값과 키는 Git에 저장하지 않는다. |
-| `KNOT_DEV_ORIGIN_URL` | Dev 재배포 점검 스크립트 실행 환경 | `http://<비공개 IP>:8080` 형식의 원 서버 점검 주소 |
 | `/etc/nginx/snippets/knot-ingest-allow.conf` | 관측 서버의 비공개 Nginx 파일 | 허용한 Dev·Prod 원 서버의 `allow <주소>;`만 포함한다. |
 
 `nginx/ingest.conf`는 위 allowlist를 포함한 뒤 `deny all`을 적용한다.

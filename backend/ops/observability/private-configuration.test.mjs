@@ -26,13 +26,9 @@ test('수집 Nginx는 비공개 허용 목록·mTLS·환경별 인증과 POST �
   assert(!/allow (?!127\.0\.0\.1;)(?:\d{1,3}\.){3}\d{1,3};/.test(nginx));
 });
 
-test('TLS SAN과 원 서버 점검 주소에 운영자의 비공개 입력을 요구한다', async () => {
+test('TLS SAN에 운영자의 비공개 IP 입력을 요구한다', async () => {
   const certificate = await read('tls/server.ext');
-  const script = await read('redeploy-dev-metrics.sh');
   assert(certificate.includes('subjectAltName=IP:$ENV::KNOT_INGEST_IP'));
-  assert(script.includes('${KNOT_DEV_ORIGIN_URL:?'));
-  assert(script.includes('${KNOT_DEV_ORIGIN_URL}/actuator/prometheus'));
-  assert(!/http:\/\/(?!127\.0\.0\.1)(?:\d{1,3}\.){3}\d{1,3}/.test(script));
 });
 
 test('공용 Grafana는 auth proxy와 익명 접근을 끄고 안전한 쿠키로 로그인한다', async () => {
