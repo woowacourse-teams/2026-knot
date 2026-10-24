@@ -230,7 +230,7 @@ test('split Korean token bytes use original latin1 parser, opaque UTF8 remains u
   assert.equal(result.rawWhisperJson, source.toString('utf8'))
   assert.ok(result.rawWhisperJson.includes('\ufffd'))
 })
-test('provided speaker count preserves a minor speaker instead of absorbing it', () => {
+test('shared server policy preserves a short speaker with automatic or fixed speaker count', () => {
   const source = Buffer.from(
     JSON.stringify({
       transcription: [
@@ -247,7 +247,7 @@ test('provided speaker count preserves a minor speaker instead of absorbing it',
   )
   assert.equal(
     new Set(assembleResult(source, diarization).utterances.map((item) => item.speakerLabel)).size,
-    1
+    2
   )
 })
 
