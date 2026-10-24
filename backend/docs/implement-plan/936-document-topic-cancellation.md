@@ -13,6 +13,7 @@
 - [#938 / #934](https://github.com/woowacourse-teams/2026-knot/pull/938)은 OPEN, develop 대상, HEAD `4aa3d7e44`다. 공통 Operation·큐·시작 API·인증 분기를 제공한다.
 - [#942 / #935](https://github.com/woowacourse-teams/2026-knot/pull/942)는 OPEN, #934 대상, HEAD `8e301205d`다. Long 공개 ID·7개 상태·OWNER 조회·복원 숫자 ID를 제공한다.
 - 원격 develop은 확인 시 `38fe79a4f`, migration은 V62까지다. #934의 V63, #935의 V64·V65는 열린 PR의 자산이며 배포 완료로 취급하지 않는다.
+- 게시 전 develop `91e479885`의 문서 경로 이전 #941을 반영했다. #934 `9a4ede0cc` → #935 `fbd325b2a` → #936 순서로 병합했고 Java·테스트 소스는 최종 전체 검증본과 동일하다. 위 최초 조사 SHA와 구분한다.
 - 병합은 #938 → #942 → #936 순서로 검토한다. 선행 병합 후에는 develop과 migration 번호·공통 파일 차이를 다시 확인한다.
 - #937의 되돌리기 시작·실행은 포함하지 않는다. 취소 상태 전이는 내부 kind=RESTORE에도 동일하게 동작하도록 검증하되, 실제 복원 처리 전체 흐름은 #937에서 연결한다.
 
