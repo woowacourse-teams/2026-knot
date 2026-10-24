@@ -5,6 +5,7 @@ import static org.mockito.Mockito.mock;
 
 import com.knot.backend.document.application.DocumentTopicCancellationService;
 import com.knot.backend.document.application.DocumentTopicWorker;
+import com.knot.backend.document.application.DocumentTopicRestorationWorker;
 import com.knot.backend.document.domain.repository.DocumentTopicOperationRepository;
 import java.time.Clock;
 import org.junit.jupiter.api.DisplayName;
@@ -24,6 +25,10 @@ class DocumentTopicSchedulingConfigurationTest {
             .withBean(
                     DocumentTopicWorker.class,
                     () -> mock(DocumentTopicWorker.class)
+            )
+            .withBean(
+                    DocumentTopicRestorationWorker.class,
+                    () -> mock(DocumentTopicRestorationWorker.class)
             )
             .withBean(
                     DocumentTopicCancellationService.class,
