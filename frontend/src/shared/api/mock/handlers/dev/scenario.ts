@@ -1,11 +1,24 @@
 import { http, HttpResponse } from "msw";
 
-import { currentRecordingResponse } from "@api/mock/responses/recording";
-import type { CurrentRecordingStatus } from "@api/mock/types/recording";
+import {
+  currentRecordingResponse,
+  recordingDetailsResponse,
+} from "@api/mock/responses/recording";
+import { findRecordingDetail } from "@api/mock/state/recording";
 
 /** 개발 브라우저에서 바꿔 볼 수 있는 현재 녹음 상황 */
-export const CURRENT_RECORDING_SCENARIOS = ["none", "recording", "paused", "processing"] as const;
-export type CurrentRecordingScenario = (typeof CURRENT_RECORDING_SCENARIOS)[number];
+export const CURRENT_RECORDING_SCENARIOS = [
+  "none",
+  "recording",
+  "paused",
+  "processing",
+  "transcriptionFailed",
+  "documentFailed",
+  "transcriptionFailedNotRetryable",
+  "documentFailedNotRetryable",
+] as const;
+export type CurrentRecordingScenario =
+  (typeof CURRENT_RECORDING_SCENARIOS)[number];
 
 interface MockScenario {
   /** 현재 녹음 조회가 답할 상황. `none`이면 녹음이 없어요(204) */
@@ -20,8 +33,11 @@ const QUERY_PREFIX = "mock.";
 
 const DEFAULT_SCENARIO: MockScenario = { currentRecording: "none" };
 
-const isCurrentRecordingScenario = (value: unknown): value is CurrentRecordingScenario =>
-  typeof value === "string" && (CURRENT_RECORDING_SCENARIOS as readonly string[]).includes(value);
+const isCurrentRecordingScenario = (
+  value: unknown,
+): value is CurrentRecordingScenario =>
+  typeof value === "string" &&
+  (CURRENT_RECORDING_SCENARIOS as readonly string[]).includes(value);
 
 /** 저장된 상황을 읽어요. 없거나 깨졌으면 기본값이에요 */
 export const readMockScenario = (): MockScenario => {
@@ -30,8 +46,16 @@ export const readMockScenario = (): MockScenario => {
     if (raw === null) return DEFAULT_SCENARIO;
     const parsed: unknown = JSON.parse(raw);
     const currentRecording =
-      typeof parsed === "object" && parsed !== null && "currentRecording" in parsed ? parsed.currentRecording : undefined;
-    return { currentRecording: isCurrentRecordingScenario(currentRecording) ? currentRecording : DEFAULT_SCENARIO.currentRecording };
+      typeof parsed === "object" &&
+      parsed !== null &&
+      "currentRecording" in parsed
+        ? parsed.currentRecording
+        : undefined;
+    return {
+      currentRecording: isCurrentRecordingScenario(currentRecording)
+        ? currentRecording
+        : DEFAULT_SCENARIO.currentRecording,
+    };
   } catch {
     return DEFAULT_SCENARIO;
   }
@@ -52,10 +76,45 @@ export const applyMockScenarioFromQuery = (search: string) => {
   return true;
 };
 
-const STATUS_BY_SCENARIO: Record<Exclude<CurrentRecordingScenario, "none">, CurrentRecordingStatus> = {
+const STATUS_BY_SCENARIO = {
   recording: "RECORDING",
   paused: "PAUSED",
   processing: "PROCESSING",
+} as const;
+
+const TRANSCRIPTION_FAILED_RECORDING = recordingDetailsResponse.find(
+  ({ detail }) => detail.transcriptionStatus === "FAILED",
+)!;
+const DOCUMENT_FAILED_RECORDING = recordingDetailsResponse.find(
+  ({ detail }) => detail.documentGeneration?.status === "FAILED",
+)!;
+
+const failedResponse = (scenario: CurrentRecordingScenario) => {
+  const isDocumentFailure =
+    scenario === "documentFailed" || scenario === "documentFailedNotRetryable";
+  const recordingId = isDocumentFailure
+    ? DOCUMENT_FAILED_RECORDING.recordingId
+    : TRANSCRIPTION_FAILED_RECORDING.recordingId;
+  const detail = findRecordingDetail(recordingId);
+  const isRetried =
+    detail?.transcriptionStatus === "PROCESSING" ||
+    detail?.documentGeneration?.status === "QUEUED";
+  const isRetryable = !isRetried && !scenario.endsWith("NotRetryable");
+
+  return {
+    ...currentRecordingResponse,
+    recordingId,
+    status: isRetried
+      ? "PROCESSING"
+      : isDocumentFailure
+        ? "DOCUMENT_FAILED"
+        : "TRANSCRIPTION_FAILED",
+    retryable: isRetryable,
+    retryableJobIds:
+      isDocumentFailure && isRetryable
+        ? (detail?.documentGeneration?.failedJobIds ?? [])
+        : [],
+  };
 };
 
 /**
@@ -68,8 +127,18 @@ const STATUS_BY_SCENARIO: Record<Exclude<CurrentRecordingScenario, "none">, Curr
 export const devScenarioHandlers = [
   http.get("*/api/v1/workspaces/:workspaceId/recordings/current", () => {
     const { currentRecording } = readMockScenario();
-    if (currentRecording === "none") return new HttpResponse(null, { status: 204 });
-
-    return HttpResponse.json({ ...currentRecordingResponse, status: STATUS_BY_SCENARIO[currentRecording] });
+    if (currentRecording === "none")
+      return new HttpResponse(null, { status: 204 });
+    if (
+      currentRecording === "recording" ||
+      currentRecording === "paused" ||
+      currentRecording === "processing"
+    ) {
+      return HttpResponse.json({
+        ...currentRecordingResponse,
+        status: STATUS_BY_SCENARIO[currentRecording],
+      });
+    }
+    return HttpResponse.json(failedResponse(currentRecording));
   }),
 ];

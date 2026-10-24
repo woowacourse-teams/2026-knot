@@ -21,6 +21,8 @@ const RECORDING_STATUS_BY_SERVER_STATUS = {
   RECORDING: "recording",
   PAUSED: "paused",
   PROCESSING: "organizing",
+  TRANSCRIPTION_FAILED: "transcriptionFailed",
+  DOCUMENT_FAILED: "documentFailed",
 } as const satisfies Record<ServerRecordingStatus, CurrentRecordingStatus>;
 
 /**
@@ -28,6 +30,8 @@ const RECORDING_STATUS_BY_SERVER_STATUS = {
  *
  * 응답의 누적 시간에 응답을 받은 뒤 흐른 시간을 더해 녹음 중이면 매초 늘리고, 일시정지면 멈춰 둬요.
  * 녹음을 끝내고 문서를 정리하는 중이면 `organizing`이에요. 정리 화면으로 갈 수 있게 그 녹음의 `recordingId`도 함께 돌려줘요.
+ * 전사나 문서 생성이 실패했으면 재시도 가능 여부와 관계없이 실패 상태를 유지해요.
+ * `isRetryable`과 `retryableJobIds`는 버튼과 실제 재접수 대상을 정하는 데 써요.
  * 표시할 녹음이 없거나(204) 처음 조회가 실패하면 `status`와 `recordingId`가 `null`이에요.
  * 조회 실패는 콘솔에 남기고, 받은 녹음이 아직 없을 때만 `isLoadFailed`로 알려요. 실패 안내는 쓰는 쪽이 정해요(홈 카드는 ERR-09).
  * 한 번 받은 뒤 다시 조회만 실패하면 받은 녹음을 그대로 보여 줘요.
@@ -62,6 +66,8 @@ const useServerRecording = () => {
   return {
     status,
     recordingId: status === null ? null : (data?.recordingId ?? null),
+    isRetryable: data?.isRetryable ?? false,
+    retryableJobIds: data?.retryableJobIds ?? [],
     elapsedTime: formatRecordingTime(
       calculateElapsedSeconds(
         data?.elapsedMillis ?? 0,

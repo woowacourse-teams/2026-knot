@@ -1,0 +1,192 @@
+name: Frontend E2E
+
+# develop, main으로 가는 PR마다 관련 QA와 E2E가 이어져 있는지(qa-link) 보고, 핵심 여정 E2E(@core)와 관련 QA의 E2E를 돌려요.
+# - 브라우저는 실제 서버 대신 dev 서버의 msw mock 응답으로 돌아요(playwright.config.ts의 webServer).
+# - QA 시트(노션)는 읽지 않아요. qa-link는 PR 본문의 「## 관련 QA」와 E2E 이름 앞 [QA ID]만 맞춰 봐요.
+# - 결과는 PR 댓글 하나(다시 돌면 같은 댓글을 고쳐요)와 job summary에 쓰고, 보고서 artifact는 통과해도 올려요.
+#   PR 본문을 고치면 edited 이벤트로 이 워크플로가 다시 돌기 때문에 결과는 본문이 아니라 댓글에 써요.
+# - PR 본문의 「## 관련 QA」를 고치면 다시 돌도록 edited도 받아요.
+# - paths 필터를 걸지 않아요. 필수 검사로 등록하면 BE만 바꾼 PR에서는 검사가 아예 생기지 않아
+#   「대기 중」으로 남고 병합이 막히기 때문이에요. 대신 job은 항상 돌고, FE 변경도 관련 QA도 없으면 검사 step만 건너뛰어요.
+# - 필수 검사에는 이 job 「Frontend E2E 결과」 하나만 등록하면 돼요.
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+    branches:
+      - develop
+      - main
+
+permissions:
+  contents: read
+  pull-requests: write
+
+# 같은 PR에 새로 푸시하거나 본문을 고치면 이전 실행은 의미가 없어 취소해요
+concurrency:
+  group: frontend-e2e-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  frontend-e2e:
+    # 필수 상태 검사에 이 이름을 등록해요. 이름을 바꾸면 브랜치 보호 규칙도 같이 바꿔야 해요
+    name: Frontend E2E 결과
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    defaults:
+      run:
+        working-directory: frontend
+
+    # PR 본문은 사용자가 쓰는 값이라 run 안에 직접 넣지 않고 늘 환경 변수로 넘겨요(스크립트 인젝션 방지)
+    env:
+      PR_BODY: ${{ github.event.pull_request.body }}
+
+    steps:
+      # PR은 base와 PR을 합친 병합 커밋을 받아요. 첫 번째 부모가 base라서 2개 깊이면 비교할 수 있어요
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 2
+
+      # 관련 QA 판정은 의존성이 없는 스크립트라 설치 전에 러너의 Node로 돌려요
+      - name: Detect frontend changes and related QA
+        id: changes
+        run: |
+          CHANGED_FILES=$(git diff --name-only HEAD^1 HEAD)
+
+          if echo "$CHANGED_FILES" | grep -qE '^(frontend/|\.github/workflows/frontend-e2e\.yml$)'; then
+            FRONTEND=true
+          else
+            FRONTEND=false
+          fi
+
+          node scripts/qa-link.mjs --detect
+
+          echo "frontend=$FRONTEND" >> "$GITHUB_OUTPUT"
+
+      - name: Decide
+        id: decide
+        env:
+          FRONTEND: ${{ steps.changes.outputs.frontend }}
+          RELATED: ${{ steps.changes.outputs.related }}
+        run: |
+          if [ "$FRONTEND" = "true" ] || [ "$RELATED" = "true" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up pnpm
+        if: steps.decide.outputs.run == 'true'
+        uses: pnpm/action-setup@v4
+        with:
+          package_json_file: frontend/package.json
+
+      - name: Set up Node
+        if: steps.decide.outputs.run == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: Install dependencies
+        id: install
+        if: steps.decide.outputs.run == 'true'
+        run: pnpm install --frozen-lockfile
+
+      # 관문 스크립트(qa-link)가 먼저 맞게 동작하는지 봐요
+      - name: QA scripts test
+        if: steps.install.outcome == 'success'
+        run: pnpm test:qa
+
+      # 관련 QA의 ID마다 E2E가 붙어 있는지, E2E 제외에 이유가 있는지 봐요.
+      # 고칠 것이 있으면 이 step이 실패하지만, 돌릴 E2E 결과도 같이 보이도록 E2E는 이어서 돌려요
+      - name: QA link
+        id: qa_link
+        if: steps.install.outcome == 'success'
+        run: pnpm qa:link
+
+      # CI는 chromium 프로젝트 하나만 돌려서 그 브라우저와 시스템 의존성만 받아요
+      - name: Install Playwright browser
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: pnpm exec playwright install --with-deps chromium
+
+      # qa-link가 준 grep 패턴(@core와 관련 QA의 E2E)으로 돌려요.
+      # 로그용 목록, 직접 열어 볼 HTML 보고서, 댓글에 쓸 결과(JSON)를 함께 남겨요
+      - name: E2E
+        id: e2e
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        env:
+          E2E_GREP: ${{ steps.qa_link.outputs.grep || '@core' }}
+          PLAYWRIGHT_JSON_OUTPUT_FILE: ${{ runner.temp }}/e2e-report.json
+        run: pnpm exec playwright test --grep "$E2E_GREP" --reporter=list,html,json
+
+      # 통과해도 올려요. 실패한 테스트의 스크린샷, 영상, 재시도 트레이스가 이 보고서에 들어 있어요
+      - name: Upload Playwright report
+        id: upload
+        if: ${{ !cancelled() && steps.e2e.outcome != 'skipped' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: frontend/playwright-report
+          retention-days: 7
+          if-no-files-found: ignore
+
+      # 댓글과 job summary에 쓸 마크다운을 만들어요. job의 성패는 QA link와 E2E step이 정해요
+      - name: E2E report
+        id: report
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        env:
+          E2E_RESULT_FILE: ${{ runner.temp }}/e2e-report.json
+          QA_REPORT_FILE: ${{ runner.temp }}/e2e-comment.md
+          ARTIFACT_URL: ${{ steps.upload.outputs.artifact-url }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          pnpm qa:link --report
+          cat "$QA_REPORT_FILE" >> "$GITHUB_STEP_SUMMARY"
+
+      # PR 댓글 하나를 표식으로 찾아 고치고, 없으면 새로 달아요.
+      # fork PR은 토큰에 쓰기 권한이 없어 댓글을 달 수 없으므로, 그때는 job summary만 남기고 job을 실패시키지 않아요
+      - name: Comment E2E result on PR
+        if: ${{ !cancelled() && steps.report.outcome == 'success' }}
+        continue-on-error: true
+        uses: actions/github-script@v7
+        env:
+          REPORT_FILE: ${{ runner.temp }}/e2e-comment.md
+        with:
+          script: |
+            const fs = require("fs");
+            const MARKER = "<!-- frontend-e2e:result -->";
+            const body = fs.readFileSync(process.env.REPORT_FILE, "utf8");
+
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              ...context.repo,
+              issue_number: context.issue.number,
+              per_page: 100,
+            });
+            const previous = comments.find(
+              (comment) => comment.user?.type === "Bot" && comment.body?.includes(MARKER),
+            );
+
+            if (previous) {
+              await github.rest.issues.updateComment({
+                ...context.repo,
+                comment_id: previous.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                ...context.repo,
+                issue_number: context.issue.number,
+                body,
+              });
+            }
+
+      - name: Summarize skipped checks
+        if: always() && steps.decide.outputs.run == 'false'
+        run: |
+          {
+            echo "## Frontend E2E 결과"
+            echo
+            echo "FE 변경도 PR 본문의 관련 QA도 없어 검사를 건너뛰었어요."
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -231,7 +231,7 @@ export const RetryRequestFailed: Story = {
   },
 };
 
-/** 전사 다시 시도를 서버가 거절했을 때예요. 예: 녹음 보관 기간(30일)이 지난 녹음(409 AUDIO_UPLOAD_NOT_COMPLETED). 「다시 시도」를 누르면 설명과 버튼이 사라지고 「홈으로」만 남아요. 붙인 피그마 프레임은 「다시 시도」가 있는 모습이에요. */
+/** 전사 다시 시도를 서버가 거절했을 때예요. 예: 삭제됐거나 사용할 수 없는 녹음(409 AUDIO_UPLOAD_NOT_COMPLETED). 「다시 시도」를 누르면 설명과 버튼이 사라지고 「홈으로」만 남아요. 붙인 피그마 프레임은 「다시 시도」가 있는 모습이에요. */
 export const TranscriptionRetryRejected: Story = {
   parameters: {
     recordingId: transcriptionFailedRecording.recordingId,
