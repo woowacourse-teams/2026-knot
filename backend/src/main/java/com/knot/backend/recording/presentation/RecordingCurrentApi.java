@@ -23,16 +23,18 @@ public interface RecordingCurrentApi {
     // @formatter:off
     @Operation(
             summary = "내 현재 녹음 조회",
-            description = "요청한 Workspace에서 본인이 가장 최근 시작한 녹음 한 건을 조회한다. 시작 시각이 같으면 ID가 큰 녹음을 선택한다. "
-                    + "RECORDING·PAUSED 또는 종료 후 오디오 준비·전사·문서 생성 중인 PROCESSING을 반환한다. "
+            description = "요청한 Workspace에서 본인의 녹음을 RECORDING·PAUSED, PROCESSING, 실패 순으로 선택한다. "
+                    + "같은 우선순위에서는 시작 시각, ID 내림차순으로 선택하며 새 녹음 완료 후 이전 실패를 복원한다. "
+                    + "전사 실패는 30일 후에도 표시하되 오디오가 없거나 만료되면 retryable=false다. "
+                    + "문서 실패는 마지막 실패 후 168시간 이내에 표시하고 기존 재시도 조건을 만족하는 retryableJobIds만 반환한다. "
                     + "다른 탭·기기에서도 조회할 수 있지만 생존 신호를 갱신하거나 제어 권한을 넘기지 않고 제어 비밀값을 반환하지 않는다. "
-                    + "다른 Workspace의 녹음과 완료·실패·내용 없음·폐기는 반환하지 않으며 이전 녹음으로 대체하지 않는다"
+                    + "다른 Workspace의 녹음과 완료·내용 없음·폐기는 제외한다"
     )
     @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "최신 본인 녹음의 녹음 중·일시정지·문서 생성 중 상태",
+            @ApiResponse(responseCode = "200", description = "본인 녹음의 진행 또는 실패 상태와 재시도 가능 여부",
                     content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE,
                             schema = @Schema(implementation = RecordingCurrentResponse.class))),
-            @ApiResponse(responseCode = "204", description = "본인 녹음이 없거나 최신 녹음에 표시할 진행 상태가 없음", content = @Content),
+            @ApiResponse(responseCode = "204", description = "표시할 본인 녹음이 없음", content = @Content),
             @ApiResponse(responseCode = "400", description = "워크스페이스 ID 형식 오류",
                     content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE,
                             schema = @Schema(implementation = ErrorResponse.class))),

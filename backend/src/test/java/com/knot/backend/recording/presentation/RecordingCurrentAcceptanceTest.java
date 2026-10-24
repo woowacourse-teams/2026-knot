@@ -203,7 +203,7 @@ class RecordingCurrentAcceptanceTest {
         result.andExpect(status().isOk())
                 .andExpect(jsonPath("$.recordingId").value(recording.id()))
                 .andExpect(jsonPath("$.status").value("PROCESSING"))
-                .andExpect(jsonPath("$.length()").value(4));
+                .andExpect(jsonPath("$.length()").value(6));
     }
 
     @Test
@@ -389,13 +389,15 @@ class RecordingCurrentAcceptanceTest {
                         jsonPath(currentPath + ".responses['404'].content['application/json'].schema['$ref']")
                                 .value(errorResponseRef)
                 )
-                .andExpect(jsonPath("$.components.schemas.RecordingCurrentResponse.properties.length()").value(4))
+                .andExpect(jsonPath("$.components.schemas.RecordingCurrentResponse.properties.length()").value(6))
                 .andExpect(
                         jsonPath("$.components.schemas.RecordingCurrentResponse.properties.status.enum").value(
                                 org.hamcrest.Matchers.contains(
                                         "RECORDING",
                                         "PAUSED",
-                                        "PROCESSING"
+                                        "PROCESSING",
+                                        "TRANSCRIPTION_FAILED",
+                                        "DOCUMENT_FAILED"
                                 )
                         )
                 )
