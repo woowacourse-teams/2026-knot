@@ -55,7 +55,7 @@ from pydantic import ValidationError
 from rich.console import Console
 
 _DEFAULT_SNAPSHOT = Path(".benchmark-data/notion-export")
-_DEFAULT_GOLD_SET = Path("docs/llm-search-benchmark-gold-set.md")
+_DEFAULT_GOLD_SET = Path("backend/docs/llm-search-benchmark-gold-set.md")
 _DEFAULT_OUTPUT = Path(".benchmark-data/results.jsonl")
 _SYSTEM_INSTRUCTIONS: Final[str] = """당신은 Knot 팀 문서 검색 평가용 답변자입니다.
 반드시 제공된 문서 컨텍스트만 근거로 답하세요.

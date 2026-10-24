@@ -6,14 +6,18 @@ import { createPortal } from "react-dom";
 
 import usePopover from "./model/usePopover";
 import type {
+  PopoverContentControls,
   PopoverOpenOn,
   PopoverPlacement,
   PopoverTriggerProps,
 } from "./types/popover";
 
 interface PopoverProps {
-  /** 팝오버로 띄울 내용. 카드처럼 보이는 겉모양(너비·여백·테두리·그림자)까지 쓰는 쪽이 담아서 넘겨요 */
-  content: ReactNode;
+  /**
+   * 팝오버로 띄울 내용. 카드처럼 보이는 겉모양(너비·여백·테두리·그림자)까지 쓰는 쪽이 담아서 넘겨요.
+   * 내용 안에서 닫아야 하면(닫기 버튼, 보낸 뒤 닫기) `close`를 받는 함수로 넘겨요
+   */
+  content: ReactNode | ((controls: PopoverContentControls) => ReactNode);
   /**
    * 트리거 아래에 띄울 때 어느 가장자리에 맞출지.
    * 왼쪽이나 본문 안의 트리거는 `bottom-start`, 화면이나 줄의 오른쪽 끝에 붙은 트리거는 `bottom-end`로 넘겨요.
@@ -24,6 +28,15 @@ interface PopoverProps {
    * `click`이면 트리거를 다시 눌러도 닫혀요.
    */
   openOn?: PopoverOpenOn;
+  /** 처음 그릴 때부터 열어 둘지. 닫힌 뒤에는 다른 팝오버처럼 트리거로 여닫아요 */
+  isInitiallyOpen?: boolean;
+  /** 팝오버가 열릴 때마다 불러요. 처음부터 열린 채 그리면 그때도 불러요 */
+  onOpen?: () => void;
+  /**
+   * 트리거 · 바깥 누름 · ESC로 닫을지. 기본은 켜짐이에요.
+   * 내용이 일을 마치기 전에 닫히면 안 될 때(보내는 중) 꺼요. 꺼진 동안에는 내용의 `close`로만 닫혀요
+   */
+  isDismissible?: boolean;
   /**
    * 트리거를 그리는 함수. 받은 `triggerProps`를 트리거로 쓸 요소에 그대로 펼쳐요.
    * 그 요소가 컴포넌트라면 받은 props를 DOM 요소까지 넘겨야 팝오버가 열려요.
@@ -57,11 +70,17 @@ export default function Popover({
   content,
   placement,
   openOn = "hover",
+  isInitiallyOpen = false,
+  onOpen,
+  isDismissible = true,
   children,
 }: PopoverProps) {
-  const { isOpen, position, triggerProps, contentProps } = usePopover({
+  const { isOpen, position, triggerProps, contentProps, close } = usePopover({
     placement,
     openOn,
+    isInitiallyOpen,
+    onOpen,
+    isDismissible,
   });
   const { renderedValue: isRendered, isExiting } = useExitAnimation({
     value: isOpen || null,
@@ -83,7 +102,7 @@ export default function Popover({
             // 접히는 동안 포인터가 내용에 닿아 다시 열리지 않게 막아요. 다시 열려면 트리거로 열어요
             inert={isExiting}
           >
-            {content}
+            {typeof content === "function" ? content({ close }) : content}
           </ContentWrapper>,
           document.body,
         )}

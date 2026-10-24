@@ -5,11 +5,23 @@
 
 ## 현재 동기화 방식 · 2026-10-08
 
+### #913 새 문서 큰 주제 · 2026-10-22 사용자 결정 대조
+
+기존 목록 원문의 별도 Category 금지 규칙은 이번 작업에서 새 문서에 한해 대체한다.
+안건별 문서·Job과 기존 자료는 유지하며 새 문서에 큰 주제 하나를 연결한다.
+본문 이후 배정 장애는 제한 재시도·서버 규칙·최후 기타로 처리하고 문서와 함께 공개한다.
+사용자는 새 API·응답 필드·FE 변경을 제외했다. 기존 topics와 카드 topic에 표시 이름을 제공하며
+저장 안건 topic은 보존한다. 따라서 기존/새 이름이 같으면 화면의 문자열 그룹은 합쳐진다.
+이는 사용자 결정과 로컬 구현의 대조이며 Notion 원문·queue를 원격 갱신했다는 의미는 아니다.
+[실제 구현 계획](https://github.com/woowacourse-teams/2026-knot/blob/45d6b99993222ea4953b6f498294d8533b17fc6e/backend/docs/implement-plan/document-broad-topic-assignment.md)과 [QA 결과](https://github.com/woowacourse-teams/2026-knot/blob/45d6b99993222ea4953b6f498294d8533b17fc6e/backend/docs/qa/913-document-broad-topic.md)를 따른다.
+
+### 수집·대조 순서
+
 1. 운영 n8n 수집 성공과 본문·DB 속성의 revision을 확인하고 ignored 원문 캐시를 갱신한다.
 2. 변경된 API와 관련 도메인·기획만 찾아 실제 내용을 읽는다. 내부 메타데이터는 제외하고
    메서드·경로·권한·요청/응답·오류·상태 전이 등 관련 규칙과 DB 속성 값을 추출한다.
 3. 최신 API 우선 규칙과 기존 결정을 적용한 뒤 Controller·DTO·Security·Migration·Issue·ADR와 대조한다.
-4. 검토한 현재 규칙·출처·미확정 사항을 해당 주제 문서나 `docs/implement-plan/`의 관련 계획에 반영한다.
+4. 검토한 현재 규칙·출처·미확정 사항을 해당 주제 문서나 `backend/docs/implement-plan/`의 관련 계획에 반영한다.
    `implementation-plan-coach`도 같은 [탐색 기준](notion-context.md)을 따른다.
 5. queue는 [정합성 워크플로](../../docs/harness/notion-alignment.md#queue-완료-조건)의 비교·반영 조건을
    만족한 뒤 처리한다. 캐시 수집이나 DB의 구현 표시만으로 완료 처리하지 않는다.
@@ -33,7 +45,7 @@
   최신 API는 `size`를 한 응답의 크기로 정의하고 `nextCursor`로 끝까지 이어 조회하게 한다.
   전체 표시 정책을 페이지 없는 API 추가나 첫 페이지 크기 확대만으로 충족했다고 보지 않는다.
   `topics[].documentCount`는 필터된 전체 수이며 페이지 범위가 적용되지 않는다.
-  생성 이후 가입자는 최신 API·기존 [Proposed ADR](../../docs/adr/496-document-my-confirmation-state.md)의
+  생성 이후 가입자는 최신 API·기존 [Proposed ADR](adr/496-document-my-confirmation-state.md)의
   `NOT_REQUIRED`를 유지한다. 홈 원문에 남은 후기 가입자 미정 문구로 확인 대상을 늘리지 않는다.
 - 열린 [#405](https://github.com/woowacourse-teams/2026-Knot/issues/405)는 확인 카드에 PENDING,
   최근 카드에만 `size=3`을 명시한다. 확인 카드도 3개라는 기존 확정 계약으로 읽지 않는다.
@@ -46,12 +58,12 @@
   반면 [DOC-R16](https://www.notion.so/3edb4351752281b2804dc5be8aaf76e3),
   [목록 UseCase](https://www.notion.so/dd8b4351752282e0913f81a76f2bef21), HOME-R4와
   [변경 로그](https://www.notion.so/3deb4351752281a99829f339cc9ceeb4)는 녹음 시작 시각순을 유지한다.
-  [사용자 지정 최신 API 우선 기준](../../docs/product/current-v2-mvp.md#2026-10-06-최신-api-기준)에
+  [사용자 지정 최신 API 우선 기준](product/current-v2-mvp.md#2026-10-06-최신-api-기준)에
   따라 현재 목록 조회·커서는 생성 시각·ID 계약을 적용한다. 녹음 시각순이 API에 반영됐다는
   아래 10/12 기록은 당시 관측이며 현재 적용 기준으로 사용하지 않는다.
 - 로컬 `DocumentListJpaRepository`의 정렬·커서 경계와 `DocumentListService`의 다음 커서는
   생성 시각·ID이고, 닫힌 [#495](https://github.com/woowacourse-teams/2026-Knot/issues/495)와
-  [기존 목록 계획](../../docs/implement-plan/495-document-list.md)도 같다.
+  [기존 목록 계획](https://github.com/woowacourse-teams/2026-knot/blob/45d6b99993222ea4953b6f498294d8533b17fc6e/backend/docs/implement-plan/495-document-list.md)도 같다.
   현재 API와 이 부분은 일치한다. 녹음 시작 시각 응답 필드·동률 키·커서 변경을 새로 확정하지 않는다.
   홈·문서 목록·사이드바의 기획 순서를 실제로 충족하려면 API·UseCase·기획의 정합 조정이 필요하다.
   목록 API의 DB 구현 YES와 본문의 controller 미구현 표시는 여전히 다르므로 상태값으로 판정하지 않는다.
@@ -86,9 +98,9 @@ pending 145개는 실제 후보별 비교·반영 확인 전까지 유지했다.
   다음 커서도 `createdAt`·ID이며 `DocumentCardResponse`에는 녹음 시작 시각이 없다.
   `RecordingSession.startedAt` 저장 필드는 존재하지만 목록 전달·정렬에 사용한다는 증거는 아니다.
   닫힌 [#495](https://github.com/woowacourse-teams/2026-Knot/issues/495)와
-  [기존 목록 계획](../../docs/implement-plan/495-document-list.md)은 이전 생성 시각 계약이다.
+  [기존 목록 계획](https://github.com/woowacourse-teams/2026-knot/blob/45d6b99993222ea4953b6f498294d8533b17fc6e/backend/docs/implement-plan/495-document-list.md)은 이전 생성 시각 계약이다.
   새 정책 적용에는 해당 계약·조회·페이지 경계의 후속 비교가 필요하다. 기존 확인 상태
-  [Proposed ADR](../../docs/adr/496-document-my-confirmation-state.md)은 이 정렬 결정을 다루지 않는다.
+  [Proposed ADR](adr/496-document-my-confirmation-state.md)은 이 정렬 결정을 다루지 않는다.
 - **사이드바 상태 정책:** [문서 보기·원문](https://www.notion.so/3ddb43517522814c97e4e90111297141)과
   [에러 페이지](https://www.notion.so/3ddb43517522812bb4dcdf3a6f771ba3)의 revision `01:59:00Z`는
   DOC-R14·ERR-22를 추가했다. 트리를 본문·원문과 독립적으로 불러오고 재시도는 트리만 다시
@@ -113,7 +125,7 @@ pending 145개는 실제 후보별 비교·반영 확인 전까지 유지했다.
 DB의 구현 속성은 둘 다 YES다. 본문은 여전히 미구현이라고 적혀 있어 서로 다르다.
 
 - [#568](https://github.com/woowacourse-teams/2026-Knot/issues/568),
-  [중지 구현 계약](../../docs/api/search-answer-stop.md), 로컬 `SearchAnswerStopController`·
+  [중지 구현 계약](https://github.com/woowacourse-teams/2026-knot/blob/45d6b99993222ea4953b6f498294d8533b17fc6e/backend/docs/api/search-answer-stop.md), 로컬 `SearchAnswerStopController`·
   `SearchAnswerExecutionService.stop`을 대조했다. 본문 없는 POST에 현재 소유·멤버십·답변 범위를
   검사하고 부분 content와 STOPPED를 저장한다. 이미 STOPPED인 중복 요청은 200이며,
   COMPLETED/FAILED가 먼저 확정됐으면 409 `ANSWER_NOT_RUNNING`이다.
@@ -123,7 +135,7 @@ DB의 구현 속성은 둘 다 YES다. 본문은 여전히 미구현이라고 �
   없고 현재 구현 계약은 이를 선택 헤더로 명시한다. CSRF는 별도 필수 계약이다.
   저장된 중지를 200으로 반환하는 시점과 공급자 내부 생성이 실제 끝나는 시점은 구분한다.
 - [#567](https://github.com/woowacourse-teams/2026-Knot/issues/567),
-  [재연결 구현 계약](../../docs/api/search-answer-events.md), 로컬 `SearchAnswerEventsController`·
+  [재연결 구현 계약](https://github.com/woowacourse-teams/2026-knot/blob/45d6b99993222ea4953b6f498294d8533b17fc6e/backend/docs/api/search-answer-events.md), 로컬 `SearchAnswerEventsController`·
   `SearchAnswerSnapshotService`·`SearchAnswerReconnectConnection`을 대조했다.
   snapshot을 먼저 보내고 같은 실행의 저장 본문 증가분을 delta로 보낸다. 근거가 있으면 최대 3개
   카드를 보내며, 종료된 답변은 snapshot·근거·종료 이벤트 뒤 연결을 닫는다.
@@ -182,7 +194,7 @@ DB의 구현 속성은 둘 다 YES다. 본문은 여전히 미구현이라고 �
   로컬 활성 세션 조회의 차이는 기존 검토 대상으로 남긴다. 새 홈 실패 규칙으로 그 차이가 해결되지는 않는다.
 - [#405](https://github.com/woowacourse-teams/2026-Knot/issues/405)는 미확인 문서에
   `myConfirmation=PENDING`, 최근 문서에 `size=3`을 사용한다.
-  [목록 계약](../../docs/api/document-list.md)과 로컬 `DocumentController.findDocuments`·
+  [목록 계약](https://github.com/woowacourse-teams/2026-knot/blob/45d6b99993222ea4953b6f498294d8533b17fc6e/backend/docs/api/document-list.md)과 로컬 `DocumentController.findDocuments`·
   `DocumentListService`에는 해당 필터·페이지 크기·권한 검사 경로가 있다.
   새 화면 상태를 위해 홈 통합 endpoint나 저장 필드를 추가한다고 해석하지 않는다.
 - 조회 시 OPEN인 [#585](https://github.com/woowacourse-teams/2026-Knot/issues/585)는 최근 문서 카드만
@@ -214,16 +226,16 @@ DB의 구현 속성은 둘 다 YES다. 본문은 여전히 미구현이라고 �
 - [첫 질문](https://www.notion.so/3ebb4351752280a39871f288fbc275b6)의 JSON 요청·SSE 응답,
   저장 commit 이후 `accepted`, 연결 종료와 독립된 생성, 실제 Document 근거 최대 3개는
   [#563](https://github.com/woowacourse-teams/2026-Knot/issues/563) 및
-  [현재 구현 계약](../../docs/api/search-conversation-create.md)과 대조했다.
+  [현재 구현 계약](https://github.com/woowacourse-teams/2026-knot/blob/45d6b99993222ea4953b6f498294d8533b17fc6e/backend/docs/api/search-conversation-create.md)과 대조했다.
   로컬 Controller와 IntakeService에는 대화·USER·ASSISTANT·requestId receipt·실행 queue 생성이 있다.
   `requestId` 보관 기간과 질문 최대 길이는 노션에 미정으로 남아 있으나, 기존 결정은
   대화 보관 기간 동안 receipt 유지와 공백 포함 Unicode code point 2,000개다.
-  [구현 계획](../../docs/implement-plan/563-search-conversation-create.md)의 확정 내용을 다시 미정으로 돌리지 않는다.
+  [구현 계획](https://github.com/woowacourse-teams/2026-knot/blob/45d6b99993222ea4953b6f498294d8533b17fc6e/backend/docs/implement-plan/563-search-conversation-create.md)의 확정 내용을 다시 미정으로 돌리지 않는다.
 - 원문의 V2 미구현 문구는 현재 로컬 조회·질문 접수 코드의 존재와 다르다.
   다만 현재 구현 계약은 실제 검색 전략·색인 준비·모델 streaming adapter가 연결되지 않았고,
   기본 worker 비활성 상태에서 새 요청은 접수 전 `ANSWER_GENERATION_UNAVAILABLE`로 거절된다고 명시한다.
   코드 존재를 실제 검색 품질·운영 배포 완료로 보고하지 않는다.
-  Proposed [ADR 271](../../docs/adr/271-llm-search-architecture-benchmark.md)의 과거 벤치마크 후보를
+  Proposed [ADR 271](adr/271-llm-search-architecture-benchmark.md)의 과거 벤치마크 후보를
   현재 V2 검색 전략의 확정 결정으로 적용하지 않는다.
 
 메시지 이력의 제외 문서 수는 보장하지 않고 첫 SSE 연결에서만 제공한다는 기존 계약을 유지한다.
@@ -252,7 +264,7 @@ DB의 구현 속성은 둘 다 YES다. 본문은 여전히 미구현이라고 �
   같은 recordingId의 ENDED·DISCARDED를 확인한 뒤 늦은 활성 응답으로 되돌리지 않는다.
   ENDED는 수집 중단 후 저장 흐름, DISCARDED 및 Workspace 권한 상실 403·404는 수집 중단과
   임시 버퍼 폐기다. 녹음 상태를 보는 권한은 최초 탭 제어권을 넘기지 않으며,
-  [#530 종료 제어 결정](../../docs/api/recording-end.md)과도 구분한다.
+  [#530 종료 제어 결정](https://github.com/woowacourse-teams/2026-knot/blob/45d6b99993222ea4953b6f498294d8533b17fc6e/backend/docs/api/recording-end.md)과도 구분한다.
 - 9/30의 종합 상태·전사·문서 Job·실패 코드 제안은 원문에서 이전 계획으로 명시됐다.
   현재 단건 조회 구현 계획에 그 필드를 다시 넣지 않는다. #386의 10/9 코멘트에 남은
   `serverNow` 공통 필드 문구도 최신 원문과 PR DTO의 5개 필드 계약과 다르므로 후속 Issue 정합 대상으로 남긴다.
@@ -282,11 +294,11 @@ DB의 구현 속성은 둘 다 YES다. 본문은 여전히 미구현이라고 �
   녹음 화면 진입·일시정지·재개·종료는 허용하지 않고 직접 URL 진입도 홈으로 보낸다.
   다른 탭의 녹음 화면·종료(STT-17)는 이후 버전으로 옮겼다. 로드맵 DB 구분도 `이후 버전`이다.
 - 최초 탭만 종료한다는 방향은 이미 확정된 [#530](https://github.com/woowacourse-teams/2026-Knot/issues/530)과
-  [현재 종료 계약](../../docs/api/recording-end.md)에 일치한다. 로컬 `RecordingEndController`는
+  [현재 종료 계약](https://github.com/woowacourse-teams/2026-knot/blob/45d6b99993222ea4953b6f498294d8533b17fc6e/backend/docs/api/recording-end.md)에 일치한다. 로컬 `RecordingEndController`는
   `{tabId, controlToken}` 본문을 받고 `RecordingEndService`는 소유자·제어 증명을 검증한다.
   #530은 조회 시 OPEN이었다. 코드 존재를 배포·FE 연동 완료로 해석하지 않는다.
 - 운영 [종료 API](https://www.notion.so/3dfb43517522806c88ecc6f5376c79e0)는 여전히 본문 없음·다른 탭 종료 허용이다.
-  #381과 Proposed [ADR 378](../../docs/adr/378-recording-tab-recovery-and-expiry.md)도 이전 허용을 남긴다.
+  #381과 Proposed [ADR 378](adr/378-recording-tab-recovery-and-expiry.md)도 이전 허용을 남긴다.
   이 항목은 10/8 사용자 결정으로 대체됐으므로 기존 제어 증명을 제거하지 않는다.
   운영 API·기존 Issue·ADR의 대체 관계 동기화가 남았다.
 - 새 기획의 새로고침 종료·로드마다 새 탭 ID는 #378·ADR 378의 같은 탭 증명 유지·복구와
@@ -323,7 +335,7 @@ DB의 구현 속성은 둘 다 YES다. 본문은 여전히 미구현이라고 �
 현재 코드는 Workspace 멤버를 먼저 검사하고 연결 원문이 없으면 `TRANSCRIPT_NOT_FOUND`,
 저장된 본문·구간 계약 위반이면 `INVALID_TRANSCRIPT_DATA`를 반환한다.
 원문의 “controller 없음·구간 저장 미정”은 현재 코드와
-[#499 계획](../../docs/implement-plan/499-document-transcript.md)의 확정 범위와 다르다.
+[#499 계획](https://github.com/woowacourse-teams/2026-knot/blob/45d6b99993222ea4953b6f498294d8533b17fc6e/backend/docs/implement-plan/499-document-transcript.md)의 확정 범위와 다르다.
 조회 코드 존재는 실제 STT 저장 연결·배포 성공의 증거가 아니다. DOC-R7의 참여자 번호는
 Workspace 멤버와 연결하지 않는 기존 익명 화자 계약으로 읽는다.
 
@@ -361,7 +373,7 @@ revision은 `2026-10-08T17:06:00Z`인데 같은 실행 Search 출력의 속성 r
   `DocumentConfirmationCommandService`의 현재 코드와 대조했다.
 - 두 원문의 “API/controller 없음” 문장은 현재 코드와 다르다. GET/PUT Controller와
   서비스가 존재하고 두 Issue는 조회 시 CLOSED였다. 배포·테스트 통과까지 확인한 것은 아니다.
-- 목록·상세의 내 확인 3상태는 [ADR #496](../../docs/adr/496-document-my-confirmation-state.md)의
+- 목록·상세의 내 확인 3상태는 [ADR #496](adr/496-document-my-confirmation-state.md)의
   기존 결정에 따른다. 확인 현황 API의 Boolean과 구분하며 이번 수집으로 변경하지 않는다.
 
 본문과 속성 revision이 일치하는 수집 근거를 확보한 뒤 queue 완료 여부를 다시 판정해야 한다.
@@ -375,7 +387,7 @@ revision은 `2026-10-08T17:06:00Z`인데 같은 실행 Search 출력의 속성 r
 상태: 검토 메모. API 초안 승인이나 구현 완료 기록이 아니다.
 
 이 문서는 운영 Team Notion에서 감지된 API 변경 후보를 백엔드의 현재 계약과 구분한다.
-제품 범위와 충돌 처리에는 [현재 V2 MVP 기준](../../docs/product/current-v2-mvp.md)과
+제품 범위와 충돌 처리에는 [현재 V2 MVP 기준](product/current-v2-mvp.md)과
 [Notion 정합성 워크플로](../../docs/harness/notion-alignment.md)를 함께 적용한다.
 
 ## 근거와 확인 범위
@@ -541,7 +553,7 @@ candidate의 `NO`/`YES` 값은 Notion metadata일 뿐 실제 code state를 확�
   #430은 refresh rotation/reuse 처리의 별도 구현 범위를 둔다. OAuth candidate의 탈퇴 Member
   재로그인 제한은 이 Issue 묶음에서 확인되지 않아 미정으로 남긴다.
 
-저장·동시성 선택과 남은 질문은 [Persona draft](../.persona/decisions/draft/refresh-token-session-lifecycle.md)에
+저장·동시성 선택과 남은 질문은 Persona draft(현재 저장소에 없는 과거 로컬 문서)에
 제안 상태로 둔다. 도메인 정책으로 승격하려면 팀 확인이 필요하다.
 
 ## 남은 제품·기술 충돌

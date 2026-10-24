@@ -6,6 +6,7 @@ import com.knot.backend.document.domain.DocumentException;
 import com.knot.backend.document.domain.repository.DocumentGenerationBatchRepository;
 import com.knot.backend.document.domain.model.DocumentGenerationFailureCause;
 import com.knot.backend.document.domain.model.DocumentGenerationJob;
+import com.knot.backend.document.domain.model.DocumentGenerationPhase;
 import com.knot.backend.document.domain.repository.DocumentGenerationJobRepository;
 import com.knot.backend.document.domain.model.DocumentGenerationJobStatus;
 import com.knot.backend.document.domain.DocumentGenerationRetryPolicy;
@@ -103,6 +104,20 @@ public class DocumentGenerationFailureService {
         DocumentGenerationBatch batch = batches.findByIdForUpdate(job.getBatchId())
                 .orElseThrow(() -> new DocumentException(DocumentErrorCode.GENERATION_REGISTRATION_CONFLICT));
         DocumentGenerationJobStatus previous = job.getStatus();
+        if (resumePrepared(
+                job,
+                actualCause,
+                now
+        )) {
+            batch.recordJobTransition(
+                    job.getStage(),
+                    previous,
+                    job.getStatus(),
+                    now
+            );
+            jobs.flush();
+            return;
+        }
         job.recordFailure(
                 now,
                 actualCause
@@ -138,6 +153,24 @@ public class DocumentGenerationFailureService {
             return DocumentGenerationFailureCause.EXECUTION_EXPIRED;
         }
         return cause;
+    }
+
+    private boolean resumePrepared(
+            DocumentGenerationJob job,
+            DocumentGenerationFailureCause cause,
+            Instant now
+    ) {
+        if (job.getProcessingPhase() == DocumentGenerationPhase.WRITE_BODY
+                || cause == DocumentGenerationFailureCause.WORKSPACE_DELETED) {
+            return false;
+        }
+        job.recordCategoryFailure(cause.name());
+        job.resumeGeneration(
+                now,
+                now.plus(properties.getAutomaticRetryBackoff()),
+                job.getProcessingPhase()
+        );
+        return true;
     }
 
     private boolean isCurrentExecution(

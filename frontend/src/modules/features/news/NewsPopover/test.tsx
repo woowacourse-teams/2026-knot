@@ -1,15 +1,22 @@
+import { FEEDBACK_RELAY_PATH } from "@api/fetch/relay/f";
+import { mockServer } from "@api/mock/server";
+import useSendFeedbackMutation from "@api/mutations/useSendFeedbackMutation";
 import { RELEASE_NOTES } from "@constants/releaseNote";
 import { ThemeProvider } from "@emotion/react";
 import { theme } from "@provider/themeProvider";
 import { getRouterPath, PATH_ROUTE } from "@routes/PATH_ROUTE";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { useRecordingStore } from "@store/recordingStore";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { http, HttpResponse } from "msw";
 import { createMemoryRouter, RouterProvider } from "react-router";
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ReleaseNote } from "@/shared/types/releaseNote";
 
 import NewsPopover from ".";
 
+import { LAST_SEEN_NOTE_ID_KEY } from "./constants/lastSeenNote";
 import { formatReleaseDate } from "./utils/formatReleaseDate";
 
 const BUTTON_NAME = "새 소식과 피드백";
@@ -17,14 +24,46 @@ const BUTTON_NAME = "새 소식과 피드백";
 const PANEL_DESCRIPTION = "새로 생기거나 달라진 점을 모아 둬요";
 const WORKSPACE_ID = "1";
 
+const FEEDBACK_PANEL_NAME = "피드백 패널";
+
 const ALL_ITEMS = RELEASE_NOTES.flatMap(({ items }) => items);
 
+/** 레이아웃이 넘기는 피드백 패널 자리. 닫기와 보내기만 해 봐요 */
+function FeedbackPanelStub({ onClose }: { onClose: () => void }) {
+  const { mutate, isPending } = useSendFeedbackMutation();
+
+  return (
+    <section aria-label={FEEDBACK_PANEL_NAME}>
+      {isPending && <p>보내는 중</p>}
+      <button type="button" onClick={onClose}>
+        피드백 패널 닫기
+      </button>
+      <button
+        type="button"
+        onClick={() =>
+          mutate({ type: "bug", content: "", pageUrl: window.location.href })
+        }
+      >
+        피드백 보내기 요청
+      </button>
+    </section>
+  );
+}
+
 const renderPopover = (notes?: ReleaseNote[]) => {
+  const queryClient = new QueryClient();
   const router = createMemoryRouter(
     [
       {
         path: PATH_ROUTE.WORKSPACE_HOME,
-        element: <NewsPopover notes={notes} />,
+        element: (
+          <NewsPopover
+            notes={notes}
+            renderFeedbackPanel={({ onClose }) => (
+              <FeedbackPanelStub onClose={onClose} />
+            )}
+          />
+        ),
       },
       { path: PATH_ROUTE.CHAT, element: null },
     ],
@@ -38,37 +77,243 @@ const renderPopover = (notes?: ReleaseNote[]) => {
     },
   );
 
-  render(
+  const rendered = render(
     <ThemeProvider theme={theme}>
-      <RouterProvider router={router} />
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>
     </ThemeProvider>,
   );
 
-  return { router, button: screen.getByRole("button", { name: BUTTON_NAME }) };
+  return {
+    ...rendered,
+    router,
+    button: screen.getByRole("button", { name: BUTTON_NAME }),
+  };
 };
 
-/** 버튼을 눌러 패널을 연 상태로 그려요 */
-const renderOpenPanel = (notes?: ReleaseNote[]) => {
+/** 버튼을 눌러 메뉴를 연 상태로 그려요 */
+const renderOpenMenu = (notes?: ReleaseNote[]) => {
   const rendered = renderPopover(notes);
   fireEvent.click(rendered.button);
 
   return rendered;
 };
 
+/** 메뉴에서 「새 소식」을 골라 새 소식 패널을 연 상태로 그려요 */
+const renderOpenPanel = (notes?: ReleaseNote[]) => {
+  const rendered = renderOpenMenu(notes);
+  fireEvent.click(screen.getByRole("button", { name: "새 소식" }));
+
+  return rendered;
+};
+
+/** 메뉴에서 「피드백 보내기」를 골라 피드백 패널을 연 상태로 그려요 */
+const renderOpenFeedbackPanel = () => {
+  const rendered = renderOpenMenu();
+  fireEvent.click(screen.getByRole("button", { name: "피드백 보내기" }));
+
+  return rendered;
+};
+
 describe("NewsPopover", () => {
-  describe("여닫기", () => {
-    it("처음에는 새 소식 패널을 닫아 둔다", () => {
+  // 새 소식을 이미 열어 본 사용자로 두고, 처음 확인하는 사용자는 그 describe에서 지워요
+  beforeEach(() => localStorage.setItem(LAST_SEEN_NOTE_ID_KEY, "v0.0.1"));
+  afterEach(() => {
+    localStorage.clear();
+    useRecordingStore.setState(useRecordingStore.getInitialState());
+    vi.unstubAllGlobals();
+  });
+
+  describe("처음 확인하는 사용자", () => {
+    beforeEach(() => localStorage.removeItem(LAST_SEEN_NOTE_ID_KEY));
+
+    it("새 소식을 한 번도 열지 않았으면 처음 그릴 때 메뉴 없이 새 소식 패널을 저절로 연다", () => {
       const { button } = renderPopover();
 
-      expect(button).toHaveAttribute("aria-expanded", "false");
+      expect(button).toHaveAttribute("aria-expanded", "true");
+      expect(screen.getByText(PANEL_DESCRIPTION)).toBeInTheDocument();
+      expect(
+        screen.queryByRole("button", { name: "피드백 보내기" }),
+      ).not.toBeInTheDocument();
+    });
+
+    it("저절로 연 패널을 닫고 버튼으로 다시 열면 메뉴부터 보여 준다", () => {
+      const { button } = renderPopover();
+
+      fireEvent.click(button);
+      fireEvent.click(button);
+
+      expect(
+        screen.getByRole("button", { name: "새 소식" }),
+      ).toBeInTheDocument();
       expect(screen.queryByText(PANEL_DESCRIPTION)).not.toBeInTheDocument();
     });
 
-    it("버튼을 누르면 새 소식 패널을 연다", () => {
+    it("저절로 열면 맨 위 노트를 읽음으로 남겨 다음에는 저절로 열지 않는다", () => {
+      const { unmount } = renderPopover();
+
+      expect(localStorage.getItem(LAST_SEEN_NOTE_ID_KEY)).toBe(
+        RELEASE_NOTES[0].id,
+      );
+
+      unmount();
+      const { button } = renderPopover();
+
+      expect(button).toHaveAttribute("aria-expanded", "false");
+    });
+
+    it("노트가 없으면 저절로 열지 않는다", () => {
+      const { button } = renderPopover([]);
+
+      expect(button).toHaveAttribute("aria-expanded", "false");
+      expect(localStorage.getItem(LAST_SEEN_NOTE_ID_KEY)).toBeNull();
+    });
+
+    it("녹음 중이면 저절로 열지 않고 읽음도 남기지 않는다", () => {
+      useRecordingStore.setState({ status: "recording" });
+
+      const { button } = renderPopover();
+
+      expect(button).toHaveAttribute("aria-expanded", "false");
+      expect(localStorage.getItem(LAST_SEEN_NOTE_ID_KEY)).toBeNull();
+    });
+
+    it("localStorage를 쓸 수 없으면 저절로 열지 않는다", () => {
+      vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
+        throw new Error("SecurityError");
+      });
+
+      const { button } = renderPopover();
+
+      expect(button).toHaveAttribute("aria-expanded", "false");
+    });
+  });
+
+  describe("읽음", () => {
+    it("메뉴에서 「새 소식」을 고르면 맨 위 노트를 읽음으로 남긴다", () => {
+      renderOpenPanel();
+
+      expect(localStorage.getItem(LAST_SEEN_NOTE_ID_KEY)).toBe(
+        RELEASE_NOTES[0].id,
+      );
+    });
+
+    it("메뉴만 열거나 피드백 패널을 열면 읽음을 바꾸지 않는다", () => {
+      renderOpenFeedbackPanel();
+
+      expect(localStorage.getItem(LAST_SEEN_NOTE_ID_KEY)).toBe("v0.0.1");
+    });
+  });
+
+  describe("메뉴", () => {
+    it("버튼을 누르면 「새 소식」과 「피드백 보내기」 메뉴를 열고 첫 항목으로 포커스를 옮긴다", () => {
+      const { button } = renderOpenMenu();
+
+      expect(button).toHaveAttribute("aria-expanded", "true");
+      expect(screen.getByRole("button", { name: "새 소식" })).toHaveFocus();
+      expect(
+        screen.getByRole("button", { name: "피드백 보내기" }),
+      ).toBeInTheDocument();
+      expect(screen.queryByText(PANEL_DESCRIPTION)).not.toBeInTheDocument();
+    });
+
+    it("「새 소식」을 고르면 메뉴를 닫고 같은 자리에 새 소식 패널을 연다", () => {
       const { button } = renderOpenPanel();
 
       expect(button).toHaveAttribute("aria-expanded", "true");
       expect(screen.getByText(PANEL_DESCRIPTION)).toBeInTheDocument();
+      expect(
+        screen.queryByRole("button", { name: "피드백 보내기" }),
+      ).not.toBeInTheDocument();
+    });
+
+    it("「피드백 보내기」를 고르면 메뉴를 닫고 같은 자리에 피드백 패널을 연다", () => {
+      renderOpenFeedbackPanel();
+
+      expect(
+        screen.getByRole("region", { name: FEEDBACK_PANEL_NAME }),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByRole("button", { name: "새 소식" }),
+      ).not.toBeInTheDocument();
+    });
+
+    it("휴대폰에서는 피드백을 사이드바에서 열어, 버튼을 누르면 메뉴 없이 새 소식 패널을 연다", () => {
+      vi.stubGlobal(
+        "matchMedia",
+        vi.fn(() => ({
+          matches: true,
+          addEventListener: vi.fn(),
+          removeEventListener: vi.fn(),
+        })),
+      );
+
+      renderOpenMenu();
+
+      expect(screen.getByText(PANEL_DESCRIPTION)).toBeInTheDocument();
+      expect(
+        screen.queryByRole("button", { name: "피드백 보내기" }),
+      ).not.toBeInTheDocument();
+      expect(localStorage.getItem(LAST_SEEN_NOTE_ID_KEY)).toBe(
+        RELEASE_NOTES[0].id,
+      );
+    });
+  });
+
+  describe("피드백 패널", () => {
+    it("패널이 닫기를 부르면 팝오버를 닫고 버튼으로 포커스를 돌려준다", () => {
+      const { button } = renderOpenFeedbackPanel();
+
+      fireEvent.click(screen.getByRole("button", { name: "피드백 패널 닫기" }));
+
+      expect(button).toHaveAttribute("aria-expanded", "false");
+      expect(button).toHaveFocus();
+    });
+
+    it("보내는 동안에는 바깥 · ESC · 버튼으로 닫지 않고, 보낸 뒤에는 다시 닫을 수 있다", async () => {
+      let finishSending = () => {};
+      mockServer.use(
+        http.post(`*${FEEDBACK_RELAY_PATH}`, async () => {
+          await new Promise<void>((resolve) => {
+            finishSending = resolve;
+          });
+          return new HttpResponse(null, { status: 201 });
+        }),
+      );
+      const { button } = renderOpenFeedbackPanel();
+
+      fireEvent.click(
+        screen.getByRole("button", { name: "피드백 보내기 요청" }),
+      );
+      await screen.findByText("보내는 중");
+
+      fireEvent.pointerDown(document.body);
+      fireEvent.keyDown(document, { key: "Escape" });
+      fireEvent.click(button);
+
+      expect(
+        screen.getByRole("region", { name: FEEDBACK_PANEL_NAME }),
+      ).toBeInTheDocument();
+
+      finishSending();
+      await waitFor(() =>
+        expect(screen.queryByText("보내는 중")).not.toBeInTheDocument(),
+      );
+      fireEvent.keyDown(document, { key: "Escape" });
+
+      expect(
+        screen.queryByRole("region", { name: FEEDBACK_PANEL_NAME }),
+      ).not.toBeInTheDocument();
+    });
+  });
+
+  describe("여닫기", () => {
+    it("처음에는 메뉴와 패널을 닫아 둔다", () => {
+      const { button } = renderPopover();
+
+      expect(button).toHaveAttribute("aria-expanded", "false");
+      expect(screen.queryByText(PANEL_DESCRIPTION)).not.toBeInTheDocument();
     });
 
     it("열린 패널은 버튼을 다시 누르면 닫는다", () => {
@@ -96,12 +341,13 @@ describe("NewsPopover", () => {
       expect(screen.getByText(PANEL_DESCRIPTION)).toBeInTheDocument();
     });
 
-    it("열린 패널은 ESC를 누르면 닫는다", () => {
-      renderOpenPanel();
+    it("열린 패널은 ESC를 누르면 닫고 버튼으로 포커스를 돌려준다", () => {
+      const { button } = renderOpenPanel();
 
       fireEvent.keyDown(document, { key: "Escape" });
 
       expect(screen.queryByText(PANEL_DESCRIPTION)).not.toBeInTheDocument();
+      expect(button).toHaveFocus();
     });
   });
 

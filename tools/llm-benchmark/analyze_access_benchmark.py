@@ -79,8 +79,8 @@ class AccessRow(BaseModel):
 def main(
     results: Path = typer.Option(..., help="JSONL output from run_four_way_benchmark.py."),
     e2e_results: Path | None = typer.Option(None, help="Optional JSONL with model-generation observations."),
-    gold_set: Path = typer.Option(Path("docs/llm-search-benchmark-gold-set.md"), help="Gold set used to resolve expected source IDs."),
-    output: Path = typer.Option(Path("docs/llm-search-ab-test-report.md"), help="Markdown report path."),
+    gold_set: Path = typer.Option(Path("backend/docs/llm-search-benchmark-gold-set.md"), help="Gold set used to resolve expected source IDs."),
+    output: Path = typer.Option(Path(".benchmark-data/llm-search-ab-test-report.md"), help="Markdown report path."),
     chat_model: str = typer.Option("qwen/qwen3.6-27b"),
     embedding_model: str = typer.Option("text-embedding-qwen3-embedding-0.6b:2"),
     context_length: int = typer.Option(32768, min=1),

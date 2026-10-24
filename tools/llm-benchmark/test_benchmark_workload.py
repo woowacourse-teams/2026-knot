@@ -17,7 +17,7 @@ import pytest
 from benchmark_workload import WorkloadError, WorkloadManifest, load_workload
 from gold_set import load_cases
 
-_MANIFEST = Path("docs/llm-search-benchmark-independent-30.json")
+_MANIFEST = Path("backend/docs/llm-search-benchmark-independent-30.json")
 
 
 def test_independent_workload_has_thirty_cases_and_all_required_question_shapes() -> (

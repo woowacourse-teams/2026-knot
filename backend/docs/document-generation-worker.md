@@ -2,6 +2,57 @@
 
 저장된 QUEUED Job을 읽어 분류와 주제별 문서 생성을 자동으로 실행한다. 실행기 활성화는 기본 false다. 실제 STT 완료 저장에서 원문 접수를 호출하는 연결과 녹음 상세 HTTP 응답 매핑은 각 담당 작업에서 수행한다.
 
+## #913 새 문서 큰 주제 배정
+
+`DOCUMENT_CATEGORY_ENABLED=true`이면 안건별 GENERATION 안에서 `WRITE_BODY → ASSIGN_CATEGORY → PUBLISH`를 저장한다.
+기존 전사 접수·안건 분류·작성 Markdown 계약은 유지한다. 한 claim에서는 한 단계만 처리하고 LLM 호출은 TX 밖에서 한다.
+
+| 단계 | 저장·복구 |
+| --- | --- |
+| WRITE_BODY | 기존 생성·검증 후 비공개 PreparedDocument 저장. 최초 배정 시작 시각과 deadline을 같은 TX에서 기록 |
+| ASSIGN_CATEGORY | 정상 큰 주제 후보·버전을 읽고 호출 횟수를 DB에 먼저 반영. 제한된 요청으로 배정하고 결정 저장 |
+| PUBLISH | Workspace 락에서 최신 후보를 다시 확인. 큰 주제·DRAFT·확인 대상·Job 성공·Batch 집계·임시 결과 제거를 원자적으로 저장 |
+
+본문을 보관한 뒤 배정 오류는 최종 FAILED로 보내지 않는다. timeout·429·잘못된 응답은 남은 별도 예산 안에서 추가 재시도한다.
+503·인증·설정/입력 한도 오류처럼 즉시 대체할 오류는 서버 규칙으로 전환한다.
+규칙은 안건 우선·제목 보조로 기존 주제 재사용 → 정해진 범위의 신규 → 최후 기타를 선택한다.
+유효 본문과 큰 주제는 최종 commit 이후 함께 공개한다. 본문 생성 실패나 DB 장애 중 성공을 꾸미지 않는다.
+외부 호출 없는 규칙 분류 자체에 예외가 생기면 RULE_CLASSIFICATION_ERROR를 기록하고 최후 기타를 사용한다.
+이 예외 경계에는 DB 호출·권한 검사를 포함하지 않는다.
+
+| 환경 변수 | 기본값 | 의미 |
+| --- | --- | --- |
+| DOCUMENT_CATEGORY_ENABLED | false | 새 본문을 큰 주제 배정 흐름으로 접수 |
+| DOCUMENT_CATEGORY_MAX_RETRIES | 1 | 최초 배정 호출 뒤 추가 횟수. 0~3 |
+| DOCUMENT_CATEGORY_RETRY_BACKOFF | PT5S | DB 예약 재시도 대기 |
+| DOCUMENT_CATEGORY_REQUEST_TIMEOUT | PT20S | 배정 호출 한 번의 최대 대기 |
+| DOCUMENT_CATEGORY_TOTAL_BUDGET | PT45S | 본문 보관 시 시작하는 전체 배정 기한 |
+| DOCUMENT_CATEGORY_MAX_INPUT_CHARACTERS | 40000 | 직렬화한 배정 입력의 문자 한도. 토큰 수와 다름 |
+
+호출 timeout은 위 요청 한도·전체 남은 기한·실행 lease 잔여 중 최솟값이다. 재시작과 카탈로그 재검토로 최초 deadline을 늘리지 않는다.
+별도 `category_attempt_count`와 `phase_resume_count`를 사용하며 사용자 최대 3회·본문 자동 최대 1회 할당량을 소비하지 않는다.
+진행 중 원문·임시 본문을 7일 실패 정리가 지우지 않는다. Workspace 삭제 등으로 실제 종료한 Job이 만료 삭제될 때 임시 본문도 정리한다.
+최종 DB 저장 재시도는 보관 결정만 사용하며 본문·배정 LLM을 다시 부르지 않는다.
+
+API·응답 필드·FE 변경은 없다. 목록의 `topics[].topic`과 카드 `topic`은 큰 주제 이름, legacy는 원래 안건 이름을 반환한다.
+기능을 꺼도 이미 본문을 보관한 Job은 저장 phase부터 마무리한다. 구버전 worker는 새 phase를 모르므로 보관 Job을 남긴 채 구버전으로 되돌리지 않는다.
+
+완료 관측은 `DocumentCategoryPublicationMetrics`의 AFTER_COMMIT 처리다.
+`knot.document.category.publications` counter와 `knot.document.category.assignment.duration` timer의 source는 다섯 enum 값만 사용한다.
+원문·본문·프롬프트·토큰을 로그나 metric label로 기록하지 않는다. TX 롤백은 완료 수에 넣지 않으며 재기동 시 메모리 지표는 초기화된다.
+관측 예시는 다음과 같다. 알림·운영 환경 설정을 자동 배포한 것은 아니다.
+
+```promql
+sum(increase(knot_document_category_publications_total{source="FALLBACK"}[15m]))
+/
+clamp_min(sum(increase(knot_document_category_publications_total[15m])), 1)
+```
+
+관련 구현 범위는 [Issue #913](https://github.com/woowacourse-teams/2026-Knot/issues/913)과 변경 PR에서 확인한다. Docker LLM은 HTTP fault fixture이며 실제 모델 품질 평가는 별도다.
+Docker 실행 자료는 사용자 요청으로 로컬에만 보관하고 Git 추적에서 제외한다.
+
+## 기존 #525 기본 흐름
+
 ```mermaid
 flowchart TD
     A[STT 담당: 원문 저장 TX에서 접수 호출] --> B[CLASSIFICATION QUEUED 저장]

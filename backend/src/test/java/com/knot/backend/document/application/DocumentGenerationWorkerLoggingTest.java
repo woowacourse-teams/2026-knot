@@ -28,7 +28,10 @@ class DocumentGenerationWorkerLoggingTest {
             mock(DocumentGenerationService.class),
             mock(DocumentClassificationResultService.class),
             mock(DocumentGenerationResultService.class),
-            failures
+            failures,
+            new com.knot.backend.global.config.DocumentCategoryProperties(),
+            mock(DocumentCategoryCheckpointService.class),
+            mock(DocumentCategoryAssignmentService.class)
     );
 
     @Test

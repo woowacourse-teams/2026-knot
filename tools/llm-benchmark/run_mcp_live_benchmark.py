@@ -70,7 +70,7 @@ from run_benchmark import (
     _write_record,
 )
 
-_DEFAULT_GOLD_SET: Final[Path] = Path("docs/llm-search-benchmark-gold-set.md")
+_DEFAULT_GOLD_SET: Final[Path] = Path("backend/docs/llm-search-benchmark-gold-set.md")
 _DEFAULT_OUTPUT: Final[Path] = Path(".benchmark-data/mcp-live-results.jsonl")
 _NO_ANSWER_TEXT: Final[str] = (
     "현재 동기화된 팀 문서에서는 관련된 정보를 찾지 못했습니다. 최신 문서가 반영되지 않았다면 동기화 후 다시 검색해보세요."

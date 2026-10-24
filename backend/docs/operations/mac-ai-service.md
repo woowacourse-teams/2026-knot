@@ -106,7 +106,7 @@ WAL·인증서·토큰·중앙 시계열을 삭제하지 않는다. AI 앱 자�
 
 ## 검증 근거
 
-[로컬 검증 기록](../verification/810-mac-ai-service.md)에 코드 검사와 미실행 운영 검증을 구분했다.
+코드 검사 통과와 실제 서비스 기동·복구 검증은 구분해 기록한다.
 Alloy 동작은 [v1.20.1 validate](https://github.com/grafana/alloy/blob/v1.20.1/docs/sources/reference/cli/validate.md),
 [run](https://github.com/grafana/alloy/blob/v1.20.1/docs/sources/reference/cli/run.md),
 [HTTP 준비 endpoint](https://grafana.com/docs/grafana-cloud/send-data/alloy/reference/http/)를 참고한다.

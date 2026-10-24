@@ -8,6 +8,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.net.http.HttpTimeoutException;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
@@ -22,6 +23,7 @@ import tools.jackson.databind.node.ObjectNode;
 
 public class LmStudioClient implements LlmClient {
     private static final String ENGINE_ERROR_PREFIX = "Engine protocol predict request returned 400: ";
+    private static final String ENGINE_STREAM_ERROR_PREFIX = "Engine protocol predict stream returned an error: ";
 
     private final HttpClient httpClient;
     private final ObjectMapper mapper;
@@ -44,7 +46,12 @@ public class LmStudioClient implements LlmClient {
     public String complete(LlmCompletionRequest request) {
         new LlmRequestValidator().validate(request);
         ObjectNode body = createRequestBody(request);
-        HttpResponse<String> response = awaitResponse(buildHttpRequest(body));
+        HttpResponse<String> response = awaitResponse(
+                buildHttpRequest(
+                        body,
+                        effectiveTimeout(request)
+                )
+        );
         validateCompletionStatus(response);
         return readAssistantContent(response.body());
     }
@@ -143,12 +150,24 @@ public class LmStudioClient implements LlmClient {
         }
     }
 
-    private HttpRequest buildHttpRequest(ObjectNode body) {
+    private Duration effectiveTimeout(LlmCompletionRequest request) {
+        Duration configured = properties.getRequestTimeout();
+        if (request.timeout() == null || request.timeout()
+                .compareTo(configured) > 0) {
+            return configured;
+        }
+        return request.timeout();
+    }
+
+    private HttpRequest buildHttpRequest(
+            ObjectNode body,
+            Duration timeout
+    ) {
         return HttpRequest.newBuilder(
                 properties.getBaseUrl()
                         .resolve("/v1/chat/completions")
         )
-                .timeout(properties.getRequestTimeout())
+                .timeout(timeout)
                 .header(
                         "Authorization",
                         "Bearer " + properties.getApiToken()
@@ -176,7 +195,8 @@ public class LmStudioClient implements LlmClient {
         );
         try {
             return future.get(
-                    properties.getRequestTimeout()
+                    request.timeout()
+                            .orElse(properties.getRequestTimeout())
                             .toMillis(),
                     TimeUnit.MILLISECONDS
             );
@@ -236,10 +256,7 @@ public class LmStudioClient implements LlmClient {
             }
             JsonNode error = root.path("error");
             error = readEmbeddedError(error);
-            return "exceed_context_size_error".equals(
-                    error.path("type")
-                            .asString()
-            );
+            return isContextLimitError(error);
         } catch (JacksonException exception) {
             return false;
         }
@@ -250,6 +267,10 @@ public class LmStudioClient implements LlmClient {
             return error;
         }
         String message = error.asString();
+        if (message.startsWith(ENGINE_STREAM_ERROR_PREFIX)) {
+            String embeddedBody = message.substring(ENGINE_STREAM_ERROR_PREFIX.length());
+            return mapper.readTree(embeddedBody);
+        }
         if (!message.startsWith(ENGINE_ERROR_PREFIX)) {
             return error;
         }
@@ -259,6 +280,22 @@ public class LmStudioClient implements LlmClient {
             return mapper.nullNode();
         }
         return embedded.path("error");
+    }
+
+    private boolean isContextLimitError(JsonNode error) {
+        if (error == null || !error.isObject()) {
+            return false;
+        }
+        String type = error.path("type")
+                .asString();
+        if ("exceed_context_size_error".equals(type)) {
+            return true;
+        }
+        return "server_error".equals(type) && error.path("code")
+                .asInt() == 500 && "Context size has been exceeded.".equals(
+                        error.path("message")
+                                .asString()
+                );
     }
 
     private String readAssistantContent(String responseBody) {

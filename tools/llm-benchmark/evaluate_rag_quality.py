@@ -32,7 +32,7 @@ from human_review import (
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 _DEFAULT_RESULTS = Path(".benchmark-data/rag-quality-retrieval-final-10x.jsonl")
-_DEFAULT_GOLD_SET = Path("docs/llm-search-benchmark-gold-set.md")
+_DEFAULT_GOLD_SET = Path("backend/docs/llm-search-benchmark-gold-set.md")
 _NO_ANSWER_CASES = frozenset({"G-011", "G-012"})
 _NO_ANSWER_CATEGORIES = frozenset({"no_answer", "broad", "clarification"})
 

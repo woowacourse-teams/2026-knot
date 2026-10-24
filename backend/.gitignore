@@ -49,3 +49,6 @@ AGENTS.md
 
 ### Local configuration ###
 src/main/resources/application-local.properties
+/ops/document-category-local/
+/ops/document-topic-local/
+/docs/experiments/.local/

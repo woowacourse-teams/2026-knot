@@ -6,7 +6,7 @@ from typing import Any
 
 
 ADR_PATH_PATTERN = re.compile(
-    r"^docs/adr/(?P<issue>[1-9]\d*)-(?P<slug>[a-z0-9]+(?:-[a-z0-9]+)*)\.md$"
+    r"^backend/docs/adr/(?P<issue>[1-9]\d*)-(?P<slug>[a-z0-9]+(?:-[a-z0-9]+)*)\.md$"
 )
 ADR_SLUG_PATTERN = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 
@@ -30,16 +30,16 @@ def validate_slug(slug: Any) -> list[str]:
 
 
 def build_planned_path(issue_number: int, slug: str) -> str:
-    return f"docs/adr/{issue_number}-{slug}.md"
+    return f"backend/docs/adr/{issue_number}-{slug}.md"
 
 
 def validate_planned_path(planned_path: Any) -> list[str]:
     if not isinstance(planned_path, str) or not planned_path.strip():
         return ["missing: adr.planned_path"]
     if planned_path.startswith("/") or ".." in Path(planned_path).parts:
-        return ["adr.planned_path must stay under docs/adr"]
+        return ["adr.planned_path must stay under backend/docs/adr"]
     if not ADR_PATH_PATTERN.match(planned_path):
-        return ["adr.planned_path must match docs/adr/<issue-number>-<slug>.md"]
+        return ["adr.planned_path must match backend/docs/adr/<issue-number>-<slug>.md"]
     return []
 
 
