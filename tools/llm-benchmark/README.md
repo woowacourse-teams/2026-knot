@@ -4,14 +4,14 @@ Notion `Markdown & CSV` 내보내기를 같은 스냅샷으로 고정한 뒤, Ra
 
 현재 `rag`는 Qwen3-Embedding 0.6B GGUF를 LM Studio의 OpenAI-compatible `/v1/embeddings`로 호출하고 PostgreSQL/pgvector에 저장한다. benchmark 하네스는 제품 런타임에 포함하지 않고 이 디렉터리에서만 실행한다. `db`는 같은 저장소의 텍스트 인덱스만 사용하고, `mcp-replay`는 로컬 lexical 검색 결과를 읽기 도구 응답처럼 전달하는 통제군이다. 실제 Notion 네트워크·권한·페이지네이션을 측정하는 `mcp-live`는 smoke test와 전체 비교를 분리한다.
 
-MVP 제품 방향은 `PostgreSQL 키워드 pre-filter → pgvector RAG → 필요한 청크만 채팅 모델에 전달`하는 하이브리드 RAG다. 기본 Markdown 청크는 heading 경계를 우선하고 `1200자 / overlap 180자`로 생성한다. 질의마다 vector·lexical 후보를 각각 최대 50개 모은 뒤 출처별로 합치고, 질문 유형·문서 권위·정확한 기술 식별자·대화 맥락을 반영해 재정렬한다. 근거가 없는 기술명은 무응답으로, 범위가 넓은 질문은 명확화로 종료한다. 기능 계약은 [`docs/llm-search-feature-spec.md`](../../backend/docs/llm-search-feature-spec.md), 비교 결과는 [`docs/llm-search-ab-test-report.md`](../../backend/docs/llm-search-ab-test-report.md)에서 확인한다.
+MVP 제품 방향은 `PostgreSQL 키워드 pre-filter → pgvector RAG → 필요한 청크만 채팅 모델에 전달`하는 하이브리드 RAG다. 기본 Markdown 청크는 heading 경계를 우선하고 `1200자 / overlap 180자`로 생성한다. 질의마다 vector·lexical 후보를 각각 최대 50개 모은 뒤 출처별로 합치고, 질문 유형·문서 권위·정확한 기술 식별자·대화 맥락을 반영해 재정렬한다. 근거가 없는 기술명은 무응답으로, 범위가 넓은 질문은 명확화로 종료한다. 제품 요구사항은 [현재 정본 안내](../../backend/docs/product/current-v2-mvp.md), 벤치마크 선택 근거는 [ADR](../../backend/docs/adr/271-llm-search-architecture-benchmark.md)에서 확인한다.
 
 ## 1. 내보내기 준비
 
 사용자가 제공한 ZIP처럼 바깥 ZIP 안에 Notion 분할 ZIP이 있고 파일명에 한글이 포함된 경우 macOS에서는 `unzip`보다 `ditto`가 안전하다.
 
 ```bash
-cd /Users/yongtae/Desktop/knot
+cd /path/to/2026-Knot
 export EXPORT_ZIP="/path/to/notion-export.zip"
 export EXPORT_TMP="$(mktemp -d /tmp/knot-notion-export.XXXXXX)"
 
@@ -69,7 +69,7 @@ LM Studio 설정은 컨텍스트 32768, GPU offload 64, Max Concurrent 1로 고�
 
 LM Studio 앱에서 Notion MCP를 OAuth로 연결한 뒤 native `/api/v1/chat`에 `mcp/notion` plugin을 지정한다. 허용 도구는 초기 검증에서 `notion-search`와 `notion-fetch`로 제한한다. LM Studio API token과 Notion MCP OAuth token은 서로 다른 credential이며, 어느 값도 저장소·프롬프트·벤치마크 결과에 기록하지 않는다.
 
-이 방식은 LM Studio가 관리하는 단일 OAuth 연결을 확인하는 용도다. Workspace별 인증을 제품에 넣을 때는 Java가 서버 측에서 해당 Workspace credential을 선택하고, 모델에는 token을 전달하지 않은 채 MCP 결과만 넘기는 별도 경계를 검증해야 한다. 실제 smoke test 결과와 실패 사례는 [`docs/llm-search-ab-test-report.md`](../../backend/docs/llm-search-ab-test-report.md)에 기록한다.
+이 방식은 LM Studio가 관리하는 단일 OAuth 연결을 확인하는 용도다. Workspace별 인증을 제품에 넣을 때는 Java가 서버 측에서 해당 Workspace credential을 선택하고, 모델에는 token을 전달하지 않은 채 MCP 결과만 넘기는 별도 경계를 검증해야 한다. 실제 smoke test 결과와 실패 사례는 Git에서 제외한 `.benchmark-data/`에 기록한다.
 
 ## 4. pgvector 색인과 네 가지 비교
 
@@ -134,7 +134,7 @@ Raw는 전체 원문을 조용히 자르지 않는다. 컨텍스트가 설정한
 uv run --python 3.14 tools/llm-benchmark/analyze_access_benchmark.py \
   --results .benchmark-data/four-way-retrieval-10x.jsonl \
   --e2e-results .benchmark-data/four-way-e2e.jsonl \
-  --output backend/docs/llm-search-ab-test-report.md
+  --output .benchmark-data/llm-search-ab-test-report.md
 ```
 
 분석기는 검색 p50/p95, Qwen 임베딩 시간, DB 단계, end-to-end TTFT/total, 5초 내 첫 표시 비율, source hit@5, paired bootstrap CI와 sign-flip permutation p-value를 계산한다. 독립 workload 결과를 분석할 때는 반드시 같은 입력 gold set을 `--gold-set backend/docs/llm-search-benchmark-independent-30.json`으로 전달한다. 반복 수가 늘어도 독립 질문 수가 늘지는 않으므로, 일반화 판정 전 30개 이상 독립 질문과 사람이 확인한 품질 라벨이 필요하다.
@@ -171,7 +171,7 @@ uv run --python 3.14 tools/llm-benchmark/run_ab_benchmark.py \
 
 uv run --python 3.14 tools/llm-benchmark/analyze_benchmark.py \
   --results .benchmark-data/ab-results.jsonl \
-  --output backend/docs/llm-search-ab-test-report.md
+  --output .benchmark-data/llm-search-ab-test-report.md
 ```
 
 기본 workload는 10개 single-turn case를 10회 반복해 100 paired trials를 만든다. 다만 서로 다른 case는 10개뿐이므로 일반화 판정이 필요하면 `--case`로 최소 30개 이상의 독립 질문 workload를 추가한다. 분석기는 유효 paired 관측 100개와 독립 case 30개를 모두 충족하기 전에는 통계적 승리 판정을 내리지 않는다. `--plan-only`로 NIM 호출 없이 순서 균형만 확인할 수 있다.
@@ -185,7 +185,7 @@ uv run --python 3.14 tools/llm-benchmark/analyze_benchmark.py \
 3. 그 조건을 통과한 전략만 p50/p95 end-to-end TTFT와 5초 이내 비율을 비교한다.
 4. 이후 실제 Notion API/MCP의 권한, 페이지네이션, rate limit, 동기화 실패를 별도로 측정한다.
 
-정답표는 [`docs/llm-search-benchmark-gold-set.md`](../../backend/docs/llm-search-benchmark-gold-set.md), 전체 도입·동기화 정책은 [`docs/llm-search-benchmark-plan.md`](../../backend/docs/llm-search-benchmark-plan.md)에 있다.
+정답표는 [벤치마크 gold set](../../backend/docs/llm-search-benchmark-gold-set.md)을 사용한다. 이 도구의 Notion 내보내기는 벤치마크 입력이며 기능 개발 하네스의 선행 조건이 아니다.
 
 ## 7. 실제 Notion MCP live benchmark
 

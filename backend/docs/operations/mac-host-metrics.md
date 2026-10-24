@@ -3,7 +3,7 @@
 Mac의 native Alloy가 CPU·메모리·swap·디스크 지표를 30초마다 수집한다. 사용자 LaunchAgent의
 설치·갱신과 지표 해석은 이 문서를 따른다. 현재 수신 대상은 별도 EC2이며, 방화벽·중앙 앱·
 Grafana SSH 터널·재부팅 절차는 [Mac 관측 EC2 운영](mac-monitoring-ec2.md)에 있다.
-실제 설치·수신·화면·재부팅 검증 범위는 [Issue #762 검증 결과](../verification/762-mac-host-metrics.md)를 따른다.
+실제 설치·수신·화면·재부팅 검증은 현재 환경에서 각각 확인한다.
 
 ## 수집과 해석
 

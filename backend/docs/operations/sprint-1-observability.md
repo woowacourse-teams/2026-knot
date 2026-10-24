@@ -250,7 +250,7 @@ CPU, connections, freeable memory, free storage, read/write latency, read/write 
 disk queue depth의 9개 지표를 5분마다 조회하며 최근 10분 검색·5분 Average를 사용한다.
 기존 mTLS remote-write → NCP Prometheus → Grafana 경로를 재사용한다.
 Hikari 연결 풀이나 실시간 DB 순간값으로 대체하지 않으며 별도 AWS 키를 저장하지 않는다.
-설정 근거는 [RDS 수집 결정 초안](../../decisions/draft/rds-cloudwatch-alloy.md)이다.
+현재 RDS 수집 설정은 아래 운영 절차와 실제 배포 설정을 함께 확인한다.
 
 현재 로컬 대시보드 JSON은 6개, 안내 포함 122개 패널·116개 target이며 알림 규칙은 15개다.
 이는 로컬 파일 집계다. 초기 51개/90쿼리 검증을 확장판 전체 검증으로 바꾸지 않는다.
@@ -303,7 +303,7 @@ Spotless와 git diff --check가 통과했다. 별도 Dev 기준 작업 공간의
 
 변경은 아직 commit/push하지 않았다. 다음 develop CodePipeline 배포는 저장소에
 없는 이 관측성 JAR을 원래 버전으로 덮어쓸 수 있다. 지속 반영에는 별도 검토·게시가 필요하다.
-도입 근거와 검토한 대안은 [Dev 내부 지표 결정 초안](../../decisions/draft/dev-prometheus-metrics.md)에 기록했다.
+현재 Dev 내부 지표 구성은 이 절차와 배포 설정을 함께 확인한다.
 
 ### 최초 17시대 관측값
 
@@ -502,4 +502,4 @@ Discord는 환경·짧은 한국어 문제 이름·감지·확인 순서·KST �
 
 실제 Preview 8개 통과, 기존 수신처를 검증하고 Dev/Prod test 요청을 전송했다. Prod success 확인·Dev HTTP 200 본문 상태 미확인·새 사람 수신 화면 미확인을 구분한다. 17175의 Tempo/OTel/exemplar 연결은 미구축이며 화면에 표시했다. 원본 revision 2·출처·호환 조정과 KST·30s·time override 제거를 기록했다. Git 쓰기와 Prod 앱·파이프라인 설정 변경은 하지 않았다.
 
-구체적인 백업 위치·변경 파일·전체 UID/링크·테스트·운영 증거와 다음 배포 소스 반영 한계는 [운영 검증 기록](../../ops/observability/environment-deployment-20261002.md)을 따른다. 과거 수신 캡처나 이전 설치 결과를 이번 증거로 바꾸지 않았다.
+이 절은 당시 관측 요약이다. 현재 백업 위치·배포 상태·알림 수신 여부는 운영 환경에서 다시 확인한다.

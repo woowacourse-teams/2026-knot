@@ -7,8 +7,8 @@ description: Create and update frontend-facing Markdown API specifications for t
 
 제품 기획 근거는 `backend/docs/notion-context.md`에 따라 관련 API 원문과 필요한 DB 속성만 찾아 읽는다.
 도메인·ERD·기획 원문 및 `backend/docs/product/current-v2-mvp.md`의 현재 결정과 대조한다.
-이 사본은 요구사항 근거이며 아래 실제 Controller/DTO 기반 HTTP 계약 명세를 대신하지 않는다.
-본문·속성 revision과 coverage를 확인하고, 누락·제안·미정은 확정 계약으로 승격하지 않는다.
+원문은 요구사항 근거이며 아래 실제 Controller/DTO 기반 HTTP 계약 명세를 대신하지 않는다.
+본문과 필요한 DB 속성의 현재 상태를 확인하고, 누락·제안·미정은 확정 계약으로 승격하지 않는다.
 
 Knot 백엔드의 실제 HTTP 계약을 프론트엔드가 바로 사용할 수 있는 Markdown API 명세로 정리한다. 모든 엔드포인트는 지정된 Header, Path Parameter, Query Parameter, Request Body, Response, Error Response 형식을 사용한다.
 
@@ -80,7 +80,6 @@ Knot 백엔드의 실제 HTTP 계약을 프론트엔드가 바로 사용할 수 
 ## 제품 요구사항과 초안의 상태
 
 - API가 제품 범위에 속하는지 판단할 때 저장소 루트의 `backend/docs/product/current-v2-mvp.md`와 해당 작업의 운영 Notion 원문을 먼저 확인한다. Notion 원문 분류와 충돌 처리에는 저장소 루트의 `docs/harness/notion-alignment.md`를 사용한다.
-- 운영 Notion API 변경 후보와 알려진 제품·ERD 불일치는 [`backend/docs/notion-api-alignment.md`](../../../docs/notion-api-alignment.md)에서 확인한다. 이 문서는 검토 상태 메모이며 구현 계약을 대신하지 않는다.
 - `현재 기준`, `이후 버전`, `배경 참고`, `지난 버전`과 `초안`·`논의 중` 상태를 구분한다. 제목·수정 시각·원문에 적힌 `확정` 표현만으로 승인을 추정하지 않는다.
 - 원문 내용은 제품 요구사항의 근거이며 실제 서버 동작을 증명하지 않는다. 구현 계약은 명세 작성 전 조사에서 확인한 Controller, DTO, Security, 예외 처리, 설정과 테스트를 따른다.
 - Notion의 구현 `YES`/`NO`는 Notion 표기다. 서버 구현 여부는 현재 코드 및 필요한 runtime/OpenAPI 관찰로 별도 기록한다.
@@ -262,7 +261,9 @@ OAuth 로그인은 단순 JSON API와 다르므로 다음 흐름을 명세에 �
 
 ## 파일 작성과 검증
 
-사용자가 문서 파일을 요청하면 기존 문서 위치와 명명 규칙을 먼저 확인한다. 별도 규칙이 없으면 도메인별 파일을 `backend/docs/api/<domain>.md`에 둔다.
+기능 파이프라인에서는 Notion API 명세가 정본이다. 저장소에 명세 사본을 만들지 않는다.
+독립적인 문서 요청은 기본적으로 답변에 초안을 제공한다. 사용자가 별도 파일 출력을 명시하면
+지정한 위치에 내보내되 팀 정본과 구분한다.
 
 작성 후 다음을 확인한다.
 

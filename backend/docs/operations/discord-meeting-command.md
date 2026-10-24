@@ -1,6 +1,6 @@
 # Discord 회의 명령 운영 기록
 
-확인일: 2026-10-06 (Asia/Seoul). 관련 [Issue #505](https://github.com/woowacourse-teams/2026-Knot/issues/505), [구현 계획](../implement-plan/505-discord-meeting-command.md).
+확인일: 2026-10-06 (Asia/Seoul). 관련 [Issue #505](https://github.com/woowacourse-teams/2026-Knot/issues/505).
 
 ## 사용법
 

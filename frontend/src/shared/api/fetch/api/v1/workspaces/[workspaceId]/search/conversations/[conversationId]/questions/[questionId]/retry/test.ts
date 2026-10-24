@@ -95,7 +95,7 @@ describe("retrySearchAnswerApi", () => {
   });
 
   it("[SEARCH-R5] 재시도 accepted의 questionId·answerMessageId를 경로의 대화 ID와 합쳐 첫 질문과 같은 accepted 모양으로 낸다", async () => {
-    // 서버 계약(backend/docs/api/search-answer-retry.md)대로 대화 ID 없이 status가 함께 와요
+    // 서버 계약대로 대화 ID 없이 status가 함께 와요
     const accepted = {
       questionId: QUESTION_ID,
       answerMessageId: 999,
