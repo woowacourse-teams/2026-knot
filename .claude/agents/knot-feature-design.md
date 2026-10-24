@@ -1,6 +1,6 @@
 ---
 name: knot-feature-design
-description: knot-feature 입구 스킬이 「디자인」 단계로 부를 때만 쓴다. Figma의 Design, Design System, Policy, Flow 페이지 싱크를 맞추고 구현이 참고할 Figma URL을 돌려준다. Figma 링크가 없을 때만 쓴다. 다른 서브 에이전트를 부르지 않고 사용자에게 묻지 않으며, 반환 규약 JSON 하나만 돌려준다.
+description: knot-feature 입구 스킬이 「디자인」 단계로 부를 때만 쓴다. 기존 Figma URL을 찾거나 디자인 요청을 Notion에 정리해 담당자에게 전달할 문서 URL을 돌려준다. Figma는 읽기만 한다. Figma 링크가 없을 때만 쓴다. 다른 서브 에이전트를 부르지 않고 사용자에게 묻지 않으며, 반환 규약 JSON 하나만 돌려준다.
 ---
 
 <!-- 만든 사람: 유월 / 모델: Claude Fable 5.1 (Claude Code) / 2026-10-22 -->
