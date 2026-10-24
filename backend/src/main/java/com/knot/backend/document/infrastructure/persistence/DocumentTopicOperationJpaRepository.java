@@ -32,11 +32,15 @@ public interface DocumentTopicOperationJpaRepository extends JpaRepository<Docum
             select o from DocumentTopicOperation o where
               (o.status = 'QUEUED' and o.nextAttemptAt <= :now)
               or (o.status = 'RUNNING' and o.leaseUntil <= :now)
-              or (o.status in ('QUEUED','RUNNING') and o.deadlineAt <= :now)
+              or (o.status = 'APPLYING' and o.leaseUntil <= :now and o.nextAttemptAt <= :now)
+              or (o.status in ('QUEUED','RUNNING','APPLYING') and o.deadlineAt <= :now)
             order by o.createdAt
             """)
     List<DocumentTopicOperation> findDispatchable(
             Instant now,
             Pageable pageable
     );
+
+    @Query("select o from DocumentTopicOperation o where o.status = 'CANCEL_REQUESTED' order by o.cancelRequestedAt, o.id")
+    List<DocumentTopicOperation> findCancellationRequested(Pageable pageable);
 }

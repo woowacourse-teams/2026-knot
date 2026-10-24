@@ -435,6 +435,10 @@ class DocumentTopicStatusAcceptanceTest {
         Instant finished = null;
         UUID token = null;
         Instant lease = null;
+        Instant cancellation = null;
+        if (state.equals("CANCELLED") || state.equals("CANCEL_REQUESTED")) {
+            cancellation = NOW;
+        }
         if (java.util.Set.of(
                 "FAILED",
                 "SUCCEEDED",
@@ -452,7 +456,7 @@ class DocumentTopicStatusAcceptanceTest {
             lease = NOW.plusSeconds(90);
         }
         jdbc.update(
-                "INSERT INTO document_topic_operations(operation_id,workspace_id,requester_id,request_id,kind,status,created_at,deadline_at,next_attempt_at,finished_at,claim_token,lease_until,retry_count,failure_code,target_count,processed_count,changed_count) VALUES (?,?,?,?,'REORGANIZE',?,?,?,?,?,?,?,?,?,10,10,3)",
+                "INSERT INTO document_topic_operations(operation_id,workspace_id,requester_id,request_id,kind,status,created_at,deadline_at,next_attempt_at,finished_at,claim_token,lease_until,retry_count,failure_code,target_count,processed_count,changed_count,cancel_requested_at) VALUES (?,?,?,?,'REORGANIZE',?,?,?,?,?,?,?,?,?,10,10,3,?)",
                 id,
                 ws,
                 owner,
@@ -465,7 +469,8 @@ class DocumentTopicStatusAcceptanceTest {
                 token,
                 timestamp(lease),
                 retry,
-                failure
+                failure,
+                timestamp(cancellation)
         );
         return id;
     }

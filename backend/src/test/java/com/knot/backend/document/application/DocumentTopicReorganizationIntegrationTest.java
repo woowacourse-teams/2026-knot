@@ -575,6 +575,7 @@ class DocumentTopicReorganizationIntegrationTest {
                     id(operation)
             )
                     .orElseThrow();
+            checkpoints.beginApply(execution);
             assertThatThrownBy(() -> apply.apply(execution))
                     .isInstanceOf(org.springframework.dao.DataAccessException.class);
             assertThat(
@@ -589,7 +590,7 @@ class DocumentTopicReorganizationIntegrationTest {
                             Integer.class
                     )
             ).isZero();
-            assertThat(state(operation)).isEqualTo("RUNNING");
+            assertThat(state(operation)).isEqualTo("APPLYING");
         } finally {
             jdbc.execute("DROP TRIGGER reject_topic ON documents");
             jdbc.execute("DROP FUNCTION reject_topic_update()");

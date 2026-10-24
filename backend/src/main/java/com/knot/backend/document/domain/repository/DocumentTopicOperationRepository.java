@@ -23,4 +23,6 @@ public interface DocumentTopicOperationRepository {
     boolean hasActive(long workspaceId);
 
     List<DocumentTopicOperation> findDispatchable(Instant now);
+
+    List<DocumentTopicOperation> findCancellationRequested();
 }

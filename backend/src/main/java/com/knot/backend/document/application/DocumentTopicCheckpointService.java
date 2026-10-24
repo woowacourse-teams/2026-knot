@@ -64,6 +64,12 @@ public class DocumentTopicCheckpointService {
             store.prune(workspaceId);
             return Optional.empty();
         }
+        if (operation.canReclaimApplying(now) && operation.getKind() == DocumentTopicOperationKind.REORGANIZE) {
+            return reclaimApplying(
+                    operation,
+                    now
+            );
+        }
         if (!operation.isReady(now) || operation.getKind() != DocumentTopicOperationKind.REORGANIZE) {
             return Optional.empty();
         }
@@ -92,11 +98,14 @@ public class DocumentTopicCheckpointService {
     }
 
     @Transactional(isolation = Isolation.READ_COMMITTED)
-    public void complete(
+    public boolean complete(
             DocumentTopicExecution execution,
             DocumentTopicPlan plan
     ) {
         DocumentTopicOperation operation = lock(execution);
+        if (operation.isCancellationPendingOrCompleted()) {
+            return false;
+        }
         Instant now = clock.instant();
         operation.validateClaim(
                 execution.token(),
@@ -121,7 +130,7 @@ public class DocumentTopicCheckpointService {
                     true,
                     now
             );
-            return;
+            return true;
         }
         Set<Long> targetIds = execution.targets()
                 .stream()
@@ -142,6 +151,40 @@ public class DocumentTopicCheckpointService {
                 false,
                 now
         );
+        return true;
+    }
+
+    @Transactional(isolation = Isolation.READ_COMMITTED)
+    public boolean isClaimCurrent(DocumentTopicExecution execution) {
+        DocumentTopicOperation operation = lock(execution);
+        return operation.owns(
+                execution.token(),
+                clock.instant()
+        );
+    }
+
+    @Transactional(isolation = Isolation.READ_COMMITTED)
+    public boolean beginApply(DocumentTopicExecution execution) {
+        DocumentTopicOperation operation = lock(execution);
+        Instant now = clock.instant();
+        if (operation.ownsApplying(
+                execution.token(),
+                now
+        )) {
+            return true;
+        }
+        if (!operation.owns(
+                execution.token(),
+                now
+        )) {
+            return false;
+        }
+        operation.beginApplying(
+                execution.token(),
+                now
+        );
+        operations.save(operation);
+        return true;
     }
 
     @Transactional(isolation = Isolation.READ_COMMITTED)
@@ -154,6 +197,21 @@ public class DocumentTopicCheckpointService {
         Instant now = clock.instant();
         operation.expire(now);
         if (!operation.isActive()) {
+            operations.save(operation);
+            store.prune(operation.getWorkspaceId());
+            return;
+        }
+        if (operation.ownsApplying(
+                execution.token(),
+                now
+        )) {
+            failApplying(
+                    operation,
+                    execution,
+                    code,
+                    retryable,
+                    now
+            );
             operations.save(operation);
             store.prune(operation.getWorkspaceId());
             return;
@@ -179,6 +237,50 @@ public class DocumentTopicCheckpointService {
         }
         operations.save(operation);
         store.prune(operation.getWorkspaceId());
+    }
+
+    private void failApplying(
+            DocumentTopicOperation operation,
+            DocumentTopicExecution execution,
+            String code,
+            boolean retryable,
+            Instant now
+    ) {
+        if (retryable) {
+            operation.deferApplyingRetry(
+                    execution.token(),
+                    now,
+                    code
+            );
+            return;
+        }
+        operation.fail(
+                code,
+                now
+        );
+    }
+
+    private Optional<DocumentTopicExecution> reclaimApplying(
+            DocumentTopicOperation operation,
+            Instant now
+    ) {
+        UUID token = operation.reclaimApplying(now);
+        if (token == null) {
+            operations.save(operation);
+            store.prune(operation.getWorkspaceId());
+            return Optional.empty();
+        }
+        return Optional.of(
+                new DocumentTopicExecution(
+                        operation.getWorkspaceId(),
+                        operation.getId(),
+                        token,
+                        operation.getDeadlineAt(),
+                        false,
+                        List.of(),
+                        List.of()
+                )
+        );
     }
 
     private DocumentTopicOperation lock(DocumentTopicExecution execution) {
