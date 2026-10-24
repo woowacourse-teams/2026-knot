@@ -33,6 +33,7 @@ import com.knot.backend.search.presentation.SearchAnswerEventsController;
 import com.knot.backend.search.presentation.SearchQuestionController;
 import com.knot.backend.search.presentation.stream.SearchAnswerStream;
 import jakarta.servlet.http.Cookie;
+import com.knot.backend.document.presentation.DocumentTopicAuthenticationEntryPoint;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -54,9 +55,9 @@ import org.springframework.web.servlet.NoHandlerFoundException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 @SpringJUnitWebConfig({HttpErrorWebMvcConfiguration.class, SecurityConfig.class, JwtAuthenticationFilter.class,
-        AuthAuthenticationEntryPoint.class, AuthAccessDeniedHandler.class, AuthLogoutSuccessHandler.class,
-        GlobalExceptionHandler.class, SearchQuestionExceptionHandler.class, SearchQuestionController.class,
-        SearchAnswerEventsController.class})
+        AuthAuthenticationEntryPoint.class, DocumentTopicAuthenticationEntryPoint.class, AuthAccessDeniedHandler.class,
+        AuthLogoutSuccessHandler.class, GlobalExceptionHandler.class, SearchQuestionExceptionHandler.class,
+        SearchQuestionController.class, SearchAnswerEventsController.class})
 @TestPropertySource(properties = {"auth.jwt.cookie-name=KNOT_ACCESS_TOKEN", "auth.jwt.secure=false",
         "auth.cors.allowed-origins=https://knoted.kr"})
 class GlobalExceptionHandlerSecurityMvcTest {
