@@ -4,10 +4,10 @@
 FileVault를 유지하며 재부팅 후 최초 한 번 로그인하면 시작한다. 화면 잠금 중에도 같은 세션에서
 실행한다. 로그인 전 무인 기동과 자동 로그인은 범위 밖이다.
 결정은 [#823](https://github.com/woowacourse-teams/2026-knot/issues/823),
-[Proposed ADR](../../../docs/adr/823-mac-ai-login-startup.md)에 있다.
+[Proposed ADR](../adr/823-mac-ai-login-startup.md)에 있다.
 
 이 PR은 설치 도구와 절차를 제공한다. 18766의 실제 설치·기존 프로세스 교체·화면 잠금·로그아웃·재부팅은
-수행하지 않았다. 코드 시험과 운영 검증은 [검증 기록](../verification/823-mac-ai-login-startup.md)에서 구분한다.
+수행하지 않았다. 코드 시험과 실제 로그인·재부팅 운영 검증은 구분한다. 현재 환경의 실행 결과로 확인한다.
 
 ## 보존하는 대상
 

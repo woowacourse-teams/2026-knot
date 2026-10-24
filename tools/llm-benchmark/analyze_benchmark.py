@@ -37,7 +37,7 @@ _DEFAULT_PERMUTATION_ITERATIONS: Final[int] = 10_000
 
 def main(
     results: Path = typer.Option(..., help="Benchmark JSONL result file."),
-    output: Path = typer.Option(Path("docs/llm-search-ab-test-report.md"), help="Markdown report path."),
+    output: Path = typer.Option(Path(".benchmark-data/llm-search-ab-test-report.md"), help="Markdown report path."),
     strategy_a: str = typer.Option("raw", help="A strategy label."),
     strategy_b: str = typer.Option("rag", help="B strategy label."),
     alpha: float = typer.Option(_DEFAULT_ALPHA, min=0.001, max=0.2),

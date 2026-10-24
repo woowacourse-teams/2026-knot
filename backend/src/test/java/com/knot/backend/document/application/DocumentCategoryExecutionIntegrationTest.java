@@ -1015,6 +1015,80 @@ class DocumentCategoryExecutionIntegrationTest {
                 .single();
     }
 
+    @Test
+    @DisplayName("퇴역한 후보를 선택한 준비 문서는 본문을 재생성하지 않고 최신 큰 주제로 다시 배정한다")
+    void execute_success_retiredCandidateReassigned() {
+        long retired = saveCategory(
+                workspaceId,
+                "음성 처리",
+                "음성과 STT 처리"
+        );
+        when(
+                assigner.assign(
+                        any(),
+                        any()
+                )
+        ).thenReturn(
+                DocumentCategoryDecision.reuse(
+                        retired,
+                        DocumentCategoryAssignmentSource.AI_REUSE
+                )
+        );
+        worker.execute(
+                workspaceId,
+                jobId
+        );
+        worker.execute(
+                workspaceId,
+                jobId
+        );
+        jdbc.sql("UPDATE document_categories SET active_for_assignment=false WHERE id=:id")
+                .param(
+                        "id",
+                        retired
+                )
+                .update();
+        long active = saveCategory(
+                workspaceId,
+                "녹음·전사",
+                "녹음 수집과 전사 품질"
+        );
+        worker.execute(
+                workspaceId,
+                jobId
+        );
+        assertThat(text("processing_phase")).isEqualTo("ASSIGN_CATEGORY");
+        assertThat(count("prepared_documents")).isEqualTo(1);
+        when(
+                assigner.assign(
+                        any(),
+                        any()
+                )
+        ).thenReturn(
+                DocumentCategoryDecision.reuse(
+                        active,
+                        DocumentCategoryAssignmentSource.AI_REUSE
+                )
+        );
+        worker.execute(
+                workspaceId,
+                jobId
+        );
+        worker.execute(
+                workspaceId,
+                jobId
+        );
+        assertThat(text("status")).isEqualTo("SUCCEEDED");
+        assertThat(categoryName()).isEqualTo("녹음·전사");
+        verify(
+                generator,
+                times(1)
+        ).generate(
+                anyString(),
+                anyString()
+        );
+    }
+
     private long saveCategory(
             long workspace,
             String name,

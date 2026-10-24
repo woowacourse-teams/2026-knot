@@ -1,6 +1,7 @@
 package com.knot.backend.global.config;
 
 import com.knot.backend.auth.domain.AuthErrorCode;
+import com.knot.backend.document.presentation.DocumentTopicAuthenticationEntryPoint;
 import com.knot.backend.global.logging.RequestIdFilter;
 import com.knot.backend.auth.domain.AuthException;
 import com.knot.backend.auth.infrastructure.github.GithubOAuth2UserService;
@@ -24,6 +25,10 @@ import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.AuthenticationEntryPoint;
+import org.springframework.security.web.authentication.DelegatingAuthenticationEntryPoint;
+import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher;
+import org.springframework.security.web.util.matcher.RequestMatcher;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
 import org.springframework.security.web.csrf.CsrfTokenRequestAttributeHandler;
@@ -41,6 +46,7 @@ public class SecurityConfig {
     private final OAuth2AuthenticationSuccessHandler successHandler;
     private final OAuth2AuthenticationFailureHandler failureHandler;
     private final AuthAuthenticationEntryPoint authenticationEntryPoint;
+    private final DocumentTopicAuthenticationEntryPoint topicAuthenticationEntryPoint;
     private final AuthAccessDeniedHandler accessDeniedHandler;
     private final JwtLogoutHandler jwtLogoutHandler;
     private final AuthLogoutSuccessHandler logoutSuccessHandler;
@@ -87,6 +93,18 @@ public class SecurityConfig {
                 configuration
         );
         return source;
+    }
+
+    private AuthenticationEntryPoint requestAuthenticationEntryPoint() {
+        RequestMatcher topics = PathPatternRequestMatcher.withDefaults()
+                .matcher("/api/v1/workspaces/{workspaceId}/document-topics/**");
+        return DelegatingAuthenticationEntryPoint.builder()
+                .defaultEntryPoint(authenticationEntryPoint)
+                .addEntryPointFor(
+                        topicAuthenticationEntryPoint,
+                        topics
+                )
+                .build();
     }
 
     private boolean isInvalidCorsOrigin(String origin) {
@@ -160,7 +178,7 @@ public class SecurityConfig {
                             .authenticated();
                 })
                 .exceptionHandling(
-                        exception -> exception.authenticationEntryPoint(authenticationEntryPoint)
+                        exception -> exception.authenticationEntryPoint(requestAuthenticationEntryPoint())
                                 .accessDeniedHandler(accessDeniedHandler)
                 )
                 .csrf(

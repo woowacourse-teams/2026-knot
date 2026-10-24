@@ -391,6 +391,82 @@ class LmStudioClientTest {
         }
     }
 
+    @ParameterizedTest
+    @CsvSource({"500, server_error, Context size has been exceeded., LLM_INPUT_LIMIT_EXCEEDED",
+            "500, server_error, CUDA out of memory., LLM_REQUEST_REJECTED",
+            "400, server_error, Context size has been exceeded., LLM_REQUEST_REJECTED",
+            "500, invalid_request_error, Context size has been exceeded., LLM_REQUEST_REJECTED"})
+    @DisplayName("스트림 엔진의 실제 컨텍스트 초과 응답만 입력 한도 실패로 구분한다")
+    void complete_streamEngineError_failure(
+            int code,
+            String type,
+            String message,
+            LlmErrorCode expected
+    ) throws Exception {
+        // given
+        ObjectNode embedded = mapper.createObjectNode();
+        embedded.put(
+                "code",
+                code
+        );
+        embedded.put(
+                "type",
+                type
+        );
+        embedded.put(
+                "message",
+                message
+        );
+        String detail = mapper.writeValueAsString(embedded);
+        try (LlmHttpServer server = new LlmHttpServer()) {
+            ObjectNode response = mapper.createObjectNode();
+            response.put(
+                    "error",
+                    "Engine protocol predict stream returned an error: " + detail
+            );
+            server.respond(
+                    400,
+                    mapper.writeValueAsString(response)
+            );
+            LmStudioClient client = client(
+                    server,
+                    Duration.ofSeconds(2),
+                    4096
+            );
+
+            // when & then
+            assertThatThrownBy(() -> client.complete(request())).hasMessage(expected.getMessage());
+            assertThat(server.requestCount()).isEqualTo(1);
+        }
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"null", "[]", "not-json"})
+    @DisplayName("손상된 스트림 엔진 오류는 컨텍스트 초과로 추측하지 않는다")
+    void complete_malformedStreamEngineError_failure(String detail) throws Exception {
+        // given
+        try (LlmHttpServer server = new LlmHttpServer()) {
+            ObjectNode response = mapper.createObjectNode();
+            response.put(
+                    "error",
+                    "Engine protocol predict stream returned an error: " + detail
+            );
+            server.respond(
+                    400,
+                    mapper.writeValueAsString(response)
+            );
+            LmStudioClient client = client(
+                    server,
+                    Duration.ofSeconds(2),
+                    4096
+            );
+
+            // when & then
+            assertThatThrownBy(() -> client.complete(request()))
+                    .hasMessage(LlmErrorCode.LLM_REQUEST_REJECTED.getMessage());
+        }
+    }
+
     @Test
     @DisplayName("호출 대기 중단은 interrupt 표시를 유지하며 실패를 반환한다")
     void complete_failure_interrupted() throws Exception {

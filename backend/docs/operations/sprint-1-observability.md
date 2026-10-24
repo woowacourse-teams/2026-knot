@@ -34,7 +34,7 @@ NCP 서버에 모으고, 사용자가 제공한 팀 Discord Webhook으로 알림
 | 양쪽 배포 파이프라인 | Dev develop 배포 성공 기록. Prod CodeDeploy 앱·그룹·S3 revision·설치 JAR과 현재 Nginx/Docker 대조 | Prod 기존 파이프라인은 Spring 배포 경로이며 현재 프로토타입 자동 배포 증거가 없음. 미완료 |
 | 실제 장애 사례 | 구축 중 TLS 인증서 선택 오류로 수집 실패, 조치 후 양쪽 지표·로그 복구 | 아래 사례에 기록 |
 
-이 문서는 기존 [AWS Dev·Prod 배포 구성 기록](../../../docs/operations/aws-dev-and-prod-environments.md)의
+이 문서는 기존 [AWS Dev·Prod 배포 구성 기록](aws-dev-and-prod-environments.md)의
 9/30 관측을 지우지 않고 10/1 실제 런타임 확인과 관측 구성을 추가한다.
 9/30에 Prod의 Spring 경로가 404였다는 기록은 당시 사실이지만, 그 경로만으로
 현재 Prod 서비스 장애를 판정하지 않는다.
@@ -250,7 +250,7 @@ CPU, connections, freeable memory, free storage, read/write latency, read/write 
 disk queue depth의 9개 지표를 5분마다 조회하며 최근 10분 검색·5분 Average를 사용한다.
 기존 mTLS remote-write → NCP Prometheus → Grafana 경로를 재사용한다.
 Hikari 연결 풀이나 실시간 DB 순간값으로 대체하지 않으며 별도 AWS 키를 저장하지 않는다.
-설정 근거는 [RDS 수집 결정 초안](../../decisions/draft/rds-cloudwatch-alloy.md)이다.
+현재 RDS 수집 설정은 아래 운영 절차와 실제 배포 설정을 함께 확인한다.
 
 현재 로컬 대시보드 JSON은 6개, 안내 포함 122개 패널·116개 target이며 알림 규칙은 15개다.
 이는 로컬 파일 집계다. 초기 51개/90쿼리 검증을 확장판 전체 검증으로 바꾸지 않는다.
@@ -303,7 +303,7 @@ Spotless와 git diff --check가 통과했다. 별도 Dev 기준 작업 공간의
 
 변경은 아직 commit/push하지 않았다. 다음 develop CodePipeline 배포는 저장소에
 없는 이 관측성 JAR을 원래 버전으로 덮어쓸 수 있다. 지속 반영에는 별도 검토·게시가 필요하다.
-도입 근거와 검토한 대안은 [Dev 내부 지표 결정 초안](../../decisions/draft/dev-prometheus-metrics.md)에 기록했다.
+현재 Dev 내부 지표 구성은 이 절차와 배포 설정을 함께 확인한다.
 
 ### 최초 17시대 관측값
 
@@ -502,4 +502,4 @@ Discord는 환경·짧은 한국어 문제 이름·감지·확인 순서·KST �
 
 실제 Preview 8개 통과, 기존 수신처를 검증하고 Dev/Prod test 요청을 전송했다. Prod success 확인·Dev HTTP 200 본문 상태 미확인·새 사람 수신 화면 미확인을 구분한다. 17175의 Tempo/OTel/exemplar 연결은 미구축이며 화면에 표시했다. 원본 revision 2·출처·호환 조정과 KST·30s·time override 제거를 기록했다. Git 쓰기와 Prod 앱·파이프라인 설정 변경은 하지 않았다.
 
-구체적인 백업 위치·변경 파일·전체 UID/링크·테스트·운영 증거와 다음 배포 소스 반영 한계는 [운영 검증 기록](../../ops/observability/environment-deployment-20261002.md)을 따른다. 과거 수신 캡처나 이전 설치 결과를 이번 증거로 바꾸지 않았다.
+이 절은 당시 관측 요약이다. 현재 백업 위치·배포 상태·알림 수신 여부는 운영 환경에서 다시 확인한다.

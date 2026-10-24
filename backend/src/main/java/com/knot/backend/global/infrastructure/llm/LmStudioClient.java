@@ -23,6 +23,7 @@ import tools.jackson.databind.node.ObjectNode;
 
 public class LmStudioClient implements LlmClient {
     private static final String ENGINE_ERROR_PREFIX = "Engine protocol predict request returned 400: ";
+    private static final String ENGINE_STREAM_ERROR_PREFIX = "Engine protocol predict stream returned an error: ";
 
     private final HttpClient httpClient;
     private final ObjectMapper mapper;
@@ -255,10 +256,7 @@ public class LmStudioClient implements LlmClient {
             }
             JsonNode error = root.path("error");
             error = readEmbeddedError(error);
-            return "exceed_context_size_error".equals(
-                    error.path("type")
-                            .asString()
-            );
+            return isContextLimitError(error);
         } catch (JacksonException exception) {
             return false;
         }
@@ -269,6 +267,10 @@ public class LmStudioClient implements LlmClient {
             return error;
         }
         String message = error.asString();
+        if (message.startsWith(ENGINE_STREAM_ERROR_PREFIX)) {
+            String embeddedBody = message.substring(ENGINE_STREAM_ERROR_PREFIX.length());
+            return mapper.readTree(embeddedBody);
+        }
         if (!message.startsWith(ENGINE_ERROR_PREFIX)) {
             return error;
         }
@@ -278,6 +280,22 @@ public class LmStudioClient implements LlmClient {
             return mapper.nullNode();
         }
         return embedded.path("error");
+    }
+
+    private boolean isContextLimitError(JsonNode error) {
+        if (error == null || !error.isObject()) {
+            return false;
+        }
+        String type = error.path("type")
+                .asString();
+        if ("exceed_context_size_error".equals(type)) {
+            return true;
+        }
+        return "server_error".equals(type) && error.path("code")
+                .asInt() == 500 && "Context size has been exceeded.".equals(
+                        error.path("message")
+                                .asString()
+                );
     }
 
     private String readAssistantContent(String responseBody) {

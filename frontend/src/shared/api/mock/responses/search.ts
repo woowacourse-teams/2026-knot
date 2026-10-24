@@ -70,7 +70,7 @@ export const searchQuestionAnswerStreamResponse = {
 /**
  * 실패한 답변을 다시 시도했을 때의 응답이에요.
  * 서버는 실패했던 답변 메시지를 비우고 다시 채우므로, accepted의 `questionId`·`answerMessageId`는 핸들러가 요청 경로의 질문 ID로 채워요.
- * 첫 질문과 달리 accepted에 대화 ID가 없고 `status: "STREAMING"`이 함께 와요(`docs/api/search-answer-retry.md`).
+ * 첫 질문과 달리 accepted에 대화 ID가 없고 `status: "STREAMING"`이 함께 와요.
  */
 export const searchAnswerRetryStreamResponse = {
   stages: ["SEARCHING", "GENERATING"],
