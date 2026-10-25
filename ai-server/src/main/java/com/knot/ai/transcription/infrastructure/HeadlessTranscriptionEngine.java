@@ -7,6 +7,7 @@ import com.knot.ai.transcription.application.command.CreateTranscriptionCommand;
 import com.knot.ai.transcription.domain.TranscriptionErrorCode;
 import com.knot.ai.transcription.domain.TranscriptionException;
 import com.knot.ai.transcription.domain.TranscriptResult;
+import com.knot.ai.transcription.domain.WindowInput;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.DirectoryStream;
@@ -112,7 +113,9 @@ public class HeadlessTranscriptionEngine implements TranscriptionEngine {
                                     "pcm_s16le",
                                     "-t",
                                     Integer.toString(
-                                            request.window() == null ? AudioInspector.MAXIMUM_DURATION_SECONDS : 61
+                                            request.window() == null
+                                                    ? AudioInspector.MAXIMUM_DURATION_SECONDS
+                                                    : WindowInput.MAXIMUM_SECONDS + 1
                                     ),
                                     "-fs",
                                     "231448576",
@@ -122,7 +125,7 @@ public class HeadlessTranscriptionEngine implements TranscriptionEngine {
                             properties.conversionTimeout()
                     );
                     double decodedDuration = audioInspector.readPcmDuration(wav);
-                    if (request.window() != null && (decodedDuration > 60 || Math.abs(
+                    if (request.window() != null && (decodedDuration > WindowInput.MAXIMUM_SECONDS || Math.abs(
                             decodedDuration * 16000 - (request.window()
                                     .inputEndFrame()
                                     - request.window()

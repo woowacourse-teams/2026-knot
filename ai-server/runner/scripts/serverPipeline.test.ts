@@ -297,7 +297,7 @@ test('window requires actual word timestamps instead of segment midpoint fallbac
 test('window preserves local word frames and real speaker evidence',()=>{
   const raw=Buffer.from(JSON.stringify({transcription:[{offsets:{from:0,to:1000},text:' hello',tokens:[{text:' hello',offsets:{from:0,to:1000}}]}]}))
   const result=assembleWindowResult(raw,evidence,windowInput)
-  assert.deepEqual(result.window.tokens,[{startFrame:0,endFrame:16000,text:'hello',speakerId:'speaker_0'}])
+  assert.deepEqual(result.window.tokens,[{startFrame:0,endFrame:16000,text:'hello',speakerId:'speaker_0',segment:0}])
   assert.equal(result.window.speakers[0].embedding.length,512)
   assert.equal(result.window.inputStartFrame,16000)
 })
@@ -305,8 +305,45 @@ test('silent window is valid and nonfinite or wrong-sized speaker vectors are re
   const raw=Buffer.from('{"transcription":[]}')
   assert.equal(assembleWindowResult(raw,{modelVersion:'model',speakers:[],segments:[]},windowInput).utterances.length,0)
   assert.throws(()=>assembleWindowResult(raw,{...evidence,speakers:[{...evidence.speakers[0],embedding:[NaN]}]},windowInput),/INVALID_RESULT/)
-  assert.equal(validWindow({...windowInput,inputEndFrame:2000000}),false)
+  assert.equal(validWindow({...windowInput,inputEndFrame:16000+130*16000+1}),false)
 })
+
+test('window keeps five-second speaker observations and Whisper segment numbers for BE reclustering', () => {
+  // given
+  const raw = Buffer.from(JSON.stringify({ transcription: [
+    { offsets: { from: 0, to: 500 }, text: ' 첫 문장.', tokens: [{ text: ' 첫', offsets: { from: 0, to: 200 } },
+      { text: ' 문장.', offsets: { from: 200, to: 500 } }] },
+    { offsets: { from: 600, to: 1000 }, text: ' 다음', tokens: [{ text: ' 다음', offsets: { from: 600, to: 1000 } }] }
+  ] }))
+  const embedding = Array(512).fill(1 / 3)
+  const observed = { ...evidence, observations: [{ start: 0, end: 1.5, speaker: 'speaker_0', embedding }] }
+
+  // when
+  const result = assembleWindowResult(raw, observed, windowInput)
+
+  // then
+  assert.deepEqual(result.window.tokens.map(token => token.segment), [0, 0, 1])
+  assert.deepEqual(result.window.observations.map(({ embedding, ...frames }) => frames),
+    [{ startFrame: 0, endFrame: 24000, speakerId: 'speaker_0' }])
+  assert.equal(result.window.observations[0].embedding[0], 0.333333333)
+})
+
+for (const observation of [
+  { start: 0, end: 1, speaker: 'speaker_0', embedding: Array(511).fill(0.1) },
+  { start: 0, end: 1, speaker: 'speaker_9', embedding: Array(512).fill(0.1) },
+  { start: 0, end: 2.5, speaker: 'speaker_0', embedding: Array(512).fill(0.1) }
+]) {
+  test(`window rejects an invalid speaker observation ${observation.speaker} ${observation.end}`, () => {
+    // given
+    const raw = Buffer.from('{"transcription":[]}')
+
+    // when
+    const assemble = () => assembleWindowResult(raw, { ...evidence, observations: [observation] }, windowInput)
+
+    // then
+    assert.throws(assemble, /INVALID_RESULT/)
+  })
+}
 
 test('window clips measured word timestamps to audio bounds and discards wholly outside words',()=>{
   const raw=Buffer.from(JSON.stringify({transcription:[{offsets:{from:0,to:2020},text:' first outside',tokens:[{text:' first',offsets:{from:0,to:1000}},{text:' outside',offsets:{from:2000,to:2020}}]}]}))
@@ -342,12 +379,12 @@ for (const scenario of [
   {
     name: 'leading zero-duration words',
     words: [{ text: 'first', from: 500, to: 500 }, { text: 'second', from: 500, to: 1000 }],
-    expected: [{ startFrame: 8000, endFrame: 16000, text: 'first second', speakerId: 'speaker_0' }]
+    expected: [{ startFrame: 8000, endFrame: 16000, text: 'first second', speakerId: 'speaker_0', segment: 0 }]
   },
   {
     name: 'zero-duration words at frame zero',
     words: [{ text: 'first', from: 0, to: 0 }, { text: 'second', from: 100, to: 1000 }],
-    expected: [{ startFrame: 0, endFrame: 16000, text: 'first second', speakerId: 'speaker_0' }]
+    expected: [{ startFrame: 0, endFrame: 16000, text: 'first second', speakerId: 'speaker_0', segment: 0 }]
   },
   {
     name: 'interior zero-duration words',
@@ -357,8 +394,8 @@ for (const scenario of [
       { text: 'third', from: 500, to: 1000 }
     ],
     expected: [
-      { startFrame: 0, endFrame: 8000, text: 'first second', speakerId: 'speaker_0' },
-      { startFrame: 8000, endFrame: 16000, text: 'third', speakerId: 'speaker_0' }
+      { startFrame: 0, endFrame: 8000, text: 'first second', speakerId: 'speaker_0', segment: 0 },
+      { startFrame: 8000, endFrame: 16000, text: 'third', speakerId: 'speaker_0', segment: 0 }
     ]
   },
   {
@@ -368,7 +405,7 @@ for (const scenario of [
       { text: 'second', from: 600, to: 600 },
       { text: 'third', from: 600, to: 600 }
     ],
-    expected: [{ startFrame: 0, endFrame: 9600, text: 'first second third', speakerId: 'speaker_0' }]
+    expected: [{ startFrame: 0, endFrame: 9600, text: 'first second third', speakerId: 'speaker_0', segment: 0 }]
   },
   {
     name: 'consecutive leading zero-duration words',
@@ -377,7 +414,7 @@ for (const scenario of [
       { text: 'second', from: 200, to: 200 },
       { text: 'third', from: 300, to: 1000 }
     ],
-    expected: [{ startFrame: 1600, endFrame: 16000, text: 'first second third', speakerId: 'speaker_0' }]
+    expected: [{ startFrame: 1600, endFrame: 16000, text: 'first second third', speakerId: 'speaker_0', segment: 0 }]
   }
 ]) {
   test(`window preserves text and measured bounds when grouping ${scenario.name}`, () => {
@@ -441,7 +478,7 @@ test('window preserves Korean split-byte words and punctuation when grouping a z
 
   // then
   assert.deepEqual(result.window.tokens, [
-    { startFrame: 8000, endFrame: 16000, text: '첫 측정.', speakerId: 'speaker_0' }
+    { startFrame: 8000, endFrame: 16000, text: '첫 측정.', speakerId: 'speaker_0', segment: 0 }
   ])
   assert.equal(result.rawWhisperJson, raw.toString('utf8'))
 })
