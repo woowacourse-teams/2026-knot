@@ -75,6 +75,10 @@ class HeadlessTranscriptionEngineTest {
                 "asset",
                 "import sys\n"
         );
+        Path whisper = script(
+                "whisper",
+                WhisperTimestampCheckTest.RESTORED_WHISPER
+        );
         ffmpeg = script(
                 "ffmpeg",
                 "import sys,wave\nw=wave.open(sys.argv[-1],'wb')\nw.setnchannels(1)\n"
@@ -95,7 +99,7 @@ class HeadlessTranscriptionEngineTest {
                 profile.toFile(),
                 Map.of(
                         "whisperBinary",
-                        asset.toString(),
+                        whisper.toString(),
                         "diarizeBinary",
                         asset.toString(),
                         "whisperModel",

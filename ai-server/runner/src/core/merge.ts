@@ -3,6 +3,12 @@ import type { MergedUtterance, SpeakerPiece, SpeakerSegment, SttSegment, SttWord
 /** 배정할 화자를 찾지 못한 조각에 붙는 라벨 */
 const UNKNOWN_SPEAKER = 'UNKNOWN'
 
+/** 전체·구간 서버 전사는 짧은 실제 화자를 길이만으로 지우지 않는 동일 정책을 쓴다. */
+export const SERVER_SPEAKER_POLICY = {
+  isMinorSpeakerAbsorbed: false,
+  isOrphanUtteranceAbsorbed: false
+} as const
+
 /** 이보다 짧은 발화는 맞장구·잡음일 가능성이 높아 이웃 발화에 흡수한다 */
 const MIN_UTTERANCE_SEC = 0.5
 
@@ -286,9 +292,12 @@ const absorbOrphanAt = ({ utterances, index }: { utterances: SpeakerPiece[]; ind
 }
 
 /** 같은 화자의 연속 조각을 하나의 발화로 묶고, 고아 발화를 정리한 뒤 ord를 매긴다 */
-export const mergeUtterances = (pieces: SpeakerPiece[]): MergedUtterance[] => {
+export const mergeUtterances = (
+  pieces: SpeakerPiece[],
+  { isOrphanUtteranceAbsorbed = true }: { isOrphanUtteranceAbsorbed?: boolean } = {}
+): MergedUtterance[] => {
   let utterances = groupBySpeaker(pieces)
-  let orphanIndex = findOrphanIndex(utterances)
+  let orphanIndex = isOrphanUtteranceAbsorbed ? findOrphanIndex(utterances) : -1
 
   while (orphanIndex !== -1) {
     utterances = groupBySpeaker(absorbOrphanAt({ utterances, index: orphanIndex }))
