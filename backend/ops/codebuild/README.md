@@ -28,11 +28,6 @@ Spotless, bootJar에는 Gradle build cache를 허용함.
 대상은 ap-northeast-2의 개발 프로젝트와 개발 pipeline임. 운영 프로젝트에 자동 적용하지 않음.
 Dev CodeBuild 프로젝트가 inline buildspec을 사용하는 경우 저장소 파일 변경만으로 AWS 명령이
 갱신되지 않음.
-CodeDeploy `d-LDPC9VU69`에서 Dev Blue-Green hook이 실행되어 Green 준비와 Nginx 전환까지
-진행된 것을 확인했다. 해당 배포는 기존 Blue의 8080 연결이 drain 제한 시간 안에 사라지지
-않아 롤백됐다. 이 관측은 배포 artifact에 Green hook이 포함됐다는 근거이며, 저장소
-`buildspec.yml`이 실제 Build 입력이었다는 근거는 아니다. 아래 패키징 절차와 실제 inline
-buildspec/artifact 구성을 수정 revision 검증 때 대조한다.
 
 S3 캐시는 `techcourse-project-2026-artifacts/knot/codebuild-cache/dev`를 사용함.
 키는 그룹, Gradle 설정 해시와 소스 파일 해시로 구분하고 같은 설정의 이전 키를
@@ -56,15 +51,13 @@ XML과 HTML도 artifact 수집 대상으로 두며 실패 실행에서는 CloudW
 `scripts/systemd/`, `scripts/nginx/`에 포함한다. 기본값은 `legacy-in-place`이므로 기존
 artifact 모양과 Prod 배포 동작은 유지한다.
 
-마지막 설정 관측에서는 Dev CodeBuild 프로젝트가 inline buildspec을 사용했다. CodeDeploy
-`d-LDPC9VU69`에서 Green hook이 실행된 것은 확인했지만, 저장소 `buildspec.yml`이 실제 Build
-입력이었다는 뜻은 아니다. 수정 revision을 배포하기 전 Build 프로젝트의 inline buildspec과
-실제 artifact 내용을 대조하고, AppSpec·hook·unit·metrics 설정이 모두 포함됐는지 확인한다.
+배포 전 Build 프로젝트가 저장소 파일과 inline buildspec 중 무엇을 사용하는지 확인하고,
+실제 명령·artifact의 AppSpec·hook·unit·metrics 설정이 저장소 구성과 일치하는지 대조한다.
 Pipeline의 기존 `CI_GROUP=remaining` override와 별도 IntegrationTest action은 유지하며,
 Deploy action은 기존 `knot-backend-dev-deployment-group`을 대상으로 한다.
 
 기존 그룹의 첫 Blue-Green revision에서는 직전 revision의 `ApplicationStop`이 legacy
-서비스를 정지할 수 있다. 이 일시 중단은 승인된 이행 절차다. 새 AppSpec의
+서비스를 정지할 수 있다. 최초 이행 전에는 해당 hook의 중단 영향을 확인한다. 새 AppSpec의
 `BeforeInstall` hook은 CodeDeploy가 이전 JAR를 정리하기 전에 `/opt/knot-backend/app.jar`를
 Blue slot으로 보존한다. `ApplicationStart` hook은 legacy 서비스가 멈춰 있고 Nginx가
 8080을 가리키는 최초 이행 상황이면 보존한 JAR로 Blue를 다시 준비한 뒤 Green을 기동한다.
@@ -76,8 +69,8 @@ Blue-Green hook은 Alloy의 Spring scrape를 `127.0.0.1:18080`의 loopback Nginx
 Alloy 설정 파일은 실행 중 컨테이너의 bind mount inode를 유지한 채 갱신하고 `/-/reload`로
 반영한다.
 
-마지막 확인에서 CodeDeploy 그룹의 automatic rollback은 비활성 상태였다. 수정 revision 배포
-전에 기존 그룹 이름·인스턴스 태그·롤백 설정과 CodePipeline Deploy action의 대상을 확인한다.
+배포 전에 기존 CodeDeploy 그룹 이름·인스턴스 태그·automatic rollback 설정과
+CodePipeline Deploy action의 대상을 확인한다.
 배포 artifact 루트 AppSpec이 `appspec-dev-bluegreen.yml`에서 복사됐는지,
 `scripts/dev_bluegreen_preserve_legacy.sh`, `scripts/dev_bluegreen_deploy.sh`,
 `scripts/systemd/`, `scripts/nginx/`가 모두 포함됐는지 확인한다.
@@ -87,12 +80,11 @@ Hook이 `/var/lib/knot-backend-deploy/blue-green/route-uncertain`을 남기면 �
 health가 정상인 상태에서 route를 복구한 뒤, marker를 지우고 재시도한다. marker가 있는
 동안에는 두 프로세스가 남을 수 있으므로 자원 사용량도 확인한다.
 
-## 검증 기록
+## 검증
 
 로컬 shell fixture와 실제 Gradle 실행, AWS 실행은 구분해 기록함.
-캐시가 없는 첫 실행과 cache hit 실행의 시간, 빌드 ID, 소스 ZIP 해시와 적용한
-buildspec 해시를 남김. 서로 다른 소스나 키의 실행으로 전후 개선율을 계산하지 않음.
-5분 이내 완료는 목표이며 실제 측정 없이 보장하지 않음.
+실제 Build 입력과 artifact를 대조하고, 실패 실행에서도 리포트가 업로드됐는지 확인한다.
+캐시 성능을 비교할 때는 소스·설정·캐시 키와 측정 조건을 함께 기록한다.
 
 - [동일 runOrder의 병렬 실행](https://docs.aws.amazon.com/codepipeline/latest/userguide/action-requirements.html)
 - [CodePipeline 단계 실행 규칙](https://docs.aws.amazon.com/codepipeline/latest/userguide/concepts-how-it-works.html)
