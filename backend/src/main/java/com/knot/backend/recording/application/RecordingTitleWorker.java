@@ -9,11 +9,13 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 @Slf4j
 @Component
+@EnableScheduling
 @ConditionalOnProperty(prefix = "knot.recording-title.worker", name = "enabled", havingValue = "true")
 public class RecordingTitleWorker {
     private static final String INTERNAL_FAILURE = "INTERNAL";
