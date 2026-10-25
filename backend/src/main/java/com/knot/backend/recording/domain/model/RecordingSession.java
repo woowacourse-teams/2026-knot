@@ -213,9 +213,7 @@ public class RecordingSession {
             long workspaceId,
             long memberId
     ) {
-        if (this.workspaceId != workspaceId) {
-            throw new RecordingException(RecordingErrorCode.RECORDING_NOT_FOUND);
-        }
+        validateBelongsTo(workspaceId);
         if (this.memberId != memberId) {
             throw new RecordingException(RecordingErrorCode.RECORDING_CONTROL_DENIED);
         }
@@ -232,6 +230,12 @@ public class RecordingSession {
 
     public boolean belongsTo(long workspaceId) {
         return this.workspaceId == workspaceId;
+    }
+
+    public void validateBelongsTo(long workspaceId) {
+        if (!belongsTo(workspaceId)) {
+            throw new RecordingException(RecordingErrorCode.RECORDING_NOT_FOUND);
+        }
     }
 
     public boolean isTranscribableIn(long workspaceId) {

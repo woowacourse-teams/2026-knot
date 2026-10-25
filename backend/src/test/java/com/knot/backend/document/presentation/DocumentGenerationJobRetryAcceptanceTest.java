@@ -178,18 +178,24 @@ class DocumentGenerationJobRetryAcceptanceTest {
     }
 
     @ParameterizedTest
-    @ValueSource(longs = {0, 1})
-    @DisplayName("정확한 168시간 만료 시각과 이후는 409다")
-    void retryDocumentGenerationJob_failure_expired(long secondsAfter) throws Exception {
+    @ValueSource(longs = {0, 1, 30 * 24 * 3600})
+    @DisplayName("마지막 실패 뒤 168시간이 지나도 원문이 남아 있으면 202다")
+    void retryDocumentGenerationJob_success_afterHomeDisplayPeriod(long secondsAfter) throws Exception {
         // given
         when(clock.instant()).thenReturn(DocumentFixtures.CREATED_AT.plusSeconds(168 * 3600 + secondsAfter));
 
         // when & then
-        assertRetryDenied();
+        retry(
+                workspaceId,
+                memberId,
+                jobId
+        ).andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.status").value("QUEUED"));
+        assertThat(userRetryCount()).isEqualTo(1);
     }
 
     @Test
-    @DisplayName("만료 1마이크로초 전 접수는 허용되고 기한 이후에도 진행 목록에 유지된다")
+    @DisplayName("표시 기한 직전 접수한 Job은 기한 이후에도 진행 목록에 QUEUED로 유지된다")
     void retryDocumentGenerationJob_success_beforeExpiration() throws Exception {
         // given
         Instant deadline = DocumentFixtures.CREATED_AT.plusSeconds(168 * 3600);
@@ -215,8 +221,8 @@ class DocumentGenerationJobRetryAcceptanceTest {
     }
 
     @Test
-    @DisplayName("사용자 재시도 3회 소진은 전체 시도와 별도로 검사한다")
-    void retryDocumentGenerationJob_failure_exhausted() throws Exception {
+    @DisplayName("사용자 재시도를 3회 한 Job도 다시 접수하고 사용자 횟수를 계속 센다")
+    void retryDocumentGenerationJob_success_afterThreeUserRetries() throws Exception {
         // given
         jdbc.sql("UPDATE document_generation_jobs SET user_retry_count = 3, attempt_count = 4 WHERE id = :id")
                 .param(
@@ -226,7 +232,13 @@ class DocumentGenerationJobRetryAcceptanceTest {
                 .update();
 
         // when & then
-        assertRetryDenied();
+        retry(
+                workspaceId,
+                memberId,
+                jobId
+        ).andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.attemptCount").value(5));
+        assertThat(userRetryCount()).isEqualTo(4);
     }
 
     @Test
@@ -265,7 +277,7 @@ class DocumentGenerationJobRetryAcceptanceTest {
     }
 
     @Test
-    @DisplayName("정리되어 삭제된 Job은 404다")
+    @DisplayName("이전 정책으로 정리되어 삭제된 Job은 404다")
     void retryDocumentGenerationJob_failure_deletedJob() throws Exception {
         // given
         jdbc.sql("DELETE FROM document_generation_jobs WHERE id = :id")
@@ -518,26 +530,24 @@ class DocumentGenerationJobRetryAcceptanceTest {
     }
 
     @Test
-    @DisplayName("같은 Workspace의 다른 멤버는 녹음 소유자의 재시도 기회를 사용할 수 없다")
-    void retryDocumentGenerationJob_failure_otherRecordingOwner() throws Exception {
+    @DisplayName("녹음을 시작하지 않은 같은 Workspace 멤버도 실패 Job을 재시도할 수 있다")
+    void retryDocumentGenerationJob_success_otherWorkspaceMember() throws Exception {
         // given
         long otherMemberId = fixtures.saveMember("다른 팀원");
         fixtures.join(
                 workspaceId,
                 otherMemberId
         );
-        String before = fixtures.snapshot();
-        String jobBefore = jobSnapshot();
 
         // when & then
         retry(
                 workspaceId,
                 otherMemberId,
                 jobId
-        ).andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.code").value("RECORDING_CONTROL_DENIED"));
-        assertThat(fixtures.snapshot()).isEqualTo(before);
-        assertThat(jobSnapshot()).isEqualTo(jobBefore);
+        ).andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.jobId").value(jobId))
+                .andExpect(jsonPath("$.status").value("QUEUED"));
+        assertThat(userRetryCount()).isEqualTo(1);
     }
 
     private void assertRetryDenied() throws Exception {

@@ -161,8 +161,8 @@ class RecordingTranscriptionRetryAcceptanceTest {
     }
 
     @Test
-    @DisplayName("같은 워크스페이스의 다른 멤버는 전사를 재시도하지 못한다")
-    void retry_failure_otherMember() throws Exception {
+    @DisplayName("녹음을 시작하지 않은 같은 워크스페이스 멤버도 전사를 재시도할 수 있다")
+    void retry_success_otherMember() throws Exception {
         // given
         fixture("FAILED");
         jdbc.sql("INSERT INTO members (id, nickname) OVERRIDING SYSTEM VALUE VALUES (2, 'other')")
@@ -180,8 +180,32 @@ class RecordingTranscriptionRetryAcceptanceTest {
         );
 
         // then
+        result.andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.recordingId").value(1L))
+                .andExpect(jsonPath("$.transcriptionStatus").value("QUEUED"));
+        assertThat(
+                recordingTranscriptionStateService.findSnapshot(1L)
+                        .attemptId()
+        ).isNotEqualTo(PREVIOUS_ATTEMPT);
+    }
+
+    @Test
+    @DisplayName("워크스페이스 멤버가 아니면 전사를 재시도하지 못한다")
+    void retry_failure_nonMember() throws Exception {
+        // given
+        fixture("FAILED");
+        jdbc.sql("INSERT INTO members (id, nickname) OVERRIDING SYSTEM VALUE VALUES (2, 'outsider')")
+                .update();
+
+        // when
+        ResultActions result = retry(
+                1L,
+                2L
+        );
+
+        // then
         result.andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.code").value("RECORDING_CONTROL_DENIED"));
+                .andExpect(jsonPath("$.code").value("WORKSPACE_ACCESS_DENIED"));
         assertThat(
                 recordingTranscriptionStateService.findSnapshot(1L)
                         .attemptId()

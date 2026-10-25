@@ -10,8 +10,6 @@ import com.knot.backend.document.domain.repository.DocumentGenerationJobReposito
 import com.knot.backend.document.domain.model.DocumentGenerationBatch;
 import com.knot.backend.document.domain.repository.DocumentGenerationBatchRepository;
 import com.knot.backend.document.domain.model.DocumentGenerationJobStatus;
-import com.knot.backend.recording.domain.model.RecordingSession;
-import com.knot.backend.recording.domain.repository.RecordingSessionRepository;
 import com.knot.backend.workspace.domain.WorkspaceErrorCode;
 import com.knot.backend.workspace.domain.WorkspaceException;
 import com.knot.backend.workspace.domain.repository.WorkspaceMemberRepository;
@@ -32,7 +30,6 @@ public class DocumentGenerationJobRetryService {
     private final WorkspaceMemberRepository members;
     private final DocumentGenerationJobRepository jobs;
     private final DocumentGenerationInputQuery inputs;
-    private final RecordingSessionRepository recordings;
     private final DocumentGenerationBatchRepository batches;
     private final Clock clock;
 
@@ -59,11 +56,6 @@ public class DocumentGenerationJobRetryService {
                 job.getTranscriptId()
         )
                 .orElseThrow(() -> new DocumentException(DocumentErrorCode.RETRY_NOT_ALLOWED));
-        validateRecordingOwner(
-                workspaceId,
-                memberId,
-                input.recordingSessionId()
-        );
         validateInput(input);
         Instant acceptedAt = clock.instant()
                 .truncatedTo(ChronoUnit.MICROS);
@@ -96,19 +88,6 @@ public class DocumentGenerationJobRetryService {
         )) {
             throw new WorkspaceException(WorkspaceErrorCode.WORKSPACE_ACCESS_DENIED);
         }
-    }
-
-    private void validateRecordingOwner(
-            long workspaceId,
-            long memberId,
-            long recordingSessionId
-    ) {
-        RecordingSession recording = recordings.findById(recordingSessionId)
-                .orElseThrow(() -> new DocumentException(DocumentErrorCode.RETRY_NOT_ALLOWED));
-        recording.validateControlledBy(
-                workspaceId,
-                memberId
-        );
     }
 
     private void validateInput(DocumentGenerationInputResult input) {

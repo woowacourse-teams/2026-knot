@@ -167,8 +167,55 @@ class DocumentGenerationJobRetryTransactionIntegrationTest {
     }
 
     @Test
-    @DisplayName("잠금 대기 중 만료되면 대기 이전 시각으로 접수하지 않는다")
-    void retry_failure_expiredWhileWaiting() throws Exception {
+    @DisplayName("녹음을 시작한 멤버와 다른 멤버의 동시 요청도 한 번만 접수하고 나머지는 RETRY_NOT_ALLOWED다")
+    void retry_success_concurrentMembersSingleAcceptance() throws Exception {
+        // given
+        long otherMemberId = fixtures.saveMember("다른 팀원");
+        fixtures.join(
+                workspaceId,
+                otherMemberId
+        );
+        CyclicBarrier barrier = new CyclicBarrier(2);
+        try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            // when
+            Future<String> owner = executor.submit(() -> {
+                barrier.await(
+                        5,
+                        TimeUnit.SECONDS
+                );
+                return retryOutcomeBy(memberId);
+            });
+            Future<String> other = executor.submit(() -> {
+                barrier.await(
+                        5,
+                        TimeUnit.SECONDS
+                );
+                return retryOutcomeBy(otherMemberId);
+            });
+
+            // then
+            assertThat(
+                    List.of(
+                            owner.get(
+                                    10,
+                                    TimeUnit.SECONDS
+                            ),
+                            other.get(
+                                    10,
+                                    TimeUnit.SECONDS
+                            )
+                    )
+            ).containsExactlyInAnyOrder(
+                    "ACCEPTED",
+                    "RETRY_NOT_ALLOWED"
+            );
+            assertQueuedOnce();
+        }
+    }
+
+    @Test
+    @DisplayName("Job 잠금 대기 중 홈 표시 기한이 지나도 재시도를 접수한다")
+    void retry_success_displayPeriodPassedWhileWaiting() throws Exception {
         // given
         Instant deadline = DocumentFixtures.CREATED_AT.plusSeconds(168 * 3600);
         when(clock.instant()).thenReturn(deadline.minusSeconds(1));
@@ -193,196 +240,28 @@ class DocumentGenerationJobRetryTransactionIntegrationTest {
             // then
             assertThat(
                     pending.get()
-                            .get(
-                                    10,
-                                    TimeUnit.SECONDS
-                            )
-            ).isEqualTo("RETRY_NOT_ALLOWED");
-            assertUnchangedFailure();
-        }
-    }
-
-    @Test
-    @DisplayName("입력 원문 잠금 대기 뒤에도 최신 서버 시각으로 기한을 검사한다")
-    void retry_failure_expiredWhileWaitingForInput() throws Exception {
-        // given
-        Instant deadline = DocumentFixtures.CREATED_AT.plusSeconds(168 * 3600);
-        when(clock.instant()).thenReturn(deadline.minusSeconds(1));
-        AtomicReference<Future<String>> pending = new AtomicReference<>();
-        try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
-            // when
-            transactions.executeWithoutResult(status -> {
-                int holderPid = lockRow(
-                        "transcripts",
-                        transcriptId
-                );
-                pending.set(executor.submit(this::retryOutcome));
-                assertThat(
-                        waitUntilBlocked(
-                                holderPid,
-                                pending.get()
-                        )
-                ).isTrue();
-                when(clock.instant()).thenReturn(deadline);
-            });
-
-            // then
-            assertThat(
-                    pending.get()
-                            .get(
-                                    10,
-                                    TimeUnit.SECONDS
-                            )
-            ).isEqualTo("RETRY_NOT_ALLOWED");
-            assertUnchangedFailure();
-        }
-    }
-
-    @Test
-    @DisplayName("재접수가 먼저 확정되면 만료 FAILED 정리는 QUEUED Job과 입력을 지우지 않는다")
-    void retry_success_protectedFromExpiredCleanup() {
-        // given
-        Instant deadline = DocumentFixtures.CREATED_AT.plusSeconds(168 * 3600);
-        when(clock.instant()).thenReturn(deadline.minusNanos(1000));
-
-        // when
-        service.retry(
-                workspaceId,
-                memberId,
-                jobId
-        );
-        int deleted = jdbc.sql("""
-                DELETE FROM document_generation_jobs
-                WHERE id = :id AND status = 'FAILED' AND expires_at <= :now
-                """)
-                .param(
-                        "id",
-                        jobId
-                )
-                .param(
-                        "now",
-                        Timestamp.from(deadline)
-                )
-                .update();
-
-        // then
-        assertThat(deleted).isZero();
-        assertQueuedOnce();
-        assertThat(
-                jdbc.sql("SELECT count(*) FROM transcripts WHERE id = :id")
-                        .param(
-                                "id",
-                                transcriptId
-                        )
-                        .query(Long.class)
-                        .single()
-        ).isEqualTo(1);
-    }
-
-    @Test
-    @DisplayName("재접수가 Job 잠금을 먼저 잡으면 대기한 정리는 커밋된 QUEUED를 보고 입력을 보호한다")
-    void retry_success_cleanupWaitsForAcceptance() throws Exception {
-        // given
-        Instant deadline = DocumentFixtures.CREATED_AT.plusSeconds(168 * 3600);
-        when(clock.instant()).thenReturn(deadline.minusNanos(1000));
-        AtomicReference<Future<String>> retry = new AtomicReference<>();
-        AtomicReference<Future<Integer>> cleanup = new AtomicReference<>();
-        try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
-            // when
-            transactions.executeWithoutResult(status -> {
-                int inputHolder = lockRow(
-                        "transcripts",
-                        transcriptId
-                );
-                retry.set(executor.submit(this::retryOutcome));
-                assertThat(
-                        waitUntilBlocked(
-                                inputHolder,
-                                retry.get()
-                        )
-                ).isTrue();
-                int retryHolder = jdbc.sql("""
-                        SELECT pid FROM pg_stat_activity
-                        WHERE pid <> pg_backend_pid() AND :holder = ANY(pg_blocking_pids(pid))
-                        """)
-                        .param(
-                                "holder",
-                                inputHolder
-                        )
-                        .query(Integer.class)
-                        .single();
-                cleanup.set(executor.submit(() -> transactions.execute(cleanupStatus -> {
-                    lockRow(
-                            "workspaces",
-                            workspaceId
-                    );
-                    jobs.findByWorkspaceIdAndIdForUpdate(
-                            workspaceId,
-                            jobId
-                    )
-                            .orElseThrow();
-                    return jdbc.sql("""
-                            DELETE FROM document_generation_jobs
-                            WHERE id = :id AND status = 'FAILED' AND expires_at <= :now
-                            """)
-                            .param(
-                                    "id",
-                                    jobId
-                            )
-                            .param(
-                                    "now",
-                                    Timestamp.from(deadline)
-                            )
-                            .update();
-                })));
-                assertThat(
-                        waitUntilBlocked(
-                                retryHolder,
-                                cleanup.get()
-                        )
-                ).isTrue();
-            });
-
-            // then
-            assertThat(
-                    retry.get()
                             .get(
                                     10,
                                     TimeUnit.SECONDS
                             )
             ).isEqualTo("ACCEPTED");
-            assertThat(
-                    cleanup.get()
-                            .get(
-                                    10,
-                                    TimeUnit.SECONDS
-                            )
-            ).isZero();
             assertQueuedOnce();
-            assertThat(
-                    jdbc.sql("SELECT count(*) FROM transcripts WHERE id = :id")
-                            .param(
-                                    "id",
-                                    transcriptId
-                            )
-                            .query(Long.class)
-                            .single()
-            ).isEqualTo(1);
         }
     }
 
     @Test
-    @DisplayName("정리가 Job 잠금을 먼저 잡고 삭제하면 대기하던 재접수는 404다")
-    void retry_failure_cleanupWins() throws Exception {
+    @DisplayName("입력 원문 잠금 대기 뒤 최신 서버 시각으로 접수 시각을 기록한다")
+    void retry_success_latestTimeAfterWaitingForInput() throws Exception {
         // given
-        when(clock.instant()).thenReturn(DocumentFixtures.CREATED_AT.plusSeconds(168 * 3600));
+        Instant deadline = DocumentFixtures.CREATED_AT.plusSeconds(168 * 3600);
+        when(clock.instant()).thenReturn(deadline.minusSeconds(1));
         AtomicReference<Future<String>> pending = new AtomicReference<>();
         try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
             // when
             transactions.executeWithoutResult(status -> {
                 int holderPid = lockRow(
-                        "document_generation_jobs",
-                        jobId
+                        "transcripts",
+                        transcriptId
                 );
                 pending.set(executor.submit(this::retryOutcome));
                 assertThat(
@@ -391,12 +270,7 @@ class DocumentGenerationJobRetryTransactionIntegrationTest {
                                 pending.get()
                         )
                 ).isTrue();
-                jdbc.sql("DELETE FROM document_generation_jobs WHERE id = :id AND status = 'FAILED'")
-                        .param(
-                                "id",
-                                jobId
-                        )
-                        .update();
+                when(clock.instant()).thenReturn(deadline);
             });
 
             // then
@@ -406,16 +280,18 @@ class DocumentGenerationJobRetryTransactionIntegrationTest {
                                     10,
                                     TimeUnit.SECONDS
                             )
-            ).isEqualTo("DOCUMENT_GENERATION_JOB_NOT_FOUND");
+            ).isEqualTo("ACCEPTED");
+            assertQueuedOnce();
             assertThat(
-                    jdbc.sql("SELECT count(*) FROM document_generation_jobs WHERE id = :id")
+                    jdbc.sql("SELECT updated_at FROM document_generation_jobs WHERE id = :id")
                             .param(
                                     "id",
                                     jobId
                             )
-                            .query(Long.class)
+                            .query(Timestamp.class)
                             .single()
-            ).isZero();
+                            .toInstant()
+            ).isEqualTo(deadline);
         }
     }
 
@@ -457,8 +333,8 @@ class DocumentGenerationJobRetryTransactionIntegrationTest {
     }
 
     @Test
-    @DisplayName("재실패는 기한만 갱신하고 사용자 3회·전체 회차를 유지한다")
-    void retry_failure_fourthAttemptAfterRefailure() {
+    @DisplayName("세 번 재실패한 Job의 네 번째 사용자 재시도도 접수하고 표시 기한은 마지막 실패 기준으로 남긴다")
+    void retry_success_fourthAttemptAfterRefailure() {
         // given
         for (int retry = 1; retry <= 3; retry++) {
             Instant acceptedAt = NOW.plusSeconds(retry * 2);
@@ -484,17 +360,17 @@ class DocumentGenerationJobRetryTransactionIntegrationTest {
         }
         when(clock.instant()).thenReturn(NOW.plusSeconds(8));
 
-        // when & then
-        assertThatThrownBy(
-                () -> service.retry(
-                        workspaceId,
-                        memberId,
-                        jobId
-                )
-        ).isInstanceOf(DocumentException.class);
-        assertThat(counter("attempt_count")).isEqualTo(4);
-        assertThat(counter("user_retry_count")).isEqualTo(3);
-        assertThat(userRetryCount()).isEqualTo(3);
+        // when
+        DocumentGenerationJobRetryResult result = service.retry(
+                workspaceId,
+                memberId,
+                jobId
+        );
+
+        // then
+        assertThat(result.status()).isEqualTo(DocumentGenerationJobStatus.QUEUED);
+        assertThat(counter("attempt_count")).isEqualTo(5);
+        assertThat(counter("user_retry_count")).isEqualTo(4);
         assertThat(
                 jdbc.sql("SELECT expires_at FROM document_generation_jobs WHERE id = :id")
                         .param(
@@ -534,10 +410,14 @@ class DocumentGenerationJobRetryTransactionIntegrationTest {
     }
 
     private String retryOutcome() {
+        return retryOutcomeBy(memberId);
+    }
+
+    private String retryOutcomeBy(long requestedMemberId) {
         try {
             service.retry(
                     workspaceId,
-                    memberId,
+                    requestedMemberId,
                     jobId
             );
             return "ACCEPTED";
