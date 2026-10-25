@@ -1,5 +1,3 @@
-import type { WorkspaceRouteKey } from "@/shared/types/route";
-
 export interface Env {
   /** 정적 파일(빌드한 앱)을 돌려주는 Cloudflare Workers 정적 자산 바인딩 */
   ASSETS: { fetch: (request: Request) => Promise<Response> };
@@ -319,19 +317,6 @@ const RELEASE_NOTES_RELAY_PATH = `${RELAY_PATH}/n`;
 /** 읽은 노트를 Worker 캐시에 두는 시간(초). Notion에서 고친 노트는 길어야 이만큼 뒤에 보여요 */
 const RELEASE_NOTES_CACHE_SECONDS = 300;
 
-/**
- * 「바로 가보기」로 받는 앱 화면 키. 지금 워크스페이스 ID만 채우면 갈 수 있는 화면이에요.
- * `WorkspaceRouteKey`에 화면이 늘거나 줄면 tsc가 여기를 고치라고 알려 줘요. `scripts/release-note.mjs`의 `LINK_KEYS`도 함께 바꿔요
- */
-const RELEASE_NOTE_LINKS: Record<WorkspaceRouteKey, true> = {
-  WORKSPACE_HOME: true,
-  WORKSPACE_INVITE: true,
-  WORKSPACE_JOIN: true,
-  CHAT: true,
-  RECORDING: true,
-  DOCUMENTS: true,
-};
-
 interface NotionProperty {
   title?: { plain_text: string }[];
   rich_text?: { plain_text: string }[];
@@ -348,7 +333,7 @@ interface ReleaseNoteRow {
   item: {
     title: string;
     description: string;
-    link?: WorkspaceRouteKey;
+    link?: string;
     isFromFeedback: boolean;
     isHighlight: boolean;
   };
@@ -360,10 +345,10 @@ const readText = (property?: NotionProperty) =>
     .join("")
     .trim();
 
-const isReleaseNoteLink = (value: string): value is WorkspaceRouteKey =>
-  Object.keys(RELEASE_NOTE_LINKS).includes(value);
-
-/** 새 소식 DB 한 줄을 노트 항목으로 읽어요. 노트 id, 배포 날짜, 제목, 설명이 없거나 바로 가보기가 앱 화면 키가 아니면 null이에요 */
+/**
+ * 새 소식 DB 한 줄을 노트 항목으로 읽어요. 노트 id, 배포 날짜, 제목, 설명이 없으면 null이에요.
+ * 바로 가보기는 화면 이름을 확인하지 않고 그대로 넘겨요. 앱에 없는 화면이면 앱이 버튼만 숨겨요
+ */
 const readReleaseNoteRow = (
   properties: Record<string, NotionProperty | undefined>,
 ): ReleaseNoteRow | null => {
@@ -377,8 +362,7 @@ const readReleaseNoteRow = (
     !noteId ||
     !/^\d{4}-\d{2}-\d{2}$/.test(releasedAt) ||
     !title ||
-    !description ||
-    (link && !isReleaseNoteLink(link))
+    !description
   ) {
     return null;
   }
@@ -390,7 +374,7 @@ const readReleaseNoteRow = (
     item: {
       title,
       description,
-      link: isReleaseNoteLink(link) ? link : undefined,
+      link: link || undefined,
       isFromFeedback: properties["피드백 덕분"]?.checkbox === true,
       isHighlight: properties["큰 변화"]?.checkbox === true,
     },

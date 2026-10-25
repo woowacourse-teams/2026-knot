@@ -636,8 +636,6 @@ describe("relayReleaseNotes", () => {
     ["배포 날짜가 없는", { releasedAt: "" }],
     ["제목이 없는", { title: "" }],
     ["설명이 없는", { description: "" }],
-    ["바로 가보기가 앱 화면 키가 아닌", { link: "https://evil.com" }],
-    ["바로 가보기가 워크스페이스 밖 화면인", { link: "LOGIN" }],
   ])("%s 줄은 빼고 돌려준다", async (_, row) => {
     respondRows([toRow({ title: "맞는 항목" }), toRow(row)]);
 
@@ -646,6 +644,15 @@ describe("relayReleaseNotes", () => {
 
     expect(note.items).toHaveLength(1);
     expect(note.items[0].title).toBe("맞는 항목");
+  });
+
+  it("바로 가보기는 화면 이름을 확인하지 않고 그대로 넘겨, 모르는 화면이어도 항목은 남긴다", async () => {
+    respondRows([toRow({ link: "LOGIN" })]);
+
+    const response = await requestNotes();
+    const [note] = await response.json();
+
+    expect(note.items[0].link).toBe("LOGIN");
   });
 
   it("새 소식 DB가 비어 있으면 빈 배열을 돌려준다", async () => {
