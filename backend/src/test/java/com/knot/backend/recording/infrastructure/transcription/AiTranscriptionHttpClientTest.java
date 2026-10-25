@@ -9,6 +9,7 @@ import com.knot.backend.global.config.TranscriptionProperties;
 import com.knot.backend.recording.application.dto.result.AiTranscript;
 import com.knot.backend.recording.application.dto.result.AiTranscriptionJob;
 import com.knot.backend.recording.domain.RecordingErrorCode;
+import com.knot.backend.recording.domain.model.TranscriptionDecodePolicy;
 import com.knot.backend.recording.domain.RecordingException;
 import com.knot.backend.testsupport.LlmHttpServer;
 import java.nio.charset.StandardCharsets;
@@ -444,12 +445,17 @@ class AiTranscriptionHttpClientTest {
                             "pcm-window-v1",
                             checksum,
                             16000,
-                            32000
+                            32000,
+                            null
                     )
             );
             // then
             JsonNode request = objectMapper.readTree(server.requestBody());
             assertThat(request.size()).isEqualTo(3);
+            assertThat(
+                    request.path("window")
+                            .has("decodePolicy")
+            ).isFalse();
             assertThat(
                     request.path("window")
                             .path("inputStartFrame")
@@ -471,6 +477,52 @@ class AiTranscriptionHttpClientTest {
                             .getFirst()
                             .embedding()
             ).hasSize(512);
+        }
+    }
+
+    @Test
+    @DisplayName("2분 구간 접수는 디코딩 정책을 window에 담아 보낸다")
+    void submitWindow_success_decodePolicy() throws Exception {
+        // given
+        try (LlmHttpServer server = new LlmHttpServer()) {
+            respond(
+                    server,
+                    202,
+                    objectMapper.writeValueAsString(
+                            new AiTranscriptionJob(
+                                    ID,
+                                    AiTranscriptionJob.Status.PROCESSING,
+                                    null,
+                                    null
+                            )
+                    ),
+                    new AtomicReference<>()
+            );
+            AiTranscriptionHttpClient client = client(
+                    server,
+                    Duration.ofSeconds(2)
+            );
+
+            // when
+            client.submitWindow(
+                    ID,
+                    "https://audio.example/window",
+                    new AiWindowInput(
+                            "pcm-window-v2-120-10",
+                            "a".repeat(64),
+                            0,
+                            2_080_000,
+                            TranscriptionDecodePolicy.WITH_VOCABULARY
+                    )
+            );
+
+            // then
+            JsonNode request = objectMapper.readTree(server.requestBody());
+            assertThat(
+                    request.path("window")
+                            .path("decodePolicy")
+                            .asString()
+            ).isEqualTo("WITH_VOCABULARY");
         }
     }
 

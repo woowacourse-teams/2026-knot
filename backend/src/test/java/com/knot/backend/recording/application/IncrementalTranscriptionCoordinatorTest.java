@@ -22,6 +22,7 @@ import com.knot.backend.recording.domain.model.RecordingAudioUpload;
 import com.knot.backend.recording.domain.model.RecordingSession;
 import com.knot.backend.recording.domain.model.RecordingStatus;
 import com.knot.backend.recording.domain.model.RecordingTranscriptionWindow;
+import com.knot.backend.recording.domain.model.TranscriptionWindowShape;
 import com.knot.backend.recording.domain.model.TranscriptionWindowStatus;
 import com.knot.backend.recording.domain.repository.RecordingAudioCleanupRepository;
 import com.knot.backend.recording.domain.repository.RecordingAudioFinalizationRepository;
@@ -46,6 +47,7 @@ import tools.jackson.databind.ObjectMapper;
 
 class IncrementalTranscriptionCoordinatorTest {
     private static final Instant NOW = Instant.parse("2026-10-18T00:00:00Z");
+    private static final String PIPELINE = TranscriptionWindowShape.LIVE_30_SECONDS.pipelineVersion();
 
     private final com.knot.backend.recording.domain.repository.RecordingTranscriptionInputRepository inputs = mock(
             com.knot.backend.recording.domain.repository.RecordingTranscriptionInputRepository.class
@@ -102,7 +104,7 @@ class IncrementalTranscriptionCoordinatorTest {
         when(session.getWorkspaceId()).thenReturn(2L);
         when(session.getMemberId()).thenReturn(3L);
         when(session.getAudioMode()).thenReturn(RecordingAudioMode.PCM16_CHUNKS_V1);
-        when(session.getIncrementalPipelineVersion()).thenReturn("v1");
+        when(session.getIncrementalPipelineVersion()).thenReturn(PIPELINE);
         when(session.getStatus()).thenReturn(RecordingStatus.ENDED);
         when(session.getEndedAt()).thenReturn(NOW);
         when(streams.findByRecordingIdForUpdate(1)).thenReturn(Optional.of(stream));
@@ -128,7 +130,7 @@ class IncrementalTranscriptionCoordinatorTest {
         when(
                 windows.findByRecordingIdAndPipelineVersionOrderByWindowIndex(
                         1,
-                        "v1"
+                        PIPELINE
                 )
         ).thenReturn(List.of());
     }
@@ -152,9 +154,7 @@ class IncrementalTranscriptionCoordinatorTest {
         // then
         verify(windowService).registerAvailable(
                 1,
-                "v1",
-                480_000,
-                80_000
+                TranscriptionWindowShape.LIVE_30_SECONDS
         );
         verifyNoInteractions(
                 merger,
@@ -256,7 +256,7 @@ class IncrementalTranscriptionCoordinatorTest {
         when(
                 windows.findByRecordingIdAndPipelineVersionOrderByWindowIndex(
                         1,
-                        "v1"
+                        PIPELINE
                 )
         ).thenReturn(List.of(completed));
         AiTranscript transcript = new AiTranscript(
@@ -268,7 +268,8 @@ class IncrementalTranscriptionCoordinatorTest {
                 merger.merge(
                         List.of(completed),
                         16_000,
-                        .65
+                        .65,
+                        false
                 )
         ).thenReturn(transcript);
 
@@ -291,7 +292,7 @@ class IncrementalTranscriptionCoordinatorTest {
         when(
                 windows.findByRecordingIdAndPipelineVersionOrderByWindowIndex(
                         1,
-                        "v1"
+                        PIPELINE
                 )
         ).thenReturn(List.of(failed));
 
@@ -314,7 +315,7 @@ class IncrementalTranscriptionCoordinatorTest {
         when(
                 windows.findByRecordingIdAndPipelineVersionAndWindowIndex(
                         1,
-                        "v1",
+                        PIPELINE,
                         0
                 )
         ).thenReturn(Optional.of(existing));
@@ -342,14 +343,15 @@ class IncrementalTranscriptionCoordinatorTest {
         when(
                 windows.findByRecordingIdAndPipelineVersionOrderByWindowIndex(
                         1,
-                        "v1"
+                        PIPELINE
                 )
         ).thenReturn(List.of(completed));
         when(
                 merger.merge(
                         List.of(completed),
                         16_000,
-                        .65
+                        .65,
+                        false
                 )
         ).thenThrow(new RecordingException(RecordingErrorCode.INVALID_RECORDING_DATA));
 
