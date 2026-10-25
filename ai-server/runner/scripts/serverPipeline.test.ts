@@ -305,7 +305,7 @@ test('silent window is valid and nonfinite or wrong-sized speaker vectors are re
   const raw=Buffer.from('{"transcription":[]}')
   assert.equal(assembleWindowResult(raw,{modelVersion:'model',speakers:[],segments:[]},windowInput).utterances.length,0)
   assert.throws(()=>assembleWindowResult(raw,{...evidence,speakers:[{...evidence.speakers[0],embedding:[NaN]}]},windowInput),/INVALID_RESULT/)
-  assert.equal(validWindow({...windowInput,inputEndFrame:2000000}),false)
+  assert.equal(validWindow({...windowInput,inputEndFrame:16000+130*16000+1}),false)
 })
 
 test('window clips measured word timestamps to audio bounds and discards wholly outside words',()=>{

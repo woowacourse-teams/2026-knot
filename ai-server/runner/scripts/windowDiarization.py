@@ -15,6 +15,9 @@ import sys
 import time
 import wave
 
+# windowResult.ts의 MAXIMUM_WINDOW_FRAMES와 같은 130초 상한
+MAXIMUM_WINDOW_FRAMES = 130 * 16000
+
 class Pyannote(c.Structure):
     _fields_=[('model',c.c_char_p),('window_shift_ratio',c.c_float)]
 class Segmentation(c.Structure):
@@ -185,7 +188,7 @@ def execute(manifest):
     with wave.open(manifest['audioPath'], 'rb') as wav:
         frames = wav.getnframes()
         if (wav.getframerate() != 16000 or wav.getnchannels() != 1
-                or wav.getsampwidth() != 2 or not 0 < frames <= 960000):
+                or wav.getsampwidth() != 2 or not 0 < frames <= MAXIMUM_WINDOW_FRAMES):
             raise ValueError('INVALID_AUDIO')
         if manifest.get('window') and frames != (manifest['window']['inputEndFrame'] - manifest['window']['inputStartFrame']):
             raise ValueError('WINDOW_FRAME_MISMATCH')

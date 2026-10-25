@@ -147,6 +147,10 @@ interface BuildWhisperArgsParams {
   vadModelPath?: string
   /** native token getter로 원음 시각을 출력하는 CLI에서만 켠다. */
   vadEnabled?: boolean
+  /** 첫 window의 초기 프롬프트. 구간 전사의 고정 용어 디코딩에서만 쓴다. */
+  prompt?: string
+  /** 이전 window 텍스트를 이어받는 최대 token 수. 0이면 이어받지 않는다. */
+  maxContext?: number
 }
 
 export const buildWhisperArgs = ({
@@ -155,7 +159,9 @@ export const buildWhisperArgs = ({
   outputPath,
   threads,
   vadModelPath,
-  vadEnabled = Boolean(vadModelPath)
+  vadEnabled = Boolean(vadModelPath),
+  prompt,
+  maxContext
 }: BuildWhisperArgsParams) => {
   if (vadEnabled && !vadModelPath) throw new Error('VAD_MODEL_REQUIRED')
   return [
@@ -171,6 +177,8 @@ export const buildWhisperArgs = ({
   '-of',
   outputPath,
   '--no-prints',
-  ...(vadEnabled ? ['--vad', '--vad-model', vadModelPath!] : [])
+  ...(vadEnabled ? ['--vad', '--vad-model', vadModelPath!] : []),
+  ...(maxContext === undefined ? [] : ['-mc', String(maxContext)]),
+  ...(prompt ? ['--prompt', prompt] : [])
   ]
 }
