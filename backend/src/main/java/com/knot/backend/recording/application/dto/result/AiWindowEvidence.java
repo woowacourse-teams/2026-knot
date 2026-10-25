@@ -20,7 +20,8 @@ public record AiWindowEvidence(
 ) {
     private static final int MAX_TOKENS = 20_000;
     private static final int MAX_SPEAKERS = 64;
-    private static final int MAX_OBSERVATIONS = 2_000;
+    /** 512차원 특징값(유효 숫자 9자리) 조각이 저장 JSON 1MiB 안에 들어가는 개수. 130초 구간은 실제로 60개 안팎이다. */
+    private static final int MAX_OBSERVATIONS = 160;
     private static final int EMBEDDING_DIMENSIONS = 512;
 
     public AiWindowEvidence(
