@@ -72,11 +72,7 @@ public class IncrementalTranscriptMerger {
                 ordered,
                 totalFrames
         );
-        boolean reclustered = seamAligned && evidences.stream()
-                .anyMatch(
-                        evidence -> !evidence.observations()
-                                .isEmpty()
-                );
+        boolean reclustered = seamAligned && reclusterable(evidences);
         List<List<OwnedToken>> owned = ownedTokens(
                 ordered,
                 evidences,
@@ -241,6 +237,25 @@ public class IncrementalTranscriptMerger {
                                 .toList()
                 )
                 .toList();
+    }
+
+    /**
+     * 모든 토큰이 Whisper segment 번호를 가진 새 AI 결과이고 화자 근거 조각이 있을 때만 다시 묶는다. AI 배포 전후로 이전
+     * 결과가 섞이면 그 구간의 문장 경계를 알 수 없으므로 녹음 전체를 기존 중심 연결로 병합한다.
+     */
+    private static boolean reclusterable(List<AiWindowEvidence> evidences) {
+        boolean observed = evidences.stream()
+                .anyMatch(
+                        evidence -> !evidence.observations()
+                                .isEmpty()
+                );
+        boolean segmented = evidences.stream()
+                .flatMap(
+                        evidence -> evidence.tokens()
+                                .stream()
+                )
+                .allMatch(token -> token.segment() != null);
+        return observed && segmented;
     }
 
     /**
