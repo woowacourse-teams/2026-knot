@@ -1,7 +1,7 @@
 import { spawn, type ChildProcess } from 'node:child_process'
 import { access, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
-import { pathToFileURL } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import { assembleWindowResult, measuredWordGroups, validWindow, type WindowInput } from './windowResult'
 import { assignSpeakers, mergeUtterances, SERVER_SPEAKER_POLICY } from '../src/core/merge'
 import { hasDecoderRepetition, prefersRetry } from '../src/core/repetition'
@@ -66,6 +66,10 @@ export const validateManifest = (value: unknown): ServerManifest => {
     throw new Error('INVALID_MANIFEST')
   return manifest
 }
+
+/** URL pathname은 공백을 %20으로 남기므로 파일 경로로 바꿔 같은 폴더의 스크립트를 찾는다. */
+export const siblingScriptPath = (moduleUrl: string, name: string) =>
+  path.join(path.dirname(fileURLToPath(moduleUrl)), name)
 
 /** 원음 길이를 가진 단어가 없는 전체 전사 segment는 단어 없이 segment 시각으로 화자를 배정한다. */
 const hasMeasuredWord = (words: SttWord[]) =>
@@ -243,7 +247,7 @@ export const runServerPipeline = async (manifest: ServerManifest) => {
     }
     const evidencePath = path.join(manifest.outputDirectory, 'window-speakers.json')
     const diarize = () => manifest.window ? run(
-      p.pythonBinary!, [path.join(path.dirname(new URL(import.meta.url).pathname), 'windowDiarization.py'),
+      p.pythonBinary!, [siblingScriptPath(import.meta.url, 'windowDiarization.py'),
         path.join(manifest.outputDirectory, 'window-input.json'), evidencePath], false, 'DIARIZATION_FAILED'
     ) : run(
         p.diarizeBinary,
