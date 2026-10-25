@@ -17,12 +17,20 @@ interface RecordingTitleGenerationJpaRepository extends JpaRepository<RecordingT
 
     @Modifying
     @Query(value = """
+            INSERT INTO recording_title_activation (id, activated_at) VALUES (1, :now)
+            ON CONFLICT (id) DO NOTHING
+            """, nativeQuery = true)
+    int recordActivation(Instant now);
+
+    @Modifying
+    @Query(value = """
             INSERT INTO recording_title_generations (recording_id, status, attempt_count, next_run_at, created_at)
             SELECT b.recording_session_id, 'QUEUED', 0, :now, :now
             FROM document_generation_batches b
             JOIN recording_sessions s ON s.id = b.recording_session_id
+            JOIN recording_title_activation a ON a.id = 1
             WHERE b.topic_registration_state = 'TOPICS_REGISTERED' AND b.transcript_id IS NOT NULL
-                AND s.status = 'ENDED'
+                AND s.status = 'ENDED' AND s.ended_at >= a.activated_at
                 AND NOT EXISTS (SELECT 1 FROM recording_title_generations g
                     WHERE g.recording_id = b.recording_session_id)
             ORDER BY b.id

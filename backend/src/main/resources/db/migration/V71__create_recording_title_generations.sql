@@ -20,6 +20,13 @@ CREATE TABLE recording_title_generations (
     CONSTRAINT chk_recording_title_generations_attempts CHECK (attempt_count >= 0)
 );
 
+-- 제목 작업이 처음 실행된 시각을 한 번만 남긴다. 이 시각 이후에 끝난 녹음만 제목을 만든다.
+CREATE TABLE recording_title_activation (
+    id SMALLINT PRIMARY KEY DEFAULT 1,
+    activated_at TIMESTAMPTZ NOT NULL,
+    CONSTRAINT chk_recording_title_activation_single CHECK (id = 1)
+);
+
 CREATE INDEX idx_recording_title_generations_due
     ON recording_title_generations (next_run_at, id)
     WHERE status IN ('QUEUED', 'RUNNING');

@@ -9,6 +9,8 @@ public interface RecordingTitleGenerationRepository {
 
     RecordingTitleGeneration save(RecordingTitleGeneration generation);
 
+    void recordActivation(Instant now);
+
     int registerEligible(
             Instant now,
             int limit

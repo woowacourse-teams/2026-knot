@@ -26,8 +26,10 @@ public class RecordingTitleGenerationService {
 
     @Transactional
     public void registerEligible() {
+        Instant now = now();
+        recordingTitleGenerationRepository.recordActivation(now);
         recordingTitleGenerationRepository.registerEligible(
-                now(),
+                now,
                 BATCH_LIMIT
         );
     }

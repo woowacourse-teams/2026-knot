@@ -19,6 +19,11 @@ public class RecordingTitleGenerationRepositoryAdapter implements RecordingTitle
     }
 
     @Override
+    public void recordActivation(Instant now) {
+        repository.recordActivation(now);
+    }
+
+    @Override
     public int registerEligible(
             Instant now,
             int limit
