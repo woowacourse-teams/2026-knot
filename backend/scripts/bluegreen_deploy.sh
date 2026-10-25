@@ -68,6 +68,7 @@ PREVIOUS_NGINX_METRICS_CONFIG=""
 NGINX_METRICS_CONFIG_WAS_PRESENT=false
 NGINX_METRICS_ROUTE_CHANGED=false
 LAST_HEALTH_FAILURE_REASON=""
+MIGRATION_MODE=rolling
 
 log() {
   printf '[blue-green:%s] %s\n' "$BLUEGREEN_PROFILE" "$*"
@@ -132,15 +133,6 @@ read_alloy_metrics_target_port() {
   printf '%s\n' "$port"
 }
 
-migration_files() {
-  local jar_file="$1"
-  local contents
-
-  contents="$(jar tf "$jar_file")" || return 1
-  printf '%s\n' "$contents" \
-    | grep -E '^BOOT-INF/classes/db/migration/[^/]+\.sql$' \
-    | LC_ALL=C sort || true
-}
 
 health_is_up() {
   local response
@@ -336,8 +328,13 @@ update_alloy_metrics_target() {
 }
 
 prepare_monitoring_route() {
+  local monitoring_port="$ACTIVE_PORT"
+
+  if [[ "$MIGRATION_MODE" == serial-workers ]]; then
+    monitoring_port="$CANDIDATE_PORT"
+  fi
   ROUTE_CHANGE_ATTEMPTED=true
-  write_metrics_route "$ACTIVE_PORT" || return 1
+  write_metrics_route "$monitoring_port" || return 1
   if [[ "$NGINX_METRICS_ROUTE_CHANGED" == true ]]; then
     nginx -t || return 1
     nginx -s reload || return 1
@@ -455,6 +452,15 @@ rollback_transaction() {
 
   set +e
   log "Deployment failed; restoring the previous Blue route"
+
+  if [[ "$MIGRATION_MODE" == serial-workers && "$CANDIDATE_STARTED" == true ]]; then
+    systemctl stop "$CANDIDATE_SERVICE"
+    if service_is_active "$CANDIDATE_SERVICE"; then
+      printf '%s\n' "$DEPLOYMENT_ID" > "$ROUTE_UNCERTAIN_MARKER"
+      log "Candidate worker is still running; refusing concurrent restart of the previous worker"
+      return 1
+    fi
+  fi
 
   if [[ "$ROUTE_CHANGE_ATTEMPTED" == true ]]; then
     if ! service_is_active "$ACTIVE_SERVICE"; then
@@ -689,10 +695,14 @@ if [[ "$BLUEGREEN_PROFILE" == "prod" ]]; then
   log "Current Prod Nginx returned 200 UP before candidate startup"
 fi
 
-active_migrations="$(migration_files "$ACTIVE_JAR")" || die "Could not read migration files from the active JAR"
-candidate_migrations="$(migration_files "$INCOMING_JAR")" || die "Could not read migration files from the candidate JAR"
-[[ "$active_migrations" == "$candidate_migrations" ]] \
-  || die "Flyway migration file set changed; deploy only after Blue-Green schema compatibility is verified"
+MIGRATION_MODE="$(python3 "${SCRIPT_DIR}/verify_migration_compatibility.py" \
+  --active "$ACTIVE_JAR" --candidate "$INCOMING_JAR" --environment "$BLUEGREEN_PROFILE" \
+  --reviews "${STATE_ROOT}/migration-reviews")" \
+  || die "Flyway migration file set changed or verification failed; a compatible exact-JAR review is required"
+[[ "$MIGRATION_MODE" == rolling || "$MIGRATION_MODE" == serial-workers ]] \
+  || die "Unknown migration execution mode"
+[[ "$BLUEGREEN_PROFILE" == dev || "$MIGRATION_MODE" == rolling ]] \
+  || die "Prod requires rolling deployment"
 
 verify_deployment_logs --preflight \
   || die "Log receipt preflight failed; candidate startup and traffic switch were not attempted"
@@ -727,6 +737,25 @@ cp -p "$NGINX_CONFIG" "$PREVIOUS_NGINX_CONFIG"
 if [[ -f "$NGINX_METRICS_CONFIG" ]]; then
   cp -p "$NGINX_METRICS_CONFIG" "$PREVIOUS_NGINX_METRICS_CONFIG"
   NGINX_METRICS_CONFIG_WAS_PRESENT=true
+fi
+
+if [[ "$MIGRATION_MODE" == serial-workers ]]; then
+  grep -q 'knot-serial-maintenance' "$NGINX_CONFIG" && die "A serial maintenance marker already exists"
+  maintenance_temp="$(mktemp "${NGINX_CONFIG}.maintenance.XXXXXX")"
+  sed '/^[[:space:]]*server[[:space:]]*{/a\
+  # knot-serial-maintenance-start\
+  if ($uri != /actuator/health) { return 503; }\
+  # knot-serial-maintenance-end
+  ' "$NGINX_CONFIG" > "$maintenance_temp"
+  grep -q 'knot-serial-maintenance-start' "$maintenance_temp" || die "Could not install maintenance guard"
+  ROUTE_CHANGE_ATTEMPTED=true
+  chmod 0644 "$maintenance_temp"
+  mv -f "$maintenance_temp" "$NGINX_CONFIG"
+  nginx -t && nginx -s reload || die "Could not enter Dev maintenance"
+  wait_for_connections_to_drain "$ACTIVE_PORT" "$ACTIVE_SERVICE" || die "Dev requests did not drain before maintenance"
+  systemctl stop "$ACTIVE_SERVICE" || die "Could not stop the previous Dev worker"
+  service_is_active "$ACTIVE_SERVICE" && die "The previous Dev worker remained active"
+  log "Dev maintenance active; previous worker stopped before candidate startup"
 fi
 
 CANDIDATE_STARTED=true
@@ -770,6 +799,15 @@ if ! systemctl stop "$ACTIVE_SERVICE"; then
   service_is_active "$ACTIVE_SERVICE" && die "Could not gracefully stop ${ACTIVE_SERVICE}"
 fi
 service_is_active "$ACTIVE_SERVICE" && die "Previous service ${ACTIVE_SERVICE} remained active after stop"
+
+if [[ "$MIGRATION_MODE" == serial-workers ]]; then
+  maintenance_temp="$(mktemp "${NGINX_CONFIG}.maintenance.XXXXXX")"
+  sed '/# knot-serial-maintenance-start/,/# knot-serial-maintenance-end/d' "$NGINX_CONFIG" > "$maintenance_temp"
+  chmod 0644 "$maintenance_temp"
+  mv -f "$maintenance_temp" "$NGINX_CONFIG"
+  nginx -t && nginx -s reload || die "Could not leave Dev maintenance"
+  log "Dev maintenance finished; only the candidate worker is running"
+fi
 
 log "Deployment ${DEPLOYMENT_ID} route is active; removing the saved Nginx config"
 rm -rf -- "$TRANSACTION_DIR"
