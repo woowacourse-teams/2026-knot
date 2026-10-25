@@ -54,95 +54,10 @@
   "groups": [
     {
       "orgId": 1,
-      "name": "Knot runtime",
-      "folder": "Knot Operations",
-      "interval": "30s",
+      "name": "Knot prod realtime",
+      "interval": "10s",
+      "folder": "Knot Alerts",
       "rules": [
-        {
-          "uid": "knot-dev-health",
-          "title": "Knot Dev API unavailable",
-          "condition": "B",
-          "data": [
-            {
-              "refId": "A",
-              "relativeTimeRange": {
-                "from": 600,
-                "to": 0
-              },
-              "datasourceUid": "knot-prometheus",
-              "model": {
-                "refId": "A",
-                "expr": "probe_success{job=\"public-health\",env=\"dev\"}",
-                "instant": true,
-                "range": false,
-                "intervalMs": 1000,
-                "maxDataPoints": 43200,
-                "datasource": {
-                  "type": "prometheus",
-                  "uid": "knot-prometheus"
-                }
-              }
-            },
-            {
-              "refId": "B",
-              "relativeTimeRange": {
-                "from": 0,
-                "to": 0
-              },
-              "datasourceUid": "__expr__",
-              "model": {
-                "refId": "B",
-                "type": "threshold",
-                "expression": "A",
-                "datasource": {
-                  "type": "__expr__",
-                  "uid": "__expr__"
-                },
-                "conditions": [
-                  {
-                    "evaluator": {
-                      "type": "lt",
-                      "params": [
-                        1
-                      ]
-                    },
-                    "operator": {
-                      "type": "and"
-                    },
-                    "query": {
-                      "params": [
-                        "B"
-                      ]
-                    },
-                    "reducer": {
-                      "type": "last"
-                    },
-                    "type": "query"
-                  }
-                ],
-                "intervalMs": 1000,
-                "maxDataPoints": 43200
-              }
-            }
-          ],
-          "noDataState": "Alerting",
-          "execErrState": "Alerting",
-          "for": "5m",
-          "annotations": {
-            "summary": "Dev API 헬스체크가 5분 이상 실패했습니다. 배포 중단인지 확인하세요.",
-            "description": "DEV 전체 상태에서 health 이력과 배포 시각을 확인한 뒤 앱·Nginx 로그를 보세요. 수집 경로 오류로도 발생할 수 있습니다.",
-            "__dashboardUid__": "knot-operations",
-            "__panelId__": "2",
-            "display_name": "외부 API 응답 실패"
-          },
-          "labels": {
-            "project": "knot",
-            "severity": "warning",
-            "env": "dev",
-            "service": "backend"
-          },
-          "isPaused": false
-        },
         {
           "uid": "knot-prod-health",
           "title": "Knot Prod API unavailable",
@@ -216,7 +131,7 @@
           "annotations": {
             "summary": "Prod API 헬스체크가 2분 이상 실패했습니다.",
             "description": "PROD 전체 상태에서 health 이력을 확인한 뒤 프로토타입 앱·Nginx 로그를 보세요. health 실패나 평가 오류만으로 원인을 확정하지 않습니다.",
-            "__dashboardUid__": "knot-operations",
+            "__dashboardUid__": "knot-prod-overview",
             "__panelId__": "2",
             "display_name": "외부 API 응답 실패"
           },
@@ -226,92 +141,9 @@
             "env": "prod",
             "service": "backend"
           },
-          "isPaused": false
-        },
-        {
-          "uid": "knot-dev-agent",
-          "title": "Knot Dev metrics missing",
-          "condition": "B",
-          "data": [
-            {
-              "refId": "A",
-              "relativeTimeRange": {
-                "from": 600,
-                "to": 0
-              },
-              "datasourceUid": "knot-prometheus",
-              "model": {
-                "refId": "A",
-                "expr": "absent_over_time(node_cpu_seconds_total{env=\"dev\"}[3m]) or vector(0)",
-                "instant": true,
-                "range": false,
-                "intervalMs": 1000,
-                "maxDataPoints": 43200,
-                "datasource": {
-                  "type": "prometheus",
-                  "uid": "knot-prometheus"
-                }
-              }
-            },
-            {
-              "refId": "B",
-              "relativeTimeRange": {
-                "from": 0,
-                "to": 0
-              },
-              "datasourceUid": "__expr__",
-              "model": {
-                "refId": "B",
-                "type": "threshold",
-                "expression": "A",
-                "datasource": {
-                  "type": "__expr__",
-                  "uid": "__expr__"
-                },
-                "conditions": [
-                  {
-                    "evaluator": {
-                      "type": "gt",
-                      "params": [
-                        0
-                      ]
-                    },
-                    "operator": {
-                      "type": "and"
-                    },
-                    "query": {
-                      "params": [
-                        "B"
-                      ]
-                    },
-                    "reducer": {
-                      "type": "last"
-                    },
-                    "type": "query"
-                  }
-                ],
-                "intervalMs": 1000,
-                "maxDataPoints": 43200
-              }
-            }
-          ],
-          "noDataState": "Alerting",
-          "execErrState": "Alerting",
-          "for": "1m",
-          "annotations": {
-            "summary": "Dev 호스트 지표가 3분 이상 수집되지 않습니다.",
-            "description": "DEV 서버 자원과 Alloy 상태·전송 로그를 확인하세요. 서버 지표가 없다는 뜻이며 API 중단을 확정하지 않습니다.",
-            "__panelId__": "7",
-            "__dashboardUid__": "knot-operations",
-            "display_name": "서버 지표 수집 끊김"
-          },
-          "labels": {
-            "project": "knot",
-            "severity": "critical",
-            "env": "dev",
-            "service": "backend"
-          },
-          "isPaused": false
+          "isPaused": false,
+          "dashboardUid": "knot-prod-overview",
+          "panelId": 2
         },
         {
           "uid": "knot-prod-agent",
@@ -387,7 +219,7 @@
             "summary": "Prod 호스트 지표가 3분 이상 수집되지 않습니다.",
             "description": "PROD 서버 자원과 Alloy 상태·전송 로그를 확인하세요. 서버 지표가 없다는 뜻이며 API 중단을 확정하지 않습니다.",
             "__panelId__": "7",
-            "__dashboardUid__": "knot-operations",
+            "__dashboardUid__": "knot-prod-overview",
             "display_name": "서버 지표 수집 끊김"
           },
           "labels": {
@@ -396,7 +228,892 @@
             "env": "prod",
             "service": "backend"
           },
-          "isPaused": false
+          "isPaused": false,
+          "dashboardUid": "knot-prod-overview",
+          "panelId": 7
+        },
+        {
+          "uid": "knot-prod-5xx",
+          "title": "Knot PROD API 5xx high",
+          "condition": "B",
+          "data": [
+            {
+              "refId": "A",
+              "relativeTimeRange": {
+                "from": 600,
+                "to": 0
+              },
+              "datasourceUid": "knot-loki",
+              "model": {
+                "refId": "A",
+                "expr": "100 * (sum by (env) (rate({project=\"knot\",job=\"nginx\",env=\"prod\"} | json | uri !~ \"/health|/actuator/.*\" | status =~ \"5..\" | __error__=\"\" [5m])) or on(env) (0 * sum by (env) (rate({project=\"knot\",job=\"nginx\",env=\"prod\"} | json | uri !~ \"/health|/actuator/.*\" | __error__=\"\" [5m])))) / (sum by (env) (rate({project=\"knot\",job=\"nginx\",env=\"prod\"} | json | uri !~ \"/health|/actuator/.*\" | __error__=\"\" [5m])) > 0) and on(env) (sum by (env) (count_over_time({project=\"knot\",job=\"nginx\",env=\"prod\"} | json | uri !~ \"/health|/actuator/.*\" | __error__=\"\" [5m])) >= 20)",
+                "instant": true,
+                "range": false,
+                "intervalMs": 1000,
+                "maxDataPoints": 43200,
+                "datasource": {
+                  "type": "loki",
+                  "uid": "knot-loki"
+                },
+                "queryType": "instant"
+              }
+            },
+            {
+              "refId": "B",
+              "relativeTimeRange": {
+                "from": 0,
+                "to": 0
+              },
+              "datasourceUid": "__expr__",
+              "model": {
+                "refId": "B",
+                "type": "threshold",
+                "expression": "A",
+                "datasource": {
+                  "type": "__expr__",
+                  "uid": "__expr__"
+                },
+                "conditions": [
+                  {
+                    "evaluator": {
+                      "type": "gt",
+                      "params": [
+                        5
+                      ]
+                    },
+                    "operator": {
+                      "type": "and"
+                    },
+                    "query": {
+                      "params": [
+                        "B"
+                      ]
+                    },
+                    "reducer": {
+                      "type": "last"
+                    },
+                    "type": "query"
+                  }
+                ],
+                "intervalMs": 1000,
+                "maxDataPoints": 43200
+              }
+            }
+          ],
+          "noDataState": "OK",
+          "execErrState": "Error",
+          "for": "5m",
+          "annotations": {
+            "summary": "API 5xx 비율이 5%를 5분 이상 초과했습니다. health 제외, 최근 5분 최소 20요청 조건.",
+            "description": "PROD API 요청·오류에서 오류 건수와 경로를 확인하고 로그 화면의 Nginx 5xx → 프로토타입 앱 예외 순서로 보세요.",
+            "__dashboardUid__": "knot-prod-api",
+            "__panelId__": "16",
+            "display_name": "API 서버 오류 비율 높음"
+          },
+          "labels": {
+            "project": "knot",
+            "service": "backend",
+            "severity": "critical",
+            "env": "prod"
+          },
+          "isPaused": false,
+          "dashboardUid": "knot-prod-api",
+          "panelId": 16
+        },
+        {
+          "uid": "knot-prod-latency",
+          "title": "Knot PROD API p95 high",
+          "condition": "B",
+          "data": [
+            {
+              "refId": "A",
+              "relativeTimeRange": {
+                "from": 600,
+                "to": 0
+              },
+              "datasourceUid": "knot-loki",
+              "model": {
+                "refId": "A",
+                "expr": "quantile_over_time(0.95, {project=\"knot\",job=\"nginx\",env=\"prod\"} | json | uri !~ \"/health|/actuator/.*\" | unwrap duration | __error__=\"\" [5m]) by (env)",
+                "instant": true,
+                "range": false,
+                "intervalMs": 1000,
+                "maxDataPoints": 43200,
+                "datasource": {
+                  "type": "loki",
+                  "uid": "knot-loki"
+                },
+                "queryType": "instant"
+              }
+            },
+            {
+              "refId": "B",
+              "relativeTimeRange": {
+                "from": 0,
+                "to": 0
+              },
+              "datasourceUid": "__expr__",
+              "model": {
+                "refId": "B",
+                "type": "threshold",
+                "expression": "A",
+                "datasource": {
+                  "type": "__expr__",
+                  "uid": "__expr__"
+                },
+                "conditions": [
+                  {
+                    "evaluator": {
+                      "type": "gt",
+                      "params": [
+                        1
+                      ]
+                    },
+                    "operator": {
+                      "type": "and"
+                    },
+                    "query": {
+                      "params": [
+                        "B"
+                      ]
+                    },
+                    "reducer": {
+                      "type": "last"
+                    },
+                    "type": "query"
+                  }
+                ],
+                "intervalMs": 1000,
+                "maxDataPoints": 43200
+              }
+            }
+          ],
+          "noDataState": "OK",
+          "execErrState": "Error",
+          "for": "5m",
+          "annotations": {
+            "summary": "API 전체 p95가 1초를 5분 이상 초과했습니다. Nginx 기준, health 제외.",
+            "description": "PROD API 요청·오류에서 요청 수와 p95를 함께 보고 느린 URI의 Nginx·프로토타입 앱 로그를 확인하세요. 다른 런타임인 DEV와 단순 성능 비교하지 않습니다.",
+            "__dashboardUid__": "knot-prod-api",
+            "__panelId__": "18",
+            "display_name": "API 느린 응답 증가"
+          },
+          "labels": {
+            "project": "knot",
+            "service": "backend",
+            "severity": "warning",
+            "env": "prod"
+          },
+          "isPaused": false,
+          "dashboardUid": "knot-prod-api",
+          "panelId": 18
+        },
+        {
+          "uid": "knot-prod-spring",
+          "title": "Knot Prod Spring metrics unavailable",
+          "condition": "B",
+          "data": [
+            {
+              "refId": "A",
+              "relativeTimeRange": {
+                "from": 600,
+                "to": 0
+              },
+              "datasourceUid": "knot-prometheus",
+              "model": {
+                "refId": "A",
+                "expr": "max(max_over_time(up{env=\"prod\",job=\"spring\"}[3m])) or vector(0)",
+                "instant": true,
+                "range": false,
+                "intervalMs": 1000,
+                "maxDataPoints": 43200,
+                "datasource": {
+                  "type": "prometheus",
+                  "uid": "knot-prometheus"
+                }
+              }
+            },
+            {
+              "refId": "B",
+              "relativeTimeRange": {
+                "from": 0,
+                "to": 0
+              },
+              "datasourceUid": "__expr__",
+              "model": {
+                "refId": "B",
+                "type": "threshold",
+                "expression": "A",
+                "datasource": {
+                  "type": "__expr__",
+                  "uid": "__expr__"
+                },
+                "conditions": [
+                  {
+                    "evaluator": {
+                      "type": "lt",
+                      "params": [
+                        1
+                      ]
+                    },
+                    "operator": {
+                      "type": "and"
+                    },
+                    "query": {
+                      "params": [
+                        "B"
+                      ]
+                    },
+                    "reducer": {
+                      "type": "last"
+                    },
+                    "type": "query"
+                  }
+                ],
+                "intervalMs": 1000,
+                "maxDataPoints": 43200
+              }
+            }
+          ],
+          "noDataState": "Alerting",
+          "execErrState": "Alerting",
+          "for": "1m",
+          "annotations": {
+            "summary": "Prod Spring 내부 지표 수집 실패",
+            "description": "API 중단을 확정하지 않습니다. PROD 전체 상태의 health → Spring 수집 상태 → Alloy 로그와 actuator 수집 경로 순서로 확인하세요.",
+            "__panelId__": "9",
+            "__dashboardUid__": "knot-prod-spring",
+            "display_name": "Spring 지표 수집 끊김"
+          },
+          "labels": {
+            "project": "knot",
+            "severity": "critical",
+            "env": "prod",
+            "service": "backend"
+          },
+          "isPaused": false,
+          "dashboardUid": "knot-prod-spring",
+          "panelId": 9
+        },
+        {
+          "uid": "knot-prod-hikari-active",
+          "title": "Knot Prod Hikari saturation",
+          "condition": "B",
+          "data": [
+            {
+              "refId": "A",
+              "relativeTimeRange": {
+                "from": 600,
+                "to": 0
+              },
+              "datasourceUid": "knot-prometheus",
+              "model": {
+                "refId": "A",
+                "expr": "100 * hikaricp_connections_active{env=\"prod\",job=\"spring\"} / hikaricp_connections_max{env=\"prod\",job=\"spring\"}",
+                "instant": true,
+                "range": false,
+                "intervalMs": 1000,
+                "maxDataPoints": 43200,
+                "datasource": {
+                  "type": "prometheus",
+                  "uid": "knot-prometheus"
+                }
+              }
+            },
+            {
+              "refId": "B",
+              "relativeTimeRange": {
+                "from": 0,
+                "to": 0
+              },
+              "datasourceUid": "__expr__",
+              "model": {
+                "refId": "B",
+                "type": "threshold",
+                "expression": "A",
+                "datasource": {
+                  "type": "__expr__",
+                  "uid": "__expr__"
+                },
+                "conditions": [
+                  {
+                    "evaluator": {
+                      "type": "gt",
+                      "params": [
+                        90
+                      ]
+                    },
+                    "operator": {
+                      "type": "and"
+                    },
+                    "query": {
+                      "params": [
+                        "B"
+                      ]
+                    },
+                    "reducer": {
+                      "type": "last"
+                    },
+                    "type": "query"
+                  }
+                ],
+                "intervalMs": 1000,
+                "maxDataPoints": 43200
+              }
+            }
+          ],
+          "noDataState": "OK",
+          "execErrState": "Error",
+          "for": "5m",
+          "annotations": {
+            "summary": "Prod Hikari active/max가 90%를 5분 이상 초과했습니다.",
+            "description": "PROD Tomcat·DB 연결 풀의 active/max·pending과 앱 로그를 확인하세요. 풀 사용률은 RDS 전체 연결 수와 다릅니다.",
+            "__dashboardUid__": "knot-prod-pools",
+            "__panelId__": "14",
+            "display_name": "DB 연결 풀 사용률 높음"
+          },
+          "labels": {
+            "project": "knot",
+            "service": "backend",
+            "severity": "warning",
+            "env": "prod"
+          },
+          "isPaused": false,
+          "dashboardUid": "knot-prod-pools",
+          "panelId": 14
+        },
+        {
+          "uid": "knot-prod-hikari-pending",
+          "title": "Knot Prod Hikari waiting",
+          "condition": "B",
+          "data": [
+            {
+              "refId": "A",
+              "relativeTimeRange": {
+                "from": 600,
+                "to": 0
+              },
+              "datasourceUid": "knot-prometheus",
+              "model": {
+                "refId": "A",
+                "expr": "hikaricp_connections_pending{env=\"prod\",job=\"spring\"}",
+                "instant": true,
+                "range": false,
+                "intervalMs": 1000,
+                "maxDataPoints": 43200,
+                "datasource": {
+                  "type": "prometheus",
+                  "uid": "knot-prometheus"
+                }
+              }
+            },
+            {
+              "refId": "B",
+              "relativeTimeRange": {
+                "from": 0,
+                "to": 0
+              },
+              "datasourceUid": "__expr__",
+              "model": {
+                "refId": "B",
+                "type": "threshold",
+                "expression": "A",
+                "datasource": {
+                  "type": "__expr__",
+                  "uid": "__expr__"
+                },
+                "conditions": [
+                  {
+                    "evaluator": {
+                      "type": "gt",
+                      "params": [
+                        0
+                      ]
+                    },
+                    "operator": {
+                      "type": "and"
+                    },
+                    "query": {
+                      "params": [
+                        "B"
+                      ]
+                    },
+                    "reducer": {
+                      "type": "last"
+                    },
+                    "type": "query"
+                  }
+                ],
+                "intervalMs": 1000,
+                "maxDataPoints": 43200
+              }
+            }
+          ],
+          "noDataState": "OK",
+          "execErrState": "Error",
+          "for": "2m",
+          "annotations": {
+            "summary": "Prod Hikari pending이 2분 이상 0보다 큽니다.",
+            "description": "PROD Tomcat·DB 연결 풀에서 active/max와 pending 추세를 보고 앱 예외·느린 쿼리·RDS를 함께 확인하세요.",
+            "__dashboardUid__": "knot-prod-pools",
+            "__panelId__": "6",
+            "display_name": "DB 연결 대기 발생"
+          },
+          "labels": {
+            "project": "knot",
+            "service": "backend",
+            "severity": "warning",
+            "env": "prod"
+          },
+          "isPaused": false,
+          "dashboardUid": "knot-prod-pools",
+          "panelId": 6
+        },
+        {
+          "uid": "knot-prod-5xx-low-traffic",
+          "title": "Knot PROD API 5xx low traffic",
+          "condition": "B",
+          "data": [
+            {
+              "refId": "A",
+              "relativeTimeRange": {
+                "from": 600,
+                "to": 0
+              },
+              "datasourceUid": "knot-loki",
+              "model": {
+                "refId": "A",
+                "expr": "(sum by (env) (count_over_time({project=\"knot\",job=\"nginx\",env=\"prod\"} | json | uri =~ \"^/api/v1(/.*)?$\" | status >= 500 | status < 600 | __error__=\"\" [5m])) >= 2) and on(env) (sum by (env) (count_over_time({project=\"knot\",job=\"nginx\",env=\"prod\"} | json | uri =~ \"^/api/v1(/.*)?$\" | __error__=\"\" [5m])) < 20)",
+                "instant": true,
+                "range": false,
+                "intervalMs": 1000,
+                "maxDataPoints": 43200,
+                "datasource": {
+                  "type": "loki",
+                  "uid": "knot-loki"
+                },
+                "queryType": "instant"
+              }
+            },
+            {
+              "refId": "B",
+              "relativeTimeRange": {
+                "from": 0,
+                "to": 0
+              },
+              "datasourceUid": "__expr__",
+              "model": {
+                "refId": "B",
+                "type": "threshold",
+                "expression": "A",
+                "datasource": {
+                  "type": "__expr__",
+                  "uid": "__expr__"
+                },
+                "conditions": [
+                  {
+                    "evaluator": {
+                      "type": "gt",
+                      "params": [
+                        0
+                      ]
+                    },
+                    "operator": {
+                      "type": "and"
+                    },
+                    "query": {
+                      "params": [
+                        "B"
+                      ]
+                    },
+                    "reducer": {
+                      "type": "last"
+                    },
+                    "type": "query"
+                  }
+                ],
+                "intervalMs": 1000,
+                "maxDataPoints": 43200
+              }
+            }
+          ],
+          "noDataState": "OK",
+          "execErrState": "Error",
+          "for": "1m",
+          "annotations": {
+            "summary": "최근 5분 API 요청이 20건 미만이어도 5xx가 2건 이상이면 경고합니다.",
+            "description": "기존 5xx 비율 경보의 최소 요청 수 조건을 보완합니다. API 오류 표에서 URI와 상태를 확인하세요.",
+            "__dashboardUid__": "knot-prod-api",
+            "__panelId__": "16",
+            "display_name": "Knot PROD API 5xx low traffic"
+          },
+          "labels": {
+            "project": "knot",
+            "service": "backend",
+            "severity": "warning",
+            "env": "prod"
+          },
+          "isPaused": false,
+          "dashboardUid": "knot-prod-api",
+          "panelId": 16
+        },
+        {
+          "uid": "knot-prod-app-request-logs-missing",
+          "title": "Knot PROD app request logs missing",
+          "condition": "B",
+          "data": [
+            {
+              "refId": "A",
+              "relativeTimeRange": {
+                "from": 900,
+                "to": 0
+              },
+              "datasourceUid": "knot-loki",
+              "model": {
+                "refId": "A",
+                "queryType": "instant",
+                "expr": "sum by (env) (count_over_time({project=\"knot\",job=\"nginx\",env=\"prod\"} | json | uri =~ \"^/api/v1(/.*)?$\" | __error__=\"\" [15m])) unless on(env) sum by (env) (count_over_time({project=\"knot\",job=\"spring\",env=\"prod\"} |= \"HTTP dispatch finished\" [15m]))",
+                "instant": true,
+                "range": false,
+                "intervalMs": 1000,
+                "maxDataPoints": 43200,
+                "datasource": {
+                  "type": "loki",
+                  "uid": "knot-loki"
+                }
+              }
+            },
+            {
+              "refId": "B",
+              "relativeTimeRange": {
+                "from": 0,
+                "to": 0
+              },
+              "datasourceUid": "__expr__",
+              "model": {
+                "refId": "B",
+                "type": "threshold",
+                "expression": "A",
+                "datasource": {
+                  "type": "__expr__",
+                  "uid": "__expr__"
+                },
+                "conditions": [
+                  {
+                    "evaluator": {
+                      "type": "gt",
+                      "params": [
+                        20
+                      ]
+                    },
+                    "operator": {
+                      "type": "and"
+                    },
+                    "query": {
+                      "params": [
+                        "B"
+                      ]
+                    },
+                    "reducer": {
+                      "type": "last"
+                    },
+                    "type": "query"
+                  }
+                ],
+                "intervalMs": 1000,
+                "maxDataPoints": 43200
+              }
+            }
+          ],
+          "noDataState": "OK",
+          "execErrState": "Error",
+          "for": "2m",
+          "annotations": {
+            "summary": "API 트래픽이 20건을 넘는데 Spring 요청 완료 로그가 없습니다.",
+            "description": "최근 15분 /api/v1 요청이 20건을 넘고 HTTP dispatch finished 앱 로그가 전혀 없을 때 경고합니다. Nginx·Alloy·앱 journal 경로를 확인하세요. 일부 요청 로그 누락률을 뜻하지는 않습니다.",
+            "__dashboardUid__": "knot-prod-logs",
+            "__panelId__": "90",
+            "display_name": "Knot PROD app request logs missing"
+          },
+          "labels": {
+            "project": "knot",
+            "service": "backend",
+            "severity": "warning",
+            "env": "prod"
+          },
+          "isPaused": false,
+          "dashboardUid": "knot-prod-logs",
+          "panelId": 90
+        },
+        {
+          "uid": "knot-prod-request-id-coverage",
+          "title": "Knot PROD request ID coverage low",
+          "condition": "B",
+          "data": [
+            {
+              "refId": "A",
+              "relativeTimeRange": {
+                "from": 900,
+                "to": 0
+              },
+              "datasourceUid": "knot-loki",
+              "model": {
+                "refId": "A",
+                "expr": "(100 * ((sum by (env) (count_over_time({project=\"knot\",job=\"nginx\",env=\"prod\"} | json | uri =~ \"^/api/v1(/.*)?$\" | __error__=\"\" [15m])) - sum by (env) (count_over_time({project=\"knot\",job=\"nginx\",env=\"prod\"} | json | uri =~ \"^/api/v1(/.*)?$\" | request_id != \"\" | __error__=\"\" [15m]))) or on(env) sum by (env) (count_over_time({project=\"knot\",job=\"nginx\",env=\"prod\"} | json | uri =~ \"^/api/v1(/.*)?$\" | __error__=\"\" [15m]))) / sum by (env) (count_over_time({project=\"knot\",job=\"nginx\",env=\"prod\"} | json | uri =~ \"^/api/v1(/.*)?$\" | __error__=\"\" [15m]))) and on(env) (sum by (env) (count_over_time({project=\"knot\",job=\"nginx\",env=\"prod\"} | json | uri =~ \"^/api/v1(/.*)?$\" | __error__=\"\" [15m])) >= 20)",
+                "instant": true,
+                "range": false,
+                "intervalMs": 1000,
+                "maxDataPoints": 43200,
+                "datasource": {
+                  "type": "loki",
+                  "uid": "knot-loki"
+                },
+                "queryType": "instant"
+              }
+            },
+            {
+              "refId": "B",
+              "relativeTimeRange": {
+                "from": 0,
+                "to": 0
+              },
+              "datasourceUid": "__expr__",
+              "model": {
+                "refId": "B",
+                "type": "threshold",
+                "expression": "A",
+                "datasource": {
+                  "type": "__expr__",
+                  "uid": "__expr__"
+                },
+                "conditions": [
+                  {
+                    "evaluator": {
+                      "type": "gt",
+                      "params": [
+                        5
+                      ]
+                    },
+                    "operator": {
+                      "type": "and"
+                    },
+                    "query": {
+                      "params": [
+                        "B"
+                      ]
+                    },
+                    "reducer": {
+                      "type": "last"
+                    },
+                    "type": "query"
+                  }
+                ],
+                "intervalMs": 1000,
+                "maxDataPoints": 43200
+              }
+            }
+          ],
+          "noDataState": "OK",
+          "execErrState": "Error",
+          "for": "2m",
+          "annotations": {
+            "summary": "업무 API 요청의 5%를 넘는 Nginx 로그에서 request_id가 빠졌습니다.",
+            "description": "최근 15분 /api/v1 요청이 20건 이상일 때 request_id 누락률이 5%를 넘으면 경고합니다. Nginx access log_format과 X-Request-ID 전달을 확인하세요.",
+            "__dashboardUid__": "knot-prod-logs",
+            "__panelId__": "90",
+            "display_name": "Knot PROD request ID coverage low"
+          },
+          "labels": {
+            "project": "knot",
+            "service": "backend",
+            "severity": "warning",
+            "env": "prod"
+          },
+          "isPaused": false,
+          "dashboardUid": "knot-prod-logs",
+          "panelId": 90
+        }
+      ]
+    },
+    {
+      "orgId": 1,
+      "name": "Knot runtime",
+      "folder": "Knot Alerts",
+      "interval": "30s",
+      "rules": [
+        {
+          "uid": "knot-dev-health",
+          "title": "Knot Dev API unavailable",
+          "condition": "B",
+          "data": [
+            {
+              "refId": "A",
+              "relativeTimeRange": {
+                "from": 600,
+                "to": 0
+              },
+              "datasourceUid": "knot-prometheus",
+              "model": {
+                "refId": "A",
+                "expr": "probe_success{job=\"public-health\",env=\"dev\"}",
+                "instant": true,
+                "range": false,
+                "intervalMs": 1000,
+                "maxDataPoints": 43200,
+                "datasource": {
+                  "type": "prometheus",
+                  "uid": "knot-prometheus"
+                }
+              }
+            },
+            {
+              "refId": "B",
+              "relativeTimeRange": {
+                "from": 0,
+                "to": 0
+              },
+              "datasourceUid": "__expr__",
+              "model": {
+                "refId": "B",
+                "type": "threshold",
+                "expression": "A",
+                "datasource": {
+                  "type": "__expr__",
+                  "uid": "__expr__"
+                },
+                "conditions": [
+                  {
+                    "evaluator": {
+                      "type": "lt",
+                      "params": [
+                        1
+                      ]
+                    },
+                    "operator": {
+                      "type": "and"
+                    },
+                    "query": {
+                      "params": [
+                        "B"
+                      ]
+                    },
+                    "reducer": {
+                      "type": "last"
+                    },
+                    "type": "query"
+                  }
+                ],
+                "intervalMs": 1000,
+                "maxDataPoints": 43200
+              }
+            }
+          ],
+          "noDataState": "Alerting",
+          "execErrState": "Alerting",
+          "for": "5m",
+          "annotations": {
+            "summary": "Dev API 헬스체크가 5분 이상 실패했습니다. 배포 중단인지 확인하세요.",
+            "description": "DEV 전체 상태에서 health 이력을 확인한 뒤 앱·Nginx 로그를 보세요. 수집 경로 오류로도 발생할 수 있습니다.",
+            "__dashboardUid__": "knot-dev-overview",
+            "__panelId__": "2",
+            "display_name": "외부 API 응답 실패"
+          },
+          "labels": {
+            "project": "knot",
+            "severity": "warning",
+            "env": "dev",
+            "service": "backend"
+          },
+          "isPaused": false,
+          "dashboardUid": "knot-dev-overview",
+          "panelId": 2
+        },
+        {
+          "uid": "knot-dev-agent",
+          "title": "Knot Dev metrics missing",
+          "condition": "B",
+          "data": [
+            {
+              "refId": "A",
+              "relativeTimeRange": {
+                "from": 600,
+                "to": 0
+              },
+              "datasourceUid": "knot-prometheus",
+              "model": {
+                "refId": "A",
+                "expr": "absent_over_time(node_cpu_seconds_total{env=\"dev\"}[3m]) or vector(0)",
+                "instant": true,
+                "range": false,
+                "intervalMs": 1000,
+                "maxDataPoints": 43200,
+                "datasource": {
+                  "type": "prometheus",
+                  "uid": "knot-prometheus"
+                }
+              }
+            },
+            {
+              "refId": "B",
+              "relativeTimeRange": {
+                "from": 0,
+                "to": 0
+              },
+              "datasourceUid": "__expr__",
+              "model": {
+                "refId": "B",
+                "type": "threshold",
+                "expression": "A",
+                "datasource": {
+                  "type": "__expr__",
+                  "uid": "__expr__"
+                },
+                "conditions": [
+                  {
+                    "evaluator": {
+                      "type": "gt",
+                      "params": [
+                        0
+                      ]
+                    },
+                    "operator": {
+                      "type": "and"
+                    },
+                    "query": {
+                      "params": [
+                        "B"
+                      ]
+                    },
+                    "reducer": {
+                      "type": "last"
+                    },
+                    "type": "query"
+                  }
+                ],
+                "intervalMs": 1000,
+                "maxDataPoints": 43200
+              }
+            }
+          ],
+          "noDataState": "Alerting",
+          "execErrState": "Alerting",
+          "for": "1m",
+          "annotations": {
+            "summary": "Dev 호스트 지표가 3분 이상 수집되지 않습니다.",
+            "description": "DEV 서버 자원과 Alloy 상태·전송 로그를 확인하세요. 서버 지표가 없다는 뜻이며 API 중단을 확정하지 않습니다.",
+            "__panelId__": "7",
+            "__dashboardUid__": "knot-dev-overview",
+            "display_name": "서버 지표 수집 끊김"
+          },
+          "labels": {
+            "project": "knot",
+            "severity": "critical",
+            "env": "dev",
+            "service": "backend"
+          },
+          "isPaused": false,
+          "dashboardUid": "knot-dev-overview",
+          "panelId": 7
         },
         {
           "uid": "knot-host-cpu",
@@ -480,7 +1197,9 @@
             "severity": "warning",
             "service": "backend"
           },
-          "isPaused": false
+          "isPaused": false,
+          "dashboardUid": "knot-operations",
+          "panelId": 4
         },
         {
           "uid": "knot-host-memory",
@@ -564,7 +1283,9 @@
             "severity": "warning",
             "service": "backend"
           },
-          "isPaused": false
+          "isPaused": false,
+          "dashboardUid": "knot-operations",
+          "panelId": 5
         },
         {
           "uid": "knot-dev-spring",
@@ -640,7 +1361,7 @@
             "summary": "Dev Spring 내부 지표 수집 실패",
             "description": "API 중단을 확정하지 않습니다. DEV 전체 상태의 health → Spring 수집 상태 → Alloy 로그와 actuator 수집 경로 순서로 확인하세요.",
             "__panelId__": "9",
-            "__dashboardUid__": "knot-spring",
+            "__dashboardUid__": "knot-dev-spring",
             "display_name": "Spring 지표 수집 끊김"
           },
           "labels": {
@@ -649,7 +1370,9 @@
             "env": "dev",
             "service": "backend"
           },
-          "isPaused": false
+          "isPaused": false,
+          "dashboardUid": "knot-dev-spring",
+          "panelId": 9
         },
         {
           "uid": "knot-dev-5xx",
@@ -725,7 +1448,7 @@
           "annotations": {
             "summary": "API 5xx 비율이 5%를 5분 이상 초과했습니다. health 제외, 최근 5분 최소 20요청 조건.",
             "description": "DEV API 요청·오류에서 오류 건수와 경로를 확인하고 로그 화면의 Nginx 5xx → 앱 예외 순서로 보세요.",
-            "__dashboardUid__": "knot-operations",
+            "__dashboardUid__": "knot-dev-api",
             "__panelId__": "16",
             "display_name": "API 서버 오류 비율 높음"
           },
@@ -735,7 +1458,9 @@
             "severity": "warning",
             "env": "dev"
           },
-          "isPaused": false
+          "isPaused": false,
+          "dashboardUid": "knot-dev-api",
+          "panelId": 16
         },
         {
           "uid": "knot-dev-latency",
@@ -811,7 +1536,7 @@
           "annotations": {
             "summary": "API 전체 p95가 1초를 5분 이상 초과했습니다. Nginx 기준, health 제외.",
             "description": "DEV API 요청·오류에서 요청 수와 p95를 함께 보고 느린 URI의 로그를 확인하세요. 필요하면 Spring·연결 풀·RDS로 좁히세요.",
-            "__dashboardUid__": "knot-operations",
+            "__dashboardUid__": "knot-dev-api",
             "__panelId__": "18",
             "display_name": "API 느린 응답 증가"
           },
@@ -821,179 +1546,9 @@
             "severity": "warning",
             "env": "dev"
           },
-          "isPaused": false
-        },
-        {
-          "uid": "knot-prod-5xx",
-          "title": "Knot PROD API 5xx high",
-          "condition": "B",
-          "data": [
-            {
-              "refId": "A",
-              "relativeTimeRange": {
-                "from": 600,
-                "to": 0
-              },
-              "datasourceUid": "knot-loki",
-              "model": {
-                "refId": "A",
-                "expr": "100 * (sum by (env) (rate({project=\"knot\",job=\"nginx\",env=\"prod\"} | json | uri !~ \"/health|/actuator/.*\" | status =~ \"5..\" | __error__=\"\" [5m])) or on(env) (0 * sum by (env) (rate({project=\"knot\",job=\"nginx\",env=\"prod\"} | json | uri !~ \"/health|/actuator/.*\" | __error__=\"\" [5m])))) / (sum by (env) (rate({project=\"knot\",job=\"nginx\",env=\"prod\"} | json | uri !~ \"/health|/actuator/.*\" | __error__=\"\" [5m])) > 0) and on(env) (sum by (env) (count_over_time({project=\"knot\",job=\"nginx\",env=\"prod\"} | json | uri !~ \"/health|/actuator/.*\" | __error__=\"\" [5m])) >= 20)",
-                "instant": true,
-                "range": false,
-                "intervalMs": 1000,
-                "maxDataPoints": 43200,
-                "datasource": {
-                  "type": "loki",
-                  "uid": "knot-loki"
-                },
-                "queryType": "instant"
-              }
-            },
-            {
-              "refId": "B",
-              "relativeTimeRange": {
-                "from": 0,
-                "to": 0
-              },
-              "datasourceUid": "__expr__",
-              "model": {
-                "refId": "B",
-                "type": "threshold",
-                "expression": "A",
-                "datasource": {
-                  "type": "__expr__",
-                  "uid": "__expr__"
-                },
-                "conditions": [
-                  {
-                    "evaluator": {
-                      "type": "gt",
-                      "params": [
-                        5
-                      ]
-                    },
-                    "operator": {
-                      "type": "and"
-                    },
-                    "query": {
-                      "params": [
-                        "B"
-                      ]
-                    },
-                    "reducer": {
-                      "type": "last"
-                    },
-                    "type": "query"
-                  }
-                ],
-                "intervalMs": 1000,
-                "maxDataPoints": 43200
-              }
-            }
-          ],
-          "noDataState": "OK",
-          "execErrState": "Error",
-          "for": "5m",
-          "annotations": {
-            "summary": "API 5xx 비율이 5%를 5분 이상 초과했습니다. health 제외, 최근 5분 최소 20요청 조건.",
-            "description": "PROD API 요청·오류에서 오류 건수와 경로를 확인하고 로그 화면의 Nginx 5xx → 프로토타입 앱 예외 순서로 보세요.",
-            "__dashboardUid__": "knot-operations",
-            "__panelId__": "16",
-            "display_name": "API 서버 오류 비율 높음"
-          },
-          "labels": {
-            "project": "knot",
-            "service": "backend",
-            "severity": "critical",
-            "env": "prod"
-          },
-          "isPaused": false
-        },
-        {
-          "uid": "knot-prod-latency",
-          "title": "Knot PROD API p95 high",
-          "condition": "B",
-          "data": [
-            {
-              "refId": "A",
-              "relativeTimeRange": {
-                "from": 600,
-                "to": 0
-              },
-              "datasourceUid": "knot-loki",
-              "model": {
-                "refId": "A",
-                "expr": "quantile_over_time(0.95, {project=\"knot\",job=\"nginx\",env=\"prod\"} | json | uri !~ \"/health|/actuator/.*\" | unwrap duration | __error__=\"\" [5m]) by (env)",
-                "instant": true,
-                "range": false,
-                "intervalMs": 1000,
-                "maxDataPoints": 43200,
-                "datasource": {
-                  "type": "loki",
-                  "uid": "knot-loki"
-                },
-                "queryType": "instant"
-              }
-            },
-            {
-              "refId": "B",
-              "relativeTimeRange": {
-                "from": 0,
-                "to": 0
-              },
-              "datasourceUid": "__expr__",
-              "model": {
-                "refId": "B",
-                "type": "threshold",
-                "expression": "A",
-                "datasource": {
-                  "type": "__expr__",
-                  "uid": "__expr__"
-                },
-                "conditions": [
-                  {
-                    "evaluator": {
-                      "type": "gt",
-                      "params": [
-                        1
-                      ]
-                    },
-                    "operator": {
-                      "type": "and"
-                    },
-                    "query": {
-                      "params": [
-                        "B"
-                      ]
-                    },
-                    "reducer": {
-                      "type": "last"
-                    },
-                    "type": "query"
-                  }
-                ],
-                "intervalMs": 1000,
-                "maxDataPoints": 43200
-              }
-            }
-          ],
-          "noDataState": "OK",
-          "execErrState": "Error",
-          "for": "5m",
-          "annotations": {
-            "summary": "API 전체 p95가 1초를 5분 이상 초과했습니다. Nginx 기준, health 제외.",
-            "description": "PROD API 요청·오류에서 요청 수와 p95를 함께 보고 느린 URI의 Nginx·프로토타입 앱 로그를 확인하세요. 다른 런타임인 DEV와 단순 성능 비교하지 않습니다.",
-            "__dashboardUid__": "knot-operations",
-            "__panelId__": "18",
-            "display_name": "API 느린 응답 증가"
-          },
-          "labels": {
-            "project": "knot",
-            "service": "backend",
-            "severity": "warning",
-            "env": "prod"
-          },
-          "isPaused": false
+          "isPaused": false,
+          "dashboardUid": "knot-dev-api",
+          "panelId": 18
         },
         {
           "uid": "knot-disk-warning",
@@ -1077,7 +1632,9 @@
             "service": "backend",
             "severity": "warning"
           },
-          "isPaused": false
+          "isPaused": false,
+          "dashboardUid": "knot-infra",
+          "panelId": 4
         },
         {
           "uid": "knot-disk-critical",
@@ -1161,7 +1718,9 @@
             "service": "backend",
             "severity": "critical"
           },
-          "isPaused": false
+          "isPaused": false,
+          "dashboardUid": "knot-infra",
+          "panelId": 4
         },
         {
           "uid": "knot-dev-hikari-active",
@@ -1236,7 +1795,7 @@
           "annotations": {
             "summary": "Dev Hikari active/max가 90%를 5분 이상 초과했습니다.",
             "description": "DEV Tomcat·DB 연결 풀의 active/max·pending과 앱 로그를 확인하세요. 풀 사용률은 RDS 전체 연결 수와 다릅니다.",
-            "__dashboardUid__": "knot-pools",
+            "__dashboardUid__": "knot-dev-pools",
             "__panelId__": "14",
             "display_name": "DB 연결 풀 사용률 높음"
           },
@@ -1246,7 +1805,9 @@
             "severity": "warning",
             "env": "dev"
           },
-          "isPaused": false
+          "isPaused": false,
+          "dashboardUid": "knot-dev-pools",
+          "panelId": 14
         },
         {
           "uid": "knot-dev-hikari-pending",
@@ -1321,7 +1882,7 @@
           "annotations": {
             "summary": "Dev Hikari pending이 2분 이상 0보다 큽니다.",
             "description": "DEV Tomcat·DB 연결 풀에서 active/max와 pending 추세를 보고 앱 예외·느린 쿼리·RDS를 함께 확인하세요.",
-            "__dashboardUid__": "knot-pools",
+            "__dashboardUid__": "knot-dev-pools",
             "__panelId__": "6",
             "display_name": "DB 연결 대기 발생"
           },
@@ -1331,7 +1892,273 @@
             "severity": "warning",
             "env": "dev"
           },
-          "isPaused": false
+          "isPaused": false,
+          "dashboardUid": "knot-dev-pools",
+          "panelId": 6
+        },
+        {
+          "uid": "knot-dev-5xx-low-traffic",
+          "title": "Knot DEV API 5xx low traffic",
+          "condition": "B",
+          "data": [
+            {
+              "refId": "A",
+              "relativeTimeRange": {
+                "from": 600,
+                "to": 0
+              },
+              "datasourceUid": "knot-loki",
+              "model": {
+                "refId": "A",
+                "expr": "(sum by (env) (count_over_time({project=\"knot\",job=\"nginx\",env=\"dev\"} | json | uri =~ \"^/api/v1(/.*)?$\" | status >= 500 | status < 600 | __error__=\"\" [5m])) >= 2) and on(env) (sum by (env) (count_over_time({project=\"knot\",job=\"nginx\",env=\"dev\"} | json | uri =~ \"^/api/v1(/.*)?$\" | __error__=\"\" [5m])) < 20)",
+                "instant": true,
+                "range": false,
+                "intervalMs": 1000,
+                "maxDataPoints": 43200,
+                "datasource": {
+                  "type": "loki",
+                  "uid": "knot-loki"
+                },
+                "queryType": "instant"
+              }
+            },
+            {
+              "refId": "B",
+              "relativeTimeRange": {
+                "from": 0,
+                "to": 0
+              },
+              "datasourceUid": "__expr__",
+              "model": {
+                "refId": "B",
+                "type": "threshold",
+                "expression": "A",
+                "datasource": {
+                  "type": "__expr__",
+                  "uid": "__expr__"
+                },
+                "conditions": [
+                  {
+                    "evaluator": {
+                      "type": "gt",
+                      "params": [
+                        0
+                      ]
+                    },
+                    "operator": {
+                      "type": "and"
+                    },
+                    "query": {
+                      "params": [
+                        "B"
+                      ]
+                    },
+                    "reducer": {
+                      "type": "last"
+                    },
+                    "type": "query"
+                  }
+                ],
+                "intervalMs": 1000,
+                "maxDataPoints": 43200
+              }
+            }
+          ],
+          "noDataState": "OK",
+          "execErrState": "Error",
+          "for": "1m",
+          "annotations": {
+            "summary": "최근 5분 API 요청이 20건 미만이어도 5xx가 2건 이상이면 경고합니다.",
+            "description": "기존 5xx 비율 경보의 최소 요청 수 조건을 보완합니다. API 오류 표에서 URI와 상태를 확인하세요.",
+            "__dashboardUid__": "knot-dev-api",
+            "__panelId__": "16",
+            "display_name": "Knot DEV API 5xx low traffic"
+          },
+          "labels": {
+            "project": "knot",
+            "service": "backend",
+            "severity": "warning",
+            "env": "dev"
+          },
+          "isPaused": false,
+          "dashboardUid": "knot-dev-api",
+          "panelId": 16
+        },
+        {
+          "uid": "knot-dev-app-request-logs-missing",
+          "title": "Knot DEV app request logs missing",
+          "condition": "B",
+          "data": [
+            {
+              "refId": "A",
+              "relativeTimeRange": {
+                "from": 900,
+                "to": 0
+              },
+              "datasourceUid": "knot-loki",
+              "model": {
+                "refId": "A",
+                "queryType": "instant",
+                "expr": "sum by (env) (count_over_time({project=\"knot\",job=\"nginx\",env=\"dev\"} | json | uri =~ \"^/api/v1(/.*)?$\" | __error__=\"\" [15m])) unless on(env) sum by (env) (count_over_time({project=\"knot\",job=\"spring\",env=\"dev\"} |= \"HTTP dispatch finished\" [15m]))",
+                "instant": true,
+                "range": false,
+                "intervalMs": 1000,
+                "maxDataPoints": 43200,
+                "datasource": {
+                  "type": "loki",
+                  "uid": "knot-loki"
+                }
+              }
+            },
+            {
+              "refId": "B",
+              "relativeTimeRange": {
+                "from": 0,
+                "to": 0
+              },
+              "datasourceUid": "__expr__",
+              "model": {
+                "refId": "B",
+                "type": "threshold",
+                "expression": "A",
+                "datasource": {
+                  "type": "__expr__",
+                  "uid": "__expr__"
+                },
+                "conditions": [
+                  {
+                    "evaluator": {
+                      "type": "gt",
+                      "params": [
+                        20
+                      ]
+                    },
+                    "operator": {
+                      "type": "and"
+                    },
+                    "query": {
+                      "params": [
+                        "B"
+                      ]
+                    },
+                    "reducer": {
+                      "type": "last"
+                    },
+                    "type": "query"
+                  }
+                ],
+                "intervalMs": 1000,
+                "maxDataPoints": 43200
+              }
+            }
+          ],
+          "noDataState": "OK",
+          "execErrState": "Error",
+          "for": "2m",
+          "annotations": {
+            "summary": "API 트래픽이 20건을 넘는데 Spring 요청 완료 로그가 없습니다.",
+            "description": "최근 15분 /api/v1 요청이 20건을 넘고 HTTP dispatch finished 앱 로그가 전혀 없을 때 경고합니다. Nginx·Alloy·앱 journal 경로를 확인하세요. 일부 요청 로그 누락률을 뜻하지는 않습니다.",
+            "__dashboardUid__": "knot-dev-logs",
+            "__panelId__": "90",
+            "display_name": "Knot DEV app request logs missing"
+          },
+          "labels": {
+            "project": "knot",
+            "service": "backend",
+            "severity": "warning",
+            "env": "dev"
+          },
+          "isPaused": false,
+          "dashboardUid": "knot-dev-logs",
+          "panelId": 90
+        },
+        {
+          "uid": "knot-dev-request-id-coverage",
+          "title": "Knot DEV request ID coverage low",
+          "condition": "B",
+          "data": [
+            {
+              "refId": "A",
+              "relativeTimeRange": {
+                "from": 900,
+                "to": 0
+              },
+              "datasourceUid": "knot-loki",
+              "model": {
+                "refId": "A",
+                "expr": "(100 * ((sum by (env) (count_over_time({project=\"knot\",job=\"nginx\",env=\"dev\"} | json | uri =~ \"^/api/v1(/.*)?$\" | __error__=\"\" [15m])) - sum by (env) (count_over_time({project=\"knot\",job=\"nginx\",env=\"dev\"} | json | uri =~ \"^/api/v1(/.*)?$\" | request_id != \"\" | __error__=\"\" [15m]))) or on(env) sum by (env) (count_over_time({project=\"knot\",job=\"nginx\",env=\"dev\"} | json | uri =~ \"^/api/v1(/.*)?$\" | __error__=\"\" [15m]))) / sum by (env) (count_over_time({project=\"knot\",job=\"nginx\",env=\"dev\"} | json | uri =~ \"^/api/v1(/.*)?$\" | __error__=\"\" [15m]))) and on(env) (sum by (env) (count_over_time({project=\"knot\",job=\"nginx\",env=\"dev\"} | json | uri =~ \"^/api/v1(/.*)?$\" | __error__=\"\" [15m])) >= 20)",
+                "instant": true,
+                "range": false,
+                "intervalMs": 1000,
+                "maxDataPoints": 43200,
+                "datasource": {
+                  "type": "loki",
+                  "uid": "knot-loki"
+                },
+                "queryType": "instant"
+              }
+            },
+            {
+              "refId": "B",
+              "relativeTimeRange": {
+                "from": 0,
+                "to": 0
+              },
+              "datasourceUid": "__expr__",
+              "model": {
+                "refId": "B",
+                "type": "threshold",
+                "expression": "A",
+                "datasource": {
+                  "type": "__expr__",
+                  "uid": "__expr__"
+                },
+                "conditions": [
+                  {
+                    "evaluator": {
+                      "type": "gt",
+                      "params": [
+                        5
+                      ]
+                    },
+                    "operator": {
+                      "type": "and"
+                    },
+                    "query": {
+                      "params": [
+                        "B"
+                      ]
+                    },
+                    "reducer": {
+                      "type": "last"
+                    },
+                    "type": "query"
+                  }
+                ],
+                "intervalMs": 1000,
+                "maxDataPoints": 43200
+              }
+            }
+          ],
+          "noDataState": "OK",
+          "execErrState": "Error",
+          "for": "2m",
+          "annotations": {
+            "summary": "업무 API 요청의 5%를 넘는 Nginx 로그에서 request_id가 빠졌습니다.",
+            "description": "최근 15분 /api/v1 요청이 20건 이상일 때 request_id 누락률이 5%를 넘으면 경고합니다. Nginx access log_format과 X-Request-ID 전달을 확인하세요.",
+            "__dashboardUid__": "knot-dev-logs",
+            "__panelId__": "90",
+            "display_name": "Knot DEV request ID coverage low"
+          },
+          "labels": {
+            "project": "knot",
+            "service": "backend",
+            "severity": "warning",
+            "env": "dev"
+          },
+          "isPaused": false,
+          "dashboardUid": "knot-dev-logs",
+          "panelId": 90
         }
       ]
     }
