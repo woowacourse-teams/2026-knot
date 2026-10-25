@@ -17,6 +17,8 @@ import wave
 
 # windowResult.ts의 MAXIMUM_WINDOW_FRAMES와 같은 130초 상한
 MAXIMUM_WINDOW_FRAMES = 130 * 16000
+# BE가 녹음 종료 시 다시 묶는 화자 근거 조각의 최대 길이. 2026-10 구간 실험의 재군집 근거와 같다.
+OBSERVATION_MAX_SECONDS = 5
 
 class Pyannote(c.Structure):
     _fields_=[('model',c.c_char_p),('window_shift_ratio',c.c_float)]
@@ -181,6 +183,37 @@ def aggregate(segments, dimension=512):
     return output
 
 
+def observation_spans(segments, max_seconds=OBSERVATION_MAX_SECONDS):
+    """화자 구간을 같은 길이의 max_seconds 이하 조각으로 나눈다. 마지막 조각은 구간 끝에 맞춘다."""
+    spans = []
+    for segment in sorted(segments, key=lambda item: item['start_sec']):
+        start, end = segment['start_sec'], segment['end_sec']
+        length = end - start
+        if length <= 0:
+            continue
+        parts = max(1, math.ceil(length / max_seconds))
+        step = length / parts
+        for index in range(parts):
+            spans.append((start + index * step, end if index == parts - 1 else start + (index + 1) * step,
+                          'speaker_' + str(segment['speaker_local'])))
+    return spans
+
+
+def observations(native, floats, segments, rate=16000):
+    """조각마다 실제 음성으로 계산한 화자 특징값. 샘플이 부족해 계산하지 못한 조각은 뺀다."""
+    output = []
+    for start, end, speaker in observation_spans(segments):
+        first = max(0, round(start * rate))
+        last = min(len(floats), round(end * rate))
+        if last <= first:
+            continue
+        vector = native.embedding(floats[first:last], rate)['vector']
+        if vector is None:
+            continue
+        output.append({'start': start, 'end': end, 'speaker': speaker, 'embedding': vector})
+    return output
+
+
 def execute(manifest):
     profile = dict(manifest['profile'])
     if manifest.get('speakerCount') is not None:
@@ -199,7 +232,8 @@ def execute(manifest):
             pcm.byteswap()
     native = Native(profile)
     try:
-        value = native.process(array.array('f', (x/32768.0 for x in pcm)), 16000, 0)
+        floats = array.array('f', (x/32768.0 for x in pcm))
+        value = native.process(floats, 16000, 0)
         segments = value['segments']
         digest = hashlib.sha256()
         for key in ('segmentationModel', 'embeddingModel'):
@@ -210,7 +244,8 @@ def execute(manifest):
         return {'modelVersion': native.GetVersionStr().decode() + ':' + native.GetGitSha1().decode() + ':' + model_hash,
                 'speakers': aggregate(segments),
                 'segments': [{'start': s['start_sec'], 'end': s['end_sec'],
-                              'speaker': 'speaker_' + str(s['speaker_local'])} for s in segments]}
+                              'speaker': 'speaker_' + str(s['speaker_local'])} for s in segments],
+                'observations': observations(native, floats, segments)}
     finally:
         native.close()
 
