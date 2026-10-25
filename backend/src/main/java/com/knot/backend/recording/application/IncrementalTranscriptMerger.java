@@ -40,6 +40,23 @@ public class IncrementalTranscriptMerger {
             long totalFrames,
             double similarityThreshold
     ) {
+        return merge(
+                windows,
+                totalFrames,
+                similarityThreshold,
+                false
+        );
+    }
+
+    /**
+     * seamAligned이면 인접 구간의 겹친 단어를 정렬해 이어 붙이고, 아니면 단어 중앙 시각이 속한 core가 그 단어를 가진다.
+     */
+    public AiTranscript merge(
+            List<RecordingTranscriptionWindow> windows,
+            long totalFrames,
+            double similarityThreshold,
+            boolean seamAligned
+    ) {
         if (windows == null || windows.isEmpty() || totalFrames <= 0 || totalFrames > MAX_RECORDING_FRAMES
                 || !Double.isFinite(similarityThreshold) || similarityThreshold < -1 || similarityThreshold > 1
                 || windows.stream()
@@ -49,8 +66,44 @@ public class IncrementalTranscriptMerger {
         List<RecordingTranscriptionWindow> ordered = windows.stream()
                 .sorted(Comparator.comparingLong(RecordingTranscriptionWindow::getCoreStartFrame))
                 .toList();
+        List<AiWindowEvidence> evidences = verifiedEvidence(
+                ordered,
+                totalFrames
+        );
+        List<List<OwnedToken>> owned = ownedTokens(
+                ordered,
+                evidences,
+                totalFrames,
+                seamAligned
+        );
         List<AiTranscript.Utterance> utterances = new ArrayList<>();
         List<VoiceCentroid> centroids = new ArrayList<>();
+        for (int index = 0; index < ordered.size(); index++) {
+            Map<String, String> labels = assignSpeakers(
+                    owned.get(index),
+                    evidences.get(index),
+                    centroids,
+                    ordered.get(index)
+                            .getWindowIndex(),
+                    similarityThreshold
+            );
+            appendUtterances(
+                    utterances,
+                    owned.get(index),
+                    labels
+            );
+        }
+        return new AiTranscript(
+                1,
+                rawTranscript(utterances),
+                utterances
+        );
+    }
+
+    private List<AiWindowEvidence> verifiedEvidence(
+            List<RecordingTranscriptionWindow> ordered,
+            long totalFrames
+    ) {
         String pipeline = ordered.getFirst()
                 .getPipelineVersion();
         long recordingId = ordered.getFirst()
@@ -58,6 +111,7 @@ public class IncrementalTranscriptMerger {
         String model = null;
         long expectedStart = 0;
         int expectedIndex = 0;
+        List<AiWindowEvidence> evidences = new ArrayList<>();
         for (RecordingTranscriptionWindow window : ordered) {
             if (window.getRecordingId() != recordingId || !pipeline.equals(window.getPipelineVersion())
                     || window.getWindowIndex() != expectedIndex || window.getCoreStartFrame() != expectedStart
@@ -70,34 +124,87 @@ public class IncrementalTranscriptMerger {
                 throw invalidData();
             }
             model = evidence.modelVersion();
-            List<OwnedToken> owned = ownedTokens(
-                    window,
-                    evidence,
-                    totalFrames
-            );
-            Map<String, String> labels = assignSpeakers(
-                    owned,
-                    evidence,
-                    centroids,
-                    window.getWindowIndex(),
-                    similarityThreshold
-            );
-            appendUtterances(
-                    utterances,
-                    owned,
-                    labels
-            );
+            evidences.add(evidence);
             expectedStart = window.getCoreEndFrame();
             expectedIndex++;
         }
         if (expectedStart != totalFrames) {
             throw invalidData();
         }
-        return new AiTranscript(
-                1,
-                rawTranscript(utterances),
-                utterances
-        );
+        return evidences;
+    }
+
+    private List<List<OwnedToken>> ownedTokens(
+            List<RecordingTranscriptionWindow> ordered,
+            List<AiWindowEvidence> evidences,
+            long totalFrames,
+            boolean seamAligned
+    ) {
+        if (seamAligned) {
+            return alignedTokens(
+                    ordered,
+                    evidences
+            );
+        }
+        List<List<OwnedToken>> owned = new ArrayList<>();
+        for (int index = 0; index < ordered.size(); index++) {
+            owned.add(
+                    ownedTokens(
+                            ordered.get(index),
+                            evidences.get(index),
+                            totalFrames
+                    )
+            );
+        }
+        return owned;
+    }
+
+    private List<List<OwnedToken>> alignedTokens(
+            List<RecordingTranscriptionWindow> ordered,
+            List<AiWindowEvidence> evidences
+    ) {
+        List<TranscriptSeamAligner.Window> windows = new ArrayList<>();
+        for (int index = 0; index < ordered.size(); index++) {
+            RecordingTranscriptionWindow window = ordered.get(index);
+            long offset = evidences.get(index)
+                    .inputStartFrame();
+            windows.add(
+                    new TranscriptSeamAligner.Window(
+                            window.getCoreStartFrame(),
+                            window.getCoreEndFrame(),
+                            window.getInputStartFrame(),
+                            window.getInputEndFrame(),
+                            evidences.get(index)
+                                    .tokens()
+                                    .stream()
+                                    .map(
+                                            token -> new TranscriptSeamAligner.Token(
+                                                    offset + token.startFrame(),
+                                                    offset + token.endFrame(),
+                                                    token.text()
+                                                            .strip(),
+                                                    token.speakerId()
+                                            )
+                                    )
+                                    .toList()
+                    )
+            );
+        }
+        return TranscriptSeamAligner.stitch(windows)
+                .stream()
+                .map(
+                        tokens -> tokens.stream()
+                                .map(
+                                        token -> new OwnedToken(
+                                                token.startFrame(),
+                                                token.endFrame(),
+                                                token.text(),
+                                                token.speakerId()
+                                        )
+                                )
+                                .toList()
+                )
+                .toList();
     }
 
     private AiWindowEvidence readEvidence(RecordingTranscriptionWindow window) {
