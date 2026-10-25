@@ -1,0 +1,96 @@
+name: Release Note
+
+# main에 머지될 때마다 Claude가 사용자에게 바뀐 점을 읽어 새 소식 노트를 Notion 새 소식 DB에 바로 써요(ADR 956).
+# 앱은 프론트 Worker(/relay/n)를 거쳐 그 DB를 읽어요. Claude나 Notion이 실패하면 이 실행을 다시 돌리면 같은 노트 id로 바꿔 넣어요.
+# 필요한 값: secrets.CLAUDE_CODE_OAUTH_TOKEN(claude setup-token), secrets.NOTION_RELEASE_NOTE_WRITE_TOKEN(새 소식 DB와 「릴리즈 노트」 페이지에 연결한 쓰기 연동),
+# vars.NOTION_RELEASE_NOTE_DATABASE_ID(새 소식 DB ID)
+on:
+  push:
+    branches:
+      - main
+
+# Claude가 쓰는 github_token도 이 권한이라, 머지 PR과 그 안의 커밋 · PR을 읽기만 할 수 있어요
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  release-note:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Find merged PR
+        id: pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          pr=$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/pulls" \
+            --jq '[.[] | select(.merged_at != null and .base.ref == "main")][0] // empty | "\(.number) \(.merged_at)"')
+          if [ -z "$pr" ]; then
+            echo "### 새 소식 노트: 머지 PR이 없는 push라 쓰지 않았어요" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          echo "number=${pr% *}" >> "$GITHUB_OUTPUT"
+          echo "merged_at=${pr#* }" >> "$GITHUB_OUTPUT"
+
+      # 문구 기준은 Notion에서, 바로 가보기 화면은 앱 라우트 표(PATH_ROUTE)에서 읽어요
+      - name: Read note guide and app screens
+        id: guide
+        if: steps.pr.outputs.number
+        env:
+          NOTION_TOKEN: ${{ secrets.NOTION_RELEASE_NOTE_WRITE_TOKEN }}
+        run: node scripts/release-note.mjs guide
+
+      # Notion 토큰은 이 step에 넘기지 않아요. Claude는 노트 JSON만 내고, 쓰기는 다음 step의 스크립트가 해요
+      - name: Write note with Claude
+        id: claude
+        if: steps.pr.outputs.number
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          # Actions 기본 토큰을 넘겨 Claude GitHub 앱 없이 실행해요
+          github_token: ${{ github.token }}
+          prompt: |
+            이 저장소(Knot)의 main에 PR #${{ steps.pr.outputs.number }}이 머지됐어요. 이번 머지로 앱을 쓰는 사람에게 바뀐 점을 새 소식 노트로 써 주세요.
+
+            ## 읽는 방법
+            읽기만 하고 파일을 고치거나 댓글을 달지 마세요.
+            - `gh pr view ${{ steps.pr.outputs.number }} --json title,body,commits,files`와 `gh pr diff ${{ steps.pr.outputs.number }}`로 머지 PR을 읽어요.
+            - 릴리즈 PR(develop → main)처럼 여러 PR을 묶은 머지면 커밋 메시지의 `(#번호)` PR도 `gh pr view 번호 --json title,body`로 읽어요.
+
+            ## 쓰는 방법
+            - 사용자가 화면에서 알아챌 변화만 항목으로 써요. 테스트, CI, 문서, 리팩터링, 서버 내부 변경처럼 사용자가 알아챌 수 없는 것은 쓰지 않아요.
+            - 그런 변화가 없으면 items를 빈 배열로 내요.
+            - link는 그 변화를 바로 볼 수 있는 화면이 있을 때만 넣어요. 다음 화면 키 중 하나예요(괄호는 앱 주소): ${{ steps.guide.outputs.links }}
+            - isFromFeedback은 사용자 피드백으로 고쳤다고 PR에 드러날 때만 true예요.
+            - isHighlight는 노트에서 가장 큰 변화 하나에만 true예요.
+            - 제목과 설명의 문구는 아래 기준을 따라요. 기준에 적힌 작성 절차(상수 파일, 릴리즈 PR 확인)는 이 실행과 관계없어요.
+
+            ## 노트 문구 기준(Notion 「릴리즈 노트」)
+            ${{ steps.guide.outputs.guide }}
+          claude_args: >-
+            --allowedTools "Bash(gh pr view:*),Bash(gh pr diff:*)"
+            --json-schema '{"type":"object","properties":{"items":{"type":"array","items":{"type":"object","properties":{"title":{"type":"string"},"description":{"type":"string"},"link":{"type":"string","enum":${{ steps.guide.outputs.link_keys }}},"isFromFeedback":{"type":"boolean"},"isHighlight":{"type":"boolean"}},"required":["title","description"],"additionalProperties":false}}},"required":["items"],"additionalProperties":false}'
+
+      - name: Publish note to Notion
+        if: steps.pr.outputs.number
+        env:
+          NOTION_TOKEN: ${{ secrets.NOTION_RELEASE_NOTE_WRITE_TOKEN }}
+          NOTION_DATABASE_ID: ${{ vars.NOTION_RELEASE_NOTE_DATABASE_ID }}
+          NOTE_JSON: ${{ steps.claude.outputs.structured_output }}
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
+          MERGED_AT: ${{ steps.pr.outputs.merged_at }}
+        run: node scripts/release-note.mjs publish

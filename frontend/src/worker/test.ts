@@ -75,6 +75,29 @@ describe("worker", () => {
     expect(env.ASSETS.fetch).not.toHaveBeenCalled();
   });
 
+  it("새 소식 경로는 정적 파일로 넘기지 않고 Notion 새 소식 DB에서 읽는다", async () => {
+    const env = {
+      ...createEnv(),
+      NOTION_RELEASE_NOTE_TOKEN: "secret_read",
+      NOTION_RELEASE_NOTE_DATABASE_ID: "release-note-db",
+    };
+    vi.stubGlobal("caches", {
+      open: async () => ({ match: async () => undefined, put: async () => {} }),
+    });
+    mockServer.use(
+      http.post(
+        "https://api.notion.com/v1/databases/release-note-db/query",
+        () => HttpResponse.json({ results: [], has_more: false }),
+      ),
+    );
+
+    const response = await worker.fetch(new Request(`${SITE}/relay/n`), env);
+    vi.unstubAllGlobals();
+
+    expect(await response.json()).toEqual([]);
+    expect(env.ASSETS.fetch).not.toHaveBeenCalled();
+  });
+
   it("중계 경로가 아닌 요청은 정적 파일로 돌려준다", async () => {
     const env = createEnv();
     const request = new Request(`${SITE}/workspace/1`);

@@ -1,17 +1,7 @@
-import type { ReleaseNote } from "@/shared/types/releaseNote";
+import type { ReleaseNote } from "@api/mock/types/releaseNote";
 
-/**
- * 새 소식 패널에 보여 줄 노트. 최신 노트를 배열 맨 위에 둬요(NEWS-R8).
- *
- * 기획자가 릴리즈 직전에 이 파일 맨 위에 그 버전의 노트를 더해 develop으로 PR을 올려요.
- * 알릴 변화가 없는 릴리즈는 노트를 더하지 않고 릴리즈 PR 본문에 「새 소식: 없음」을 적어요.
- * 쓰는 기준과 순서는 Notion 「릴리즈 노트」를 따라요.
- * https://app.notion.com/p/3feb435175228125a4bac00f35c39df5
- *
- * 문구는 Figma 패널 목록을 그대로 썼어요.
- * https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=4696-29495
- */
-export const RELEASE_NOTES: ReleaseNote[] = [
+// 새 소식 DB에 처음 옮겨 넣은 v0.2.0과 v0.1.0 노트예요. 문구는 Figma 패널 목록(node 4696-29495) 그대로예요
+export const releaseNotesResponse = [
   {
     id: "v0.2.0",
     releasedAt: "2026-10-20",
@@ -46,4 +36,4 @@ export const RELEASE_NOTES: ReleaseNote[] = [
       },
     ],
   },
-];
+] satisfies ReleaseNote[];

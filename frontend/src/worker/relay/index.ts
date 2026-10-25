@@ -3,6 +3,10 @@ export interface Env {
   ASSETS: { fetch: (request: Request) => Promise<Response> };
   /** 피드백 접수함에만 연결한 Notion 연동의 토큰. dev · prod Worker에 비밀값으로 넣어요(ADR 930) */
   NOTION_FEEDBACK_TOKEN?: string;
+  /** 새 소식 DB에만 연결한 Notion 읽기 연동의 토큰. dev · prod Worker에 비밀값으로 넣어요(ADR 956) */
+  NOTION_RELEASE_NOTE_TOKEN?: string;
+  /** 새 소식 DB의 ID. Actions가 쓰는 저장소 변수 `NOTION_RELEASE_NOTE_DATABASE_ID`와 같은 값을 토큰과 함께 비밀값으로 넣어요 */
+  NOTION_RELEASE_NOTE_DATABASE_ID?: string;
 }
 
 /** Worker가 받는 중계 경로. wrangler의 `run_worker_first`와 맞춰야 해요 */
@@ -307,6 +311,165 @@ export const relayToNotion = async (request: Request, env: Env) => {
   });
 };
 
+/** 새 소식 노트를 읽는 경로. `src/shared/api/fetch/relay/n`의 `RELEASE_NOTES_RELAY_PATH`와 맞춰야 해요 */
+const RELEASE_NOTES_RELAY_PATH = `${RELAY_PATH}/n`;
+
+/** 읽은 노트를 Worker 캐시에 두는 시간(초). Notion에서 고친 노트는 길어야 이만큼 뒤에 보여요 */
+const RELEASE_NOTES_CACHE_SECONDS = 300;
+
+interface NotionProperty {
+  title?: { plain_text: string }[];
+  rich_text?: { plain_text: string }[];
+  date?: { start: string } | null;
+  checkbox?: boolean;
+  number?: number | null;
+}
+
+/** 새 소식 DB 한 줄. 칸 이름은 `scripts/release-note.mjs`가 쓰는 이름과 같아요 */
+interface ReleaseNoteRow {
+  noteId: string;
+  releasedAt: string;
+  order: number;
+  item: {
+    title: string;
+    description: string;
+    link?: string;
+    isFromFeedback: boolean;
+    isHighlight: boolean;
+  };
+}
+
+const readText = (property?: NotionProperty) =>
+  (property?.title ?? property?.rich_text ?? [])
+    .map(({ plain_text }) => plain_text)
+    .join("")
+    .trim();
+
+/**
+ * 새 소식 DB 한 줄을 노트 항목으로 읽어요. 노트 id, 배포 날짜, 제목, 설명이 없으면 null이에요.
+ * 바로 가보기는 화면 이름을 확인하지 않고 그대로 넘겨요. 앱에 없는 화면이면 앱이 버튼만 숨겨요
+ */
+const readReleaseNoteRow = (
+  properties: Record<string, NotionProperty | undefined>,
+): ReleaseNoteRow | null => {
+  const noteId = readText(properties["노트 id"]);
+  const releasedAt = properties["배포 날짜"]?.date?.start.slice(0, 10) ?? "";
+  const title = readText(properties.제목);
+  const description = readText(properties.설명);
+  const link = readText(properties["바로 가보기"]);
+
+  if (
+    !noteId ||
+    !/^\d{4}-\d{2}-\d{2}$/.test(releasedAt) ||
+    !title ||
+    !description
+  ) {
+    return null;
+  }
+
+  return {
+    noteId,
+    releasedAt,
+    order: properties.순서?.number ?? 0,
+    item: {
+      title,
+      description,
+      link: link || undefined,
+      isFromFeedback: properties["피드백 덕분"]?.checkbox === true,
+      isHighlight: properties["큰 변화"]?.checkbox === true,
+    },
+  };
+};
+
+/** DB 줄을 노트로 묶어요. 최신 배포 날짜부터, 같은 날이면 나중에 머지한 PR(`pr-1002`가 `pr-998`보다 앞)부터, 항목은 순서대로예요 */
+const toReleaseNotes = (
+  pages: { properties?: Record<string, NotionProperty> }[],
+) => {
+  const rows = pages
+    .map(({ properties = {} }) => readReleaseNoteRow(properties))
+    .filter((row) => row !== null)
+    .sort(
+      (a, b) =>
+        b.releasedAt.localeCompare(a.releasedAt) ||
+        b.noteId.localeCompare(a.noteId, undefined, { numeric: true }) ||
+        a.order - b.order,
+    );
+
+  return rows.reduce<
+    { id: string; releasedAt: string; items: ReleaseNoteRow["item"][] }[]
+  >((notes, { noteId, releasedAt, item }) => {
+    const lastNote = notes[notes.length - 1];
+
+    if (lastNote?.id === noteId) {
+      lastNote.items.push(item);
+    } else {
+      notes.push({ id: noteId, releasedAt, items: [item] });
+    }
+
+    return notes;
+  }, []);
+};
+
+/**
+ * @description 우리 화면이 `/relay/n`으로 부르면 Notion 새 소식 DB를 읽어 새 소식 노트로 바꿔 돌려줘요(ADR 956)
+ * @param request - 새 소식 쿼리가 보낸 요청. 예: `GET /relay/n`
+ * @param env - Worker 바인딩. Notion 토큰과 DB ID는 `env.NOTION_RELEASE_NOTE_TOKEN`, `env.NOTION_RELEASE_NOTE_DATABASE_ID`예요
+ * @returns 노트 배열(`ReleaseNote[]`, 최신 노트가 맨 앞). Notion이 실패하면 Notion의 응답 코드 그대로
+ * @example
+ * if (pathname === "/relay/n") return relayReleaseNotes(request, env);
+ *
+ * 노트는 GitHub Actions의 Claude가 main 머지마다 DB에 쓰고, 이 경로는 읽기만 해요. 형식이 맞지 않는 줄은 빼고 돌려줘요.
+ * 읽은 결과는 5분 동안 Worker 캐시에서 돌려줘 Notion을 사용자마다 부르지 않아요. 쿼리 문자열은 캐시 키에서 빼요.
+ * GET이 아니면 405, 토큰이나 DB ID가 없으면 503이에요. 화면은 실패하면 빈 패널을 보여 주고 오류는 Sentry에 남겨요.
+ */
+export const relayReleaseNotes = async (request: Request, env: Env) => {
+  if (request.method !== "GET") {
+    return new Response("Method Not Allowed", { status: 405 });
+  }
+
+  if (!env.NOTION_RELEASE_NOTE_TOKEN || !env.NOTION_RELEASE_NOTE_DATABASE_ID) {
+    return new Response("Service Unavailable", { status: 503 });
+  }
+
+  const cache = await caches.open("release-notes");
+  const cacheKey = new Request(new URL(RELEASE_NOTES_RELAY_PATH, request.url));
+  const cachedResponse = await cache.match(cacheKey);
+  if (cachedResponse) return cachedResponse;
+
+  // shortcut: 최근 100줄만 읽어요. 오래된 노트까지 보여 줘야 하면 next_cursor로 이어 읽어요
+  const notionResponse = await fetch(
+    `https://api.notion.com/v1/databases/${env.NOTION_RELEASE_NOTE_DATABASE_ID}/query`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${env.NOTION_RELEASE_NOTE_TOKEN}`,
+        "Notion-Version": NOTION_VERSION,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        page_size: 100,
+        sorts: [{ property: "배포 날짜", direction: "descending" }],
+      }),
+    },
+  );
+  if (!notionResponse.ok) {
+    return new Response(null, { status: notionResponse.status });
+  }
+
+  const { results = [] } = (await notionResponse.json()) as {
+    results?: { properties?: Record<string, NotionProperty> }[];
+  };
+  const response = new Response(JSON.stringify(toReleaseNotes(results)), {
+    headers: {
+      "Content-Type": "application/json",
+      "Cache-Control": `public, max-age=${RELEASE_NOTES_CACHE_SECONDS}`,
+    },
+  });
+  await cache.put(cacheKey, response.clone());
+
+  return response;
+};
+
 /**
  * @description Worker가 받은 요청을 경로에 따라 PostHog · Sentry · Notion 중계 · 404 · 정적 파일로 나눠요
  * @param request - Worker가 받은 요청
@@ -316,7 +479,7 @@ export const relayToNotion = async (request: Request, env: Env) => {
  * export default { fetch: handleRequest };
  *
  * wrangler 설정이 `/relay` 아래 요청만 Worker를 먼저 거치게 하고, 나머지 화면 · 파일 주소는 정적 파일로 바로 나가요.
- * `/relay` 아래는 목적지마다 하위 경로로 나눠요. PostHog(`/relay/p` 아래), Sentry(`/relay/s` 하나), Notion 피드백(`/relay/f` 하나)이 있고, 목적지가 없는 하위 경로는 404예요.
+ * `/relay` 아래는 목적지마다 하위 경로로 나눠요. PostHog(`/relay/p` 아래), Sentry(`/relay/s` 하나), Notion 피드백(`/relay/f` 하나), Notion 새 소식(`/relay/n` 하나)이 있고, 목적지가 없는 하위 경로는 404예요.
  */
 export const handleRequest = (request: Request, env: Env) => {
   const { pathname } = new URL(request.url);
@@ -328,6 +491,10 @@ export const handleRequest = (request: Request, env: Env) => {
   if (pathname === SENTRY_RELAY_PATH) return relayToSentry(request);
 
   if (pathname === FEEDBACK_RELAY_PATH) return relayToNotion(request, env);
+
+  if (pathname === RELEASE_NOTES_RELAY_PATH) {
+    return relayReleaseNotes(request, env);
+  }
 
   if (pathname === RELAY_PATH || pathname.startsWith(`${RELAY_PATH}/`)) {
     return new Response("Not Found", { status: 404 });
