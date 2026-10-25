@@ -5,7 +5,6 @@ import {
 } from "@constants/document";
 import styled from "@emotion/styled";
 import useConfirmDocument from "@hooks/domain/document/useConfirmDocument";
-import Breadcrumb from "@primitives/ui/Breadcrumb";
 import Chip from "@primitives/ui/Chip";
 import DocumentBody from "@primitives/ui/DocumentBody";
 import { formatDate } from "@utils/formatDate";
@@ -22,12 +21,13 @@ import DocumentStepper from "./ui/DocumentStepper";
 import DocumentSkeleton from "./ui/DocumentSkeleton";
 
 /**
- * 문서 보기 섹션. 주소의 문서를 불러와 경로 · 복사 버튼 · 제목 · 만든 날짜 · 녹음 길이 · 확인 수 · 본문 · 확인 버튼을 보여줘요.
+ * 문서 보기 섹션. 주소의 문서를 불러와 복사 버튼 · 제목 · 만든 날짜 · 녹음 길이 · 확인 수 · 본문 · 확인 버튼을 보여줘요.
+ * 어느 문서를 보고 있는지는 본문 위가 아니라 GNB의 위치 표시가 `워크스페이스 이름 › 문서 › 문서 제목`으로 알려요(WS-R15).
  *
  * 주소의 두 id는 숫자인지 확인하지 않고 그대로 요청해요. 잘못된 주소인지는 서버가 판단하고, 여기서는 그 응답에 따라 문서를 불러오지 못했다고 알려요.
  * 같은 판단을 프론트에도 두면 기준이 두 곳에 생기기 때문이에요.
  *
- * 받은 문서 값을 그리기만 하면 되는 것(경로 · 제목 · 날짜 · 녹음 길이 · 본문)은 여기서 직접 그려요.
+ * 받은 문서 값을 그리기만 하면 되는 것(제목 · 날짜 · 녹음 길이 · 본문)은 여기서 직접 그려요.
  * 복사 버튼 · 확인 수 · 스테퍼 · 확인 버튼은 이 위젯의 부품(`ui/`)이고, 필요한 값과 동작을 여기서 넘겨줘요. 문서는 여기서 한 번만 조회해요.
  * 복사 버튼은 제목과 같은 줄의 오른쪽 끝에 놓아요.
  * 본문 아래 줄에는 왼쪽에 같은 녹음의 문서를 넘기는 스테퍼를, 오른쪽에 확인 버튼을 놓아요.
@@ -69,7 +69,6 @@ export default function DocumentViewer() {
   return (
     // 스테퍼로 다른 문서로 넘어가면 「복사됨」 같은 앞 문서의 표시가 남지 않게, 문서마다 새로 그려요
     <Container key={documentDetail.id} aria-labelledby={titleId}>
-      <Breadcrumb parent="문서" current={documentDetail.title} />
       <TitleBlock>
         <TitleRow>
           <Title id={titleId}>{documentDetail.title}</Title>
@@ -122,7 +121,7 @@ export default function DocumentViewer() {
   );
 }
 
-/** 피그마 문서 열(Standard): 폭 720px, 경로 · 제목 묶음 · 본문 사이 24px */
+/** 피그마 문서 열(Standard): 폭 720px, 제목 묶음 · 본문 사이 24px */
 const Container = styled.section`
   display: flex;
   flex-direction: column;
