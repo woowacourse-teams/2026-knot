@@ -7,12 +7,20 @@
 | 항목 | 설정 위치 | 용도 |
 | --- | --- | --- |
 | `KNOT_INGEST_BASE_URL` | 각 Alloy 서버의 비공개 환경파일 또는 실행 환경 | HTTPS 수집 주소. 마지막 `/` 없이 지정하며 인증서 SAN과 일치해야 한다. |
+| `/etc/knot-observability-agent/postgres-dsn` | EC2의 읽기 전용 비공개 파일 | PostgreSQL 모니터 계정 DSN. 원문·비밀번호는 Git이나 로그에 넣지 않는다. |
 | `KNOT_INGEST_IP` | IP SAN 인증서 생성 시 OpenSSL 실행 환경 | `tls/server.ext`가 읽는 IP. 실제 값과 키는 Git에 저장하지 않는다. |
 | `/etc/nginx/snippets/knot-ingest-allow.conf` | 관측 서버의 비공개 Nginx 파일 | 허용한 Dev·Prod 원 서버의 `allow <주소>;`만 포함한다. |
 
 `nginx/ingest.conf`는 위 allowlist를 포함한 뒤 `deny all`을 적용한다.
 허용 목록 파일을 준비하고 `nginx -t`를 통과한 뒤 reload한다. 주소 비공개화는
 접근 통제를 대신하지 않으며 mTLS, 환경별 client CN 확인과 POST 제한을 함께 유지한다.
+배포 로그 수신 검사의 GET 예외는 환경별 mTLS 인증서와 고정 count 쿼리로 제한한다.
+중앙 Nginx 설정을 설치할 때 `nginx/log-receipt-locations.conf`도
+`/etc/nginx/snippets/knot-log-receipt-locations.conf`에 root 소유·0644로 먼저 설치한다.
+기존 서버에서는 현장 전용 경로를 보존하며 이 include만 추가하고 `nginx -t` 후 reload한다.
+각 EC2의 `/etc/knot-observability-agent/deployment-log-check.json`은 root 소유·0600으로 두며,
+`environment`(`dev` 또는 `prod`)와 `ingest_base_url`(기존 비공개 HTTPS origin)을 넣는다.
+실행 순서와 mTLS·Origin CA 경로는 [운영 안정화 절차](operational-stabilization.md)를 따른다.
 Compose 실행 시 환경변수가 없으면 즉시 실패한다. root의 sudo 실행 환경은 변수가
 제거될 수 있으므로 운영자 환경파일을 확인하고 필요한 변수만 전달한다.
 
@@ -34,3 +42,5 @@ node --test ops/observability/catalog-dashboard.test.mjs
 관측성 스택의 기본 `compose.yml`은 SSH 터널 전용 auth proxy 구성이다.
 공용 Grafana를 배포할 때는 반드시 `compose.team.yml`을 함께 적용해 auth proxy를
 끄고 사용자 로그인으로 전환한다. 로컬 Viewer Nginx 설정을 공개 리스너에 옮기지 않는다.
+
+EC2 설정 후보 생성·검사·reload와 운영 상태 점검은 [운영 안정화 절차](operational-stabilization.md)를 따른다.

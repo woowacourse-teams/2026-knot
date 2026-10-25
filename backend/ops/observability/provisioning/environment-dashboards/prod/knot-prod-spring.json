@@ -1,0 +1,925 @@
+{
+  "title": "PROD 05 Spring 앱",
+  "uid": "knot-prod-spring",
+  "schemaVersion": 41,
+  "version": 1,
+  "tags": [
+    "knot",
+    "prod",
+    "spring"
+  ],
+  "refresh": "30s",
+  "timezone": "Asia/Seoul",
+  "time": {
+    "from": "now-30m",
+    "to": "now"
+  },
+  "templating": {
+    "list": []
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "text",
+      "title": "PROD · 이 화면 읽는 법",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 3
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "PROD Spring 앱 내부 지표입니다. **API → JVM 메모리 → GC → 스레드** 순서로 확인하세요.\n\n실제 요청이 없는 API 지연은 비어 있을 수 있습니다. 서버 전체 메모리는 서버 자원 화면에서 봅니다. 응답 시간 분포는 실제 Spring histogram bucket으로 표시합니다."
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "API별 요청률",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "knot-prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (env,method,uri) (rate(http_server_requests_seconds_count{env=\"prod\",job=\"spring\",uri!~\"/actuator/.*\"}[2m]))",
+          "legendFormat": "{{env}} {{method}} {{uri}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "noValue": "데이터 없음 / 미연결"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "id": 2,
+      "gridPos": {
+        "x": 0,
+        "y": 3,
+        "w": 12,
+        "h": 8
+      },
+      "description": "PROD의 API별 요청률 지표입니다. 같은 시간대의 요청·앱 로그와 함께 확인하세요. 데이터 없음은 정상 0이 아닙니다."
+    },
+    {
+      "type": "timeseries",
+      "title": "API별 p95 응답 시간",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "knot-prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.95,sum by (env,uri,le) (rate(http_server_requests_seconds_bucket{env=\"prod\",job=\"spring\",uri!~\"/actuator/.*\"}[2m]))) and on (env,uri) (sum by (env,uri) (rate(http_server_requests_seconds_count{env=\"prod\",job=\"spring\",uri!~\"/actuator/.*\"}[2m])) > 0)",
+          "legendFormat": "{{env}} {{uri}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "noValue": "데이터 없음 / 미연결"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "id": 3,
+      "gridPos": {
+        "x": 12,
+        "y": 3,
+        "w": 12,
+        "h": 8
+      },
+      "description": "PROD의 API별 p95 응답 시간 지표입니다. 같은 시간대의 요청·앱 로그와 함께 확인하세요. 데이터 없음은 정상 0이 아닙니다."
+    },
+    {
+      "type": "timeseries",
+      "title": "JVM heap 사용량",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "knot-prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (env,instance) (jvm_memory_used_bytes{env=\"prod\",job=\"spring\",area=\"heap\"})",
+          "legendFormat": "{{env}} {{instance}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "noValue": "데이터 없음 / 미연결"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "id": 4,
+      "gridPos": {
+        "x": 0,
+        "y": 11,
+        "w": 12,
+        "h": 8
+      },
+      "description": "PROD의 JVM heap 사용량 지표입니다. 같은 시간대의 요청·앱 로그와 함께 확인하세요. 데이터 없음은 정상 0이 아닙니다."
+    },
+    {
+      "type": "timeseries",
+      "title": "JVM non-heap 사용량",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "knot-prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (env,instance) (jvm_memory_used_bytes{env=\"prod\",job=\"spring\",area=\"nonheap\"})",
+          "legendFormat": "{{env}} {{instance}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "noValue": "데이터 없음 / 미연결"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "id": 5,
+      "gridPos": {
+        "x": 12,
+        "y": 11,
+        "w": 12,
+        "h": 8
+      },
+      "description": "PROD의 JVM non-heap 사용량 지표입니다. 같은 시간대의 요청·앱 로그와 함께 확인하세요. 데이터 없음은 정상 0이 아닙니다."
+    },
+    {
+      "type": "timeseries",
+      "title": "GC pause 누적 소요율",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "knot-prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (env,instance) (rate(jvm_gc_pause_seconds_sum{env=\"prod\",job=\"spring\"}[2m]))",
+          "legendFormat": "{{env}} {{instance}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "noValue": "데이터 없음 / 미연결"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "id": 6,
+      "gridPos": {
+        "x": 0,
+        "y": 19,
+        "w": 12,
+        "h": 8
+      },
+      "description": "PROD의 GC pause 누적 소요율 지표입니다. 같은 시간대의 요청·앱 로그와 함께 확인하세요. 데이터 없음은 정상 0이 아닙니다."
+    },
+    {
+      "type": "timeseries",
+      "title": "JVM live threads",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "knot-prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "jvm_threads_live_threads{env=\"prod\",job=\"spring\"}",
+          "legendFormat": "{{env}} {{instance}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "noValue": "데이터 없음 / 미연결"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "id": 7,
+      "gridPos": {
+        "x": 12,
+        "y": 19,
+        "w": 12,
+        "h": 8
+      },
+      "description": "PROD의 JVM live threads 지표입니다. 같은 시간대의 요청·앱 로그와 함께 확인하세요. 데이터 없음은 정상 0이 아닙니다."
+    },
+    {
+      "type": "timeseries",
+      "title": "앱 uptime",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "knot-prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "process_uptime_seconds{env=\"prod\",job=\"spring\"}",
+          "legendFormat": "{{env}} {{instance}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "noValue": "데이터 없음 / 미연결"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "id": 8,
+      "gridPos": {
+        "x": 0,
+        "y": 27,
+        "w": 12,
+        "h": 8
+      },
+      "description": "PROD의 앱 uptime 지표입니다. 같은 시간대의 요청·앱 로그와 함께 확인하세요. 데이터 없음은 정상 0이 아닙니다."
+    },
+    {
+      "type": "timeseries",
+      "title": "Spring 수집 성공",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "knot-prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "up{env=\"prod\",job=\"spring\"}",
+          "legendFormat": "{{env}} {{instance}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "noValue": "데이터 없음 / 미연결"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "id": 9,
+      "gridPos": {
+        "x": 12,
+        "y": 27,
+        "w": 12,
+        "h": 8
+      },
+      "description": "PROD의 Spring 수집 성공 지표입니다. 같은 시간대의 요청·앱 로그와 함께 확인하세요. 데이터 없음은 정상 0이 아닙니다."
+    },
+    {
+      "id": 10,
+      "title": "최근 서비스 로그",
+      "type": "logs",
+      "datasource": {
+        "type": "loki",
+        "uid": "knot-loki"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 35,
+        "w": 12,
+        "h": 8
+      },
+      "options": {
+        "showTime": true,
+        "showLabels": true,
+        "sortOrder": "Descending",
+        "wrapLogMessage": true
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "{project=\"knot\",env=\"prod\",job=~\"spring|prototype|nginx\"}",
+          "queryType": "range"
+        }
+      ],
+      "description": "PROD의 최근 서비스 로그 지표입니다. 같은 시간대의 요청·앱 로그와 함께 확인하세요. 데이터 없음은 정상 0이 아닙니다."
+    },
+    {
+      "type": "timeseries",
+      "title": "API별 p50 응답 시간",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "knot-prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.50,sum by (env,method,uri,le) (rate(http_server_requests_seconds_bucket{env=\"prod\",job=\"spring\",uri!~\"/actuator/.*\"}[5m]))) and on (env,method,uri) (sum by (env,method,uri) (rate(http_server_requests_seconds_count{env=\"prod\",job=\"spring\",uri!~\"/actuator/.*\"}[5m])) > 0)",
+          "legendFormat": "{{env}} {{method}} {{uri}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "noValue": "데이터 없음 / 미연결"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "id": 11,
+      "gridPos": {
+        "x": 12,
+        "y": 35,
+        "w": 12,
+        "h": 8
+      },
+      "description": "PROD의 API별 p50 응답 시간 지표입니다. 같은 시간대의 요청·앱 로그와 함께 확인하세요. 데이터 없음은 정상 0이 아닙니다."
+    },
+    {
+      "type": "timeseries",
+      "title": "API별 p99 응답 시간",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "knot-prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.99,sum by (env,method,uri,le) (rate(http_server_requests_seconds_bucket{env=\"prod\",job=\"spring\",uri!~\"/actuator/.*\"}[5m]))) and on (env,method,uri) (sum by (env,method,uri) (rate(http_server_requests_seconds_count{env=\"prod\",job=\"spring\",uri!~\"/actuator/.*\"}[5m])) > 0)",
+          "legendFormat": "{{env}} {{method}} {{uri}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "noValue": "데이터 없음 / 미연결"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "id": 12,
+      "gridPos": {
+        "x": 0,
+        "y": 43,
+        "w": 12,
+        "h": 8
+      },
+      "description": "PROD의 API별 p99 응답 시간 지표입니다. 같은 시간대의 요청·앱 로그와 함께 확인하세요. 데이터 없음은 정상 0이 아닙니다."
+    },
+    {
+      "type": "timeseries",
+      "title": "API별 상태 코드 비율",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "knot-prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "100 * sum by (env,method,uri,status) (rate(http_server_requests_seconds_count{env=\"prod\",job=\"spring\",uri!~\"/actuator/.*\"}[5m])) / ignoring(status) group_left() (sum by (env,method,uri) (rate(http_server_requests_seconds_count{env=\"prod\",job=\"spring\",uri!~\"/actuator/.*\"}[5m])) > 0)",
+          "legendFormat": "{{env}} {{method}} {{uri}} {{status}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "noValue": "데이터 없음 / 미연결"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "id": 13,
+      "gridPos": {
+        "x": 12,
+        "y": 43,
+        "w": 12,
+        "h": 8
+      },
+      "description": "PROD의 API별 상태 코드 비율 지표입니다. 같은 시간대의 요청·앱 로그와 함께 확인하세요. 데이터 없음은 정상 0이 아닙니다."
+    },
+    {
+      "type": "timeseries",
+      "title": "JVM heap 최대 용량",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "knot-prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (env,instance) (jvm_memory_max_bytes{env=\"prod\",job=\"spring\",area=\"heap\"} > 0)",
+          "legendFormat": "{{env}} {{instance}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "noValue": "데이터 없음 / 미연결"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "id": 14,
+      "gridPos": {
+        "x": 0,
+        "y": 51,
+        "w": 12,
+        "h": 8
+      },
+      "description": "PROD의 JVM heap 최대 용량 지표입니다. 같은 시간대의 요청·앱 로그와 함께 확인하세요. 데이터 없음은 정상 0이 아닙니다."
+    },
+    {
+      "type": "timeseries",
+      "title": "JVM heap 사용률",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "knot-prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "100 * sum by (env,instance) (jvm_memory_used_bytes{env=\"prod\",job=\"spring\",area=\"heap\"}) / sum by (env,instance) (jvm_memory_max_bytes{env=\"prod\",job=\"spring\",area=\"heap\"} > 0)",
+          "legendFormat": "{{env}} {{instance}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "noValue": "데이터 없음 / 미연결"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "id": 15,
+      "gridPos": {
+        "x": 12,
+        "y": 51,
+        "w": 12,
+        "h": 8
+      },
+      "description": "PROD의 JVM heap 사용률 지표입니다. 같은 시간대의 요청·앱 로그와 함께 확인하세요. 데이터 없음은 정상 0이 아닙니다."
+    },
+    {
+      "type": "timeseries",
+      "title": "GC 발생률",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "knot-prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (env,instance,action,cause) (rate(jvm_gc_pause_seconds_count{env=\"prod\",job=\"spring\"}[5m]))",
+          "legendFormat": "{{env}} {{action}} {{cause}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "noValue": "데이터 없음 / 미연결"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "id": 16,
+      "gridPos": {
+        "x": 0,
+        "y": 59,
+        "w": 12,
+        "h": 8
+      },
+      "description": "PROD의 GC 발생률 지표입니다. 같은 시간대의 요청·앱 로그와 함께 확인하세요. 데이터 없음은 정상 0이 아닙니다."
+    },
+    {
+      "type": "timeseries",
+      "title": "GC pause 평균",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "knot-prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (env,instance) (rate(jvm_gc_pause_seconds_sum{env=\"prod\",job=\"spring\"}[5m])) / (sum by (env,instance) (rate(jvm_gc_pause_seconds_count{env=\"prod\",job=\"spring\"}[5m])) > 0)",
+          "legendFormat": "{{env}} {{instance}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "noValue": "데이터 없음 / 미연결"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "id": 17,
+      "gridPos": {
+        "x": 12,
+        "y": 59,
+        "w": 12,
+        "h": 8
+      },
+      "description": "PROD의 GC pause 평균 지표입니다. 같은 시간대의 요청·앱 로그와 함께 확인하세요. 데이터 없음은 정상 0이 아닙니다."
+    },
+    {
+      "type": "timeseries",
+      "title": "JVM peak threads",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "knot-prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "jvm_threads_peak_threads{env=\"prod\",job=\"spring\"}",
+          "legendFormat": "{{env}} {{instance}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "noValue": "데이터 없음 / 미연결"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "id": 18,
+      "gridPos": {
+        "x": 0,
+        "y": 67,
+        "w": 12,
+        "h": 8
+      },
+      "description": "PROD의 JVM peak threads 지표입니다. 같은 시간대의 요청·앱 로그와 함께 확인하세요. 데이터 없음은 정상 0이 아닙니다."
+    },
+    {
+      "type": "timeseries",
+      "title": "JVM loaded classes",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "knot-prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "jvm_classes_loaded_classes{env=\"prod\",job=\"spring\"}",
+          "legendFormat": "{{env}} {{instance}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "noValue": "데이터 없음 / 미연결"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "id": 19,
+      "gridPos": {
+        "x": 12,
+        "y": 67,
+        "w": 12,
+        "h": 8
+      },
+      "description": "PROD의 JVM loaded classes 지표입니다. 같은 시간대의 요청·앱 로그와 함께 확인하세요. 데이터 없음은 정상 0이 아닙니다."
+    },
+    {
+      "type": "timeseries",
+      "title": "JVM thread 상태",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "knot-prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "jvm_threads_states_threads{env=\"prod\",job=\"spring\"}",
+          "legendFormat": "{{env}} {{state}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "noValue": "데이터 없음 / 미연결"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "id": 20,
+      "gridPos": {
+        "x": 0,
+        "y": 75,
+        "w": 12,
+        "h": 8
+      },
+      "description": "PROD의 JVM thread 상태 지표입니다. 같은 시간대의 요청·앱 로그와 함께 확인하세요. 데이터 없음은 정상 0이 아닙니다."
+    },
+    {
+      "id": 92,
+      "type": "heatmap",
+      "title": "Spring API 응답 시간 분포",
+      "description": "실제 Spring histogram bucket의 최근 5분 요청률입니다. 가로는 시간, 세로는 응답 시간 구간, 색의 진하기는 요청률입니다. health·actuator를 제외하고 요청이 없으면 빈 분포입니다. Nginx 지연과 측정 위치가 다릅니다.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "knot-prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 83,
+        "w": 24,
+        "h": 9
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (le) (rate(http_server_requests_seconds_bucket{env=\"prod\",job=\"spring\",uri!~\"/health|/actuator/.*\"}[5m]))",
+          "format": "heatmap",
+          "legendFormat": "{{le}}",
+          "instant": false,
+          "range": true
+        }
+      ],
+      "options": {
+        "calculate": false,
+        "yAxis": {
+          "unit": "s"
+        },
+        "tooltip": {
+          "mode": "single"
+        },
+        "legend": {
+          "show": true
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "noValue": "데이터 없음 / 요청 없음"
+        },
+        "overrides": []
+      }
+    }
+  ],
+  "links": [
+    {
+      "title": "01 전체 상태",
+      "type": "link",
+      "url": "/d/knot-prod-overview",
+      "keepTime": true,
+      "includeVars": false
+    },
+    {
+      "title": "02 API 요청·오류",
+      "type": "link",
+      "url": "/d/knot-prod-api",
+      "keepTime": true,
+      "includeVars": false
+    },
+    {
+      "title": "03 로그",
+      "type": "link",
+      "url": "/d/knot-prod-logs",
+      "keepTime": true,
+      "includeVars": false
+    },
+    {
+      "title": "04 서버 자원",
+      "type": "link",
+      "url": "/d/knot-prod-infra",
+      "keepTime": true,
+      "includeVars": false
+    },
+    {
+      "title": "05 Spring 앱",
+      "type": "link",
+      "url": "/d/knot-prod-spring",
+      "keepTime": true,
+      "includeVars": false
+    },
+    {
+      "title": "06 Tomcat·DB 연결 풀",
+      "type": "link",
+      "url": "/d/knot-prod-pools",
+      "keepTime": true,
+      "includeVars": false
+    },
+    {
+      "title": "07 RDS",
+      "type": "link",
+      "url": "/d/knot-prod-rds",
+      "keepTime": true,
+      "includeVars": false
+    },
+    {
+      "title": "DEV로 이동",
+      "type": "link",
+      "url": "/d/knot-dev-overview",
+      "keepTime": true,
+      "includeVars": false
+    }
+  ],
+  "description": "PROD 전용 Spring 앱. 환경이 쿼리에 고정되어 URL 변수로 다른 환경을 섞지 않습니다."
+}

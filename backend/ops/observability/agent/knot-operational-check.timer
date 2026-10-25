@@ -1,0 +1,10 @@
+[Unit]
+Description=Check Knot services every minute and RDS backup metadata every five minutes
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=1min
+AccuracySec=5s
+
+[Install]
+WantedBy=timers.target

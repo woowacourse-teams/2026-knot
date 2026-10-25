@@ -19,10 +19,10 @@ scrape_configs:
         labels:
           env: dev
           service: spring
-      - targets: ["https://api.knoted.kr/health"]
+      - targets: ["https://api.knoted.kr/actuator/health"]
         labels:
           env: prod
-          service: prototype
+          service: spring
     relabel_configs:
       - source_labels: [__address__]
         target_label: __param_target
@@ -30,3 +30,7 @@ scrape_configs:
         target_label: instance
       - target_label: __address__
         replacement: blackbox:9115
+      - source_labels: [env]
+        regex: prod
+        target_label: __scrape_interval__
+        replacement: 10s

@@ -4,7 +4,9 @@ import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { assembleWindowResult, measuredWordGroups, validWindow, type WindowInput } from './windowResult'
 import { assignSpeakers, mergeUtterances, SERVER_SPEAKER_POLICY } from '../src/core/merge'
+import { hasDecoderRepetition, prefersRetry } from '../src/core/repetition'
 import type { SttWord } from '../src/core/types'
+import { fuseVocabulary, VOCABULARY_PROMPT } from '../src/core/vocabularyFusion'
 import { buildDiarizeArgs, parseDiarizeOutput } from '../src/main/pipeline/diarize'
 import { normalizeWavFile } from '../src/main/pipeline/normalize'
 import { assertRestoredVadTimestamps, buildWhisperArgs, parseWhisperOutput } from '../src/main/pipeline/whisper'
@@ -101,6 +103,9 @@ export const assembleResult = (raw: Buffer, diarization: string, speakerCount?: 
   return { schemaVersion: 1 as const, rawWhisperJson: raw.toString('utf8'), utterances }
 }
 
+/** 반복 재시도와 용어 디코딩은 이 시간 안에 끝나지 않으면 버리고 기본 디코딩 결과를 쓴다. */
+const OPTIONAL_DECODE_TIMEOUT_MS = 120_000
+
 /** No native output reaches logs: diarization stdout is only parsed in memory. */
 export const runServerPipeline = async (manifest: ServerManifest) => {
   const children = new Set<ChildProcess>()
@@ -157,6 +162,28 @@ export const runServerPipeline = async (manifest: ServerManifest) => {
         } else resolve(Buffer.concat(chunks).toString('utf8'))
       })
     })
+  /** 실패하거나 제한 시간을 넘겨도 작업 전체를 멈추지 않는 보조 실행. 취소는 그대로 전파한다. */
+  const runOptional = (command: string, args: string[]) =>
+    new Promise<boolean>((resolve, reject) => {
+      if (aborted) {
+        reject(new Error(abortCode))
+        return
+      }
+      const child = spawn(command, args, { stdio: 'ignore', shell: false })
+      children.add(child)
+      const timeout = setTimeout(() => child.kill('SIGKILL'), OPTIONAL_DECODE_TIMEOUT_MS)
+      child.once('error', () => {
+        clearTimeout(timeout)
+        children.delete(child)
+        resolve(false)
+      })
+      child.once('close', (code) => {
+        clearTimeout(timeout)
+        children.delete(child)
+        if (aborted) reject(new Error(abortCode))
+        else resolve(code === 0)
+      })
+    })
   try {
     await Promise.all(
       [
@@ -178,20 +205,42 @@ export const runServerPipeline = async (manifest: ServerManifest) => {
     await normalizeWavFile({ inputPath: manifest.audioPath, outputPath: normalized })
     if (aborted) throw new Error(abortCode)
     const p = manifest.profile
-    const stt = () =>
-      run(
-        p.whisperBinary,
-        buildWhisperArgs({
-          modelPath: p.whisperModel,
-          audioPath: normalized,
-          outputPath: prefix,
-          threads: p.sttThreads,
-          vadEnabled: p.whisperVadEnabled ?? true,
-          vadModelPath: p.vadModel
-        }),
-        false,
-        'STT_FAILED'
-      )
+    const whisperArgs = (outputPath: string, options: { prompt?: string; maxContext?: number } = {}) =>
+      buildWhisperArgs({
+        modelPath: p.whisperModel,
+        audioPath: normalized,
+        outputPath,
+        threads: p.sttThreads,
+        vadEnabled: p.whisperVadEnabled ?? true,
+        vadModelPath: p.vadModel,
+        ...options
+      })
+    const stt = () => run(p.whisperBinary, whisperArgs(prefix), false, 'STT_FAILED')
+    const readDecode = async (outputPath: string) => {
+      const decodedRaw = await readFile(`${outputPath}.json`)
+      if (p.whisperVadEnabled ?? true) assertRestoredVadTimestamps(decodedRaw)
+      return { raw: decodedRaw, segments: parseWhisperOutput(decodedRaw) }
+    }
+    const optionalDecode = async (name: string, options: { prompt?: string; maxContext?: number }) => {
+      const outputPath = path.join(manifest.outputDirectory, name)
+      if (!await runOptional(p.whisperBinary, whisperArgs(outputPath, options))) return undefined
+      return readDecode(outputPath)
+    }
+    /**
+     * 구간마다 기본 디코딩에 반복 사고가 있으면 이어받기 없이(-mc 0) 한 번만 다시 디코딩한다.
+     * WITH_VOCABULARY 구간은 고정 용어 프롬프트로 한 번 더 디코딩해 용어만 합친다.
+     */
+    const decodeWindow = async (window: WindowInput) => {
+      let selected = await readDecode(prefix)
+      if (hasDecoderRepetition(selected.segments)) {
+        const retry = await optionalDecode('whisper-retry', { maxContext: 0 })
+        if (retry && prefersRetry(selected.segments, retry.segments)) selected = retry
+      }
+      if (window.decodePolicy !== 'WITH_VOCABULARY') return selected
+      const vocabulary = await optionalDecode('whisper-vocabulary', { prompt: VOCABULARY_PROMPT })
+      if (!vocabulary) return selected
+      return { raw: selected.raw, segments: fuseVocabulary(selected.segments, vocabulary.segments) }
+    }
     const evidencePath = path.join(manifest.outputDirectory, 'window-speakers.json')
     const diarize = () => manifest.window ? run(
       p.pythonBinary!, [path.join(path.dirname(new URL(import.meta.url).pathname), 'windowDiarization.py'),
@@ -213,11 +262,11 @@ export const runServerPipeline = async (manifest: ServerManifest) => {
         JSON.stringify({...manifest, audioPath: normalized}), {mode:0o600})
     }
     const [, diarization] = await Promise.all([stt(), diarize()])
-    const raw = await readFile(`${prefix}.json`)
-    if (p.whisperVadEnabled ?? true) assertRestoredVadTimestamps(raw)
-    const result = manifest.window ? assembleWindowResult(raw,
-      JSON.parse(await readFile(evidencePath,'utf8')), manifest.window)
-      : assembleResult(raw, diarization, manifest.speakerCount)
+    const decoded = manifest.window ? await decodeWindow(manifest.window) : await readDecode(prefix)
+    const result = manifest.window
+      ? assembleWindowResult(decoded.raw, JSON.parse(await readFile(evidencePath,'utf8')),
+        manifest.window, decoded.segments)
+      : assembleResult(decoded.raw, diarization, manifest.speakerCount)
     if (manifest.window && Buffer.byteLength(JSON.stringify(result),'utf8') > 1048576)
       throw new Error('OUTPUT_LIMIT')
     if (aborted) throw new Error(abortCode)

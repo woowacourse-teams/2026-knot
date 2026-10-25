@@ -6,10 +6,10 @@ import { buildEnvironmentDashboards } from './build-environment-dashboards.mjs';
 const root = new URL('./', import.meta.url);
 const entries = await buildEnvironmentDashboards();
 
-test('Dev 7개와 Prod 5개를 서로 다른 UID로 생성한다', () => {
+test('Dev 7개와 Prod 7개를 서로 다른 UID로 생성한다', () => {
   assert.equal(entries.filter(entry => entry.env === 'dev').length, 7);
-  assert.equal(entries.filter(entry => entry.env === 'prod').length, 5);
-  assert.equal(new Set(entries.map(entry => entry.dashboard.uid)).size, 12);
+  assert.equal(entries.filter(entry => entry.env === 'prod').length, 7);
+  assert.equal(new Set(entries.map(entry => entry.dashboard.uid)).size, 14);
 });
 
 test('선택 변수가 아닌 실제 쿼리로 환경과 RDS 식별자를 고정한다', () => {
@@ -30,14 +30,10 @@ test('선택 변수가 아닌 실제 쿼리로 환경과 RDS 식별자를 고정
   }
 });
 
-test('Prod에는 Spring JVM Tomcat Hikari 패널이 없다', () => {
-  for (const { dashboard } of entries.filter(entry => entry.env === 'prod')) {
-    assert(!['spring', 'pools'].some(kind => dashboard.uid.endsWith(kind)));
-    for (const panel of dashboard.panels) {
-      for (const target of panel.targets ?? []) {
-        assert(!/jvm_|tomcat_|hikaricp_|job="spring"/.test(target.expr));
-      }
-    }
+test('Prod Spring JVM과 연결 풀을 실제 prod selector로 조회한다', () => {
+  for (const kind of ['spring', 'pools']) {
+    const { dashboard } = entries.find(entry => entry.env === 'prod' && entry.kind === kind);
+    assert(dashboard.panels.some(panel => panel.targets?.some(target => /jvm_|hikaricp_/.test(target.expr))));
   }
 });
 
@@ -45,7 +41,7 @@ test('로그 화면은 앱 Nginx 5xx를 분리하며 빈 로그를 정상으로 
   for (const { env, dashboard } of entries.filter(entry => entry.kind === 'logs')) {
     const logs = dashboard.panels.filter(panel => panel.type === 'logs');
     assert.equal(logs.length, 3);
-    assert(logs[0].targets[0].expr.includes(`job="${env === 'dev' ? 'spring' : 'prototype'}"`));
+    assert(logs[0].targets[0].expr.includes('job="spring"'));
     assert(logs[1].targets[0].expr.includes('job="nginx"'));
     assert(logs[2].targets[0].expr.includes('status >= 500'));
     for (const panel of logs) {
@@ -113,7 +109,8 @@ test('기존 알림의 대시보드와 패널 연결이 유지된다', async () 
     for (const rule of group.rules) {
       const uid = rule.annotations?.__dashboardUid__;
       if (!uid) continue;
-      const original = JSON.parse(await readFile(new URL(`dashboards/${uid}.json`, root), 'utf8'));
+      const original = entries.find(entry => entry.dashboard.uid === uid)?.dashboard
+        ?? JSON.parse(await readFile(new URL(`dashboards/${uid}.json`, root), 'utf8'));
       assert(original.panels.some(panel => String(panel.id) === rule.annotations.__panelId__));
     }
   }
@@ -147,18 +144,15 @@ test('질문에 맞는 시각화와 최신값·기간값 조회를 구분한다'
     assert(table.targets[0].expr.includes('sum by (uri, status)'));
   }
   const heatmaps = entries.flatMap(entry => entry.dashboard.panels.filter(panel => panel.type === 'heatmap'));
-  assert.equal(heatmaps.length, 1);
+  assert.equal(heatmaps.length, 2);
   assert(heatmaps[0].targets[0].expr.includes('http_server_requests_seconds_bucket{env="dev"'));
   assert.equal(heatmaps[0].targets[0].format, 'heatmap');
   assert.equal(heatmaps[0].options.calculate, false);
 });
 
-test('Prod RDS가 현재 앱의 실제 Docker DB가 아님을 명시한다', () => {
+test('Prod는 현재 앱의 RDS와 1분 CloudWatch 수집을 설명한다', () => {
   const { dashboard } = entries.find(entry => entry.env === 'prod' && entry.kind === 'rds');
-  assert(dashboard.panels[0].options.content.includes('Docker PostgreSQL'));
-  assert(dashboard.panels[0].options.content.includes('앱 DB 상태를 뜻하지 않습니다'));
-  assert.equal(dashboard.title, 'PROD 05 RDS·별도 AWS DB');
-  for (const { dashboard } of entries.filter(entry => entry.env === 'prod')) {
-    assert.equal(dashboard.links.find(link => link.url.endsWith('-rds')).title, '05 RDS·별도 AWS DB');
-  }
+  assert(dashboard.panels[0].options.content.includes('현재 Spring 앱이 사용하는 DB'));
+  assert(dashboard.panels[0].options.content.includes('1분'));
+  assert.equal(dashboard.title, 'PROD 07 RDS');
 });

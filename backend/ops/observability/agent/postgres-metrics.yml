@@ -1,0 +1,25 @@
+knot_db_state:
+  query: |
+    SELECT COALESCE(state, 'unknown') AS state,
+           COUNT(*)::bigint AS connections
+    FROM pg_stat_activity
+    WHERE backend_type = 'client backend'
+      AND application_name IS DISTINCT FROM 'knot-pg-monitor'
+    GROUP BY state
+  metrics:
+    - state:
+        usage: "LABEL"
+        description: "Current PostgreSQL client session state."
+    - connections:
+        usage: "GAUGE"
+        description: "Current client sessions in the state."
+
+knot_db_limit:
+  query: |
+    SELECT setting::bigint AS connections
+    FROM pg_settings
+    WHERE name = 'max_connections'
+  metrics:
+    - connections:
+        usage: "GAUGE"
+        description: "Effective PostgreSQL max_connections setting."

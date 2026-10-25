@@ -34,6 +34,47 @@
       }
     },
     {
+      "id": 90,
+      "type": "stat",
+      "title": "로그 표본 · request_id 포함률",
+      "description": "선택 기간의 Nginx 로그 중 request_id가 있는 비율입니다. 요청 로그 자체가 없으면 표본 없음입니다. 앱 로그가 비어 있으면 요청 부재와 수집 실패를 추가로 구분해야 합니다.",
+      "datasource": {
+        "type": "loki",
+        "uid": "knot-loki"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 4,
+        "w": 24,
+        "h": 6
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "queryType": "instant",
+          "expr": "100 * (sum(count_over_time({project=\"knot\",env=\"dev\",job=\"nginx\"} | json | request_id != \"\" | __error__=\"\" [$__range])) or on() (0 * sum(count_over_time({project=\"knot\",env=\"dev\",job=\"nginx\"} [$__range])))) / sum(count_over_time({project=\"knot\",env=\"dev\",job=\"nginx\"} [$__range]))"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "noValue": "표본 없음"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      }
+    },
+    {
       "id": 2,
       "title": "앱 로그 · 예외와 처리 기록",
       "type": "logs",
@@ -43,7 +84,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 4,
+        "y": 10,
         "w": 24,
         "h": 10
       },
@@ -60,7 +101,7 @@
           "queryType": "range"
         }
       ],
-      "description": "Dev knot-backend.service의 journald 로그입니다. 시간과 레이블을 확인하고 필요한 구간으로 범위를 좁히세요."
+      "description": "DEV Spring systemd unit의 journald 로그입니다. slot 레이블로 blue/green을 구분합니다. 시간과 레이블을 확인하고 필요한 구간으로 범위를 좁히세요."
     },
     {
       "id": 3,
@@ -72,7 +113,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 14,
+        "y": 20,
         "w": 24,
         "h": 10
       },
@@ -101,7 +142,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 24,
+        "y": 30,
         "w": 24,
         "h": 10
       },

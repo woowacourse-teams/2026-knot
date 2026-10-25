@@ -2,13 +2,18 @@ prometheus.exporter.unix "host" {
   procfs_path = "/host/proc"
   sysfs_path = "/host/sys"
   rootfs_path = "/host"
-  set_collectors = ["cpu", "meminfo", "filesystem", "diskstats", "loadavg", "netdev", "stat", "time", "uname"]
+  set_collectors = ["cpu", "meminfo", "filesystem", "diskstats", "loadavg", "netdev", "stat", "time", "uname", "textfile"]
+  textfile {
+    directory = "/host/var/lib/knot-observability/textfile"
+  }
 }
 
 prometheus.scrape "host" {
   targets = prometheus.exporter.unix.host.targets
-  scrape_interval = "30s"
-  job_name = "node"
+  scrape_interval = { dev = "30s", prod = "5s" }[sys.env("KNOT_ENV")]
+  scrape_timeout = { dev = "10s", prod = "3s" }[sys.env("KNOT_ENV")]
+  // Exporter targets already carry this job label; job_name is only a fallback.
+  job_name = "integrations/unix"
   forward_to = [prometheus.remote_write.ncp.receiver]
 }
 
@@ -16,7 +21,7 @@ discovery.relabel "spring" {
   targets = [{ __address__ = "127.0.0.1:18080", service = "knot-backend", __meta_knot_env = sys.env("KNOT_ENV") }]
   rule {
     source_labels = ["__meta_knot_env"]
-    regex = "dev"
+    regex = "dev|prod"
     action = "keep"
   }
 }
@@ -24,7 +29,8 @@ discovery.relabel "spring" {
 prometheus.scrape "spring" {
   targets = discovery.relabel.spring.output
   metrics_path = "/actuator/prometheus"
-  scrape_interval = "30s"
+  scrape_interval = { dev = "30s", prod = "5s" }[sys.env("KNOT_ENV")]
+  scrape_timeout = { dev = "10s", prod = "3s" }[sys.env("KNOT_ENV")]
   job_name = "spring"
   forward_to = [prometheus.remote_write.ncp.receiver]
 }
@@ -41,61 +47,61 @@ prometheus.exporter.cloudwatch "rds" {
     metric {
       name = "CPUUtilization"
       statistics = ["Average"]
-      period = "5m"
+      period = { dev = "5m", prod = "1m" }[sys.env("KNOT_ENV")]
       length = "10m"
     }
     metric {
       name = "DatabaseConnections"
       statistics = ["Average"]
-      period = "5m"
+      period = { dev = "5m", prod = "1m" }[sys.env("KNOT_ENV")]
       length = "10m"
     }
     metric {
       name = "FreeableMemory"
       statistics = ["Average"]
-      period = "5m"
+      period = { dev = "5m", prod = "1m" }[sys.env("KNOT_ENV")]
       length = "10m"
     }
     metric {
       name = "FreeStorageSpace"
       statistics = ["Average"]
-      period = "5m"
+      period = { dev = "5m", prod = "1m" }[sys.env("KNOT_ENV")]
       length = "10m"
     }
     metric {
       name = "ReadLatency"
       statistics = ["Average"]
-      period = "5m"
+      period = { dev = "5m", prod = "1m" }[sys.env("KNOT_ENV")]
       length = "10m"
     }
     metric {
       name = "WriteLatency"
       statistics = ["Average"]
-      period = "5m"
+      period = { dev = "5m", prod = "1m" }[sys.env("KNOT_ENV")]
       length = "10m"
     }
     metric {
       name = "ReadIOPS"
       statistics = ["Average"]
-      period = "5m"
+      period = { dev = "5m", prod = "1m" }[sys.env("KNOT_ENV")]
       length = "10m"
     }
     metric {
       name = "WriteIOPS"
       statistics = ["Average"]
-      period = "5m"
+      period = { dev = "5m", prod = "1m" }[sys.env("KNOT_ENV")]
       length = "10m"
     }
     metric {
       name = "DiskQueueDepth"
       statistics = ["Average"]
-      period = "5m"
+      period = { dev = "5m", prod = "1m" }[sys.env("KNOT_ENV")]
       length = "10m"
     }
   }
   decoupled_scraping {
     enabled = true
-    scrape_interval = "5m"
+    scrape_interval = { dev = "5m", prod = "1m" }[sys.env("KNOT_ENV")]
   }
 }
 
@@ -103,7 +109,7 @@ prometheus.scrape "rds" {
   targets = prometheus.exporter.cloudwatch.rds.targets
   scrape_interval = "60s"
   scrape_timeout = "30s"
-  job_name = "rds"
+  job_name = "integrations/cloudwatch"
   forward_to = [prometheus.remote_write.ncp.receiver]
 }
 
@@ -133,7 +139,21 @@ loki.write "ncp" {
 
 loki.source.journal "spring" {
   matches = "_SYSTEMD_UNIT=knot-backend.service"
-  labels = { job = "spring", service = "knot-backend" }
+  labels = { job = "spring", service = "knot-backend", slot = "legacy", unit = "knot-backend.service" }
+  max_age = "7h"
+  forward_to = [loki.write.ncp.receiver]
+}
+
+loki.source.journal "spring_blue" {
+  matches = "_SYSTEMD_UNIT=knot-backend-blue.service"
+  labels = { job = "spring", service = "knot-backend", slot = "blue", unit = "knot-backend-blue.service" }
+  max_age = "7h"
+  forward_to = [loki.write.ncp.receiver]
+}
+
+loki.source.journal "spring_green" {
+  matches = "_SYSTEMD_UNIT=knot-backend-green.service"
+  labels = { job = "spring", service = "knot-backend", slot = "green", unit = "knot-backend-green.service" }
   max_age = "7h"
   forward_to = [loki.write.ncp.receiver]
 }
@@ -158,4 +178,22 @@ loki.source.docker "prototype" {
   targets = discovery.docker.prototype.targets
   labels = { job = "prototype", service = "knot-prototype" }
   forward_to = [loki.write.ncp.receiver]
+}
+
+local.file "postgres_dsn" {
+  filename = "/etc/alloy/postgres-dsn"
+  is_secret = true
+}
+
+prometheus.exporter.postgres "rds" {
+  data_source_names = [local.file.postgres_dsn.content]
+  custom_queries_config_path = "/etc/alloy/postgres-metrics.yml"
+  disable_default_metrics = true
+}
+
+prometheus.scrape "postgres" {
+  targets = prometheus.exporter.postgres.rds.targets
+  scrape_interval = "30s"
+  job_name = "integrations/postgres"
+  forward_to = [prometheus.remote_write.ncp.receiver]
 }
