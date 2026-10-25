@@ -6,13 +6,13 @@ const root = new URL('./', import.meta.url);
 const sources = { overview: 'operations', api: 'operations', logs: 'operations', infra: 'infra', spring: 'spring', pools: 'pools', rds: 'rds' };
 const kinds = {
   dev: ['overview', 'api', 'logs', 'infra', 'spring', 'pools', 'rds'],
-  prod: ['overview', 'api', 'logs', 'infra', 'rds'],
+  prod: ['overview', 'api', 'logs', 'infra', 'spring', 'pools', 'rds'],
 };
 const names = {
   overview: '전체 상태', api: 'API 요청·오류', logs: '로그', infra: '서버 자원',
   spring: 'Spring 앱', pools: 'Tomcat·DB 연결 풀', rds: 'RDS',
 };
-const dashboardName = (env, kind) => env === 'prod' && kind === 'rds' ? 'RDS·별도 AWS DB' : names[kind];
+const dashboardName = (env, kind) => names[kind];
 const descriptions = {
   '외부 API 정상 여부': ['지금 health가 응답하나?', '최근 외부 health 검사 결과입니다. 정상은 모든 API 기능이나 지난 기간 전체의 무장애를 보장하지 않습니다. 실패하면 로그 화면과 앱 상태를 확인하세요.'],
   '외부 API 응답 시간': ['health 확인에 얼마나 걸렸나?', '외부 health 확인 전체 시간입니다. DNS·연결·응답을 포함하며 실제 업무 API 지연과 다릅니다. 봉우리가 나온 시간의 로그와 서버 자원을 확인하세요.'],
@@ -44,7 +44,7 @@ function decorate(panel, env) {
   const detail = descriptions[clone.title];
   if (detail) [clone.title, clone.description] = detail;
   else if (clone.datasource?.uid === 'knot-prometheus' && clone.targets?.some(target => target.expr.includes('aws_rds_'))) {
-    clone.description = 'RDS 자체의 CloudWatch 5분 평균입니다.';
+    clone.description = `RDS 자체의 CloudWatch ${env === 'prod' ? '1분' : '5분'} 평균입니다.`;
     clone.description += ' 실시간 순간값이나 앱의 Hikari 연결 수가 아닙니다. 해당 DB 식별자의 로그·이벤트와 함께 확인하세요.';
   } else {
     clone.description = `${clone.description ?? `${env.toUpperCase()}의 ${clone.title} 지표입니다.`} 같은 시간대의 요청·앱 로그와 함께 확인하세요. 데이터 없음은 정상 0이 아닙니다.`;
@@ -59,11 +59,11 @@ function intro(env, kind) {
     api: `${environment} 실제 API 요청을 Nginx 로그로 분석합니다. **요청 수 → 4xx/5xx → 느린 응답 → 경로별 오류** 순서로 보세요.\n\nhealth·actuator를 제외합니다. 요청이 없는 구간의 지연·비율은 계산하지 않습니다. 오류가 있으면 로그 화면에서 같은 시간을 확인하세요.`,
     logs: `${environment} 로그만 표시합니다. **앱 로그 → Nginx 요청 로그 → Nginx 5xx**를 따로 읽으세요. 시간 범위를 문제 발생 시각에 맞추고 위 Refresh로 갱신하세요.\n\n로그 없음만으로 수집 장애를 확정할 수 없습니다. 트래픽이 없거나 시간 범위가 짧을 수 있습니다. 전체 상태의 지표 수집과 Alloy 로그를 함께 확인하세요.`,
     infra: `${environment} AWS 앱 서버의 자원입니다. **CPU·메모리·디스크 추세**를 먼저 보고 필요할 때 아래 상세 지표를 확인하세요.\n\nNCP Grafana 서버 자원이나 EC2 전원 상태를 표시하는 화면은 아닙니다.`,
-    spring: 'DEV Spring 앱 내부 지표입니다. **API → JVM 메모리 → GC → 스레드** 순서로 확인하세요.\n\n실제 요청이 없는 API 지연은 비어 있을 수 있습니다. 서버 전체 메모리는 서버 자원 화면에서 봅니다. 응답 시간 분포는 실제 Spring histogram bucket으로 표시합니다.',
-    pools: 'DEV 요청 처리와 DB 연결 풀입니다. **Tomcat busy → Hikari active/max → pending** 순서로 보세요.\n\npending은 연결을 기다리는 요청입니다. 오래 지속되면 앱 로그와 RDS를 함께 확인하세요. Hikari 연결 수는 RDS 전체 연결 수와 다릅니다.',
+    spring: `${environment} Spring 앱 내부 지표입니다. **API → JVM 메모리 → GC → 스레드** 순서로 확인하세요.\n\n실제 요청이 없는 API 지연은 비어 있을 수 있습니다. 서버 전체 메모리는 서버 자원 화면에서 봅니다. 응답 시간 분포는 실제 Spring histogram bucket으로 표시합니다.`,
+    pools: `${environment} 요청 처리와 DB 연결 풀입니다. **Tomcat busy → Hikari active/max → pending** 순서로 보세요.\n\npending은 연결을 기다리는 요청입니다. 오래 지속되면 앱 로그와 RDS를 함께 확인하세요. Hikari 연결 수는 RDS 전체 연결 수와 다릅니다.`,
     rds: env === 'dev'
       ? '**DEV RDS: `knot-dev-database`**의 CloudWatch 5분 평균입니다. CPU·연결 수·가용 메모리·스토리지를 확인하세요.\n\n순간값이 아니며 데이터가 없으면 정상 0으로 보지 않습니다. 앱 연결 풀은 Tomcat·DB 연결 풀 화면에서 봅니다.'
-      : '**PROD RDS: `knot-database`**의 CloudWatch 5분 평균입니다.\n\n**현재 프로토타입의 실제 DB는 별도 Docker PostgreSQL입니다. 이 RDS 그래프가 앱 DB 상태를 뜻하지 않습니다.** 프로토타입 DB 문제는 앱 로그와 실제 DB 컨테이너에서 확인하세요.',
+      : '**PROD RDS: `knot-database`**의 CloudWatch 1분 평균입니다. 현재 Spring 앱이 사용하는 DB입니다.\n\n앱의 Hikari 연결 풀과 RDS 전체 연결 수는 다릅니다. 순간값이 아니며 데이터가 없으면 정상 0으로 보지 않습니다.',
   };
   return { id: 1, type: 'text', title: `${environment} · 이 화면 읽는 법`, gridPos: { x: 0, y: 0, w: 24, h: kind === 'logs' || kind === 'rds' ? 4 : 3 }, options: { mode: 'markdown', content: paragraphs[kind] } };
 }
@@ -139,17 +139,29 @@ function apiPanels(source, env) {
 
 function logPanels(source, env) {
   const template = source.panels.find(panel => panel.type === 'logs');
-  const app = env === 'dev' ? 'spring' : 'prototype';
+  const app = 'spring';
   const definitions = [
-    ['앱 로그 · 예외와 처리 기록', `{project="knot",env="${env}",job="${app}"}`, env === 'dev' ? 'Dev knot-backend.service의 journald 로그입니다.' : 'Prod knot-prototype-ec2-api-1 컨테이너 로그입니다.'],
+    ['앱 로그 · 예외와 처리 기록', `{project="knot",env="${env}",job="${app}"}`, `${env.toUpperCase()} Spring systemd unit의 journald 로그입니다. slot 레이블로 blue/green을 구분합니다.`],
     ['Nginx 요청 로그 · 경로와 응답', `{project="knot",env="${env}",job="nginx"} | json`, 'health 요청을 포함한 Nginx 원문입니다. uri, status, duration, upstream_duration을 확인하세요. 앱 내부 예외는 위 앱 로그에서 봅니다.'],
     ['Nginx 5xx · 실패한 요청만', `{project="knot",env="${env}",job="nginx"} | json | status >= 500 | status < 600 | __error__=""`, 'HTTP 500~599 요청만 표시합니다. 비어 있어도 전체 수집 정상의 증거는 아닙니다. 같은 시각의 앱 로그와 전체 요청을 함께 확인하세요.'],
   ];
-  return definitions.map(([title, expr, description], index) => ({
+  const logs = definitions.map(([title, expr, description], index) => ({
     ...structuredClone(template), id: index + 2, title, description: `${description} 시간과 레이블을 확인하고 필요한 구간으로 범위를 좁히세요.`,
-    gridPos: { x: 0, y: 4 + index * 10, w: 24, h: 10 },
+    gridPos: { x: 0, y: 10 + index * 10, w: 24, h: 10 },
     targets: [{ refId: 'A', expr, queryType: 'range' }],
   }));
+  const nginx = `{project="knot",env="${env}",job="nginx"}`;
+  const count = `sum(count_over_time(${nginx} [$__range]))`;
+  const coverage = {
+    id: 90, type: 'stat', title: '로그 표본 · request_id 포함률',
+    description: '선택 기간의 Nginx 로그 중 request_id가 있는 비율입니다. 요청 로그 자체가 없으면 표본 없음입니다. 앱 로그가 비어 있으면 요청 부재와 수집 실패를 추가로 구분해야 합니다.',
+    datasource: { type: 'loki', uid: 'knot-loki' },
+    gridPos: { x: 0, y: 4, w: 24, h: 6 },
+    targets: [{ refId: 'A', queryType: 'instant', expr: `100 * (sum(count_over_time(${nginx} | json | request_id != "" | __error__="" [$__range])) or on() (0 * ${count})) / ${count}` }],
+    fieldConfig: { defaults: { unit: 'percent', min: 0, max: 100, noValue: '표본 없음' }, overrides: [] },
+    options: { reduceOptions: { calcs: ['lastNotNull'], fields: '', values: false } },
+  };
+  return [coverage, ...logs];
 }
 
 function heatmap(env, y) {

@@ -2,7 +2,7 @@
 
 ## 구성 기준
 
-저장소의 환경별 기본 구성은 Dev 7개·Prod 5개다. Dev 카탈로그 17175 revision 2는
+저장소의 환경별 기본 구성은 Dev 7개·Prod 7개다. Dev 카탈로그 17175 revision 2는
 [비공개 설정과 재현 절차](private-configuration.md)에 따라 별도 원본에서 생성하며,
 포함하면 Dev는 8개가 된다. 실제 설치 상태는 Grafana의 파일 공급자·폴더·지표 수신으로 확인한다.
 
@@ -23,14 +23,14 @@
 | --- | --- | --- | --- |
 | 01 전체 상태 | 지금 health가 응답하나? 지표는 들어오나? 자원이 찼나? | 상태·자원·health 이력 | 상태·자원·health 이력 |
 | 02 API 요청·오류 | 실제 요청이 얼마나 오고 어떤 경로가 실패하거나 느린가? | Nginx 기준 | Nginx 기준 |
-| 03 로그 | 그 시각 실제로 무슨 일이 있었나? | Spring·Nginx·Nginx 5xx | 프로토타입·Nginx·Nginx 5xx |
+| 03 로그 | 그 시각 실제로 무슨 일이 있었나? | Spring·Nginx·Nginx 5xx | Spring·Nginx·Nginx 5xx |
 | 04 서버 자원 | AWS 앱 서버 CPU·메모리·디스크가 시간에 따라 변했나? | 호스트 지표 | 호스트 지표 |
-| 05 Spring 앱 | JVM·GC·앱 지연 분포는 어떤가? | Spring 내부 지표 | 해당 없음 |
-| 06 Tomcat·DB 연결 풀 | 요청 처리 스레드나 DB 연결을 기다리는가? | Tomcat·Hikari | 해당 없음 |
-| RDS | 지정한 AWS RDS의 상태는 어떤가? | 07 `knot-dev-database` | 05 `knot-database`·별도 AWS DB |
+| 05 Spring 앱 | JVM·GC·앱 지연 분포는 어떤가? | Spring 내부 지표 | Spring 내부 지표 |
+| 06 Tomcat·DB 연결 풀 | 요청 처리 스레드나 DB 연결을 기다리는가? | Tomcat·Hikari | Tomcat·Hikari |
+| RDS | 지정한 AWS RDS의 상태는 어떤가? | 07 `knot-dev-database` | 07 `knot-database` |
 | 08 Spring Boot Observability · 17175 | 앱 시작 이후 요청·최근 지연·앱 로그를 원본 배치로 볼 수 있나? | 추가 카탈로그 화면 | 해당 없음 |
 
-Prod 프로토타입의 실제 DB는 별도 Docker PostgreSQL이다. Prod RDS 화면을 실제 앱 DB 상태로 해석하지 않는다. 서버 자원은 AWS 앱 서버 지표이며 NCP Grafana 서버의 메모리가 아니다.
+현재 Prod Spring 앱의 실제 DB는 `knot-database` RDS다. Prod CloudWatch는 1분, Dev는 5분 집계를 사용한다. 서버 자원은 AWS 앱 서버 지표이며 NCP Grafana 서버의 메모리가 아니다.
 
 ## 질문에 맞는 시각화
 
@@ -42,7 +42,7 @@ Prod 프로토타입의 실제 DB는 별도 Docker PostgreSQL이다. Prod RDS �
 | 상태가 언제 바뀌었나? | State timeline | 외부 health 성공/실패 이력. 배포나 전원 상태 이력이 아니며 빈 구간을 성공으로 연결하지 않는다. |
 | 어떤 경로에 오류가 많나? | Table | 선택 기간 전체의 URI·HTTP 상태별 4xx/5xx 건수. 최근 5분 비율과 구분한다. |
 | 로그 원문은 무엇인가? | Logs | 앱 / 전체 Nginx / Nginx 5xx. 기본 1시간, 줄바꿈·시간·레이블 표시. |
-| 응답 시간이 어떤 구간에 몰리나? | Heatmap | Dev Spring의 실제 histogram bucket. Prod에는 없는 데이터를 만들지 않는다. |
+| 응답 시간이 어떤 구간에 몰리나? | Heatmap | Dev·Prod Spring의 실제 histogram bucket. 요청 없는 구간은 비어 있다. |
 
 ## 문제가 생겼을 때의 순서
 
@@ -50,14 +50,14 @@ Prod 프로토타입의 실제 DB는 별도 Docker PostgreSQL이다. Prod RDS �
 2. 시간 범위를 문제 발생 시각으로 맞춘다. 화면 링크는 시간을 전달한다.
 3. `02 API 요청·오류`에서 실제 요청량, 4xx/5xx, p95와 경로별 오류를 본다.
 4. `03 로그`에서 같은 시각의 Nginx 요청과 앱 예외를 대조한다.
-5. CPU·메모리·디스크이면 `04 서버 자원`, Dev 앱 내부이면 Spring·연결 풀·RDS로 좁힌다.
+5. CPU·메모리·디스크이면 `04 서버 자원`, 앱 내부이면 Spring·연결 풀·RDS로 좁힌다.
 
 | 증상 | 먼저 확인할 곳 | 단정하면 안 되는 것 |
 | --- | --- | --- |
-| Spring 지표 수집 끊김 | Dev health → Spring 수집 상태 → Alloy 상태·로그 → actuator 수집 경로 | API가 죽었다고 단정하지 않는다. |
+| Spring 지표 수집 끊김 | 해당 환경 health → Spring 수집 상태 → Alloy 상태·로그 → actuator 수집 경로 | API가 죽었다고 단정하지 않는다. |
 | health 실패 | health 이력 → 배포 시각 → Nginx·앱 로그 | health 하나로 모든 기능·원인을 확정하지 않는다. |
 | API 5xx 증가 | API 오류 경로 → Nginx 5xx → 앱 예외 | health 200을 전체 API 정상으로 보지 않는다. |
-| p95 증가 | 요청 수 → 느린 경로 로그 → 자원 → Dev 앱·풀 | 저트래픽 단일 요청이나 서로 다른 런타임을 단순 비교하지 않는다. |
+| p95 증가 | 요청 수 → 느린 경로 로그 → 자원 → 해당 환경 앱·풀 | 저트래픽 단일 요청이나 서로 다른 런타임을 단순 비교하지 않는다. |
 | 로그 없음 | 시간 범위를 넓히기 → 앱/요청 로그 분리 → Alloy 로그 | 조용한 앱·좁은 조회 구간을 수집 장애와 혼동하지 않는다. |
 | Grafana 자체 502 | NCP 프록시·Grafana 컨테이너 상태/로그·OOM·메모리 | AWS 앱 서버 메모리 그래프로 Grafana 자원을 진단하지 않는다. |
 
@@ -85,11 +85,13 @@ Prod 프로토타입의 실제 DB는 별도 Docker PostgreSQL이다. Prod RDS �
 
 대시보드 원본 생성기는 `build-environment-dashboards.mjs`, 산출물은 `provisioning/environment-dashboards/dev`와 `prod`에 있다. 파일 공급자 설정은 `provisioning/dashboards/knot.yml`이다. 기존 Compose의 provisioning 읽기 전용 mount를 사용한다.
 
+서비스·백업 수집과 배포 후 슬롯별 로그 검증은 [운영 안정화 절차](operational-stabilization.md)를 따른다.
+
 Discord 연결 설정은 `provisioning/alerting/knot.json`, 알림 템플릿 그룹은 `provisioning/alerting/discord-templates.json`이다. 두 파일을 함께 반영해야 한다. 템플릿 내부 `$index`는 환경변수 치환 대상이 아닌 `templates[].template`에 둔다.
 
-`deploy-environment-dashboards.py`는 환경별 JSON과 공급자·알림·템플릿을 함께 적용하는 서버용 스크립트다. 원본 상대 경로를 보존한 stage와 각 프로비저닝 파일의 SHA-256을 담은 `manifest.json`이 필요하다. 카탈로그까지 포함한 현재 구성은 NCP에서 `python3 deploy-environment-dashboards.py --stage <stage> --dev-count 8`로 읽기 전용 사전 검사를 수행한 뒤, 승인된 적용 단계에서 `--apply`를 추가한다. 최초 7개 구성은 기본 `--dev-count 7`을 사용한다.
+`deploy-environment-dashboards.py`는 환경별 JSON과 공급자·알림·템플릿을 함께 적용하는 서버용 스크립트다. 원본 상대 경로를 보존한 stage와 각 프로비저닝 파일의 SHA-256을 담은 `manifest.json`이 필요하다. 별도 운영 대시보드를 stage에 보존한 구성은 NCP에서 `python3 deploy-environment-dashboards.py --stage <stage> --dev-count 8 --prod-count 8`로 읽기 전용 사전 검사를 수행한 뒤, 승인된 적용 단계에서 `--apply`를 추가한다. 저장소 기본 화면만 새로 설치할 때는 기본 `--dev-count 7 --prod-count 7`을 사용한다. 현재 운영은 환경별 8개로 요청 추적과 사용자 지정 패널이 추가되어 있다. 기본 생성 결과로 운영 화면을 덮어쓰지 않는다.
 
-사전 검사는 실제 읽기 전용 마운트, 기존 공급자, 공통 6개, 알림 15개, 기존 설정과 새 설정의 불변 계약을 확인한다. 알림의 `display_name`·`summary`·`description`, Discord의 `title`·`message`만 계약 비교에서 제외한다. 쿼리·조건·대기·라우팅·Webhook·알림 패널 링크의 차이가 있으면 백업·설치 전에 중단한다. 운영 설정의 차이를 이 스크립트로 덮어쓰지 않는다.
+사전 검사는 실제 읽기 전용 마운트, 기존 공급자, 공통 6개, 기존 알림 24개와 별도 파일의 서비스·백업 규칙 6개, 기존 설정과 새 설정의 불변 계약을 확인한다. 알림의 `display_name`·`summary`·`description`, Discord의 `title`·`message`만 계약 비교에서 제외한다. 쿼리·조건·대기·라우팅·Webhook·알림 패널 링크의 차이가 있으면 백업·설치 전에 중단한다. 운영 설정의 차이를 이 스크립트로 덮어쓰지 않는다.
 
 적용 시 서버 안의 `environment-backup.*` 디렉터리(0700)에 대상 파일, 공통 대시보드, Compose, 실행 알림·연락처·정책·기존 템플릿을 백업한다. 변경된 리소스의 Admin reload만 수행하고, 실행 알림 계약·공통 JSON·컨테이너 환경·폴더별 개수·템플릿을 재확인한다.
 
