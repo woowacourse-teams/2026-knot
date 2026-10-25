@@ -233,6 +233,7 @@ public class IncrementalTranscriptionWorker {
                     if (source.isEmpty()) {
                         return;
                     }
+                    long preparing = System.nanoTime();
                     TranscriptionWindowAudioAssembler.MaterializedWindowAudio audio = assembler.materialize(
                             source.orElseThrow(),
                             () -> ensureActive(owned)
@@ -241,6 +242,7 @@ public class IncrementalTranscriptionWorker {
                             claim,
                             owned
                     );
+                    long prepared = System.nanoTime();
                     String url = storage.presignDownload(
                             audio.storageKey(),
                             audio.metadata()
@@ -283,6 +285,13 @@ public class IncrementalTranscriptionWorker {
                         );
                         return;
                     }
+                    log.info(
+                            "구간 전사 입력 전달 recordingId={} windowId={} prepareMs={} submitMs={}",
+                            claim.recordingId(),
+                            claim.windowId(),
+                            TimeUnit.NANOSECONDS.toMillis(prepared - preparing),
+                            TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - prepared)
+                    );
                 }
                 checkpoint(
                         claim,
