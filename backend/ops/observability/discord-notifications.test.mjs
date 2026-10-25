@@ -33,7 +33,7 @@ test('알림 템플릿은 기술 라벨 덤프 대신 문제·확인 위치·환
 
 test('운영 규칙은 짧은 한국어 문제 이름을 제공한다', () => {
   const rules = config.groups.flatMap(group => group.rules);
-  assert.equal(rules.length, 15);
+  assert.equal(rules.length, 24);
   for (const rule of rules) {
     assert(rule.annotations.display_name.length > 3);
     assert(rule.annotations.display_name.length < 35);
@@ -42,11 +42,11 @@ test('운영 규칙은 짧은 한국어 문제 이름을 제공한다', () => {
   assert(spring.annotations.description.includes('API 중단을 확정하지 않습니다'));
 });
 
-test('알림 조건·쿼리·대기 시간·라우팅 정책은 변경하지 않는다', () => {
+test('2026-10-25 운영 24개 규칙의 조건·쿼리·대기·라우팅을 보존한다', () => {
   const core = {
     policies: config.policies,
     rules: config.groups.flatMap(group => group.rules.map(({ annotations, ...rule }) => rule)),
   };
   assert.equal(createHash('sha256').update(JSON.stringify(core)).digest('hex'),
-    '73df4a63e858ec18b9ae49eaf3f8813b6437dd6b74a3d784f64e325c1a9f6716');
+    'a4dd4df8da9c098b505eb0526744395da680b8ce5582e0d4db79b55bfbb8b717');
 });

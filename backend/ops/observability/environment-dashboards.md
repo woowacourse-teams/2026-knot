@@ -1,14 +1,21 @@
 # Dev·Prod 대시보드와 Discord 알림 읽는 법
 
-## 현재 반영 상태
+## 구성 기준
 
-2026-10-02 운영 Grafana에 환경별 구성과 Discord 템플릿을 설치했다. 처음 요청한 Dev 7개·Prod 5개를 확인한 뒤 추가 요청한 카탈로그 17175를 Dev에만 넣어 최종 폴더는 **Dev 8개·Prod 5개**다. 기존 공통 6개와 알림 15개는 보존했다. 부모 클라우드 브라우저에서 양쪽 폴더·전체 상태·로그·RDS 구분과 Dev Spring·풀 실데이터, 추가 17175 화면을 확인했다.
+저장소의 환경별 기본 구성은 Dev 7개·Prod 5개다. Dev 카탈로그 17175 revision 2는
+[비공개 설정과 재현 절차](private-configuration.md)에 따라 별도 원본에서 생성하며,
+포함하면 Dev는 8개가 된다. 실제 설치 상태는 Grafana의 파일 공급자·폴더·지표 수신으로 확인한다.
 
-AWS Dev 현재 배포본에는 관측성 자산이 없어 내부 지표가 비었다. 사용자의 추가 재배포 승인 후 현 앱의 나머지 클래스·리소스와 기존 라이브러리가 동일한 후보를 백업·설치하고 Dev 앱만 재시작했다. NCP에서 Spring up=1, JVM·Tomcat·Hikari·HTTP histogram 도착과 외부 health 정상, 공개 metrics 403·EC2 직접 metrics 401을 확인했다. NCP Grafana는 재시작하지 않았다.
+기존 공통 6개 대시보드와 알림 연결을 유지한다. `Knot-dev`, `Knot-prod` 폴더의 쿼리는
+환경을 고정하며, 혼합 화면 안의 환경 선택 변수로 조회 대상을 바꾸지 않는다.
 
-실제 Grafana Preview 8개는 통과했다. 기존 팀 수신처를 검증하고 Dev·Prod 테스트를 요청했다. Prod는 테스트 API의 `success`를 확인했고 Dev는 HTTP 200 뒤 응답 검사 코드가 구형 성공값을 기대해 멈췄으므로 본문 성공 여부를 확정하지 않는다. 사람의 새 메시지 수신 화면은 아직 확인하지 않았다. 이전 수신 캡처와 이번 검증을 구분한다. 이 내용은 당시 관측 요약이며 현재 수신 여부는 운영 환경에서 다시 확인한다.
+## 화면 유지 기준
 
-기존 공통 6개 대시보드와 알림 연결은 유지한다. 새 최상위 폴더는 `Knot-dev`, `Knot-prod`이며 환경 선택 변수 없이 실제 쿼리에 env를 고정한다. 혼합 화면 안에서 env를 바꾸는 방식이 아니라 각 폴더에 독립 대시보드를 둔다.
+- Grafana 기본 테마·패널·24칸 grid를 사용하고 로딩·오류·키보드 동작은 기본 컴포넌트를 따른다.
+- 화면과 탐색 링크에 DEV·PROD를 명시한다. 상태는 색과 텍스트를 함께 표시하고 패널 제목·설명은 한국어로 쓴다.
+- 안내 → 상태 → 로그 → 서버 → 런타임·DB 순서를 유지한다. 구체적인 배치와 갱신 주기는 JSON과 생성기에서 관리한다.
+- 지표 없음은 정상 0으로 채우지 않고 로그와 시계열의 빈 구간을 연결하지 않는다. 환경 간 링크는 시간만 전달한다.
+- 실제 Grafana의 좁은 화면·키보드·한국어 줄바꿈·쿼리 응답은 별도로 확인한다. 정적 구성 검사를 시각 QA 결과로 대신하지 않는다.
 
 ## 어디서 무엇을 보는가
 
@@ -80,25 +87,15 @@ Prod 프로토타입의 실제 DB는 별도 Docker PostgreSQL이다. Prod RDS �
 
 Discord 연결 설정은 `provisioning/alerting/knot.json`, 알림 템플릿 그룹은 `provisioning/alerting/discord-templates.json`이다. 두 파일을 함께 반영해야 한다. 템플릿 내부 `$index`는 환경변수 치환 대상이 아닌 `templates[].template`에 둔다.
 
-이번 운영 반영에서는 파일·알림 리소스를 먼저 백업하고 새 JSON 디렉터리·공급자·알림·템플릿을 함께 반영한 뒤 Admin reload를 수행했다. 기존 `deploy-dashboard-expansion.sh`는 새 디렉터리와 템플릿을 빠뜨리므로 사용하지 않았다. Grafana 컨테이너 재시작 횟수는 적용 전후 8로 동일했다.
-
 `deploy-environment-dashboards.py`는 환경별 JSON과 공급자·알림·템플릿을 함께 적용하는 서버용 스크립트다. 원본 상대 경로를 보존한 stage와 각 프로비저닝 파일의 SHA-256을 담은 `manifest.json`이 필요하다. 카탈로그까지 포함한 현재 구성은 NCP에서 `python3 deploy-environment-dashboards.py --stage <stage> --dev-count 8`로 읽기 전용 사전 검사를 수행한 뒤, 승인된 적용 단계에서 `--apply`를 추가한다. 최초 7개 구성은 기본 `--dev-count 7`을 사용한다.
 
 사전 검사는 실제 읽기 전용 마운트, 기존 공급자, 공통 6개, 알림 15개, 기존 설정과 새 설정의 불변 계약을 확인한다. 알림의 `display_name`·`summary`·`description`, Discord의 `title`·`message`만 계약 비교에서 제외한다. 쿼리·조건·대기·라우팅·Webhook·알림 패널 링크의 차이가 있으면 백업·설치 전에 중단한다. 운영 설정의 차이를 이 스크립트로 덮어쓰지 않는다.
 
-적용 시 서버 안의 `environment-backup.*` 디렉터리(0700)에 대상 파일, 공통 대시보드, Compose, 실행 알림·연락처·정책·기존 템플릿을 백업한다. 변경된 리소스의 Admin reload만 수행하고, 실행 알림 계약·공통 JSON·컨테이너 환경·폴더별 개수·템플릿을 재확인한다. 최초 적용 전 백업은 `/opt/knot-observability/environment-backup.cm7d6ba1`, 최종 표시 수정 전 백업은 `/opt/knot-observability/environment-backup._0ems54o`다.
+적용 시 서버 안의 `environment-backup.*` 디렉터리(0700)에 대상 파일, 공통 대시보드, Compose, 실행 알림·연락처·정책·기존 템플릿을 백업한다. 변경된 리소스의 Admin reload만 수행하고, 실행 알림 계약·공통 JSON·컨테이너 환경·폴더별 개수·템플릿을 재확인한다.
 
-첫 설치는 새 상위 디렉터리의 0700 때문에 dashboards reload가 실패해 원본으로 복원했다. 비밀값 없는 새 대시보드 경로를 0755로 설정하도록 수정해 해결했다. 두 번째 검사에서는 API가 템플릿 끝 개행 한 글자를 제거한 정규화 차이를 발견해 복원했고, 다른 내용이 동일함을 확인해 비교를 수정했다. 이후 전체 설치와 최종 dashboards reload는 성공했다. 이전 백업도 보존했다.
-
-2026-10-02 배포 스크립트 로컬 검증: 읽기 전용 사전 검사, 전체 번들/0700 백업, reload 실패 시 원본 복원, 운영 쿼리 차이 사전 차단의 모의 실행 4개를 통과했다. 별도로 쿼리·대기·라우팅·Webhook·패널 링크 변조 5개를 계약 비교가 탐지했다. 이 결과는 실제 서버 API 검증을 대신하지 않는다. Preview 또는 연락처 사용자 정의 테스트에서는 `labels.test="true"`를 지정해야 `[테스트]`를 표시한다.
-
-실제 확인한 항목과 남은 한계:
-
-- Dev 7개·Prod 5개 최초 폴더와 같은 환경 링크, 추가 후 Dev 8개를 API·부모 UI로 확인했다.
-- 양쪽 Nginx 실제 로그와 KST·시간 전달을 확인했다. 최근 구간 앱 로그가 없었던 사실을 수집 정상의 근거로 바꾸지 않았다.
-- Gauge와 Spring·Tomcat·Hikari 실데이터를 확인했다. 요청·오류가 없는 일부 API Table/Heatmap 결과와 작은 화면·키보드 동작은 검증 완료라고 주장하지 않는다. 임의 부하는 생성하지 않았다.
-- 실제 Go 엔진 Preview에서 Dev·Prod 발생/해제/테스트·env 누락·Updated 해제의 8개 사례를 확인했다. 규칙을 만들거나 실제 장애를 유발하지 않았다.
-- 알림 조건·쿼리·대기·라우팅·Webhook·패널 링크의 파일 및 실행 계약은 동일했다. 새 Discord 사람 수신 화면은 미확인이다.
+새 대시보드 디렉터리는 Grafana가 읽을 수 있는 권한으로 준비하고 비밀값은 별도 비공개 파일로 유지한다.
+실패하면 적용 직전 백업과 실행 계약을 대조해 복구한다. Preview 또는 연락처 사용자 정의 테스트에서
+`labels.test="true"`를 지정하면 `[테스트]`를 표시한다. 실제 수신 여부는 별도로 확인한다.
 
 로컬 검증:
 
@@ -109,8 +106,8 @@ node --check ops/observability/build-environment-dashboards.mjs
 node --check ops/observability/check-dashboard-data.mjs
 ```
 
-`check-dashboard-data.mjs`는 기존 공통 6개와 새 13개를 포함하며, 전용 화면은 해당 환경만 조회한다. 실제 운영 Prometheus/Loki로 394개 쿼리와 알림 15개를 검사해 query error·non-finite 결과가 없음을 확인했다. 빈 쿼리 58개를 0으로 대체하지 않았다.
-
-2026-10-02 검증 결과: Node 계약 20/20, 배포 모의 4/4, 기존 metrics acceptance 5/5, 일반 bootJar 패키징, 실제 서버 사전/사후 검사 통과. 운영 적용은 위 근거로 완료했다. Persona 보고서 filled gate는 기존 필수 구간 template-like/incomplete로 거부됐고 finish는 `source-read-runtime-unavailable`로 실패했다. 운영 성공을 저장소 finish 인증으로 대체하지 않는다.
+`check-dashboard-data.mjs`로 운영 Prometheus/Loki의 쿼리 오류와 비유한 값을 확인한다.
+요청이 없는 빈 결과는 0으로 채우지 않는다. 카탈로그 테스트는 고정 원본과 생성 파일을 준비한 뒤 실행한다.
+로컬 검사와 실제 서버의 수집·알림 전달·화면 확인 결과는 구분해 기록한다.
 
 공식 근거: [파일 프로비저닝](https://grafana.com/docs/grafana/latest/alerting/set-up/provision-alerting-resources/file-provisioning/), [알림 템플릿 데이터·KST 함수](https://grafana.com/docs/grafana/latest/alerting/configure-notifications/template-notifications/reference/), [Discord 제목·본문 설정](https://github.com/grafana/alerting/blob/main/receivers/discord/v1/config.go).
