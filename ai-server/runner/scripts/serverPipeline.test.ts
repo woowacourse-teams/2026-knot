@@ -4,6 +4,7 @@ import { test } from 'node:test'
 import { mkdtemp, readFile, writeFile, chmod, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
+import { pathToFileURL } from 'node:url'
 import { promisify } from 'node:util'
 import { buildWhisperArgs } from '../src/main/pipeline/whisper'
 import { buildDiarizeArgs } from '../src/main/pipeline/diarize'
@@ -11,6 +12,7 @@ import { normalizeWavFile } from '../src/main/pipeline/normalize'
 import {
   assembleResult,
   runServerPipeline,
+  siblingScriptPath,
   validateManifest,
   type ServerManifest
 } from './serverPipeline'
@@ -24,6 +26,13 @@ test('original Buffer parser preserves Korean and opaque raw string', () => {
   const result = assembleResult(raw, '0 -- 1 speaker_0', 1)
   assert.equal(result.rawWhisperJson, raw.toString('utf8'))
   assert.equal(result.utterances[0].text, '안녕')
+})
+test('window diarization script path keeps spaces in the runner directory', () => {
+  const moduleUrl = pathToFileURL('/Users/knot/Library/Application Support/runner/scripts/serverPipeline.ts').href
+  assert.equal(
+    siblingScriptPath(moduleUrl, 'windowDiarization.py'),
+    '/Users/knot/Library/Application Support/runner/scripts/windowDiarization.py'
+  )
 })
 test('raw STT alone cannot become a complete diarized result', () => {
   assert.throws(() => assembleResult(raw, ''), /DIARIZATION_EMPTY/)
