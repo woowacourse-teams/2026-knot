@@ -126,6 +126,12 @@ public enum RecordingErrorCode implements ErrorCode {
             "녹음 시각이 올바르지 않습니다"
     ),
 
+    INVALID_PARAMETER(
+            ErrorCategory.INVALID_INPUT,
+            "INVALID_PARAMETER",
+            "요청 값이 올바르지 않습니다"
+    ),
+
     INVALID_RECORDING_TITLE(
             ErrorCategory.INVALID_INPUT,
             "INVALID_RECORDING_TITLE",
