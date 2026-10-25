@@ -73,8 +73,14 @@ class RecentRecordingListServiceIntegrationTest {
                 otherWorkspaceId,
                 memberId
         );
-        long mine = saved(memberId, 0);
-        long teammate = saved(teammateId, 1);
+        long mine = saved(
+                memberId,
+                0
+        );
+        long teammate = saved(
+                teammateId,
+                1
+        );
         fixture.savedRecording(
                 otherWorkspaceId,
                 memberId,
@@ -95,7 +101,10 @@ class RecentRecordingListServiceIntegrationTest {
     @DisplayName("시작한 Member가 Workspace를 나가도 저장된 녹음은 남는다")
     void find_success_starterLeft() {
         // given
-        long recordingId = saved(teammateId, 0);
+        long recordingId = saved(
+                teammateId,
+                0
+        );
         jdbcClient.sql("UPDATE workspace_members SET left_at = joined_at WHERE member_id = :memberId")
                 .param(
                         "memberId",
@@ -114,16 +123,28 @@ class RecentRecordingListServiceIntegrationTest {
     @DisplayName("음성 저장이 끝났거나 최종화 대기·진행 중인 끝난 녹음은 처리 결과와 관계없이 담는다")
     void find_success_includesSavedRecordingsRegardlessOfResult() {
         // given
-        long processing = saved(memberId, 0);
-        long transcriptionFailed = saved(memberId, 1);
+        long processing = saved(
+                memberId,
+                0
+        );
+        long transcriptionFailed = saved(
+                memberId,
+                1
+        );
         fixture.transcriptionFailed(transcriptionFailed);
-        long noContent = saved(memberId, 2);
+        long noContent = saved(
+                memberId,
+                2
+        );
         fixture.batch(
                 noContent,
                 "NO_CONTENT",
                 "NO_CONTENT"
         );
-        long documentFailed = saved(memberId, 3);
+        long documentFailed = saved(
+                memberId,
+                3
+        );
         fixture.failedJob(
                 fixture.batch(
                         documentFailed,
@@ -131,7 +152,10 @@ class RecentRecordingListServiceIntegrationTest {
                         "FAILED"
                 )
         );
-        long completed = saved(memberId, 4);
+        long completed = saved(
+                memberId,
+                4
+        );
         fixture.batch(
                 completed,
                 "TOPICS_REGISTERED",
@@ -175,17 +199,26 @@ class RecentRecordingListServiceIntegrationTest {
     @DisplayName("녹음 중·일시정지·폐기와 음성 저장에 실패하거나 아직 올리지 못한 녹음은 담지 않는다")
     void find_success_excludesUnsavedRecordings() {
         // given
-        long recording = saved(memberId, 0);
+        long recording = saved(
+                memberId,
+                0
+        );
         fixture.changeStatus(
                 recording,
                 "RECORDING"
         );
-        long paused = saved(teammateId, 1);
+        long paused = saved(
+                teammateId,
+                1
+        );
         fixture.changeStatus(
                 paused,
                 "PAUSED"
         );
-        long discarded = saved(memberId, 2);
+        long discarded = saved(
+                memberId,
+                2
+        );
         fixture.changeStatus(
                 discarded,
                 "DISCARDED"
@@ -254,7 +287,12 @@ class RecentRecordingListServiceIntegrationTest {
                     )
             );
         }
-        expected.addFirst(saved(memberId, 60));
+        expected.addFirst(
+                saved(
+                        memberId,
+                        60
+                )
+        );
 
         // when
         List<Long> collected = new ArrayList<>();
@@ -270,8 +308,10 @@ class RecentRecordingListServiceIntegrationTest {
                     )
             );
             collected.addAll(recordingIds(page));
-            pageSizes.add(page.items()
-                    .size());
+            pageSizes.add(
+                    page.items()
+                            .size()
+            );
             cursor = page.nextCursor();
         } while (cursor != null);
 
@@ -288,7 +328,10 @@ class RecentRecordingListServiceIntegrationTest {
     @DisplayName("공개할 AI 제목이 있으면 그 제목, 없거나 NO_CONTENT면 시작한 Member 닉네임의 대체 이름을 준다")
     void find_success_titles() {
         // given
-        long titled = saved(teammateId, 0);
+        long titled = saved(
+                teammateId,
+                0
+        );
         fixture.batch(
                 titled,
                 "TOPICS_REGISTERED",
@@ -298,13 +341,19 @@ class RecentRecordingListServiceIntegrationTest {
                 titled,
                 "회원 탈퇴 정책 논의"
         );
-        long untitled = saved(teammateId, 1);
+        long untitled = saved(
+                teammateId,
+                1
+        );
         fixture.batch(
                 untitled,
                 "TOPICS_REGISTERED",
                 "RUNNING"
         );
-        long noContent = saved(memberId, 2);
+        long noContent = saved(
+                memberId,
+                2
+        );
         fixture.batch(
                 noContent,
                 "NO_CONTENT",
@@ -325,10 +374,14 @@ class RecentRecordingListServiceIntegrationTest {
                         "흑곰 님의 녹음",
                         "회원 탈퇴 정책 논의"
                 );
-        assertThat(items.getFirst()
-                .startedAt()).isEqualTo(STARTED_AT.plusSeconds(2));
-        assertThat(items.getFirst()
-                .recordingDurationSeconds()).isEqualTo(61);
+        assertThat(
+                items.getFirst()
+                        .startedAt()
+        ).isEqualTo(STARTED_AT.plusSeconds(2));
+        assertThat(
+                items.getFirst()
+                        .recordingDurationSeconds()
+        ).isEqualTo(61);
     }
 
     @Test
@@ -336,7 +389,10 @@ class RecentRecordingListServiceIntegrationTest {
     void find_fail_notMember() {
         // given
         long outsiderId = fixture.member("외부인");
-        saved(memberId, 0);
+        saved(
+                memberId,
+                0
+        );
 
         // when & then
         assertThatThrownBy(
