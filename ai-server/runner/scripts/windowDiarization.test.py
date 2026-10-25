@@ -24,6 +24,26 @@ class AggregationTest(unittest.TestCase):
             with self.assertRaises(ValueError):
                 module.aggregate([self.segment(0,1,vector)])
 
+class ObservationTest(unittest.TestCase):
+    def segment(self, start, end, speaker):
+        return {'start_sec': start, 'end_sec': end, 'speaker_local': speaker}
+
+    def test_split_long_segments_into_equal_chunks_of_at_most_five_seconds(self):
+        spans = module.observation_spans([self.segment(2, 14, 1), self.segment(0, 1, 0)])
+        self.assertEqual([(0, 1, 'speaker_0'), (2, 6, 'speaker_1'), (6, 10, 'speaker_1'), (10, 14, 'speaker_1')],
+                         spans)
+
+    def test_skip_chunks_without_enough_samples_for_an_embedding(self):
+        class Native:
+            def embedding(self, floats, rate):
+                if len(floats) < 16000:
+                    return {'status': 'insufficient_samples', 'vector': None}
+                return {'status': 'success', 'vector': [0.5]*512}
+
+        result = module.observations(Native(), [0.0]*32000, [self.segment(0, .5, 0), self.segment(.5, 2, 1)])
+        self.assertEqual([(.5, 2, 'speaker_1')], [(o['start'], o['end'], o['speaker']) for o in result])
+
+
 class WindowLengthTest(unittest.TestCase):
     def execute(self, frames):
         with tempfile.TemporaryDirectory() as directory:
