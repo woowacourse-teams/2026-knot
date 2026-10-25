@@ -343,30 +343,13 @@ final class TranscriptSeamAligner {
                     score = scores[i][j - 1];
                     path = 'R';
                 }
-                String key = normalized(a.text());
-                double distance = Math.abs(a.midpoint() - b.midpoint());
-                double gap = Math.max(
-                        0,
-                        Math.max(
-                                a.start(),
-                                b.start()
-                        ) - Math.min(a.end(),
-                                b.end()
-                        )
+                double match = scores[i - 1][j - 1] + matchReward(
+                        a,
+                        b
                 );
-                boolean compatible = distance <= MATCH_TOLERANCE_SEC || gap <= INTERVAL_GAP_SEC;
-                if (!key.isEmpty() && key.equals(normalized(b.text())) && compatible) {
-                    double reward = 4 + Math.min(
-                            length(key),
-                            6
-                    ) / 6.0 - Math.min(
-                            distance,
-                            2
-                    );
-                    if (scores[i - 1][j - 1] + reward > score) {
-                        score = scores[i - 1][j - 1] + reward;
-                        path = 'M';
-                    }
+                if (match > score) {
+                    score = match;
+                    path = 'M';
                 }
                 scores[i][j] = score;
                 paths[i][j] = path;
@@ -389,6 +372,35 @@ final class TranscriptSeamAligner {
             j--;
         }
         return pairs;
+    }
+
+    /** 같은 글자이고 시각이 가까운 두 단어를 짝지을 때의 점수. 짝지을 수 없으면 음의 무한대다. */
+    private static double matchReward(
+            Token a,
+            Token b
+    ) {
+        String key = normalized(a.text());
+        double distance = Math.abs(a.midpoint() - b.midpoint());
+        double gap = Math.max(
+                0,
+                Math.max(
+                        a.start(),
+                        b.start()
+                ) - Math.min(a.end(),
+                        b.end()
+                )
+        );
+        boolean compatible = distance <= MATCH_TOLERANCE_SEC || gap <= INTERVAL_GAP_SEC;
+        if (key.isEmpty() || !key.equals(normalized(b.text())) || !compatible) {
+            return Double.NEGATIVE_INFINITY;
+        }
+        return 4 + Math.min(
+                length(key),
+                6
+        ) / 6.0 - Math.min(
+                distance,
+                2
+        );
     }
 
     /** 단어 경계가 관측마다 달라도(예: "서브 에이전트"와 "서브에이전트") 같은 글자의 4단어 이내 구절을 맞춘다. */
