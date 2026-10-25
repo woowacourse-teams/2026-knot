@@ -78,7 +78,10 @@ class RecordingTitleWorkerTest {
 
         // when & then
         assertThatCode(() -> worker.process(TASK)).doesNotThrowAnyException();
-        verify(recordingTitleGenerationService, never()).succeed(
+        verify(
+                recordingTitleGenerationService,
+                never()
+        ).succeed(
                 any(),
                 anyString()
         );
@@ -115,8 +118,7 @@ class RecordingTitleWorkerTest {
     void process_fail_failurePersistence() {
         // given
         when(recordingTitleGenerator.generate(TASK.transcript())).thenThrow(new IllegalStateException("boom"));
-        doThrow(new IllegalStateException("db"))
-                .when(recordingTitleGenerationService)
+        doThrow(new IllegalStateException("db")).when(recordingTitleGenerationService)
                 .fail(
                         TASK,
                         "INTERNAL"
