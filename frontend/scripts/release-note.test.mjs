@@ -1,12 +1,16 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
 
 import {
+  parseLinkScreens,
   readGuide,
   replaceNote,
   toKstDate,
   validateNote,
 } from "./release-note.mjs";
+
+const LINK_KEYS = ["WORKSPACE_HOME", "CHAT"];
 
 const item = (overrides = {}) => ({
   title: "탐색 기록이 남아요",
@@ -24,17 +28,61 @@ const fakeNotion = (respond = () => ({})) => {
   return { notion, calls };
 };
 
+describe("parseLinkScreens", () => {
+  it("라우트 표에서 워크스페이스 ID만 채우면 갈 수 있는 화면만 고른다", () => {
+    const source = `
+      import { generatePath } from "react-router";
+      export const PATH_ROUTE = {
+        HOME: "/",
+        WORKSPACE_HOME: "/workspace/:workspaceId",
+        // 주석은 건너뛴다
+        CHAT: "/workspace/:workspaceId/chat",
+        CHAT_SESSION: "/workspace/:workspaceId/chat/:sessionId",
+        INVITE: "/invite/:token",
+        FILES: "/workspace/:workspaceId/*",
+      } as const;
+      const OTHER = { NOT_ROUTE: "/workspace/:workspaceId/x" };
+    `;
+
+    assert.deepEqual(parseLinkScreens(source), [
+      { key: "WORKSPACE_HOME", path: "/workspace/:workspaceId" },
+      { key: "CHAT", path: "/workspace/:workspaceId/chat" },
+    ]);
+  });
+
+  it("실제 라우트 표를 읽을 수 있다", () => {
+    const keys = parseLinkScreens(
+      readFileSync(
+        new URL("../src/shared/routes/PATH_ROUTE.ts", import.meta.url),
+        "utf8",
+      ),
+    ).map(({ key }) => key);
+
+    assert.ok(keys.includes("WORKSPACE_HOME"));
+    assert.ok(keys.includes("CHAT"));
+    assert.ok(!keys.includes("CHAT_SESSION"));
+    assert.ok(!keys.includes("LOGIN"));
+  });
+
+  it("표 모양이 바뀌어 화면을 하나도 못 찾으면 멈춘다", () => {
+    assert.throws(() => parseLinkScreens("export const ROUTES = {};"));
+  });
+});
+
 describe("validateNote", () => {
   it("제목과 설명을 다듬고 바로 가보기 · 피드백 덕분 · 큰 변화를 그대로 둔다", () => {
     const { items, errors } = validateNote({
-      items: [
-        item({
-          title: "  탐색 기록이 남아요 ",
-          link: "CHAT",
-          isFromFeedback: true,
-          isHighlight: true,
-        }),
-      ],
+      note: {
+        items: [
+          item({
+            title: "  탐색 기록이 남아요 ",
+            link: "CHAT",
+            isFromFeedback: true,
+            isHighlight: true,
+          }),
+        ],
+      },
+      linkKeys: LINK_KEYS,
     });
 
     assert.deepEqual(errors, []);
@@ -50,17 +98,30 @@ describe("validateNote", () => {
   });
 
   it("항목이 없으면 사용자 변화가 없는 노트로 통과한다", () => {
-    assert.deepEqual(validateNote({ items: [] }), { items: [], errors: [] });
+    assert.deepEqual(
+      validateNote({ note: { items: [] }, linkKeys: LINK_KEYS }),
+      { items: [], errors: [] },
+    );
   });
 
   it("JSON 객체가 아니거나 items가 배열이 아니면 고칠 것으로 알린다", () => {
-    assert.equal(validateNote(null).errors.length, 1);
-    assert.equal(validateNote({ items: "없음" }).errors.length, 1);
+    assert.equal(
+      validateNote({ note: null, linkKeys: LINK_KEYS }).errors.length,
+      1,
+    );
+    assert.equal(
+      validateNote({ note: { items: "없음" }, linkKeys: LINK_KEYS }).errors
+        .length,
+      1,
+    );
   });
 
   it("제목이나 설명이 비어 있으면 고칠 것으로 알린다", () => {
     const { errors } = validateNote({
-      items: [item({ title: " " }), item({ description: "" })],
+      note: {
+        items: [item({ title: " " }), item({ description: "" })],
+      },
+      linkKeys: LINK_KEYS,
     });
 
     assert.equal(errors.length, 2);
@@ -68,7 +129,10 @@ describe("validateNote", () => {
 
   it("바로 가보기가 앱 화면 키가 아니면 고칠 것으로 알린다", () => {
     const { errors } = validateNote({
-      items: [item({ link: "LOGIN" }), item({ link: "https://knoted.kr" })],
+      note: {
+        items: [item({ link: "LOGIN" }), item({ link: "https://knoted.kr" })],
+      },
+      linkKeys: LINK_KEYS,
     });
 
     assert.equal(errors.length, 2);
@@ -76,7 +140,10 @@ describe("validateNote", () => {
 
   it("큰 변화가 둘 이상이면 고칠 것으로 알린다", () => {
     const { errors } = validateNote({
-      items: [item({ isHighlight: true }), item({ isHighlight: true })],
+      note: {
+        items: [item({ isHighlight: true }), item({ isHighlight: true })],
+      },
+      linkKeys: LINK_KEYS,
     });
 
     assert.equal(errors.length, 1);

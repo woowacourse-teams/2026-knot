@@ -5,6 +5,7 @@
  *
  * 모드:
  * - guide: Notion 「릴리즈 노트」 페이지(노트 문구 기준)를 글로 읽어 GITHUB_OUTPUT의 `guide`로 낸다. 저장소에는 옮기지 않는다.
+ *   바로 가보기로 고를 수 있는 앱 화면도 앱 라우트 표에서 읽어 `link_keys`(JSON 배열)와 `links`(화면 키와 주소)로 낸다.
  * - publish: NOTE_JSON(Claude의 structured_output)을 검사하고, 항목이 있으면 노트 id `pr-{PR_NUMBER}`로 DB에 바꿔 넣는다.
  *   항목이 없으면 「사용자 변화 없음」으로 DB를 건드리지 않는다.
  *
@@ -13,7 +14,7 @@
  * 출력: GITHUB_STEP_SUMMARY에 쓴 노트와 Notion 링크, 또는 「사용자 변화 없음」.
  * 종료 코드: 0 성공, 1 노트 형식이 틀렸거나 Notion 호출이 실패함(다시 실행하면 같은 id로 바꿔 넣는다).
  */
-import { appendFileSync } from "node:fs";
+import { appendFileSync, readFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { pathToFileURL } from "node:url";
 
@@ -24,15 +25,33 @@ const NOTION_API_URL = "https://api.notion.com/v1";
 const NOTION_VERSION = "2022-06-28";
 const KST_OFFSET_MS = 9 * 60 * 60 * 1000;
 
-/** 「바로 가보기」로 받는 앱 화면 키. `src/worker/relay`의 `RELEASE_NOTE_LINKS`와 맞춰야 한다. 워크플로의 JSON 스키마도 함께 바꾼다 */
-export const LINK_KEYS = [
-  "WORKSPACE_HOME",
-  "WORKSPACE_INVITE",
-  "WORKSPACE_JOIN",
-  "CHAT",
-  "RECORDING",
-  "DOCUMENTS",
-];
+/** 「바로 가보기」로 고를 화면을 읽는 앱 라우트 표. 화면 목록을 따로 적어 두지 않고 실행할 때마다 여기서 읽는다 */
+const PATH_ROUTE_FILE = new URL(
+  "../src/shared/routes/PATH_ROUTE.ts",
+  import.meta.url,
+);
+
+/**
+ * 앱 라우트 표의 글에서 워크스페이스 ID만 채우면 갈 수 있는 화면을 `{ key, path }`로 고른다.
+ * 앱의 `isWorkspaceRouteKey`와 같은 기준이다. 표가 `KEY: "경로",` 모양이 아니게 바뀌어 하나도 못 찾으면 멈춘다.
+ */
+export const parseLinkScreens = (source) => {
+  const table = source.match(/PATH_ROUTE = \{([\s\S]*?)\} as const/)?.[1] ?? "";
+  const screens = [...table.matchAll(/^\s*([A-Z_]+):\s*"([^"]*)"/gm)]
+    .map(([, key, path]) => ({ key, path }))
+    .filter(({ path }) => path.match(/:\w+|\*/g)?.join() === ":workspaceId");
+
+  if (screens.length === 0) {
+    throw new Error(
+      `${PATH_ROUTE_FILE.pathname}에서 바로 가보기 화면을 찾지 못했어요. 라우트 표가 \`KEY: "경로",\` 모양인지 확인해 주세요.`,
+    );
+  }
+
+  return screens;
+};
+
+const readLinkScreens = () =>
+  parseLinkScreens(readFileSync(PATH_ROUTE_FILE, "utf8"));
 
 const isFilledString = (value) =>
   typeof value === "string" && value.trim().length > 0;
@@ -41,7 +60,7 @@ const isFilledString = (value) =>
  * Claude가 낸 노트 JSON을 검사한다. 제목과 설명은 꼭 있어야 하고, 바로 가보기는 앱 화면 키만, 큰 변화는 하나까지 받는다.
  * items가 비어 있으면 사용자 변화가 없는 노트다.
  */
-export const validateNote = (note) => {
+export const validateNote = ({ note, linkKeys }) => {
   if (typeof note !== "object" || note === null || !Array.isArray(note.items)) {
     return {
       items: [],
@@ -57,9 +76,9 @@ export const validateNote = (note) => {
 
     if (!isFilledString(title)) errors.push(`${label}에 제목이 없어요.`);
     if (!isFilledString(description)) errors.push(`${label}에 설명이 없어요.`);
-    if (link != null && !LINK_KEYS.includes(link)) {
+    if (link != null && !linkKeys.includes(link)) {
       errors.push(
-        `${label}의 바로 가보기 「${link}」는 앱 화면 키(${LINK_KEYS.join(", ")})가 아니에요.`,
+        `${label}의 바로 가보기 「${link}」는 앱 화면 키(${linkKeys.join(", ")})가 아니에요.`,
       );
     }
 
@@ -232,10 +251,18 @@ const renderItem = ({
 
 const runGuide = async (notion) => {
   const guide = await readGuide({ notion, pageId: GUIDE_PAGE_ID });
+  const screens = readLinkScreens();
   const delimiter = `GUIDE_${randomUUID()}`;
   appendFileSync(
     process.env.GITHUB_OUTPUT,
-    `guide<<${delimiter}\n${guide}\n${delimiter}\n`,
+    [
+      `guide<<${delimiter}`,
+      guide,
+      delimiter,
+      `link_keys=${JSON.stringify(screens.map(({ key }) => key))}`,
+      `links=${screens.map(({ key, path }) => `${key}(${path})`).join(", ")}`,
+      "",
+    ].join("\n"),
   );
 };
 
@@ -249,7 +276,10 @@ const runPublish = async (notion) => {
   } catch {
     note = null;
   }
-  const { items, errors } = validateNote(note);
+  const { items, errors } = validateNote({
+    note,
+    linkKeys: readLinkScreens().map(({ key }) => key),
+  });
 
   if (errors.length > 0) {
     writeSummary(
