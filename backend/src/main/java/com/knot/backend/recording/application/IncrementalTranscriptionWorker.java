@@ -235,10 +235,7 @@ public class IncrementalTranscriptionWorker {
                     }
                     TranscriptionWindowAudioAssembler.MaterializedWindowAudio audio = assembler.materialize(
                             source.orElseThrow(),
-                            () -> checkpoint(
-                                    claim,
-                                    owned
-                            )
+                            () -> ensureActive(owned)
                     );
                     checkpoint(
                             claim,
@@ -364,12 +361,19 @@ public class IncrementalTranscriptionWorker {
             TranscriptionWindowClaim claim,
             AtomicBoolean owned
     ) {
+        ensureActive(owned);
+        if (!state.renew(
+                claim,
+                properties.leaseDuration()
+        )) {
+            throw new RecordingException(RecordingErrorCode.AI_INTERRUPTED);
+        }
+    }
+
+    /** 오디오 복사처럼 버퍼마다 도는 확인은 DB를 쓰지 않는다. 그동안의 임대는 heartbeat가 갱신한다. */
+    private void ensureActive(AtomicBoolean owned) {
         if (!accepting || !owned.get() || Thread.currentThread()
-                .isInterrupted()
-                || !state.renew(
-                        claim,
-                        properties.leaseDuration()
-                )) {
+                .isInterrupted()) {
             throw new RecordingException(RecordingErrorCode.AI_INTERRUPTED);
         }
     }
