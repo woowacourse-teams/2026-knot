@@ -1,5 +1,5 @@
 {
-  "title": "PROD 05 RDS·별도 AWS DB",
+  "title": "PROD 07 RDS",
   "uid": "knot-prod-rds",
   "schemaVersion": 41,
   "version": 1,
@@ -30,7 +30,7 @@
       },
       "options": {
         "mode": "markdown",
-        "content": "**PROD RDS: `knot-database`**의 CloudWatch 5분 평균입니다.\n\n**현재 프로토타입의 실제 DB는 별도 Docker PostgreSQL입니다. 이 RDS 그래프가 앱 DB 상태를 뜻하지 않습니다.** 프로토타입 DB 문제는 앱 로그와 실제 DB 컨테이너에서 확인하세요."
+        "content": "**PROD RDS: `knot-database`**의 CloudWatch 1분 평균입니다. 현재 Spring 앱이 사용하는 DB입니다.\n\n앱의 Hikari 연결 풀과 RDS 전체 연결 수는 다릅니다. 순간값이 아니며 데이터가 없으면 정상 0으로 보지 않습니다."
       }
     },
     {
@@ -61,7 +61,7 @@
           "placement": "bottom"
         }
       },
-      "description": "RDS 자체의 CloudWatch 5분 평균입니다. 실시간 순간값이나 앱의 Hikari 연결 수가 아닙니다. 해당 DB 식별자의 로그·이벤트와 함께 확인하세요.",
+      "description": "RDS 자체의 CloudWatch 1분 평균입니다. 실시간 순간값이나 앱의 Hikari 연결 수가 아닙니다. 해당 DB 식별자의 로그·이벤트와 함께 확인하세요.",
       "targets": [
         {
           "refId": "A",
@@ -98,7 +98,7 @@
           "placement": "bottom"
         }
       },
-      "description": "RDS 자체의 CloudWatch 5분 평균입니다. 실시간 순간값이나 앱의 Hikari 연결 수가 아닙니다. 해당 DB 식별자의 로그·이벤트와 함께 확인하세요.",
+      "description": "RDS 자체의 CloudWatch 1분 평균입니다. 실시간 순간값이나 앱의 Hikari 연결 수가 아닙니다. 해당 DB 식별자의 로그·이벤트와 함께 확인하세요.",
       "targets": [
         {
           "refId": "A",
@@ -135,7 +135,7 @@
           "placement": "bottom"
         }
       },
-      "description": "RDS 자체의 CloudWatch 5분 평균입니다. 실시간 순간값이나 앱의 Hikari 연결 수가 아닙니다. 해당 DB 식별자의 로그·이벤트와 함께 확인하세요.",
+      "description": "RDS 자체의 CloudWatch 1분 평균입니다. 실시간 순간값이나 앱의 Hikari 연결 수가 아닙니다. 해당 DB 식별자의 로그·이벤트와 함께 확인하세요.",
       "targets": [
         {
           "refId": "A",
@@ -172,7 +172,7 @@
           "placement": "bottom"
         }
       },
-      "description": "RDS 자체의 CloudWatch 5분 평균입니다. 실시간 순간값이나 앱의 Hikari 연결 수가 아닙니다. 해당 DB 식별자의 로그·이벤트와 함께 확인하세요.",
+      "description": "RDS 자체의 CloudWatch 1분 평균입니다. 실시간 순간값이나 앱의 Hikari 연결 수가 아닙니다. 해당 DB 식별자의 로그·이벤트와 함께 확인하세요.",
       "targets": [
         {
           "refId": "A",
@@ -209,7 +209,7 @@
           "placement": "bottom"
         }
       },
-      "description": "RDS 자체의 CloudWatch 5분 평균입니다. 실시간 순간값이나 앱의 Hikari 연결 수가 아닙니다. 해당 DB 식별자의 로그·이벤트와 함께 확인하세요.",
+      "description": "RDS 자체의 CloudWatch 1분 평균입니다. 실시간 순간값이나 앱의 Hikari 연결 수가 아닙니다. 해당 DB 식별자의 로그·이벤트와 함께 확인하세요.",
       "targets": [
         {
           "refId": "A",
@@ -246,7 +246,7 @@
           "placement": "bottom"
         }
       },
-      "description": "RDS 자체의 CloudWatch 5분 평균입니다. 실시간 순간값이나 앱의 Hikari 연결 수가 아닙니다. 해당 DB 식별자의 로그·이벤트와 함께 확인하세요.",
+      "description": "RDS 자체의 CloudWatch 1분 평균입니다. 실시간 순간값이나 앱의 Hikari 연결 수가 아닙니다. 해당 DB 식별자의 로그·이벤트와 함께 확인하세요.",
       "targets": [
         {
           "refId": "A",
@@ -283,7 +283,7 @@
           "placement": "bottom"
         }
       },
-      "description": "RDS 자체의 CloudWatch 5분 평균입니다. 실시간 순간값이나 앱의 Hikari 연결 수가 아닙니다. 해당 DB 식별자의 로그·이벤트와 함께 확인하세요.",
+      "description": "RDS 자체의 CloudWatch 1분 평균입니다. 실시간 순간값이나 앱의 Hikari 연결 수가 아닙니다. 해당 DB 식별자의 로그·이벤트와 함께 확인하세요.",
       "targets": [
         {
           "refId": "A",
@@ -320,7 +320,7 @@
           "placement": "bottom"
         }
       },
-      "description": "RDS 자체의 CloudWatch 5분 평균입니다. 실시간 순간값이나 앱의 Hikari 연결 수가 아닙니다. 해당 DB 식별자의 로그·이벤트와 함께 확인하세요.",
+      "description": "RDS 자체의 CloudWatch 1분 평균입니다. 실시간 순간값이나 앱의 Hikari 연결 수가 아닙니다. 해당 DB 식별자의 로그·이벤트와 함께 확인하세요.",
       "targets": [
         {
           "refId": "A",
@@ -357,7 +357,7 @@
           "placement": "bottom"
         }
       },
-      "description": "RDS 자체의 CloudWatch 5분 평균입니다. 실시간 순간값이나 앱의 Hikari 연결 수가 아닙니다. 해당 DB 식별자의 로그·이벤트와 함께 확인하세요.",
+      "description": "RDS 자체의 CloudWatch 1분 평균입니다. 실시간 순간값이나 앱의 Hikari 연결 수가 아닙니다. 해당 DB 식별자의 로그·이벤트와 함께 확인하세요.",
       "targets": [
         {
           "refId": "A",
@@ -397,7 +397,21 @@
       "includeVars": false
     },
     {
-      "title": "05 RDS·별도 AWS DB",
+      "title": "05 Spring 앱",
+      "type": "link",
+      "url": "/d/knot-prod-spring",
+      "keepTime": true,
+      "includeVars": false
+    },
+    {
+      "title": "06 Tomcat·DB 연결 풀",
+      "type": "link",
+      "url": "/d/knot-prod-pools",
+      "keepTime": true,
+      "includeVars": false
+    },
+    {
+      "title": "07 RDS",
       "type": "link",
       "url": "/d/knot-prod-rds",
       "keepTime": true,
