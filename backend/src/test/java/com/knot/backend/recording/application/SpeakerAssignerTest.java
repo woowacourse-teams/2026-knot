@@ -9,6 +9,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 class SpeakerAssignerTest {
+
     @Test
     @DisplayName("겹치는 화자가 없으면 1초 안의 가장 가까운 화자, 그다음 직전 화자를 쓴다")
     void assign_success_overlapNearestPrevious() {

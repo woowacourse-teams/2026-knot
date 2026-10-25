@@ -8,6 +8,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 class SpeakerReclustererTest {
+
     @Test
     @DisplayName("다른 목소리의 조각은 다른 화자로, 같은 목소리의 조각은 같은 화자로 묶는다")
     void labels_success_separatesVoices() {
