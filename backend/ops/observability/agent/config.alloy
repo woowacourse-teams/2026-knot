@@ -2,7 +2,10 @@ prometheus.exporter.unix "host" {
   procfs_path = "/host/proc"
   sysfs_path = "/host/sys"
   rootfs_path = "/host"
-  set_collectors = ["cpu", "meminfo", "filesystem", "diskstats", "loadavg", "netdev", "stat", "time", "uname"]
+  set_collectors = ["cpu", "meminfo", "filesystem", "diskstats", "loadavg", "netdev", "stat", "time", "uname", "textfile"]
+  textfile {
+    directory = "/host/var/lib/knot-observability/textfile"
+  }
 }
 
 prometheus.scrape "host" {
