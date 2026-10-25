@@ -53,6 +53,7 @@ class RecordingTitleGenerationServiceIntegrationTest {
     void setUp() {
         when(clock.instant()).thenReturn(NOW);
         fixture.clear();
+        fixture.activateTitles(RecordingHistoryFixture.CREATED_AT);
         memberId = fixture.member("루덴스");
         workspaceId = fixture.workspace("녹음 팀");
         fixture.join(

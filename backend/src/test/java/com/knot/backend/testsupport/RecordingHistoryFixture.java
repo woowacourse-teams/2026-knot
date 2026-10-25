@@ -18,8 +18,8 @@ public class RecordingHistoryFixture {
 
     public void clear() {
         jdbcClient.sql("""
-                TRUNCATE TABLE recording_sessions, workspace_invitations, workspace_members, workspaces,
-                    oauth_identities, members
+                TRUNCATE TABLE recording_title_activation, recording_sessions, workspace_invitations,
+                    workspace_members, workspaces, oauth_identities, members
                 RESTART IDENTITY CASCADE
                 """)
                 .update();
@@ -346,6 +346,15 @@ public class RecordingHistoryFixture {
                 .param(
                         "batchId",
                         batchId
+                )
+                .update();
+    }
+
+    public void activateTitles(Instant activatedAt) {
+        jdbcClient.sql("INSERT INTO recording_title_activation (id, activated_at) VALUES (1, :activatedAt)")
+                .param(
+                        "activatedAt",
+                        Timestamp.from(activatedAt)
                 )
                 .update();
     }

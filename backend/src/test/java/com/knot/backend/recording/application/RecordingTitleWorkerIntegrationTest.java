@@ -45,6 +45,7 @@ class RecordingTitleWorkerIntegrationTest {
     @BeforeEach
     void setUp() {
         fixture.clear();
+        fixture.activateTitles(RecordingHistoryFixture.CREATED_AT);
         long memberId = fixture.member("루덴스");
         long workspaceId = fixture.workspace("녹음 팀");
         fixture.join(
