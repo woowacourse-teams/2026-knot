@@ -1,5 +1,5 @@
 /** 랜딩의 장면 이름. 오른쪽 장면 이동 버튼의 글자이고, 순서가 곧 장면 번호예요. */
-export const SCENE_NAMES = ["소개", "문제", "녹음", "정리", "확인", "탐색", "시작"];
+export const SCENE_NAMES = ["소개", "문제", "녹음", "정리", "확인", "탐색", "기술", "시작"];
 
 export const SCENE = {
   INTRO: 0,
@@ -8,7 +8,8 @@ export const SCENE = {
   DOCUMENTS: 3,
   CONFIRMATION: 4,
   SEARCH: 5,
-  START: 6,
+  TECH: 6,
+  START: 7,
 } as const;
 
 export const SCENE_COUNT = SCENE_NAMES.length;
@@ -38,6 +39,72 @@ export const ANSWER_DOCUMENT_TITLES = ["회원 탈퇴 정책", "결제 화면 �
 /** 탐색 장면의 연결망에서 답과 상관없이 떠 있는 문서 이름 */
 export const OTHER_DOCUMENT_TITLES = ["온보딩 인터뷰", "배포 일정", "디자인 토큰 규칙", "API 에러 규칙", "스프린트 회고"];
 export const MOBILE_OTHER_DOCUMENT_TITLES = ["배포 일정", "스프린트 회고"];
+
+/**
+ * 기술 장면에서 고를 수 있는 이야기. 카드에 문제, 푼 방법, 결과 순서로 놓여요.
+ * 카드 글줄은 입자가 한 줄씩 모이는 자리라서 한 줄에 들어가는 길이로 나눠 적어요.
+ * 결과의 `ratio`는 막대 길이(0~1)이고, `isOurs`는 knot 쪽 막대예요.
+ */
+export const TECH_STORIES = [
+  {
+    name: "AI 회의 정리",
+    tag: "서비스 안의 AI",
+    title: "녹음 하나가 주제별 문서가 되기까지",
+    problem: "누군가 받아 적고, 주제별로 다시 나눠 정리해야 했어요",
+    solution: [
+      "Whisper가 말을 글로 옮기고, 누가 말했는지 나눠요",
+      "말한 사람은 문장 단위로 정해 말이 끊기지 않게 했어요",
+      "Qwen이 회의를 주제로 나눠 문서를 써요",
+      "녹음은 5초마다 서버에 저장해 회의를 잃지 않아요",
+    ],
+    metric: {
+      name: "문장 중간에 말한 사람이 바뀌는 비율",
+      rows: [
+        { label: "단어마다 판단", value: "42%", ratio: 0.42, isOurs: false },
+        { label: "문장마다 판단", value: "1%", ratio: 0.01, isOurs: true },
+      ],
+    },
+    source: "2026년 9월, 4명이 나눈 64분 회의 녹음으로 실험",
+  },
+  {
+    name: "답변 속도",
+    tag: "성능 개선",
+    title: "첫 글자가 뜨기까지 2.6초",
+    problem: "질문하고 첫 글자를 보기까지 20초 넘게 기다렸어요",
+    solution: [
+      "AI가 볼 문서를 하나씩 고르는 왕복이 가장 느렸어요",
+      "문서는 검색으로 바로 찾고, AI는 답만 쓰게 바꿨어요",
+      "답은 글자 단위로 흘려 보내고, 끊기면 이어 받아요",
+    ],
+    metric: {
+      name: "여러 회의를 견주는 질문, 첫 글자까지 걸린 시간",
+      rows: [
+        { label: "AI가 고를 때", value: "19.6초", ratio: 1, isOurs: false },
+        { label: "검색이 찾을 때", value: "2.6초", ratio: 0.13, isOurs: true },
+      ],
+    },
+    source: "2026년 10월, 같은 질문과 환경에서 방식마다 3번씩 잰 중앙값",
+  },
+  {
+    name: "AI와 함께 만드는 법",
+    tag: "개발 과정의 AI",
+    title: "AI가 짠 코드도 매번 다시 확인해요",
+    problem: "AI로 빠르게 만들수록 사람이 코드를 다 읽을 수 없었어요",
+    solution: [
+      "PR을 올릴 때마다 테스트가 자동으로 돌아요",
+      "기획서의 요구사항 ID로 무엇을 확인할지 먼저 정해요",
+      "QA 체크리스트를 E2E 테스트로 이어 다시 확인해요",
+    ],
+    metric: {
+      name: "프론트엔드 자동 테스트 수",
+      rows: [
+        { label: "9월 30일", value: "296개", ratio: 0.17, isOurs: false },
+        { label: "10월 24일", value: "1,738개", ratio: 1, isOurs: true },
+      ],
+    },
+    source: "9월 30일에는 PR을 올려도 테스트가 자동으로 돌지 않았어요",
+  },
+];
 
 /** 문제 장면에서 흩어져 떠다니는 말 조각. 숫자는 영역 안의 가로·세로 위치 비율이에요. */
 export const SCATTERED_SPEECHES: [text: string, x: number, y: number][] = [

@@ -45,6 +45,8 @@ export interface LandingEngineElements {
   confirmation: HTMLElement;
   /** 탐색 장면의 질문 입력창 */
   questionInput: HTMLElement;
+  /** 기술 장면의 기술 카드 */
+  tech: HTMLElement;
 }
 
 export interface LandingEngineListeners {
@@ -73,7 +75,7 @@ type AssignMode = "morph" | "fall" | "instant";
  * `listeners`로 알립니다. 반환한 `destroy`를 부르면 붙인 이벤트와 반복을 모두 걷어요.
  */
 export const createLandingEngine = ({ elements, listeners, palette }: CreateLandingEngineParams) => {
-  const { scroller, stage, canvas, scrollCue, documents, confirmation, questionInput } = elements;
+  const { scroller, stage, canvas, scrollCue, documents, confirmation, questionInput, tech } = elements;
   const context = canvas.getContext("2d");
   if (!context) return null;
 
@@ -253,6 +255,7 @@ export const createLandingEngine = ({ elements, listeners, palette }: CreateLand
     if (index === SCENE.DOCUMENTS) return buildDocumentTargets({ stage, box: documents, size });
     if (index === SCENE.CONFIRMATION) return buildCardTargets({ stage, box: confirmation, size });
     if (index === SCENE.SEARCH) return graphTargets(questionIndex);
+    if (index === SCENE.TECH) return buildCardTargets({ stage, box: tech, size });
     return cached("symbol", () => buildSymbolTargets(size));
   };
 
@@ -369,7 +372,6 @@ export const createLandingEngine = ({ elements, listeners, palette }: CreateLand
     }
     listeners.onSceneChange(index);
 
-    const targets = targetsFor(index);
     if (previous < 0 && !prefersReducedMotion) seedIntro(index);
     const mode: AssignMode =
       previous < 0 && prefersReducedMotion
@@ -377,7 +379,12 @@ export const createLandingEngine = ({ elements, listeners, palette }: CreateLand
         : previous === SCENE.RECORDING && index === SCENE.DOCUMENTS
           ? "fall"
           : "morph";
-    assign(targets, mode);
+    gather(index, mode);
+  };
+
+  /** 장면의 모양으로 입자를 모으고, 다 모이면 진짜 글자를 보여도 된다고 알려요. */
+  const gather = (index: number, mode: AssignMode) => {
+    assign(targetsFor(index), mode);
 
     isSettled = false;
     listeners.onSettledChange(false);
@@ -690,6 +697,10 @@ export const createLandingEngine = ({ elements, listeners, palette }: CreateLand
       typedLength = -1;
       notifySearch("");
       if (scene === SCENE.SEARCH) retarget();
+    },
+    /** 기술 장면에서 다른 이야기를 고른 뒤, 바뀐 카드 모양으로 입자를 다시 모아요. */
+    reshapeTech: () => {
+      if (scene === SCENE.TECH) gather(scene, "morph");
     },
     destroy: () => {
       isDestroyed = true;

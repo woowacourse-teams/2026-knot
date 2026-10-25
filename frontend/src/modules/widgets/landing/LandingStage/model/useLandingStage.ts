@@ -24,6 +24,7 @@ const useLandingStage = () => {
   const documentsRef = useRef<HTMLDivElement>(null);
   const confirmationRef = useRef<HTMLDivElement>(null);
   const questionInputRef = useRef<HTMLDivElement>(null);
+  const techRef = useRef<HTMLDivElement>(null);
   const engineRef = useRef<LandingEngine | null>(null);
 
   const [scene, setScene] = useState(0);
@@ -32,6 +33,7 @@ const useLandingStage = () => {
   const [search, setSearch] = useState({ typedText: "", isAnswerReady: false });
   const [questionIndex, setQuestionIndex] = useState(0);
   const [labels, setLabels] = useState<GraphLabel[]>([]);
+  const [storyIndex, setStoryIndex] = useState(0);
 
   useEffect(() => {
     const scroller = scrollerRef.current;
@@ -41,13 +43,14 @@ const useLandingStage = () => {
     const documents = documentsRef.current;
     const confirmation = confirmationRef.current;
     const questionInput = questionInputRef.current;
-    if (!scroller || !stage || !canvas || !scrollCue || !documents || !confirmation || !questionInput) return;
+    const tech = techRef.current;
+    if (!scroller || !stage || !canvas || !scrollCue || !documents || !confirmation || !questionInput || !tech) return;
 
     const ink = hexToRgb(theme.neutral[800]);
     const strong = hexToRgb(theme.neutral[900]);
     const accent = hexToRgb(theme.sub.accent[500]);
     const engine = createLandingEngine({
-      elements: { scroller, stage, canvas, scrollCue, documents, confirmation, questionInput },
+      elements: { scroller, stage, canvas, scrollCue, documents, confirmation, questionInput, tech },
       listeners: {
         onSceneChange: setScene,
         onSettledChange: setIsSettled,
@@ -97,6 +100,12 @@ const useLandingStage = () => {
     };
   }, [theme]);
 
+  // 바뀐 카드를 그린 뒤에 재야 새 카드 모양으로 입자가 모여서, 화면에 반영된 다음에 엔진에 알려요.
+  // 기술 장면이 아닐 때는 엔진이 아무것도 하지 않아요.
+  useEffect(() => {
+    engineRef.current?.reshapeTech();
+  }, [storyIndex]);
+
   const selectQuestion = (index: number) => {
     setQuestionIndex(index);
     engineRef.current?.selectQuestion(index);
@@ -107,14 +116,16 @@ const useLandingStage = () => {
   };
 
   return {
-    refs: { scrollerRef, stageRef, canvasRef, scrollCueRef, documentsRef, confirmationRef, questionInputRef },
+    refs: { scrollerRef, stageRef, canvasRef, scrollCueRef, documentsRef, confirmationRef, questionInputRef, techRef },
     scene,
     isSettled,
     recordingSeconds,
     search,
     questionIndex,
     labels,
+    storyIndex,
     selectQuestion,
+    selectStory: setStoryIndex,
     goToScene,
   };
 };

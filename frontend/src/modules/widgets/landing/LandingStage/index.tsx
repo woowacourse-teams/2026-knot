@@ -12,17 +12,29 @@ import { focusRing, interactive, mobile, sceneFade } from "./ui/SceneLayer";
 import SceneSteps from "./ui/SceneSteps";
 import SearchScene from "./ui/SearchScene";
 import StartScene from "./ui/StartScene";
+import TechScene from "./ui/TechScene";
 
 /**
  * 서비스를 처음 만난 사람에게 knot이 무엇이고 어떻게 쓰는지 보여 주는 랜딩 무대.
  *
- * 스크롤 한 번에 한 장면씩 넘어가며 소개 → 문제 → 녹음 → 정리 → 확인 → 탐색 → 시작 순서로 보여 줘요.
+ * 스크롤 한 번에 한 장면씩 넘어가며 소개 → 문제 → 녹음 → 정리 → 확인 → 탐색 → 기술 → 시작 순서로 보여 줘요.
  * 입자 수천 개가 장면마다 워드마크, 말 조각, 파형, 문서 카드, 연결망, 새 심볼로 모양을 바꾸고,
  * 포인터를 가져가면 비켜나고 누르면 물결이 퍼져요. 소개와 시작 장면의 버튼으로 바로 GitHub 로그인을 시작해요.
  */
 export default function LandingStage() {
-  const { refs, scene, isSettled, recordingSeconds, search, questionIndex, labels, selectQuestion, goToScene } =
-    useLandingStage();
+  const {
+    refs,
+    scene,
+    isSettled,
+    recordingSeconds,
+    search,
+    questionIndex,
+    labels,
+    storyIndex,
+    selectQuestion,
+    selectStory,
+    goToScene,
+  } = useLandingStage();
 
   return (
     <Scroller ref={refs.scrollerRef}>
@@ -72,6 +84,13 @@ export default function LandingStage() {
           labels={labels}
           questionInputRef={refs.questionInputRef}
           onQuestionSelect={selectQuestion}
+        />
+        <TechScene
+          isOn={scene === SCENE.TECH}
+          isRevealed={isSettled}
+          storyIndex={storyIndex}
+          techRef={refs.techRef}
+          onStorySelect={selectStory}
         />
         <StartScene isOn={scene === SCENE.START} />
       </Stage>
