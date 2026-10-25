@@ -274,6 +274,58 @@ class TranscriptSeamAlignerTest {
         ).isEqualTo(Math.round(119.9 * SECOND));
     }
 
+    @Test
+    @DisplayName("시간으로 자른 오른쪽 구간의 뒤 단어들도 앞 단어보다 먼저 시작하지 않게 맞춘다")
+    void stitch_success_unresolvedTimeCutKeepsLaterTokensMonotonic() {
+        // given
+        Window left = left(
+                token(
+                        118,
+                        119.9,
+                        "왼쪽"
+                )
+        );
+        Window right = right(
+                token(
+                        117,
+                        123,
+                        "긴단어"
+                ),
+                token(
+                        119.5,
+                        121,
+                        "다음"
+                ),
+                token(
+                        125,
+                        126,
+                        "뒤"
+                )
+        );
+
+        // when
+        List<List<Token>> kept = TranscriptSeamAligner.stitch(
+                List.of(
+                        left,
+                        right
+                )
+        );
+
+        // then
+        assertThat(texts(kept)).containsExactly(
+                "왼쪽",
+                "긴단어",
+                "다음",
+                "뒤"
+        );
+        assertThat(
+                kept.getLast()
+                        .stream()
+                        .map(Token::startFrame)
+                        .toList()
+        ).isSorted();
+    }
+
     private Window left(Token... tokens) {
         return new Window(
                 0,
