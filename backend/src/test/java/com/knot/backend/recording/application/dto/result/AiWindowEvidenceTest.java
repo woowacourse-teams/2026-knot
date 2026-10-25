@@ -110,8 +110,8 @@ class AiWindowEvidenceTest {
     }
 
     @ParameterizedTest
-    @ValueSource(longs = {0, -1, 960001})
-    @DisplayName("입력 범위는 양수이며 최대 60초를 넘지 않는다")
+    @ValueSource(longs = {0, -1, 2080001})
+    @DisplayName("입력 범위는 양수이며 최대 130초를 넘지 않는다")
     void create_failure_invalidInputSpan(long end) {
         // given
         List<AiWindowEvidence.Token> tokens = List.of();

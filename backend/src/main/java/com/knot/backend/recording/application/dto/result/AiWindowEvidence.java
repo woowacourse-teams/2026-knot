@@ -2,6 +2,7 @@ package com.knot.backend.recording.application.dto.result;
 
 import com.knot.backend.recording.domain.RecordingErrorCode;
 import com.knot.backend.recording.domain.RecordingException;
+import com.knot.backend.recording.domain.model.TranscriptionWindowShape;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -16,7 +17,6 @@ public record AiWindowEvidence(
         List<Token> tokens,
         List<Speaker> speakers
 ) {
-    private static final long MAX_INPUT_FRAMES = 960_000;
     private static final int MAX_TOKENS = 20_000;
     private static final int MAX_SPEAKERS = 64;
     private static final int EMBEDDING_DIMENSIONS = 512;
@@ -29,8 +29,9 @@ public record AiWindowEvidence(
                 modelVersion,
                 128
         ) || inputManifestSha256 == null || !inputManifestSha256.matches("[0-9a-f]{64}") || inputStartFrame < 0
-                || inputEndFrame <= inputStartFrame || inputEndFrame - inputStartFrame > MAX_INPUT_FRAMES
-                || tokens == null || speakers == null || tokens.size() > MAX_TOKENS || speakers.size() > MAX_SPEAKERS) {
+                || inputEndFrame <= inputStartFrame
+                || inputEndFrame - inputStartFrame > TranscriptionWindowShape.MAX_INPUT_FRAMES || tokens == null
+                || speakers == null || tokens.size() > MAX_TOKENS || speakers.size() > MAX_SPEAKERS) {
             throw invalidData();
         }
         long span = inputEndFrame - inputStartFrame;
