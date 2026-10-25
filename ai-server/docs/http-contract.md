@@ -94,10 +94,18 @@ Python supervisor는 제한 시간과 부모 JVM 생존 여부를 감시하고 �
 기존 요청에 선택 필드 `window`를 추가한다. 생략하면 전체 파일 전사 동작을 유지한다.
 
 ```json
-{"window":{"pipelineVersion":"pcm-window-v1","inputManifestSha256":"64자리 소문자 SHA256","inputStartFrame":0,"inputEndFrame":560000}}
+{"window":{"pipelineVersion":"pcm-window-v1","inputManifestSha256":"64자리 소문자 SHA256","inputStartFrame":0,"inputEndFrame":2080000,"decodePolicy":"WITH_VOCABULARY"}}
 ```
 
-입력은 서버가 조립한 16 kHz mono PCM16 WAV이며 최대 60초다. frame 범위와 실제 WAV 길이가 같아야 한다.
+입력은 서버가 조립한 16 kHz mono PCM16 WAV이며 최대 130초(새 음성 2분과 직전 10초)다. frame 범위와 실제 WAV 길이가 같아야 한다.
+
+선택 필드 `decodePolicy`는 구간의 디코딩 횟수를 정한다. 생략하면 `DEFAULT_ONLY`이며 그 밖의 값은 400 `INVALID_REQUEST_BODY`다.
+
+- `WITH_VOCABULARY`: 녹음 중 구간. 기본 디코딩 뒤 고정 용어 프롬프트로 한 번 더 디코딩하고, 앞뒤 단어가 같은 3단어 이하 범위에서 용어만 새로 맞힌 곳만 그 단어로 바꾼다. 숫자·부정 표현·시각이 달라지는 교체와 단어 삽입·삭제는 받지 않는다.
+- `DEFAULT_ONLY`: 녹음의 마지막 구간. 종료 후 대기를 줄이려고 기본 디코딩만 쓴다.
+
+두 정책 모두 기본 디코딩에 반복 사고(짧은 token 연속 반복, 긴 구절 반복 고리, 같은 질문 반복)가 있으면 이전 문맥을 이어받지 않는 디코딩(`-mc 0`)을 한 번만 더 실행한다. 재시도 결과에 반복이 없고 단어 수가 기본 결과의 70% 이상일 때만 그 결과를 쓴다.
+용어 디코딩과 재시도는 실패하거나 120초 안에 끝나지 않으면 버리고 기본 디코딩 결과로 성공한다. `rawWhisperJson`은 고른 기본 또는 재시도 디코딩의 원문이며 용어 교체는 `tokens`와 `utterances`에만 반영된다. 결과의 `window`에는 `decodePolicy`를 돌려주지 않는다.
 같은 attemptId에서 URL 재발급은 허용하지만 구간 메타데이터 또는 화자 수를 바꾸면 409 ATTEMPT_CONFLICT다.
 결과의 선택 필드 `window`에는 schemaVersion=1, 요청 메타데이터, modelVersion,
 `tokens[{startFrame,endFrame,text,speakerId}]`, `speakers[{speakerId,embedding,voicedFrames}]`가 담긴다.

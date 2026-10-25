@@ -1,5 +1,5 @@
 import { parseWhisperOutput } from '../src/main/pipeline/whisper'
-import type { SttWord } from '../src/core/types'
+import type { SttSegment, SttWord } from '../src/core/types'
 import { assignSpeakers, mergeUtterances, SERVER_SPEAKER_POLICY } from '../src/core/merge'
 
 export interface WindowInput {
@@ -60,7 +60,9 @@ export const measuredWordGroups = (words: SttWord[], frames = Number.MAX_SAFE_IN
   return groups
 }
 
-export const assembleWindowResult = (raw:Buffer, evidence:Evidence, window:WindowInput) => {
+/** decoded는 raw를 고른 뒤 용어 융합까지 마친 결과다. raw 원문은 그대로 보존한다. */
+export const assembleWindowResult = (raw:Buffer, evidence:Evidence, window:WindowInput,
+    decoded:SttSegment[] = parseWhisperOutput(raw)) => {
   const frames = window.inputEndFrame-window.inputStartFrame
   if (!validWindow(window) || !evidence.modelVersion || !Array.isArray(evidence.speakers)
       || !Array.isArray(evidence.segments) || evidence.speakers.length > 64) throw new Error('INVALID_RESULT')
@@ -77,7 +79,7 @@ export const assembleWindowResult = (raw:Buffer, evidence:Evidence, window:Windo
     if (!Number.isFinite(s.start) || !Number.isFinite(s.end) || s.start < 0 || s.end <= s.start
         || Math.round(s.end*16000)>frames || !ids.has(s.speaker)) throw new Error('INVALID_RESULT')
   }
-  const segments = parseWhisperOutput(raw).map(s => {
+  const segments = decoded.map(s => {
     if (s.text.trim() && !s.words?.length) throw new Error('WORD_TIMESTAMPS_REQUIRED')
     return {...s, words: measuredWordGroups(s.words??[], frames).map(w => ({
       ...w, start: Math.round(w.start*16000)/16000,
