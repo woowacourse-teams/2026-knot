@@ -694,4 +694,46 @@ class AiWindowEvidenceTest {
                 List.of(observation)
         );
     }
+
+    @Test
+    @DisplayName("저장 JSON 1MiB 안에 들어가지 않을 만큼 많은 화자 근거 조각은 거절한다")
+    void create_failure_tooManyObservations() {
+        // given
+        List<AiWindowEvidence.Observation> observations = Collections.nCopies(
+                161,
+                new AiWindowEvidence.Observation(
+                        0,
+                        8000,
+                        "s",
+                        Collections.nCopies(
+                                512,
+                                .1
+                        )
+                )
+        );
+
+        // when
+        Throwable failure = catchThrowable(
+                () -> new AiWindowEvidence(
+                        1,
+                        "v1",
+                        HASH,
+                        0,
+                        16000,
+                        "model",
+                        List.of(),
+                        List.of(
+                                new AiWindowEvidence.Speaker(
+                                        "s",
+                                        List.of(),
+                                        0
+                                )
+                        ),
+                        observations
+                )
+        );
+
+        // then
+        assertThat(failure).isInstanceOf(RecordingException.class);
+    }
 }

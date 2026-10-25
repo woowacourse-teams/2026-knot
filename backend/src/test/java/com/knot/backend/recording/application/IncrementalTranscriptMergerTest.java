@@ -344,6 +344,92 @@ class IncrementalTranscriptMergerTest {
     }
 
     @Test
+    @DisplayName("화자 근거 조각이 없는 이전 AI 구간이 섞이면 녹음 전체를 기존 중심 연결로 병합한다")
+    void merge_success_mixedLegacyWindowsKeepCentroidLinking() {
+        // given
+        long second = 16_000;
+        List<AiWindowEvidence.Token> firstTokens = List.of(
+                token(
+                        0,
+                        second,
+                        "안녕하세요.",
+                        "a",
+                        0
+                )
+        );
+        List<AiWindowEvidence.Token> legacyTokens = List.of(
+                token(
+                        20 * second,
+                        21 * second,
+                        "다음.",
+                        "a"
+                )
+        );
+        List<RecordingTranscriptionWindow> mixed = List.of(
+                observedWindow(
+                        0,
+                        0,
+                        120 * second,
+                        0,
+                        firstTokens,
+                        List.of(
+                                observation(
+                                        0,
+                                        second,
+                                        "a",
+                                        0
+                                )
+                        )
+                ),
+                observedWindow(
+                        1,
+                        120 * second,
+                        240 * second,
+                        110 * second,
+                        legacyTokens,
+                        List.of()
+                )
+        );
+        List<RecordingTranscriptionWindow> legacy = List.of(
+                observedWindow(
+                        0,
+                        0,
+                        120 * second,
+                        0,
+                        firstTokens,
+                        List.of()
+                ),
+                observedWindow(
+                        1,
+                        120 * second,
+                        240 * second,
+                        110 * second,
+                        legacyTokens,
+                        List.of()
+                )
+        );
+
+        // when
+        AiTranscript result = merger.merge(
+                mixed,
+                240 * second,
+                .65,
+                true
+        );
+
+        // then
+        assertThat(result.utterances()).isEqualTo(
+                merger.merge(
+                        legacy,
+                        240 * second,
+                        .65,
+                        true
+                )
+                        .utterances()
+        );
+    }
+
+    @Test
     @DisplayName("같은 window의 서로 다른 화자는 동일한 임베딩이어도 합치지 않는다")
     void merge_success_withinWindowCannotLink() {
         // given
