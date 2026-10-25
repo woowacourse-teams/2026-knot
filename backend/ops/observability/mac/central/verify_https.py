@@ -46,7 +46,10 @@ def main():
         (work / "public.conf").write_text(public)
         ingest = (ROOT / "nginx/ingest.conf").read_text().replace(
             "/opt/knot-observability/tls", "/fixture").replace(
+            "/etc/nginx/snippets/knot-log-receipt-locations.conf", "/fixture/log-receipt-locations.conf").replace(
             "include /etc/nginx/snippets/knot-ingest-allow.conf;", "allow all; # isolated loopback-published fixture")
+        (work / "log-receipt-locations.conf").write_text(
+            (ROOT / "nginx/log-receipt-locations.conf").read_text())
         (work / "ingest.conf").write_text(ingest)
         (work / "nginx.conf").write_text('events {}\nhttp { access_log off; include /fixture/public.conf; '
             'include /fixture/ingest.conf; server { listen 127.0.0.1:3000; location / { return 200 "mock grafana"; } } '
