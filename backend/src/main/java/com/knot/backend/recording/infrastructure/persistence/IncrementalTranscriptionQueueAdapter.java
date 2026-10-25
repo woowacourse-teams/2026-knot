@@ -63,7 +63,7 @@ public class IncrementalTranscriptionQueueAdapter implements IncrementalTranscri
                 CROSS JOIN service_turn turn
                 WHERE (s.incremental_pipeline_version=w.pipeline_version OR EXISTS (
                     SELECT 1 FROM recording_transcription_inputs i WHERE i.recording_id=s.id
-                        AND w.pipeline_version=:preparedPipeline AND i.status='READY'))
+                        AND w.pipeline_version IN (:preparedPipelines) AND i.status='READY'))
                     AND w.status IN ('QUEUED','PROCESSING')
                     AND NOT EXISTS (SELECT 1 FROM recording_audio_cleanup c
                         WHERE c.recording_id=s.id AND c.scope='ALL')
@@ -79,8 +79,8 @@ public class IncrementalTranscriptionQueueAdapter implements IncrementalTranscri
                     w.recording_id,w.window_index,w.next_run_at,w.id LIMIT :limit
                 """)
                 .param(
-                        "preparedPipeline",
-                        RecordingTranscriptionInput.PIPELINE
+                        "preparedPipelines",
+                        RecordingTranscriptionInput.windowPipelineVersions()
                 )
                 .param(
                         "now",

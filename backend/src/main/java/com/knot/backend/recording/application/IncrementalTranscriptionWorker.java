@@ -264,7 +264,8 @@ public class IncrementalTranscriptionWorker {
                                         manifest.path("inputStartFrame")
                                                 .asLong(),
                                         manifest.path("inputEndFrame")
-                                                .asLong()
+                                                .asLong(),
+                                        claim.decodePolicy()
                                 )
                         );
                     } catch (RecordingException rejected) {

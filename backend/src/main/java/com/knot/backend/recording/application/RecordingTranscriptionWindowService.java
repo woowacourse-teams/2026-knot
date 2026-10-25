@@ -32,6 +32,9 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.ObjectMapper;
+import com.knot.backend.recording.domain.model.TranscriptionWindowShape;
+import java.util.function.Supplier;
+import java.util.List;
 
 @Service
 @RequiredArgsConstructor
@@ -59,20 +62,49 @@ public class RecordingTranscriptionWindowService {
             long coreFrames,
             long contextFrames
     ) {
+        return register(
+                recordingId,
+                pipelineVersion,
+                () -> planner.plan(
+                        recordingId,
+                        pipelineVersion,
+                        coreFrames,
+                        contextFrames,
+                        chunks.findAllByRecordingIdOrderBySequence(recordingId),
+                        now()
+                )
+        );
+    }
+
+    @Transactional
+    public int registerAvailable(
+            long recordingId,
+            TranscriptionWindowShape shape
+    ) {
+        return register(
+                recordingId,
+                shape.pipelineVersion(),
+                () -> planner.plan(
+                        recordingId,
+                        shape,
+                        chunks.findAllByRecordingIdOrderBySequence(recordingId),
+                        now()
+                )
+        );
+    }
+
+    private int register(
+            long recordingId,
+            String pipelineVersion,
+            Supplier<List<RecordingTranscriptionWindow>> planned
+    ) {
         RecordingSession session = lockSession(recordingId);
         RecordingAudioStream stream = lockStream(recordingId);
         if (!available(session) || !session.isActive() || stream.isSealed() || stream.isFrozen()) {
             return 0;
         }
         int registered = 0;
-        for (RecordingTranscriptionWindow candidate : planner.plan(
-                recordingId,
-                pipelineVersion,
-                coreFrames,
-                contextFrames,
-                chunks.findAllByRecordingIdOrderBySequence(recordingId),
-                now()
-        )) {
+        for (RecordingTranscriptionWindow candidate : planned.get()) {
             Optional<RecordingTranscriptionWindow> existing = windows.findByRecordingIdAndPipelineVersionAndWindowIndex(
                     recordingId,
                     pipelineVersion,
@@ -143,7 +175,8 @@ public class RecordingTranscriptionWindowService {
                         owner,
                         window.getClaimEpoch(),
                         window.getManifestJson(),
-                        window.getManifestSha256()
+                        window.getManifestSha256(),
+                        window.getDecodePolicy()
                 )
         );
     }
@@ -160,8 +193,8 @@ public class RecordingTranscriptionWindowService {
         Optional<RecordingTranscriptionInput> prepared = readyInput(claim.recordingId());
         if (prepared.isPresent()) {
             RecordingTranscriptionInput input = prepared.orElseThrow();
-            if (!input.getPipelineVersion()
-                    .equals(window.getPipelineVersion())) {
+            if (!RecordingTranscriptionInput.windowPipelineVersions()
+                    .contains(window.getPipelineVersion())) {
                 throw new RecordingException(RecordingErrorCode.INVALID_RECORDING_DATA);
             }
             return Optional.of(
