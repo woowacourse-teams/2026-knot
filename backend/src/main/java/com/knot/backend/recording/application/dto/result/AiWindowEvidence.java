@@ -15,12 +15,39 @@ public record AiWindowEvidence(
         long inputEndFrame,
         String modelVersion,
         List<Token> tokens,
-        List<Speaker> speakers
+        List<Speaker> speakers,
+        List<Observation> observations
 ) {
     private static final int MAX_TOKENS = 20_000;
     private static final int MAX_SPEAKERS = 64;
+    /** 512차원 특징값(유효 숫자 9자리) 조각이 저장 JSON 1MiB 안에 들어가는 개수. 130초 구간은 실제로 60개 안팎이다. */
+    private static final int MAX_OBSERVATIONS = 160;
     private static final int EMBEDDING_DIMENSIONS = 512;
 
+    public AiWindowEvidence(
+            int schemaVersion,
+            String pipelineVersion,
+            String inputManifestSha256,
+            long inputStartFrame,
+            long inputEndFrame,
+            String modelVersion,
+            List<Token> tokens,
+            List<Speaker> speakers
+    ) {
+        this(
+                schemaVersion,
+                pipelineVersion,
+                inputManifestSha256,
+                inputStartFrame,
+                inputEndFrame,
+                modelVersion,
+                tokens,
+                speakers,
+                List.of()
+        );
+    }
+
+    /** 화자 근거 조각이 없는 이전 AI 결과는 빈 목록으로 읽어 구간별 중심 연결로 처리한다. */
     public AiWindowEvidence {
         if (schemaVersion != 1 || !boundedText(
                 pipelineVersion,
@@ -49,22 +76,51 @@ public record AiWindowEvidence(
             }
             previousStart = token.startFrame();
         }
+        if (observations == null) {
+            observations = List.of();
+        }
+        if (observations.size() > MAX_OBSERVATIONS) {
+            throw invalidData();
+        }
+        for (Observation observation : observations) {
+            if (observation == null || observation.endFrame() > span || !speakerIds.contains(observation.speakerId())) {
+                throw invalidData();
+            }
+        }
         tokens = List.copyOf(tokens);
         speakers = List.copyOf(speakers);
+        observations = List.copyOf(observations);
     }
 
+    /** segment는 같은 Whisper segment의 단어를 묶는 번호다. 이전 AI 결과에는 없다. */
     public record Token(
             long startFrame,
             long endFrame,
             String text,
-            String speakerId
+            String speakerId,
+            Integer segment
     ) {
+        public Token(
+                long startFrame,
+                long endFrame,
+                String text,
+                String speakerId
+        ) {
+            this(
+                    startFrame,
+                    endFrame,
+                    text,
+                    speakerId,
+                    null
+            );
+        }
+
         public Token {
             if (startFrame < 0 || endFrame < startFrame || text == null || text.isBlank() || text.length() > 10_000
                     || !boundedText(
                             speakerId,
                             100
-                    )) {
+                    ) || (segment != null && segment < 0)) {
                 throw invalidData();
             }
         }
@@ -94,6 +150,25 @@ public record AiWindowEvidence(
                 );
             }
             if (!embedding.isEmpty() && (!Double.isFinite(norm) || norm == 0)) {
+                throw invalidData();
+            }
+            embedding = List.copyOf(embedding);
+        }
+    }
+
+    /** 녹음 종료 시 다시 묶는 5초 이하 화자 근거 조각. 시간은 입력 WAV 시작이 0인 frame이다. */
+    public record Observation(
+            long startFrame,
+            long endFrame,
+            String speakerId,
+            List<Double> embedding
+    ) {
+        public Observation {
+            if (startFrame < 0 || endFrame <= startFrame || !boundedText(
+                    speakerId,
+                    100
+            ) || embedding == null || embedding.size() != EMBEDDING_DIMENSIONS || embedding.stream()
+                    .anyMatch(component -> component == null || !Double.isFinite(component))) {
                 throw invalidData();
             }
             embedding = List.copyOf(embedding);

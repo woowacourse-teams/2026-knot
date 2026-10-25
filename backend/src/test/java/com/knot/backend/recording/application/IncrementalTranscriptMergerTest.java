@@ -259,6 +259,177 @@ class IncrementalTranscriptMergerTest {
     }
 
     @Test
+    @DisplayName("화자 근거 조각이 있으면 녹음 전체로 다시 묶어 구간 화자 번호가 같아도 다른 목소리를 나눈다")
+    void merge_success_reclusteredSpeakers() {
+        // given
+        long second = 16_000;
+        RecordingTranscriptionWindow first = observedWindow(
+                0,
+                0,
+                120 * second,
+                0,
+                List.of(
+                        token(
+                                0,
+                                second,
+                                "안녕하세요.",
+                                "a",
+                                0
+                        ),
+                        token(
+                                3 * second,
+                                4 * second,
+                                "반갑습니다.",
+                                "a",
+                                1
+                        )
+                ),
+                List.of(
+                        observation(
+                                0,
+                                second,
+                                "a",
+                                0
+                        ),
+                        observation(
+                                3 * second,
+                                4 * second,
+                                "a",
+                                1
+                        )
+                )
+        );
+        RecordingTranscriptionWindow next = observedWindow(
+                1,
+                120 * second,
+                240 * second,
+                110 * second,
+                List.of(
+                        token(
+                                20 * second,
+                                21 * second,
+                                "다음.",
+                                "a",
+                                0
+                        )
+                ),
+                List.of(
+                        observation(
+                                20 * second,
+                                21 * second,
+                                "a",
+                                0
+                        )
+                )
+        );
+
+        // when
+        AiTranscript result = merger.merge(
+                List.of(
+                        first,
+                        next
+                ),
+                240 * second,
+                .65,
+                true
+        );
+
+        // then
+        assertThat(result.utterances()).extracting(AiTranscript.Utterance::speakerLabel)
+                .containsExactly(
+                        "SPEAKER_0",
+                        "SPEAKER_1",
+                        "SPEAKER_0"
+                );
+    }
+
+    @Test
+    @DisplayName("화자 근거 조각이 없는 이전 AI 구간이 섞이면 녹음 전체를 기존 중심 연결로 병합한다")
+    void merge_success_mixedLegacyWindowsKeepCentroidLinking() {
+        // given
+        long second = 16_000;
+        List<AiWindowEvidence.Token> firstTokens = List.of(
+                token(
+                        0,
+                        second,
+                        "안녕하세요.",
+                        "a",
+                        0
+                )
+        );
+        List<AiWindowEvidence.Token> legacyTokens = List.of(
+                token(
+                        20 * second,
+                        21 * second,
+                        "다음.",
+                        "a"
+                )
+        );
+        List<RecordingTranscriptionWindow> mixed = List.of(
+                observedWindow(
+                        0,
+                        0,
+                        120 * second,
+                        0,
+                        firstTokens,
+                        List.of(
+                                observation(
+                                        0,
+                                        second,
+                                        "a",
+                                        0
+                                )
+                        )
+                ),
+                observedWindow(
+                        1,
+                        120 * second,
+                        240 * second,
+                        110 * second,
+                        legacyTokens,
+                        List.of()
+                )
+        );
+        List<RecordingTranscriptionWindow> legacy = List.of(
+                observedWindow(
+                        0,
+                        0,
+                        120 * second,
+                        0,
+                        firstTokens,
+                        List.of()
+                ),
+                observedWindow(
+                        1,
+                        120 * second,
+                        240 * second,
+                        110 * second,
+                        legacyTokens,
+                        List.of()
+                )
+        );
+
+        // when
+        AiTranscript result = merger.merge(
+                mixed,
+                240 * second,
+                .65,
+                true
+        );
+
+        // then
+        assertThat(result.utterances()).isEqualTo(
+                merger.merge(
+                        legacy,
+                        240 * second,
+                        .65,
+                        true
+                )
+                        .utterances()
+        );
+    }
+
+    @Test
     @DisplayName("같은 window의 서로 다른 화자는 동일한 임베딩이어도 합치지 않는다")
     void merge_success_withinWindowCannotLink() {
         // given
@@ -1104,6 +1275,77 @@ class IncrementalTranscriptMergerTest {
                 speakerId,
                 embedding,
                 10
+        );
+    }
+
+    private RecordingTranscriptionWindow observedWindow(
+            int index,
+            long coreStart,
+            long coreEnd,
+            long inputStart,
+            List<AiWindowEvidence.Token> tokens,
+            List<AiWindowEvidence.Observation> observations
+    ) {
+        RecordingTranscriptionWindow window = queued(
+                index,
+                coreStart,
+                coreEnd,
+                inputStart,
+                coreEnd
+        );
+        complete(
+                window,
+                new AiWindowEvidence(
+                        1,
+                        "test-v1",
+                        window.getManifestSha256(),
+                        inputStart,
+                        coreEnd,
+                        "model-v1",
+                        tokens,
+                        List.of(
+                                new AiWindowEvidence.Speaker(
+                                        "a",
+                                        List.of(),
+                                        0
+                                )
+                        ),
+                        observations
+                )
+        );
+        return window;
+    }
+
+    private AiWindowEvidence.Token token(
+            long start,
+            long end,
+            String text,
+            String speakerId,
+            int segment
+    ) {
+        return new AiWindowEvidence.Token(
+                start,
+                end,
+                text,
+                speakerId,
+                segment
+        );
+    }
+
+    private AiWindowEvidence.Observation observation(
+            long start,
+            long end,
+            String speakerId,
+            int axis
+    ) {
+        return new AiWindowEvidence.Observation(
+                start,
+                end,
+                speakerId,
+                speaker(
+                        speakerId,
+                        axis
+                ).embedding()
         );
     }
 }
