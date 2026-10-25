@@ -458,6 +458,34 @@ describe("NewsPopover", () => {
       );
     });
 
+    it("앱에 없는 화면이나 워크스페이스 ID만으로 갈 수 없는 화면이면 「바로 가보기」를 숨긴다", async () => {
+      await renderOpenPanel([
+        {
+          id: "v1.0.0",
+          releasedAt: "2026-11-02",
+          items: [
+            { title: "갈 수 있는 화면", description: "설명", link: "CHAT" },
+            { title: "지운 화면", description: "설명", link: "SETTINGS" },
+            {
+              title: "대화 ID가 필요한 화면",
+              description: "설명",
+              link: "CHAT_SESSION",
+            },
+            {
+              title: "워크스페이스 밖 화면",
+              description: "설명",
+              link: "LOGIN",
+            },
+          ],
+        },
+      ]);
+
+      expect(screen.getAllByRole("listitem")).toHaveLength(4);
+      expect(screen.getAllByRole("link", { name: "바로 가보기" })).toHaveLength(
+        1,
+      );
+    });
+
     it("「바로 가보기」를 누르면 지금 워크스페이스의 그 화면으로 옮긴다", async () => {
       const { router } = await renderOpenPanel([
         {

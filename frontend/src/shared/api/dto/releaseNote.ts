@@ -3,14 +3,13 @@
  *
  * - GET /relay/n
  */
-import type { WorkspaceRouteKey } from "@/shared/types/route";
 
 /** 노트 항목 하나의 Worker 응답 모양 */
 export interface ReleaseNoteItemRaw {
   title: string;
   description: string;
   image?: string;
-  link?: WorkspaceRouteKey;
+  link?: string;
   isFromFeedback?: boolean;
   isHighlight?: boolean;
 }
@@ -23,8 +22,8 @@ export class ReleaseNoteItemDto {
   description: string;
   /** 변화를 보여 주는 이미지 주소. 새 소식 DB에 이미지 칸이 없어 지금 Worker는 보내지 않아요 */
   image?: string;
-  /** 「바로 가보기」로 옮길 화면 키. 지금 보고 있는 워크스페이스의 화면으로 가요. Worker가 앱 화면 키가 아닌 줄은 빼요 */
-  link?: WorkspaceRouteKey;
+  /** 「바로 가보기」로 옮길 화면 키(`CHAT` 등). 지금 보고 있는 워크스페이스의 화면으로 가요. Notion에 적힌 글자 그대로라 앱에 없는 화면일 수 있어요 */
+  link?: string;
   /** 사용자가 알려 준 문제를 고친 항목이면 true. 「피드백 덕분에 바뀌었어요」 칩을 붙여요 */
   isFromFeedback?: boolean;
   /** 큰 변화면 true. 노트마다 하나까지만 둬요 */

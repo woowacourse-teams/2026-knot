@@ -1,10 +1,8 @@
-import type { WorkspaceRouteKey } from "@/shared/types/route";
-
 export interface ReleaseNoteItem {
   title: string;
   description: string;
   image?: string;
-  link?: WorkspaceRouteKey;
+  link?: string;
   isFromFeedback?: boolean;
   isHighlight?: boolean;
 }

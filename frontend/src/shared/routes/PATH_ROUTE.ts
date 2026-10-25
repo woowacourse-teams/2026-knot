@@ -42,6 +42,27 @@ type GetRouterPathParams<K extends RouteKey> = [
   ? { routeKey: K; params?: never }
   : { routeKey: K; params: RouteParams<K> };
 
+/** 지금 보고 있는 워크스페이스 ID만 채우면 갈 수 있는 화면 */
+export type WorkspaceRouteKey = {
+  [K in RouteKey]: [PathParam<(typeof PATH_ROUTE)[K]>] extends ["workspaceId"]
+    ? [PathParam<(typeof PATH_ROUTE)[K]>] extends [never]
+      ? never
+      : K
+    : never;
+}[RouteKey];
+
+/**
+ * 앱 밖(Notion 새 소식 등)에서 받은 화면 이름이 워크스페이스 ID만 채우면 갈 수 있는 화면인지 확인합니다.
+ * `scripts/release-note.mjs`의 `parseLinkScreens`와 같은 기준입니다.
+ */
+export const isWorkspaceRouteKey = (
+  value: string,
+): value is WorkspaceRouteKey =>
+  Object.entries(PATH_ROUTE).some(
+    ([key, path]) =>
+      key === value && path.match(/:\w+|\*/g)?.join() === ":workspaceId",
+  );
+
 /**
  * path가 필요한 곳에서 사용할 수 있는 유틸입니다.
  * @example
