@@ -50,16 +50,24 @@ class LlmRecordingTitleGeneratorTest {
         // then
         assertThat(title).isEqualTo("회원 탈퇴 정책 논의");
         verify(client).complete(request.capture());
-        assertThat(request.getValue()
-                .schemaName()).isEqualTo("recording_title");
-        assertThat(request.getValue()
-                .timeout()).isEqualTo(Duration.ofSeconds(30));
-        assertThat(request.getValue()
-                .messages()).hasSize(2);
-        assertThat(request.getValue()
-                .messages()
-                .getLast()
-                .content()).isEqualTo("회원 탈퇴 정책을 정했다.");
+        assertThat(
+                request.getValue()
+                        .schemaName()
+        ).isEqualTo("recording_title");
+        assertThat(
+                request.getValue()
+                        .timeout()
+        ).isEqualTo(Duration.ofSeconds(30));
+        assertThat(
+                request.getValue()
+                        .messages()
+        ).hasSize(2);
+        assertThat(
+                request.getValue()
+                        .messages()
+                        .getLast()
+                        .content()
+        ).isEqualTo("회원 탈퇴 정책을 정했다.");
     }
 
     @Test
@@ -74,10 +82,12 @@ class LlmRecordingTitleGeneratorTest {
 
         // then
         verify(client).complete(request.capture());
-        assertThat(request.getValue()
-                .messages()
-                .getLast()
-                .content()).hasSize(LlmRecordingTitleGenerator.MAX_INPUT_CHARACTERS);
+        assertThat(
+                request.getValue()
+                        .messages()
+                        .getLast()
+                        .content()
+        ).hasSize(LlmRecordingTitleGenerator.MAX_INPUT_CHARACTERS);
     }
 
     @ParameterizedTest

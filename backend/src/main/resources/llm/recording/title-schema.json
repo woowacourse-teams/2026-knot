@@ -1,0 +1,12 @@
+{
+  "type": "object",
+  "properties": {
+    "title": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 100
+    }
+  },
+  "required": ["title"],
+  "additionalProperties": false
+}
