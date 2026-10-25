@@ -44,6 +44,13 @@ class DevBlueGreenDeployTest(unittest.TestCase):
         self.systemd_dir.mkdir()
         self.bundle.joinpath("app.jar").write_bytes(b"candidate")
         self.scripts.joinpath("dev_bluegreen_deploy.sh").write_bytes(DEPLOY_SCRIPT.read_bytes())
+        # 슬롯 전환 테스트는 가짜 JAR를 사용하고, 실제 ZIP 검사는 별도 CLI 테스트로 검증한다.
+        self.scripts.joinpath("verify_migration_compatibility.py").write_text(
+            'import os, sys\n'
+            'changed = os.environ.get("TEST_ACTIVE_MIGRATIONS", "") != os.environ.get("TEST_CANDIDATE_MIGRATIONS", "")\n'
+            'print(os.environ.get("TEST_MIGRATION_MODE", "rolling"))\n'
+            'sys.exit(int(changed))\n'
+        )
         self.scripts.joinpath("dev_bluegreen_preserve_legacy.sh").write_bytes(PRESERVE_SCRIPT.read_bytes())
         self.scripts.joinpath("prod_bluegreen_deploy.sh").write_bytes(PROD_DEPLOY_SCRIPT.read_bytes())
         self.scripts.joinpath("prod_bluegreen_preserve_legacy.sh").write_bytes(PROD_PRESERVE_SCRIPT.read_bytes())
@@ -319,6 +326,32 @@ class DevBlueGreenDeployTest(unittest.TestCase):
         self.assertIn("proxy_pass http://127.0.0.1:8080;", self.nginx_config.read_text())
         self.assertEqual(self._read_lines(self.active_services), {"knot-backend.service"})
 
+    def test_serial_workers_stop_previous_before_starting_candidate(self):
+        result = self._run_deploy(TEST_MIGRATION_MODE="serial-workers", TEST_VERIFY_METRICS_LIVE_TARGET="1")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        commands = self.command_log.read_text().splitlines()
+        self.assertLess(commands.index("systemctl stop knot-backend.service"),
+                        commands.index("systemctl start knot-backend-green.service"))
+        self.assertNotIn("knot-serial-maintenance", self.nginx_config.read_text())
+
+    def test_serial_candidate_failure_restores_previous_worker_and_route(self):
+        result = self._run_deploy(TEST_MIGRATION_MODE="serial-workers", TEST_FAIL_PORT="8081")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("knot-backend.service", self._read_lines(self.active_services))
+        self.assertNotIn("knot-backend-green.service", self._read_lines(self.active_services))
+        self.assertNotIn("knot-serial-maintenance", self.nginx_config.read_text())
+
+    def test_serial_candidate_stop_failure_blocks_previous_worker_restart(self):
+        result = self._run_deploy(
+            TEST_MIGRATION_MODE="serial-workers", TEST_FAIL_PORT="8081",
+            TEST_FAIL_STOP_SERVICE="knot-backend-green.service",
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertNotIn("knot-backend.service", self._read_lines(self.active_services))
+        self.assertIn("knot-backend-green.service", self._read_lines(self.active_services))
+        self.assertTrue((self.state_root / "route-uncertain").exists())
+        self.assertIn("knot-serial-maintenance", self.nginx_config.read_text())
+
     def test_second_deployment_uses_blue_slot_when_green_is_active(self):
         green_jar = self.app_root / "slots" / "green" / "app.jar"
         green_jar.parent.mkdir(parents=True)
@@ -423,6 +456,12 @@ class DevBlueGreenDeployTest(unittest.TestCase):
                            KNOT_BLUEGREEN_HEALTH_HOST="api.knoted.kr", **extra)
         return subprocess.run(["bash", str(self.scripts / "prod_bluegreen_deploy.sh")],
                               capture_output=True, text=True, env=environment)
+
+    def test_prod_refuses_serial_mode_before_stopping_existing_service(self):
+        result = self._run_prod_log_check(TEST_MIGRATION_MODE="serial-workers")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("Prod requires rolling deployment", result.stdout)
+        self.assertEqual(self._read_lines(self.active_services), {"knot-backend.service"})
 
     def test_prod_verifies_candidate_receipt_before_stopping_previous_service(self):
         result = self._run_prod_log_check()
@@ -701,6 +740,14 @@ if url.endswith("/-/reload"):
 if "127.0.0.1:18080/actuator/prometheus" in url:
     if os.environ.get("TEST_FAIL_METRICS") == "1":
         sys.exit(7)
+    if os.environ.get("TEST_VERIFY_METRICS_LIVE_TARGET") == "1":
+        from pathlib import Path
+        route = Path(os.environ["KNOT_BLUEGREEN_NGINX_METRICS_CONFIG"]).read_text()
+        services = Path(os.environ["TEST_ACTIVE_SERVICES_FILE"]).read_text().splitlines()
+        if ":8080;" in route and not {"knot-backend.service", "knot-backend-blue.service"}.intersection(services):
+            sys.exit(7)
+        if ":8081;" in route and "knot-backend-green.service" not in services:
+            sys.exit(7)
     print("jvm_memory_used_bytes 123")
     sys.exit(0)
 if "127.0.0.1:8080" in url and os.environ.get("TEST_FAIL_PORT") == "8080":
