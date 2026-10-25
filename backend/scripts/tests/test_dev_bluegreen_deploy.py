@@ -49,6 +49,18 @@ class DevBlueGreenDeployTest(unittest.TestCase):
         self.scripts.joinpath("prod_bluegreen_preserve_legacy.sh").write_bytes(PROD_PRESERVE_SCRIPT.read_bytes())
         self.scripts.joinpath("bluegreen_deploy.sh").write_bytes(CORE_DEPLOY_SCRIPT.read_bytes())
         self.scripts.joinpath("bluegreen_preserve_legacy.sh").write_bytes(CORE_PRESERVE_SCRIPT.read_bytes())
+        self.scripts.joinpath("verify_deployment_logs.py").write_text(
+            'import os, sys\n'
+            'from pathlib import Path\n'
+            'phase = "preflight" if "--preflight" in sys.argv else "receipt"\n'
+            'route = Path(os.environ["KNOT_BLUEGREEN_NGINX_CONFIG"]).read_text()\n'
+            'port = "8081" if "8081" in route else "8080"\n'
+            'slot = sys.argv[sys.argv.index("--slot") + 1]\n'
+            'assert phase == "preflight" or slot == {"8080": "blue", "8081": "green"}[port]\n'
+            'with open(os.environ["TEST_COMMAND_LOG"], "a") as output:\n'
+            '    output.write("log-check " + phase + " route=" + port + "\\n")\n'
+            'sys.exit(int(os.environ.get("TEST_LOG_CHECK_" + phase.upper(), "0")))\n'
+        )
         shutil.copy2(
             BACKEND_ROOT / "ops" / "nginx" / "knot-backend-metrics.conf",
             self.scripts / "nginx" / "knot-backend-metrics.conf",
@@ -401,6 +413,63 @@ class DevBlueGreenDeployTest(unittest.TestCase):
         self.assertEqual(self._read_lines(self.active_services), {"knot-backend.service"})
         commands = self.command_log.read_text().splitlines() if self.command_log.exists() else []
         self.assertNotIn("systemctl start knot-backend-green.service", commands)
+
+    def _run_prod_log_check(self, **extra):
+        shutil.copy2(BACKEND_ROOT / "ops/certificates/cloudflare-origin-rsa-root.pem",
+                     self.scripts / "certs/cloudflare-origin-rsa-root.pem")
+        environment = self._deployment_environment()
+        environment.update(KNOT_BLUEGREEN_PROFILE="prod",
+                           DEPLOYMENT_GROUP_NAME="knot-backend-deployment-group",
+                           KNOT_BLUEGREEN_HEALTH_HOST="api.knoted.kr", **extra)
+        return subprocess.run(["bash", str(self.scripts / "prod_bluegreen_deploy.sh")],
+                              capture_output=True, text=True, env=environment)
+
+    def test_prod_verifies_candidate_receipt_before_stopping_previous_service(self):
+        result = self._run_prod_log_check()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        commands = self.command_log.read_text().splitlines()
+        self.assertLess(commands.index('log-check preflight route=8080'),
+                        commands.index('systemctl start knot-backend-green.service'))
+        self.assertLess(commands.index('log-check receipt route=8081'),
+                        commands.index('systemctl stop knot-backend.service'))
+
+    def test_prod_log_preflight_failure_does_not_start_candidate(self):
+        result = self._run_prod_log_check(TEST_LOG_CHECK_PREFLIGHT="3")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(self._read_lines(self.active_services), {"knot-backend.service"})
+        self.assertNotIn('systemctl start knot-backend-green.service', self.command_log.read_text())
+        self.assertIn('8080;', self.nginx_config.read_text())
+
+    def test_prod_reverse_transition_verifies_blue_before_stopping_green(self):
+        jar = self.app_root / 'slots/green/app.jar'
+        jar.parent.mkdir(parents=True)
+        jar.write_bytes(b'active-green')
+        self.nginx_config.write_text('server {\n  proxy_pass http://127.0.0.1:8081;\n}\n')
+        self.active_services.write_text('knot-backend-green.service\n')
+        self.enabled_services.write_text('knot-backend-green.service\n')
+        result = self._run_prod_log_check(TEST_ACTIVE_JAR=str(jar))
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        commands = self.command_log.read_text().splitlines()
+        self.assertLess(commands.index('log-check receipt route=8080'),
+                        commands.index('systemctl stop knot-backend-green.service'))
+
+    def test_prod_missing_log_or_query_failure_restores_route_and_preserves_previous(self):
+        for code in ["2", "3"]:
+            with self.subTest(code=code):
+                result = self._run_prod_log_check(TEST_LOG_CHECK_RECEIPT=code)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn('Candidate log receipt failed', result.stdout)
+                self.assertIn('8080;', self.nginx_config.read_text())
+                self.assertIn('8080;', self.nginx_metrics_config.read_text())
+                self.assertEqual(self._read_lines(self.active_services), {"knot-backend.service"})
+                self.assertNotIn('systemctl stop knot-backend.service', self.command_log.read_text())
+
+    def test_prod_missing_verifier_rejects_the_bundle(self):
+        (self.scripts / "verify_deployment_logs.py").unlink()
+        result = self._run_prod_log_check()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('verifier is missing', result.stdout)
+        self.assertEqual(self._read_lines(self.active_services), {"knot-backend.service"})
 
     def test_prod_deploy_keeps_blue_route_when_current_nginx_health_fails(self):
         for unit_name in ("knot-backend-blue.service", "knot-backend-green.service"):
@@ -779,6 +848,7 @@ class DeploymentArtifactPackagingTest(unittest.TestCase):
         (self.backend / "appspec.yml").write_text("legacy-appspec\n")
         (self.backend / "appspec-dev-bluegreen.yml").write_text("bluegreen-appspec\n")
         (self.backend / "appspec-prod-bluegreen.yml").write_text("prod-bluegreen-appspec\n")
+        (self.backend / "scripts" / "verify_deployment_logs.py").write_text("# receipt verifier fixture\n")
         (self.backend / "ops" / "systemd" / "knot-backend-blue.service").write_text("blue-unit\n")
         (self.backend / "ops" / "systemd" / "knot-backend-green.service").write_text("green-unit\n")
         (self.backend / "ops" / "systemd" / "prod" / "knot-backend-blue.service").write_text("prod-blue-unit\n")
@@ -857,6 +927,7 @@ class DeploymentArtifactPackagingTest(unittest.TestCase):
             "cloudflare-origin-root\n",
         )
         self.assertTrue((self.root / "scripts" / "prod_bluegreen_deploy.sh").is_file())
+        self.assertEqual((self.root / "scripts" / "verify_deployment_logs.py").read_text(), "# receipt verifier fixture\n")
 
     def test_legacy_mode_removes_stale_bluegreen_files(self):
         stale_systemd = self.root / "scripts" / "systemd"
