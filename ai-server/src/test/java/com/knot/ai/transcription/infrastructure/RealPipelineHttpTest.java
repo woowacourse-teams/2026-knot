@@ -308,8 +308,7 @@ class RealPipelineHttpTest {
         long frames = windowMode ? Math.round(new AudioInspector().readPcmDuration(audio) * 16000) : 0;
         String manifestHash = "a".repeat(64);
         if (windowMode) {
-            requestBody.put(
-                    "window",
+            Map<String, Object> window = new HashMap<>(
                     Map.of(
                             "pipelineVersion",
                             "pcm-http-test-v1",
@@ -320,6 +319,17 @@ class RealPipelineHttpTest {
                             "inputEndFrame",
                             16000 + frames
                     )
+            );
+            String decodePolicy = System.getenv("AI_REAL_WINDOW_DECODE_POLICY");
+            if (decodePolicy != null) {
+                window.put(
+                        "decodePolicy",
+                        decodePolicy
+                );
+            }
+            requestBody.put(
+                    "window",
+                    window
             );
         }
         String body = mapper.writeValueAsString(requestBody);

@@ -128,7 +128,8 @@ Whisper·sherpa → 결과 역직렬화를 연결한다. 요청의 pipeline/hash
 실제 S3와 네트워크 지연, BE 스케줄링, 화자 정답 정확도는 이 테스트 범위 밖이다.
 
 선택 실행에는 `AI_REAL_PIPELINE=true`, `AI_REAL_AUDIO`, `AI_REAL_PROFILE`을 설정한다.
-구간 검증은 추가로 `AI_REAL_WINDOW_AUDIO`에 60초 이하 16 kHz mono PCM16 WAV를 지정한다.
+구간 검증은 추가로 `AI_REAL_WINDOW_AUDIO`에 130초 이하 16 kHz mono PCM16 WAV를 지정한다.
+`AI_REAL_WINDOW_DECODE_POLICY`에 `WITH_VOCABULARY`를 주면 용어 디코딩까지 실행하고, 생략하면 `DEFAULT_ONLY`다.
 프로필과 음성은 저장소에 추가하지 않으며 실제 실행 후 임시 파일을 삭제했다.
 
 ### 변환 준비 분리 검증
