@@ -82,6 +82,13 @@ service_is_active() {
   systemctl is-active --quiet "$1"
 }
 
+verify_deployment_logs() {
+  [[ "$BLUEGREEN_PROFILE" == "prod" ]] || return 0
+  python3 "${SCRIPT_DIR}/verify_deployment_logs.py" \
+    --environment "$BLUEGREEN_PROFILE" --slot "$CANDIDATE_SLOT" \
+    --origin-ca "$PROD_ORIGIN_CA_CERT" "$@"
+}
+
 service_is_enabled() {
   local state
 
@@ -658,6 +665,7 @@ assert_numeric_settings
 [[ -f "$METRICS_NGINX_SOURCE" ]] || die "Loopback metrics Nginx config is missing from the revision"
 if [[ "$BLUEGREEN_PROFILE" == "prod" ]]; then
   [[ -r "$PROD_ORIGIN_CA_CERT" ]] || die "Prod Cloudflare Origin RSA CA root is missing from the revision"
+  [[ -r "${SCRIPT_DIR}/verify_deployment_logs.py" ]] || die "Deployment log verifier is missing from the revision"
 fi
 [[ -r "$ALLOY_CONFIG" ]] || die "Alloy config is unreadable: ${ALLOY_CONFIG}"
 
@@ -685,6 +693,9 @@ active_migrations="$(migration_files "$ACTIVE_JAR")" || die "Could not read migr
 candidate_migrations="$(migration_files "$INCOMING_JAR")" || die "Could not read migration files from the candidate JAR"
 [[ "$active_migrations" == "$candidate_migrations" ]] \
   || die "Flyway migration file set changed; deploy only after Blue-Green schema compatibility is verified"
+
+verify_deployment_logs --preflight \
+  || die "Log receipt preflight failed; candidate startup and traffic switch were not attempted"
 
 candidate_unit="${SCRIPT_DIR}/systemd/${CANDIDATE_SERVICE}"
 candidate_jar="${APP_ROOT}/slots/${CANDIDATE_SLOT}/app.jar"
@@ -740,6 +751,12 @@ wait_for_nginx_health || die "${PROFILE_LABEL} Nginx health check did not return
 log "${PROFILE_LABEL} Nginx returned 200 UP through port ${CANDIDATE_PORT}"
 wait_for_metrics_endpoint || die "Alloy metrics proxy did not return JVM metrics through port ${CANDIDATE_PORT}"
 log "Alloy metrics proxy returned JVM metrics through port ${CANDIDATE_PORT}"
+
+# A fresh request must traverse Nginx and arrive in the exact candidate unit's
+# central logs before the previous slot is drained/stopped. Fail through the
+# existing transaction rollback; never treat a query outage as successful receipt.
+verify_deployment_logs \
+  || die "Candidate log receipt failed; restoring the previous route"
 
 wait_for_connections_to_drain "$ACTIVE_PORT" "$ACTIVE_SERVICE" \
   || die "Previous Blue connections did not drain; route will be restored"
