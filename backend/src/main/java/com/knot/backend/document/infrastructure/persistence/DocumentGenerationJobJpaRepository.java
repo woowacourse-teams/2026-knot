@@ -46,12 +46,6 @@ interface DocumentGenerationJobJpaRepository extends JpaRepository<DocumentGener
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("""
-            SELECT j FROM DocumentGenerationJob j WHERE j.batchId = :batchId ORDER BY j.id
-            """)
-    List<DocumentGenerationJob> findAllByBatchIdForUpdate(long batchId);
-
-    @Lock(LockModeType.PESSIMISTIC_WRITE)
-    @Query("""
             SELECT j FROM DocumentGenerationJob j
             WHERE j.id = :jobId AND EXISTS (
                 SELECT t.id FROM Transcript t JOIN RecordingSession rs ON rs.id = t.recordingSessionId

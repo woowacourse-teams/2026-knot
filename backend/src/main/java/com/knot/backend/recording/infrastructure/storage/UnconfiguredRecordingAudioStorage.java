@@ -19,11 +19,6 @@ public class UnconfiguredRecordingAudioStorage implements RecordingAudioStorage 
     }
 
     @Override
-    public void deleteStoredObject(String storageKey) {
-        throw new RecordingException(RecordingErrorCode.AUDIO_STORAGE_UNAVAILABLE);
-    }
-
-    @Override
     public void deleteRecordingPrefix(String storagePrefix) {
         throw new RecordingException(RecordingErrorCode.AUDIO_STORAGE_UNAVAILABLE);
     }
