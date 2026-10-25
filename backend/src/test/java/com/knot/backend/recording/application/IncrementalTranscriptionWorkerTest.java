@@ -1,6 +1,7 @@
 package com.knot.backend.recording.application;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
@@ -19,6 +20,7 @@ import com.knot.backend.recording.application.dto.result.AiWindowEvidence;
 import com.knot.backend.recording.application.dto.result.TranscriptionWindowAudioSource;
 import com.knot.backend.recording.application.dto.result.TranscriptionWindowClaim;
 import com.knot.backend.recording.domain.RecordingErrorCode;
+import com.knot.backend.recording.domain.model.TranscriptionDecodePolicy;
 import com.knot.backend.recording.domain.RecordingException;
 import com.knot.backend.recording.domain.model.StoredAudioChunk;
 import com.knot.backend.recording.domain.repository.IncrementalTranscriptionQueue;
@@ -53,7 +55,8 @@ class IncrementalTranscriptionWorkerTest {
             UUID.randomUUID(),
             1,
             manifest,
-            hash
+            hash,
+            TranscriptionDecodePolicy.WITH_VOCABULARY
     );
     private IncrementalTranscriptionWorker worker;
 
@@ -214,7 +217,7 @@ class IncrementalTranscriptionWorkerTest {
                 .submitWindow(
                         eq(claim.attemptId()),
                         eq("https://private"),
-                        any()
+                        argThat(window -> window.decodePolicy() == TranscriptionDecodePolicy.WITH_VOCABULARY)
                 );
         order.verify(state)
                 .succeed(

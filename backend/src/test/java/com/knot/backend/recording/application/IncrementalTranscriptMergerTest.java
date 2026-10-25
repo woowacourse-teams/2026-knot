@@ -175,6 +175,90 @@ class IncrementalTranscriptMergerTest {
     }
 
     @Test
+    @DisplayName("2분 구간은 직전 10초에서 겹친 단어를 정렬해 한 번만 이어 붙인다")
+    void merge_success_seamAlignedOverlapOnce() {
+        // given
+        long second = 16_000;
+        List<AiWindowEvidence.Speaker> speakers = List.of(
+                speaker(
+                        "a",
+                        0
+                )
+        );
+        RecordingTranscriptionWindow first = window(
+                0,
+                0,
+                120 * second,
+                0,
+                120 * second,
+                List.of(
+                        token(
+                                second,
+                                2 * second,
+                                "안녕하세요",
+                                "a"
+                        ),
+                        token(
+                                115 * second,
+                                116 * second,
+                                "회의를",
+                                "a"
+                        ),
+                        token(
+                                116 * second,
+                                117 * second,
+                                "시작합니다",
+                                "a"
+                        )
+                ),
+                speakers
+        );
+        RecordingTranscriptionWindow second2 = window(
+                1,
+                120 * second,
+                240 * second,
+                110 * second,
+                240 * second,
+                List.of(
+                        token(
+                                5 * second,
+                                6 * second,
+                                "회의를",
+                                "a"
+                        ),
+                        token(
+                                6 * second,
+                                7 * second,
+                                "시작합니다",
+                                "a"
+                        ),
+                        token(
+                                20 * second,
+                                21 * second,
+                                "첫",
+                                "a"
+                        )
+                ),
+                speakers
+        );
+
+        // when
+        AiTranscript result = merger.merge(
+                List.of(
+                        first,
+                        second2
+                ),
+                240 * second,
+                .65,
+                true
+        );
+
+        // then
+        assertThat(result.utterances()).extracting(AiTranscript.Utterance::text)
+                .containsExactly("안녕하세요 회의를 시작합니다 첫");
+    }
+
+    @Test
     @DisplayName("같은 window의 서로 다른 화자는 동일한 임베딩이어도 합치지 않는다")
     void merge_success_withinWindowCannotLink() {
         // given

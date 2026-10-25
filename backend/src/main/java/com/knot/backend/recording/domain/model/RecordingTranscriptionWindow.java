@@ -61,6 +61,11 @@ public class RecordingTranscriptionWindow {
     @Column(nullable = false, updatable = false, length = 64)
     private String manifestSha256;
 
+    /** 2분 구간에서만 정한다. 30초 구간은 null이며 AI 요청에서 빠진다. */
+    @Enumerated(EnumType.STRING)
+    @Column(updatable = false, length = 20)
+    private TranscriptionDecodePolicy decodePolicy;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     private TranscriptionWindowStatus status;
@@ -115,6 +120,34 @@ public class RecordingTranscriptionWindow {
             UUID attemptId,
             Instant now
     ) {
+        return queued(
+                recordingId,
+                pipelineVersion,
+                windowIndex,
+                coreStartFrame,
+                coreEndFrame,
+                inputStartFrame,
+                inputEndFrame,
+                manifestJson,
+                null,
+                attemptId,
+                now
+        );
+    }
+
+    public static RecordingTranscriptionWindow queued(
+            long recordingId,
+            String pipelineVersion,
+            int windowIndex,
+            long coreStartFrame,
+            long coreEndFrame,
+            long inputStartFrame,
+            long inputEndFrame,
+            String manifestJson,
+            TranscriptionDecodePolicy decodePolicy,
+            UUID attemptId,
+            Instant now
+    ) {
         if (recordingId <= 0 || pipelineVersion == null || pipelineVersion.isBlank()
                 || pipelineVersion.length() > MAX_PIPELINE_VERSION_LENGTH || windowIndex < 0 || inputStartFrame < 0
                 || inputStartFrame > coreStartFrame || coreStartFrame >= coreEndFrame || coreEndFrame > inputEndFrame
@@ -132,6 +165,7 @@ public class RecordingTranscriptionWindow {
         window.inputEndFrame = inputEndFrame;
         window.manifestJson = manifestJson;
         window.manifestSha256 = manifestSha256;
+        window.decodePolicy = decodePolicy;
         window.attemptId = attemptId;
         window.createdAt = now;
         window.nextRunAt = now;
