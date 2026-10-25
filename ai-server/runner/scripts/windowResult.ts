@@ -18,7 +18,11 @@ interface Evidence {
   modelVersion: string
   speakers: {speakerId:string; embedding:number[]; voicedFrames:number}[]
   segments: {start:number; end:number; speaker:string}[]
+  /** BE가 녹음 종료 시 다시 묶는 5초 이하 화자 근거 조각 */
+  observations?: {start:number; end:number; speaker:string; embedding:number[]}[]
 }
+/** float32로 계산한 특징값은 유효 숫자 9자리로 그대로 복원되므로 결과 크기를 줄이려고 그만큼만 보낸다. */
+const float32Digits = (value:number) => Number(value.toPrecision(9))
 export const validWindow = (w:WindowInput) => typeof w.pipelineVersion === 'string'
   && w.pipelineVersion.trim().length > 0 && w.pipelineVersion.length <= 64
   && /^[0-9a-f]{64}$/.test(w.inputManifestSha256)
@@ -79,6 +83,13 @@ export const assembleWindowResult = (raw:Buffer, evidence:Evidence, window:Windo
     if (!Number.isFinite(s.start) || !Number.isFinite(s.end) || s.start < 0 || s.end <= s.start
         || Math.round(s.end*16000)>frames || !ids.has(s.speaker)) throw new Error('INVALID_RESULT')
   }
+  const observations = (evidence.observations ?? []).map(o => {
+    const startFrame = Math.round(o.start*16000), endFrame = Math.round(o.end*16000)
+    if (!Number.isFinite(o.start) || !Number.isFinite(o.end) || startFrame < 0 || endFrame <= startFrame
+        || endFrame > frames || !ids.has(o.speaker) || !Array.isArray(o.embedding) || o.embedding.length !== 512
+        || o.embedding.some(x => !Number.isFinite(x))) throw new Error('INVALID_RESULT')
+    return {startFrame, endFrame, speakerId: o.speaker, embedding: o.embedding.map(float32Digits)}
+  })
   const segments = decoded.map(s => {
     if (s.text.trim() && !s.words?.length) throw new Error('WORD_TIMESTAMPS_REQUIRED')
     return {...s, words: measuredWordGroups(s.words??[], frames).map(w => ({
@@ -87,17 +98,19 @@ export const assembleWindowResult = (raw:Buffer, evidence:Evidence, window:Windo
     }))}
   }).filter(s => s.words.length > 0)
   const pieces = assignSpeakers({segments, speakerSegments: evidence.segments, ...SERVER_SPEAKER_POLICY})
-  const tokens = pieces.map(piece => {
+  // BE가 전역 화자로 다시 배정할 때 문장 경계를 같은 규칙으로 정하도록 Whisper segment 번호를 남긴다.
+  const segmentOf = segments.flatMap((s, index) => s.words.map(() => index))
+  const tokens = pieces.map((piece, index) => {
     const speakerId = piece.speaker
     if (!ids.has(speakerId)) {
       ids.add(speakerId)
       speakers.push({speakerId, embedding: [], voicedFrames: 0})
     }
     return {startFrame: Math.round(piece.start*16000), endFrame: Math.round(piece.end*16000),
-      text: piece.text, speakerId}
+      text: piece.text, speakerId, segment: segmentOf[index]}
   }).sort((a,b)=>a.startFrame-b.startFrame||a.endFrame-b.endFrame)
   const utterances = mergeUtterances(pieces, SERVER_SPEAKER_POLICY)
   const {decodePolicy, ...request} = window
   return {schemaVersion:1,rawWhisperJson:raw.toString('utf8'),utterances,
-    window:{schemaVersion:1,...request,modelVersion:evidence.modelVersion,tokens,speakers}}
+    window:{schemaVersion:1,...request,modelVersion:evidence.modelVersion,tokens,speakers,observations}}
 }
