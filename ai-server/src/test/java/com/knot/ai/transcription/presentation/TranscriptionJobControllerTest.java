@@ -23,9 +23,11 @@ import com.knot.ai.global.GlobalExceptionHandler;
 import com.knot.ai.transcription.application.JobSnapshot;
 import com.knot.ai.transcription.application.TranscriptionJobService;
 import com.knot.ai.transcription.application.command.CreateTranscriptionCommand;
+import com.knot.ai.transcription.domain.DecodePolicy;
 import com.knot.ai.transcription.domain.TranscriptResult;
 import com.knot.ai.transcription.domain.TranscriptionErrorCode;
 import com.knot.ai.transcription.domain.TranscriptionException;
+import com.knot.ai.transcription.domain.WindowInput;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
@@ -392,6 +394,70 @@ class TranscriptionJobControllerTest {
                 .andExpect(jsonPath("$.message").value("전사 서버가 준비되지 않았습니다"));
     }
 
+    @Test
+    @DisplayName("구간 요청의 디코딩 정책을 Command에 그대로 전달한다")
+    void create_success_windowDecodePolicy() throws Exception {
+        // given
+        UUID attemptId = UUID.randomUUID();
+        when(service.create(any())).thenReturn(
+                new JobSnapshot(
+                        attemptId,
+                        JobSnapshot.Status.PROCESSING,
+                        null,
+                        null
+                )
+        );
+
+        // when
+        ResultActions response = mvc.perform(
+                authorized(post("/api/v1/transcription-jobs")).contentType(MediaType.APPLICATION_JSON)
+                        .content(
+                                windowBody(
+                                        attemptId,
+                                        "\"WITH_VOCABULARY\""
+                                )
+                        )
+        );
+
+        // then
+        response.andExpect(status().isAccepted());
+        verify(service).create(
+                new CreateTranscriptionCommand(
+                        attemptId,
+                        "https://audio",
+                        null,
+                        new WindowInput(
+                                "pcm-window-v1",
+                                "a".repeat(64),
+                                0,
+                                2_080_000,
+                                DecodePolicy.WITH_VOCABULARY
+                        )
+                )
+        );
+    }
+
+    @Test
+    @DisplayName("알 수 없는 디코딩 정책은 내부 예외명 없이 거부한다")
+    void create_failure_unknownDecodePolicy() throws Exception {
+        // when
+        ResultActions response = mvc.perform(
+                authorized(post("/api/v1/transcription-jobs")).contentType(MediaType.APPLICATION_JSON)
+                        .content(
+                                windowBody(
+                                        UUID.randomUUID(),
+                                        "\"TWICE\""
+                                )
+                        )
+        );
+
+        // then
+        response.andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_REQUEST_BODY"))
+                .andExpect(content().string(not(containsString("DecodePolicy"))));
+        verifyNoInteractions(service);
+    }
+
     private static MockHttpServletRequestBuilder authorized(MockHttpServletRequestBuilder builder) {
         return builder.header(
                 "Authorization",
@@ -405,6 +471,20 @@ class TranscriptionJobControllerTest {
                 """.formatted(
                 attemptId,
                 "https://audio"
+        );
+    }
+
+    private String windowBody(
+            UUID attemptId,
+            String decodePolicy
+    ) {
+        return """
+                {"attemptId":"%s","downloadUrl":"https://audio","window":{"pipelineVersion":"pcm-window-v1",\
+                "inputManifestSha256":"%s","inputStartFrame":0,"inputEndFrame":2080000,"decodePolicy":%s}}
+                """.formatted(
+                attemptId,
+                "a".repeat(64),
+                decodePolicy
         );
     }
 }

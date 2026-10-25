@@ -1,6 +1,8 @@
 import importlib.util
 from pathlib import Path
+import tempfile
 import unittest
+import wave
 
 spec = importlib.util.spec_from_file_location('window_diarization', Path(__file__).with_name('windowDiarization.py'))
 module = importlib.util.module_from_spec(spec)
@@ -21,6 +23,35 @@ class AggregationTest(unittest.TestCase):
         for vector in ([1.0], [float('nan')]*512):
             with self.assertRaises(ValueError):
                 module.aggregate([self.segment(0,1,vector)])
+
+class WindowLengthTest(unittest.TestCase):
+    def execute(self, frames):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'window.wav'
+            with wave.open(str(path), 'wb') as wav:
+                wav.setnchannels(1)
+                wav.setsampwidth(2)
+                wav.setframerate(16000)
+                wav.writeframes(bytes(frames * 2))
+            module.execute({'audioPath': str(path), 'profile': {},
+                            'window': {'inputStartFrame': 0, 'inputEndFrame': frames}})
+
+    def test_accept_two_minutes_with_lookback_and_reject_longer(self):
+        class Reached(Exception):
+            pass
+
+        def native(profile):
+            raise Reached()
+
+        original = module.Native
+        module.Native = native
+        try:
+            with self.assertRaises(Reached):
+                self.execute(130 * 16000)
+            with self.assertRaisesRegex(ValueError, 'INVALID_AUDIO'):
+                self.execute(130 * 16000 + 1)
+        finally:
+            module.Native = original
 
 if __name__ == '__main__':
     unittest.main()
