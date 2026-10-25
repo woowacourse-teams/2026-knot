@@ -46,7 +46,8 @@ jobs:
           echo "number=${pr% *}" >> "$GITHUB_OUTPUT"
           echo "merged_at=${pr#* }" >> "$GITHUB_OUTPUT"
 
-      - name: Read note guide from Notion
+      # 문구 기준은 Notion에서, 바로 가보기 화면은 앱 라우트 표(PATH_ROUTE)에서 읽어요
+      - name: Read note guide and app screens
         id: guide
         if: steps.pr.outputs.number
         env:
@@ -73,17 +74,16 @@ jobs:
             ## 쓰는 방법
             - 사용자가 화면에서 알아챌 변화만 항목으로 써요. 테스트, CI, 문서, 리팩터링, 서버 내부 변경처럼 사용자가 알아챌 수 없는 것은 쓰지 않아요.
             - 그런 변화가 없으면 items를 빈 배열로 내요.
-            - link는 그 변화를 바로 볼 수 있는 화면이 있을 때만 넣어요. WORKSPACE_HOME(홈), CHAT(탐색), RECORDING(녹음), DOCUMENTS(문서 목록), WORKSPACE_INVITE(팀원 초대), WORKSPACE_JOIN(워크스페이스 참여) 중 하나예요.
+            - link는 그 변화를 바로 볼 수 있는 화면이 있을 때만 넣어요. 다음 화면 키 중 하나예요(괄호는 앱 주소): ${{ steps.guide.outputs.links }}
             - isFromFeedback은 사용자 피드백으로 고쳤다고 PR에 드러날 때만 true예요.
             - isHighlight는 노트에서 가장 큰 변화 하나에만 true예요.
             - 제목과 설명의 문구는 아래 기준을 따라요. 기준에 적힌 작성 절차(상수 파일, 릴리즈 PR 확인)는 이 실행과 관계없어요.
 
             ## 노트 문구 기준(Notion 「릴리즈 노트」)
             ${{ steps.guide.outputs.guide }}
-          # link 목록은 frontend/scripts/release-note.mjs의 LINK_KEYS와 맞춰요
           claude_args: >-
             --allowedTools "Bash(gh pr view:*),Bash(gh pr diff:*)"
-            --json-schema '{"type":"object","properties":{"items":{"type":"array","items":{"type":"object","properties":{"title":{"type":"string"},"description":{"type":"string"},"link":{"type":"string","enum":["WORKSPACE_HOME","WORKSPACE_INVITE","WORKSPACE_JOIN","CHAT","RECORDING","DOCUMENTS"]},"isFromFeedback":{"type":"boolean"},"isHighlight":{"type":"boolean"}},"required":["title","description"],"additionalProperties":false}}},"required":["items"],"additionalProperties":false}'
+            --json-schema '{"type":"object","properties":{"items":{"type":"array","items":{"type":"object","properties":{"title":{"type":"string"},"description":{"type":"string"},"link":{"type":"string","enum":${{ steps.guide.outputs.link_keys }}},"isFromFeedback":{"type":"boolean"},"isHighlight":{"type":"boolean"}},"required":["title","description"],"additionalProperties":false}}},"required":["items"],"additionalProperties":false}'
 
       - name: Publish note to Notion
         if: steps.pr.outputs.number
