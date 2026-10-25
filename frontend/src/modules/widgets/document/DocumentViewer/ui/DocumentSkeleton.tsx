@@ -2,16 +2,13 @@ import styled from "@emotion/styled";
 import Skeleton from "@primitives/ui/Skeleton";
 
 /**
- * 문서를 불러오는 동안 경로 · 복사 버튼 · 제목 · 날짜 줄 · 본문 자리를 채우는 덩어리.
+ * 문서를 불러오는 동안 복사 버튼 · 제목 · 날짜 줄 · 본문 자리를 채우는 덩어리.
  *
  * 줄마다 실제 화면과 같은 높이를 지켜, 불러온 뒤 내용이 아래로 밀리지 않게 해요.
  */
 export default function DocumentSkeleton() {
   return (
     <Container>
-      <BreadcrumbRow>
-        <Skeleton width={7.5} />
-      </BreadcrumbRow>
       <TitleBlock>
         <TitleRow>
           {/* 덩어리 28px, 모서리 8px */}
@@ -40,13 +37,6 @@ const Container = styled.div`
   display: flex;
   flex-direction: column;
   gap: 1.5rem; /* 24px */
-`;
-
-/** 경로 한 줄(caption02 14px × 줄 높이 1.5)과 같은 높이 */
-const BreadcrumbRow = styled.div`
-  display: flex;
-  align-items: center;
-  height: 1.3125rem; /* 21px */
 `;
 
 /** 피그마 TitleBlock: 제목과 날짜 줄 사이 4px */

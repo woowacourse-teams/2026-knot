@@ -3,6 +3,7 @@ import styled from "@emotion/styled";
 import MemberProfileAvatar from "@features/member/MemberProfileAvatar";
 import type { ReactNode } from "react";
 
+import WorkspaceLocation from "./ui/WorkspaceLocation";
 import WorkspaceNavPill from "./ui/WorkspaceNavPill";
 
 interface WorkspaceGnbProps {
@@ -23,11 +24,16 @@ interface WorkspaceGnbProps {
 
 /**
  * 워크스페이스 전역 상단바(GNB).
+ *
+ * 왼쪽 패널 버튼 옆에 지금 있는 워크스페이스와 탭을 알려 주는 위치 표시를 둬요(WS-R15).
  */
 export default function WorkspaceGnb({ left, right }: WorkspaceGnbProps) {
   return (
     <Container>
-      <Side>{left}</Side>
+      <Side>
+        {left}
+        <WorkspaceLocation />
+      </Side>
 
       <WorkspaceNavPill />
 

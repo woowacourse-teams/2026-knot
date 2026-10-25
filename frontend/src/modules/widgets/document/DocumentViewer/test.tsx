@@ -340,14 +340,14 @@ describe("DocumentViewer", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("문서 머리에 경로 · 만든 날짜 · 녹음 길이를 보여준다", async () => {
+  it("문서 머리에 만든 날짜 · 녹음 길이를 보여주고, 본문 위에 경로를 따로 두지 않는다", async () => {
     renderViewer(String(expected.id));
 
     await screen.findByRole("heading", { level: 2, name: expected.title });
 
-    // 경로는 위 단계 「문서」와 지금 문서의 제목이에요. 그래서 제목은 경로와 제목 줄 두 곳에 보여요
-    expect(screen.getByText("문서")).toBeInTheDocument();
-    expect(screen.getAllByText(expected.title)).toHaveLength(2);
+    // 어느 문서인지는 GNB의 위치 표시가 알려 줘서, 제목은 제목 줄 한 곳에만 보여요(WS-R15)
+    expect(screen.queryByText("문서")).not.toBeInTheDocument();
+    expect(screen.getAllByText(expected.title)).toHaveLength(1);
     expect(
       screen.getByText(formatDate(expected.createdAt)),
     ).toBeInTheDocument();

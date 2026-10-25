@@ -394,7 +394,21 @@
       "includeVars": false
     },
     {
-      "title": "05 RDS·별도 AWS DB",
+      "title": "05 Spring 앱",
+      "type": "link",
+      "url": "/d/knot-prod-spring",
+      "keepTime": true,
+      "includeVars": false
+    },
+    {
+      "title": "06 Tomcat·DB 연결 풀",
+      "type": "link",
+      "url": "/d/knot-prod-pools",
+      "keepTime": true,
+      "includeVars": false
+    },
+    {
+      "title": "07 RDS",
       "type": "link",
       "url": "/d/knot-prod-rds",
       "keepTime": true,

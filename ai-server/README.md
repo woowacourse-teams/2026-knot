@@ -2,7 +2,7 @@
 
 맥미니에서 S3의 녹음을 내려받아 Whisper 전사와 화자 분리를 실행합니다. EC2 백엔드와 별도로 빌드하는 Java/Spring 모듈이며, TypeScript runner가 모델 실행 파일을 호출합니다.
 
-현재 작업 하나와 마지막 결과만 메모리에 보관합니다. 새 작업을 받으면 이전 결과를 교체하고, 재시작하면 상태와 결과가 사라집니다. EC2는 결과를 저장한 뒤 다음 작업을 요청해야 합니다. EC2의 호출·폴링·DB 저장은 후속 연동 범위입니다.
+현재 작업 하나와 마지막 결과만 메모리에 보관합니다. 새 작업을 받으면 이전 결과를 교체하고, 재시작하면 상태와 결과가 사라집니다. EC2는 결과를 저장한 뒤 다음 작업을 요청해야 합니다. EC2의 호출·폴링·DB 저장은 `backend/` 모듈이 담당합니다.
 
 ## 설치와 검증
 
@@ -18,7 +18,9 @@ pnpm --dir runner test
 ./gradlew check bootJar
 ```
 
-기본 테스트는 실제 S3·모델을 사용하지 않습니다. HTTP 계약, 작업 동시성, 오디오 검증과 subprocess 정리를 검사합니다. 검증 범위는 [검증 안내](docs/verification.md)에 있습니다.
+기본 테스트는 실제 S3·모델을 사용하지 않습니다. Java 테스트는 HTTP 인증·입력·결과 불변식·동시 접수·정리 실패와 JVM 종료 후 소유 프로세스 회수를 확인합니다.
+
+runner 테스트는 한글 복원·정규화·발화 병합·구간 결과와 자식 프로세스 종료를 확인합니다. 실제 S3·EC2 연결과 전사 품질은 별도로 검증합니다.
 
 ## 모델 준비와 실행
 
@@ -70,7 +72,7 @@ java -jar build/libs/knot-ai-server-0.0.1-SNAPSHOT.jar
 | [serverPipeline.ts](runner/scripts/serverPipeline.ts) | 음량 정규화, 전사·화자 분리 병렬 실행, 발화 병합 |
 | [serverSupervisor.py](runner/scripts/serverSupervisor.py) | 실행 제한 시간, 부모 JVM 감시와 소유 프로세스 정리 |
 
-계층과 최소 구현의 경계는 [코드 흐름](docs/source-layout.md)에 있습니다.
+Java/Spring은 HTTP와 작업 수명을, TypeScript는 모델 실행과 결과 조립을, Python은 실행 제한 시간과 부모 JVM 종료 감시를 맡습니다. worker는 프로세스·파일 정리가 끝난 뒤 결과와 실행 슬롯을 공개하며, 정리 실패 시 다음 접수를 차단합니다.
 
 ## 실제 모델 HTTP 테스트
 
@@ -83,4 +85,6 @@ AI_REAL_AUDIO=/absolute/path/test.webm \
 ./gradlew test --tests '*RealPipelineHttpTest' --rerun-tasks
 ```
 
-실제 S3·EC2 연결, DB 저장과 전사 품질은 별도 검증 대상입니다.
+같은 `RealPipelineHttpTest`에서 모델 실행 없는 canonical WAV 변환 준비도 검사합니다. 구간 전사를 함께 검사하려면 `AI_REAL_WINDOW_AUDIO`에 130초 이하 16kHz mono PCM16 WAV를 추가로 지정합니다. `AI_REAL_WINDOW_DECODE_POLICY`에 `WITH_VOCABULARY`를 주면 용어 디코딩까지 실행하고, 생략하면 `DEFAULT_ONLY`입니다.
+
+기본 Gradle 실행은 실제 모델 테스트를 생략합니다. 위 opt-in 테스트도 S3는 stub이며, 실제 S3·EC2 연결·DB 저장·운영 배포와 회의 전사 품질은 별도로 검증합니다. 프로필·음성·실행 결과는 저장소에 추가하지 않습니다.

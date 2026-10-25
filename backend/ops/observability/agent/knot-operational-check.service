@@ -1,0 +1,19 @@
+[Unit]
+Description=Publish Knot service and RDS backup status for Alloy
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+EnvironmentFile=/opt/knot-observability-agent/.env
+Environment=AWS_PAGER=
+ExecStart=/usr/bin/python3 /opt/knot-observability-agent/operational_checks.py --environment ${KNOT_ENV}
+TimeoutStartSec=60
+Nice=10
+UMask=0022
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+StateDirectory=knot-observability
+ReadWritePaths=/var/lib/knot-observability

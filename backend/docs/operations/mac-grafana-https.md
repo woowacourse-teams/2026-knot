@@ -1,61 +1,18 @@
-# Mac Grafana 목록 복구와 HTTPS 설정
+# Mac Grafana 구성과 HTTPS 설정
 
-이 문서는 #805의 배포 절차다. 코드·격리 환경 검증과 운영 적용은 별개이며,
 실제 적용 여부는 현재 환경의 인증서·접속 결과로 확인한다.
 EC2·Mac 수집의 기본 구성은 [기존 운영 문서](mac-monitoring-ec2.md)를 따른다.
 
-## 목록 오류의 원인과 수정
+## 현재 폴더 구성
 
-Grafana 13.2.3에서 폴더와 호스트 대시보드 UID가 모두 `knot-mac`이었다.
-목록에서 폴더를 펼치면 재귀 렌더링으로 `Maximum call stack size exceeded`가 발생했다.
-폴더는 `Knot Mac` / `knot-mac-folder`로 옮기고 대시보드 UID 두 개는 유지한다.
+Mac file provider는 `Knot Mac` 폴더 UID `knot-mac-folder`를 사용한다.
+대시보드 UID `knot-mac`, `knot-mac-ai`와 폴더 UID를 구분하고, provider와
+`provisioning/mac-dashboards/`의 상대 경로를 함께 유지한다.
+UID 비충돌 검사는 `python3 -m unittest discover backend/ops/observability/mac/ai -p test_config.py`로 확인한다.
 
-provider의 `folderUid`만 바꾸면 파일 checksum이 같아 기존 대시보드 저장을 건너뛴다.
-두 JSON의 `version`도 1→2로 바꿔 실제 이동을 유도한다. Grafana는 파일의 version을
-DB 버전 비교 기준으로 사용하지 않지만, 파일 내용 변경은 재프로비저닝을 유발한다.
-패널·쿼리·UID는 변경하지 않는다. Prometheus 시계열은 별도 볼륨에 있다.
-
-## 기존 설치 이동
-
-유지보수 시간에 다른 관리자의 폴더·대시보드 쓰기를 멈춘다. 삭제 API에는 조건부 삭제가
-없으므로 검사와 삭제 사이의 경쟁을 외부에서 막아야 한다. `disableDeletion: true`만으로
-수동 폴더 삭제를 보호할 수는 없다.
-
-1. 현재 provider·두 JSON·Compose·Nginx·nftables·systemd 설정을 root 전용 백업에 복사한다.
-   **파일 교체 전에** 아래 검사 명령에 `--preflight`를 추가해 기본 Viewer·Editor 권한,
-   예상한 두 대시보드·알림 없음·새 폴더 UID 미사용을 확인한다. 사용자 지정 권한이면
-   이동을 중단한다. 새 폴더 생성으로 접근 범위가 넓어지지 않도록 별도 권한 이전이 필요하다.
-   Grafana만 중지한 뒤 `docker inspect`의 `/var/lib/grafana` Mount Source 전체를
-   `sudo tar --numeric-owner -cpf ... -C "$GRAFANA_DATA_SOURCE" .`로 백업한다.
-   SQLite와 플러그인·암호화 관련 파일을 함께 보존한다. 백업 폴더 권한은 `0700`이다.
-   Prometheus는 중지하지 않고 `down -v`를 사용하지 않는다.
-2. `provisioning/dashboards/knot-mac.yml`과 `provisioning/mac-dashboards/*.json`을
-   기존 상대 경로로 함께 복사한다. provider 이름·외부 파일명은 유지한다.
-3. 기존 운영 환경변수를 보존한 상태에서 `docker compose config --quiet` 후
-   `docker compose up -d --no-deps grafana`로 시작한다. 새 폴더와 두 대시보드의
-   `meta.folderUid=knot-mac-folder`, `meta.provisioned=true`를 확인한다.
-4. 아래 읽기 전용 검사 후 빈 기존 폴더만 정리한다. 알림·하위 항목·권한 차이가 있으면
-   중단하고 원인을 확인한다. 오류를 무시하거나 강제 삭제 옵션을 추가하지 않는다.
-
-```sh
-cd /opt/knot-observability/mac/central
-sudo python3 retire_old_folder.py \
-  --password-file /opt/knot-observability/private/grafana-admin-password \
-  --domain "$KNOT_GRAFANA_DOMAIN"
-# 검사 성공 후 유지보수 시간에 실행. backup은 아직 존재하지 않는 파일이어야 한다.
-sudo python3 retire_old_folder.py \
-  --password-file /opt/knot-observability/private/grafana-admin-password \
-  --domain "$KNOT_GRAFANA_DOMAIN" --apply --backup "$BACKUP/folder-before-delete.json"
-```
-
-스크립트는 localhost에만 접속하며 리다이렉트에 인증 정보를 전달하지 않는다. export 파일은
-`0600`이며 볼륨 백업을 대체하지 않는다. 기존 폴더가 없으면 변경하지 않는다.
-정리 후 목록 펼치기, 기존 `/d/knot-mac/...`·`/d/knot-mac-ai/...` URL,
-최신 Mac 표본, Grafana 재시작 후 같은 상태를 확인한다.
-
-실패 시 Grafana를 멈추고 원본 설정과 전체 Grafana 데이터 백업을 원래 소유권으로 복구한다.
-새 데이터 디렉터리를 별도 보관한 후 백업을 복원하며 실행 중인 SQLite에 덮어쓰지 않는다.
-원래 설정으로 시작해 API·직접 대시보드·최신 표본을 확인한다. 원복하면 목록 결함도 돌아온다.
+이전 UID 설치를 옮기는 일회성 도구와 검증 환경은 Git 이력에 보관한다.
+이전 설치의 이동이 필요하면 [정리 전 구성과 절차](https://github.com/woowacourse-teams/2026-knot/blob/31b1e332aa0a8545cfd4a320fe42a7de11618bbd/backend/docs/operations/mac-grafana-https.md)를
+복구하고 실제 폴더·권한·전체 Grafana 데이터 백업을 확인한 뒤 적용한다.
 
 ## HTTPS 후보 만들기
 

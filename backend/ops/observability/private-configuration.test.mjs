@@ -26,13 +26,27 @@ test('수집 Nginx는 비공개 허용 목록·mTLS·환경별 인증과 POST �
   assert(!/allow (?!127\.0\.0\.1;)(?:\d{1,3}\.){3}\d{1,3};/.test(nginx));
 });
 
-test('TLS SAN과 원 서버 점검 주소에 운영자의 비공개 입력을 요구한다', async () => {
+test('TLS SAN에 운영자의 비공개 IP 입력을 요구한다', async () => {
   const certificate = await read('tls/server.ext');
-  const script = await read('redeploy-dev-metrics.sh');
   assert(certificate.includes('subjectAltName=IP:$ENV::KNOT_INGEST_IP'));
-  assert(script.includes('${KNOT_DEV_ORIGIN_URL:?'));
-  assert(script.includes('${KNOT_DEV_ORIGIN_URL}/actuator/prometheus'));
-  assert(!/http:\/\/(?!127\.0\.0\.1)(?:\d{1,3}\.){3}\d{1,3}/.test(script));
+});
+
+test('배포 수신 조회는 환경별 인증서와 고정 count 쿼리만 허용한다', async () => {
+  const nginx = await read('nginx/ingest.conf');
+  assert(nginx.includes('include /etc/nginx/snippets/knot-log-receipt-locations.conf;'));
+  const snippet = await read('nginx/log-receipt-locations.conf');
+  for (const env of ['dev', 'prod']) {
+    assert(snippet.includes(`location = /${env}/log-receipt`));
+    assert(snippet.includes(`CN=knot-${env}-alloy`));
+  }
+  assert.equal(snippet.match(/\$request_method != GET/g).length, 2);
+  assert.equal(snippet.match(/\^slot=\(blue\|green\)&request_id=\[0-9a-f\]\{32\}\$/g).length, 2);
+  assert(!snippet.includes('$arg_query'));
+  assert(!snippet.includes('query_range'));
+  const decoded = decodeURIComponent(snippet);
+  assert.equal(decoded.match(/sum\(count_over_time\(/g).length, 2);
+  assert.equal(decoded.match(/unit="knot-backend-\$\{arg_slot\}\.service"/g).length, 2);
+  assert.equal(decoded.match(/HTTP dispatch finished/g).length, 2);
 });
 
 test('공용 Grafana는 auth proxy와 익명 접근을 끄고 안전한 쿠키로 로그인한다', async () => {
