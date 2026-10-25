@@ -21,8 +21,8 @@ import lombok.Getter;
 @Entity
 @Table(name = "document_generation_jobs")
 public class DocumentGenerationJob {
-    private static final Duration FAILURE_RETENTION = Duration.ofDays(7);
-    private static final int MAX_USER_RETRIES = 3;
+    // 홈 진행 카드에 실패를 보여 주는 기한이다. 사용자 재시도와 자료 삭제 판단에는 쓰지 않는다.
+    private static final Duration HOME_DISPLAY_PERIOD = Duration.ofDays(7);
     private static final Duration DEFAULT_EXECUTION_LEASE = Duration.ofSeconds(150);
 
     @Id
@@ -55,6 +55,7 @@ public class DocumentGenerationJob {
     @Column(name = "last_failed_at")
     private Instant lastFailedAt;
 
+    // 홈 진행 카드 표시 기한이다. 기존 컬럼 이름을 유지한다.
     @Column(name = "expires_at")
     private Instant expiresAt;
 
@@ -239,11 +240,6 @@ public class DocumentGenerationJob {
         return status == DocumentGenerationJobStatus.QUEUED && nextAttemptAt != null && !now.isBefore(nextAttemptAt);
     }
 
-    public boolean isRetentionExpired(Instant now) {
-        validateFailureTime(now);
-        return status == DocumentGenerationJobStatus.FAILED && expiresAt != null && !now.isBefore(expiresAt);
-    }
-
     public boolean isExpiredAt(Instant now) {
         return status == DocumentGenerationJobStatus.RUNNING && executionDeadlineAt != null
                 && !now.isBefore(executionDeadlineAt);
@@ -335,8 +331,7 @@ public class DocumentGenerationJob {
     }
 
     public boolean canRetryByUser(Instant acceptedAt) {
-        return isFailed() && userRetryCount < MAX_USER_RETRIES && attemptCount < Integer.MAX_VALUE && expiresAt != null
-                && isValidRetryTime(acceptedAt) && acceptedAt.isBefore(expiresAt);
+        return isFailed() && attemptCount < Integer.MAX_VALUE && isValidRetryTime(acceptedAt);
     }
 
     private boolean isValidRetryTime(Instant acceptedAt) {
@@ -392,12 +387,12 @@ public class DocumentGenerationJob {
         if (cause == null) {
             throw new DocumentException(DocumentErrorCode.INVALID_DOCUMENT_DATA);
         }
-        Instant deadline = failedAt.plus(FAILURE_RETENTION);
-        validateFailureYear(deadline);
+        Instant displayDeadline = failedAt.plus(HOME_DISPLAY_PERIOD);
+        validateFailureYear(displayDeadline);
         status = DocumentGenerationJobStatus.FAILED;
         updatedAt = failedAt;
         lastFailedAt = failedAt;
-        expiresAt = deadline;
+        expiresAt = displayDeadline;
         nextAttemptAt = null;
         executionDeadlineAt = null;
         failureCause = cause;
@@ -474,6 +469,7 @@ public class DocumentGenerationJob {
         }
     }
 
+    // 자동 재시도는 기존대로 실패 직후 표시 기한 안에서만 접수한다.
     private void validateRetryDeadline(Instant acceptedAt) {
         if (expiresAt == null || !acceptedAt.isBefore(expiresAt)) {
             throw new DocumentException(DocumentErrorCode.RETRY_NOT_ALLOWED);

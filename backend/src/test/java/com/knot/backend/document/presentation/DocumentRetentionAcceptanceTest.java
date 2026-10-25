@@ -10,9 +10,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.knot.backend.auth.domain.AuthTokenProvider;
 import com.knot.backend.auth.domain.model.AuthenticatedMember;
 import com.knot.backend.document.DocumentFixtures;
-import com.knot.backend.document.application.DocumentRetentionCleanupService;
-import com.knot.backend.recording.application.RecordingAudioDeletionWorker;
-import com.knot.backend.recording.application.RecordingAudioRetentionService;
 import com.knot.backend.recording.application.RecordingAudioStorage;
 import com.knot.backend.testsupport.TestApplicationProperties;
 import com.knot.backend.testsupport.TestcontainersConfiguration;
@@ -45,6 +42,7 @@ import org.springframework.test.web.servlet.MockMvc;
 class DocumentRetentionAcceptanceTest {
     private static final String TRANSCRIPT_PATH = "/api/v1/workspaces/{workspaceId}/documents/{documentId}/transcript";
     private static final String RETRY_PATH = "/api/v1/workspaces/{workspaceId}/document-generation-jobs/{jobId}/retry";
+    private static final String JOBS_PATH = "/api/v1/workspaces/{workspaceId}/document-generation-jobs";
 
     @Autowired
     private MockMvc mvc;
@@ -52,12 +50,6 @@ class DocumentRetentionAcceptanceTest {
     private JdbcClient jdbc;
     @Autowired
     private AuthTokenProvider tokens;
-    @Autowired
-    private DocumentRetentionCleanupService cleanup;
-    @Autowired
-    private RecordingAudioRetentionService retention;
-    @Autowired
-    private RecordingAudioDeletionWorker worker;
     @MockitoBean
     private Clock clock;
     @MockitoBean
@@ -138,16 +130,8 @@ class DocumentRetentionAcceptanceTest {
                 )
                 .query(Long.class)
                 .single();
-        long batch = jdbc.sql("SELECT id FROM document_generation_batches")
-                .query(Long.class)
-                .single();
 
         // when
-        cleanup.cleanup(
-                workspace,
-                recording,
-                batch
-        );
         jdbc.sql("UPDATE recording_audio_uploads SET deleted_at=:at WHERE id=:id")
                 .param(
                         "at",
@@ -196,81 +180,65 @@ class DocumentRetentionAcceptanceTest {
     }
 
     @Test
-    @DisplayName("만료 Job은 정리 전 409, 정리 후 404이며 진행 목록에서 제외된다")
-    void retry_failureAfterExpiredJobCleanup() throws Exception {
+    @DisplayName("마지막 실패 후 30일이 지난 Job도 원문이 남아 재시도 202이고 표시 기한이 지나 진행 목록에서는 빠진다")
+    void retry_successAfterHomeDisplayPeriod() throws Exception {
         // given
         long job = fixtures.saveJob(
                 transcript,
                 "FAILED"
         );
-        long batch = jdbc.sql("SELECT id FROM document_generation_batches")
-                .query(Long.class)
-                .single();
         Cookie csrf = mvc.perform(get("/api/v1/auth/csrf"))
                 .andReturn()
                 .getResponse()
                 .getCookie("XSRF-TOKEN");
         assertThat(csrf).isNotNull();
         mvc.perform(
-                post(
-                        RETRY_PATH,
-                        workspace,
-                        job
-                ).cookie(
-                        cookie(),
-                        csrf
-                )
-                        .header(
-                                "X-XSRF-TOKEN",
-                                csrf.getValue()
-                        )
-                        .contentType(MediaType.APPLICATION_JSON)
-        )
-                .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.code").value("RETRY_NOT_ALLOWED"));
-
-        // when
-        cleanup.cleanup(
-                workspace,
-                recording,
-                batch
-        );
-
-        // then
-        mvc.perform(
-                post(
-                        RETRY_PATH,
-                        workspace,
-                        job
-                ).cookie(
-                        cookie(),
-                        csrf
-                )
-                        .header(
-                                "X-XSRF-TOKEN",
-                                csrf.getValue()
-                        )
-                        .contentType(MediaType.APPLICATION_JSON)
-        )
-                .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.code").value("DOCUMENT_GENERATION_JOB_NOT_FOUND"));
-        mvc.perform(
                 get(
-                        "/api/v1/workspaces/{workspaceId}/document-generation-jobs",
+                        JOBS_PATH,
                         workspace
                 ).cookie(cookie())
         )
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.items.length()").value(0));
+
+        // when
         mvc.perform(
                 post(
                         RETRY_PATH,
                         workspace,
                         job
-                ).cookie(cookie())
+                ).cookie(
+                        cookie(),
+                        csrf
+                )
+                        .header(
+                                "X-XSRF-TOKEN",
+                                csrf.getValue()
+                        )
                         .contentType(MediaType.APPLICATION_JSON)
         )
-                .andExpect(status().isForbidden());
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.status").value("QUEUED"));
+
+        // then
+        assertThat(
+                jdbc.sql("SELECT count(*) FROM transcripts WHERE id = :id")
+                        .param(
+                                "id",
+                                transcript
+                        )
+                        .query(Integer.class)
+                        .single()
+        ).isEqualTo(1);
+        mvc.perform(
+                get(
+                        JOBS_PATH,
+                        workspace
+                ).cookie(cookie())
+        )
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items.length()").value(1))
+                .andExpect(jsonPath("$.items[0].status").value("QUEUED"));
     }
 
     private Cookie cookie() {

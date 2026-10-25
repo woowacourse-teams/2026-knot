@@ -296,17 +296,17 @@ class RecordingDocumentGenerationAcceptanceTest {
     }
 
     @Test
-    @DisplayName("실패 보존 만료 경계부터는 FAILED를 유지하지만 재시도할 실패 ID는 비운다")
-    void findDetail_success_expiredFailureIdExcluded() throws Exception {
+    @DisplayName("마지막 실패 후 7일 표시 기한이 지나도 실패 Job ID를 기한 없이 모두 노출한다")
+    void findDetail_success_failureIdIncludedAfterHomeDisplayPeriod() throws Exception {
         // given
         Instant failedAt = DocumentFixtures.CREATED_AT;
-        fixtures.saveJob(
+        long failedJobId = fixtures.saveJob(
                 transcriptId,
                 "FAILED",
                 failedAt,
                 failedAt
         );
-        when(clock.instant()).thenReturn(failedAt.plusSeconds(7 * 24 * 60 * 60));
+        when(clock.instant()).thenReturn(failedAt.plusSeconds(30 * 24 * 60 * 60));
 
         // when
         ResultActions result = findDetail(
@@ -319,12 +319,11 @@ class RecordingDocumentGenerationAcceptanceTest {
         result.andExpect(status().isOk())
                 .andExpect(jsonPath("$.documentGeneration.status").value("FAILED"))
                 .andExpect(jsonPath("$.documentGeneration.succeededCount").value(0))
-                .andExpect(jsonPath("$.documentGeneration.failedJobIds").isArray())
-                .andExpect(jsonPath("$.documentGeneration.failedJobIds").isEmpty());
+                .andExpect(jsonPath("$.documentGeneration.failedJobIds").value(contains(responseId(failedJobId))));
     }
 
     @Test
-    @DisplayName("실패 Job 행이 정리되어도 배치의 FAILED와 성공 수는 유지되고 실패 ID만 비어 있다")
+    @DisplayName("이전 정책으로 실패 Job 행이 정리되었어도 배치의 FAILED와 성공 수는 유지되고 실패 ID만 비어 있다")
     void findDetail_success_deletedFailureKeepsBatchSummary() throws Exception {
         // given
         fixtures.saveJob(
@@ -357,14 +356,14 @@ class RecordingDocumentGenerationAcceptanceTest {
     }
 
     @Test
-    @DisplayName("재시도 횟수를 소진한 실패 Job도 ID에 포함되고 재시도 요청은 409다")
-    void findDetail_success_exhaustedRetryJobIncluded() throws Exception {
+    @DisplayName("사용자 재시도를 3회 한 실패 Job도 ID에 포함되고 재시도 요청은 202다")
+    void findDetail_success_retriedThreeTimesJobIncludedAndRetryable() throws Exception {
         // given
         long failedJobId = fixtures.saveJob(
                 transcriptId,
                 "FAILED"
         );
-        exhaustUserRetries(failedJobId);
+        retryThreeTimesByUser(failedJobId);
         ResultActions detail = findDetail(
                 workspaceId,
                 recordingId,
@@ -378,8 +377,8 @@ class RecordingDocumentGenerationAcceptanceTest {
         detail.andExpect(status().isOk())
                 .andExpect(jsonPath("$.documentGeneration.failedJobIds").isArray())
                 .andExpect(jsonPath("$.documentGeneration.failedJobIds").value(contains(responseId(failedJobId))));
-        retry.andExpect(status().isConflict())
-                .andExpect(jsonPath("$.code").value("RETRY_NOT_ALLOWED"));
+        retry.andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.status").value("QUEUED"));
     }
 
     @Test
@@ -605,7 +604,7 @@ class RecordingDocumentGenerationAcceptanceTest {
                 .update();
     }
 
-    private void exhaustUserRetries(long jobId) {
+    private void retryThreeTimesByUser(long jobId) {
         jdbc.sql("""
                 UPDATE document_generation_jobs
                 SET user_retry_count = 3, attempt_count = 4
