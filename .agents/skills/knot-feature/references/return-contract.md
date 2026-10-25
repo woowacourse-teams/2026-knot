@@ -52,7 +52,7 @@ python3 harness/feature_pipeline.py render <state.json> --issue     # 이슈용 
 - Figma: [탐색 답변 복사 화면, 변경 없음, 참고 링크](https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=...)
 ```
 
-`summary`는 어느 문서의 무엇이 바뀌었는지로 시작한다(기능 요구사항, 도메인 규칙, API 명세, QA 시트,
+`summary`는 어느 문서의 무엇이 바뀌었는지로 시작한다(기획서, 기능 요구사항, 도메인 규칙, API 명세, QA 시트,
 디자인). 백엔드 길이 아니어서 고치지 않은 문서는 적지 않는다. 바뀐 것이 하나도 없으면 `- 없음`이다.
 
 - PR 본문에서는 첫 번째 `##` 섹션으로 둔다. 그 아래는 기존 PR 템플릿을 따른다.
