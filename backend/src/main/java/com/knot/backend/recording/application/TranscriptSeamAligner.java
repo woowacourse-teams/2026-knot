@@ -117,6 +117,12 @@ final class TranscriptSeamAligner {
                         )
                 );
             }
+            if (previous != null) {
+                keepStartsFrom(
+                        part,
+                        previous.startFrame()
+                );
+            }
             if (!part.isEmpty()) {
                 previous = part.getLast();
             }
@@ -128,6 +134,35 @@ final class TranscriptSeamAligner {
                         .toList()
         );
         return List.copyOf(kept);
+    }
+
+    /**
+     * 시간으로 자른 이음매에서는 첫 단어 뒤의 단어도 왼쪽 마지막 단어보다 먼저 시작할 수 있다. 시작을 앞 단어 시작까지 당기고, 그 때문에
+     * 길이가 없어지면 끝을 최소 길이만큼 늘린다.
+     */
+    private static void keepStartsFrom(
+            List<Token> part,
+            long floor
+    ) {
+        for (int index = 0; index < part.size(); index++) {
+            Token token = part.get(index);
+            if (token.startFrame() < floor) {
+                part.set(
+                        index,
+                        new Token(
+                                floor,
+                                Math.max(
+                                        token.endFrame(),
+                                        floor + CLAMPED_MIN_FRAMES
+                                ),
+                                token.text(),
+                                token.speakerId()
+                        )
+                );
+            }
+            floor = part.get(index)
+                    .startFrame();
+        }
     }
 
     /** 왼쪽에서 남길 끝(제외)과 오른쪽에서 이어 갈 시작을 돌려준다. */
