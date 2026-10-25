@@ -40,6 +40,8 @@ class DeploymentTest(unittest.TestCase):
   elif path=='/api/admin/provisioning/alerting/reload':
    if self.fail_reload:self.fail_reload=False;raise RuntimeError('simulated reload failure')
    self.runtime=json.loads((self.root/'provisioning/alerting/knot.json').read_text())
+   for extra in (self.root/'provisioning/alerting').glob('*.json'):
+    if extra.name!='knot.json':self.runtime['groups'].extend(json.loads(extra.read_text()).get('groups',[]))
    template=self.root/'provisioning/alerting/discord-templates.json'
    self.templates=json.loads(template.read_text())['templates'] if template.exists() else []
    result={'message':'reloaded'}
@@ -67,7 +69,7 @@ class DeploymentTest(unittest.TestCase):
   self.assertTrue((backups[0]/'notification-templates-before.json').exists())
   self.assertEqual((self.root/'provisioning/environment-dashboards').stat().st_mode & 0o777,0o755)
   self.assertEqual(len(list((self.root/'provisioning/environment-dashboards/dev').glob('*.json'))),7)
-  self.assertEqual(len(list((self.root/'provisioning/environment-dashboards/prod').glob('*.json'))),5)
+  self.assertEqual(len(list((self.root/'provisioning/environment-dashboards/prod').glob('*.json'))),7)
   self.assertEqual({p.name:p.read_bytes() for p in (self.root/'dashboards').glob('*.json')},self.common)
  def test_reload_failure_restores_original_files(self):
   original=(self.root/'provisioning/alerting/knot.json').read_bytes()
@@ -83,5 +85,12 @@ class DeploymentTest(unittest.TestCase):
   (self.root/'provisioning/alerting/knot.json').write_text(json.dumps(self.old))
   with self.assertRaisesRegex(AssertionError,'configuration drift'):self.run_deploy(True)
   self.assertFalse(list(self.root.glob('environment-backup.*')))
+ def test_additional_service_and_backup_rules_are_preserved(self):
+  extra=base/'provisioning/alerting/operational-checks.json'
+  shutil.copy2(extra,self.root/'provisioning/alerting'/extra.name)
+  self.runtime['groups'].extend(json.loads(extra.read_text())['groups'])
+  self.run_deploy(True)
+  self.assertEqual(sum(len(g['rules']) for g in self.runtime['groups']),30)
+  self.assertEqual((self.root/'provisioning/alerting'/extra.name).read_bytes(),extra.read_bytes())
 
 unittest.main()
