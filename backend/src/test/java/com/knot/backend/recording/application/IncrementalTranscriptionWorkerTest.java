@@ -4,6 +4,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.atMost;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.verify;
@@ -230,6 +231,79 @@ class IncrementalTranscriptionWorkerTest {
                         any(),
                         anyInt()
                 );
+    }
+
+    @Test
+    void copyingWindowAudioDoesNotRenewLeaseForEveryBuffer() {
+        // given
+        TranscriptionWindowAudioSource source = new TranscriptionWindowAudioSource(
+                2,
+                1,
+                "pcm-window-v1",
+                manifest,
+                hash,
+                null,
+                null,
+                null,
+                0
+        );
+        int bufferCheckpoints = 100;
+        when(client.get(claim.attemptId())).thenThrow(new RecordingException(RecordingErrorCode.AI_JOB_NOT_FOUND));
+        when(state.source(claim)).thenReturn(Optional.of(source));
+        when(
+                assembler.materialize(
+                        eq(source),
+                        any()
+                )
+        ).thenAnswer(invocation -> {
+            Runnable checkpoint = invocation.getArgument(1);
+            for (int index = 0; index < bufferCheckpoints; index++) {
+                checkpoint.run();
+            }
+            return new TranscriptionWindowAudioAssembler.MaterializedWindowAudio(
+                    "window.wav",
+                    new StoredAudioChunk(
+                            true,
+                            32044,
+                            "audio/wav",
+                            "checksum",
+                            "v1"
+                    )
+            );
+        });
+        when(
+                storage.presignDownload(
+                        "window.wav",
+                        "v1",
+                        "audio/wav",
+                        32044
+                )
+        ).thenReturn("https://private");
+        when(
+                client.submitWindow(
+                        eq(claim.attemptId()),
+                        eq("https://private"),
+                        any()
+                )
+        ).thenReturn(success(hash));
+        // when
+        worker.dispatch();
+        // then
+        verify(
+                state,
+                timeout(2000)
+        ).succeed(
+                eq(claim),
+                eq(1),
+                any()
+        );
+        verify(
+                state,
+                atMost(3)
+        ).renew(
+                eq(claim),
+                any()
+        );
     }
 
     @Test
