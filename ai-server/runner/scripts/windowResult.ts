@@ -7,7 +7,13 @@ export interface WindowInput {
   inputManifestSha256: string
   inputStartFrame: number
   inputEndFrame: number
+  /** 생략하면 DEFAULT_ONLY. 녹음의 마지막 구간은 종료 후 대기를 줄이려고 기본 디코딩만 쓴다. */
+  decodePolicy?: DecodePolicy
 }
+export const DECODE_POLICIES = ['DEFAULT_ONLY', 'WITH_VOCABULARY'] as const
+export type DecodePolicy = typeof DECODE_POLICIES[number]
+/** 새 음성 2분과 직전 10초 */
+export const MAXIMUM_WINDOW_FRAMES = 130 * 16000
 interface Evidence {
   modelVersion: string
   speakers: {speakerId:string; embedding:number[]; voicedFrames:number}[]
@@ -18,7 +24,8 @@ export const validWindow = (w:WindowInput) => typeof w.pipelineVersion === 'stri
   && /^[0-9a-f]{64}$/.test(w.inputManifestSha256)
   && Number.isSafeInteger(w.inputStartFrame) && Number.isSafeInteger(w.inputEndFrame)
   && w.inputStartFrame >= 0 && w.inputEndFrame > w.inputStartFrame && w.inputEndFrame <= 115200000
-  && w.inputEndFrame-w.inputStartFrame <= 960000
+  && w.inputEndFrame-w.inputStartFrame <= MAXIMUM_WINDOW_FRAMES
+  && (w.decodePolicy === undefined || DECODE_POLICIES.includes(w.decodePolicy))
 
 const combineWords = (first: SttWord, second: SttWord): SttWord => ({
   start: Math.min(first.start, second.start),
@@ -88,6 +95,7 @@ export const assembleWindowResult = (raw:Buffer, evidence:Evidence, window:Windo
       text: piece.text, speakerId}
   }).sort((a,b)=>a.startFrame-b.startFrame||a.endFrame-b.endFrame)
   const utterances = mergeUtterances(pieces, SERVER_SPEAKER_POLICY)
+  const {decodePolicy, ...request} = window
   return {schemaVersion:1,rawWhisperJson:raw.toString('utf8'),utterances,
-    window:{schemaVersion:1,...window,modelVersion:evidence.modelVersion,tokens,speakers}}
+    window:{schemaVersion:1,...request,modelVersion:evidence.modelVersion,tokens,speakers}}
 }
