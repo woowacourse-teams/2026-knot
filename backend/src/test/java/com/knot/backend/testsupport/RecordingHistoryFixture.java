@@ -148,8 +148,11 @@ public class RecordingHistoryFixture {
         if ("RECORDING".equals(status) || "PAUSED".equals(status)) {
             endedAt = "NULL";
         }
-        jdbcClient.sql("UPDATE recording_sessions SET status=:status, end_reason=NULL, current_interval_started_at="
-                + interval + ", ended_at=" + endedAt + " WHERE id=:id")
+        jdbcClient
+                .sql(
+                        "UPDATE recording_sessions SET status=:status, end_reason=NULL, current_interval_started_at="
+                                + interval + ", ended_at=" + endedAt + " WHERE id=:id"
+                )
                 .param(
                         "status",
                         status
