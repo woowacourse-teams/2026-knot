@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "members": [
+    {"github": "vlmbuyd", "name": "유월", "area": "frontend"},
+    {"github": "Eastar-DS", "name": "이스타", "area": "frontend"},
+    {"github": "geongyu09", "name": "도넛", "area": "frontend"},
+    {"github": "jyt6640", "name": "흑곰", "area": "backend"},
+    {"github": "poketopa", "name": "루덴스", "area": "backend"}
+  ],
+  "plan_confirmers": ["vlmbuyd"],
+  "release_merger": "vlmbuyd"
+}
