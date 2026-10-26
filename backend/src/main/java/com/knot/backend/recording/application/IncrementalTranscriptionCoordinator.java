@@ -15,6 +15,7 @@ import com.knot.backend.recording.domain.model.RecordingAudioStream;
 import com.knot.backend.recording.domain.model.RecordingSession;
 import com.knot.backend.recording.domain.model.RecordingStatus;
 import com.knot.backend.recording.domain.model.RecordingTranscriptionWindow;
+import com.knot.backend.recording.domain.model.TranscriptionWindowShape;
 import com.knot.backend.recording.domain.model.TranscriptionWindowStatus;
 import com.knot.backend.recording.domain.repository.RecordingAudioCleanupRepository;
 import com.knot.backend.recording.domain.repository.RecordingAudioFinalizationRepository;
@@ -25,7 +26,6 @@ import com.knot.backend.recording.domain.repository.RecordingTranscriptionWindow
 import com.knot.backend.workspace.domain.repository.WorkspaceMemberRepository;
 import com.knot.backend.workspace.domain.repository.WorkspaceRepository;
 import java.time.Clock;
-import java.time.Duration;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
@@ -39,8 +39,6 @@ import tools.jackson.databind.ObjectMapper;
 @Service
 @RequiredArgsConstructor
 public class IncrementalTranscriptionCoordinator {
-    private static final long CORE_FRAMES = 30 * 16_000;
-    private static final long CONTEXT_FRAMES = 5 * 16_000;
     private static final double SIMILARITY_THRESHOLD = .65;
 
     private final RecordingTranscriptionInputRepository inputs;
@@ -93,9 +91,7 @@ public class IncrementalTranscriptionCoordinator {
         if (livePipeline && session.isActive() && !stream.isFrozen() && !stream.isSealed()) {
             windowService.registerAvailable(
                     recordingId,
-                    session.getIncrementalPipelineVersion(),
-                    CORE_FRAMES,
-                    CONTEXT_FRAMES
+                    TranscriptionWindowShape.of(session.getIncrementalPipelineVersion())
             );
             return;
         }
@@ -104,32 +100,28 @@ public class IncrementalTranscriptionCoordinator {
         }
         List<RecordingTranscriptionWindow> planned;
         long totalFrames;
-        String pipelineVersion;
+        TranscriptionWindowShape shape;
         if (livePipeline) {
             if (finalization.isEmpty() || finalization.orElseThrow()
                     .getStatus() != AudioFinalizationStatus.READY) {
                 return;
             }
             totalFrames = stream.getTotalFrameCount();
-            pipelineVersion = session.getIncrementalPipelineVersion();
+            shape = TranscriptionWindowShape.of(session.getIncrementalPipelineVersion());
             planned = planner.planFinal(
                     recordingId,
-                    pipelineVersion,
-                    CORE_FRAMES,
-                    CONTEXT_FRAMES,
+                    shape,
                     totalFrames,
                     frozenParts(finalization.orElseThrow()),
                     clock.instant()
             );
         } else {
             RecordingTranscriptionInput input = prepared.orElseThrow();
-            pipelineVersion = input.getPipelineVersion();
+            shape = preparedShape(recordingId);
             totalFrames = input.getTotalFrames();
             planned = planner.planPrepared(
                     recordingId,
-                    pipelineVersion,
-                    CORE_FRAMES,
-                    CONTEXT_FRAMES,
+                    shape,
                     new PreparedWindowSource(
                             input.getStorageKey(),
                             input.getStorageVersionId(),
@@ -140,6 +132,7 @@ public class IncrementalTranscriptionCoordinator {
                     clock.instant()
             );
         }
+        String pipelineVersion = shape.pipelineVersion();
         for (RecordingTranscriptionWindow candidate : planned) {
             Optional<RecordingTranscriptionWindow> existing = windows.findByRecordingIdAndPipelineVersionAndWindowIndex(
                     recordingId,
@@ -175,7 +168,8 @@ public class IncrementalTranscriptionCoordinator {
                 result = merger.merge(
                         completed,
                         totalFrames,
-                        SIMILARITY_THRESHOLD
+                        SIMILARITY_THRESHOLD,
+                        shape.seamAligned()
                 );
             } catch (RecordingException exception) {
                 state.failIncremental(
@@ -189,6 +183,19 @@ public class IncrementalTranscriptionCoordinator {
                     result
             );
         }
+    }
+
+    /** 배포 전에 30초 구간을 만들기 시작한 준비 입력은 같은 버전으로 끝낸다. */
+    private TranscriptionWindowShape preparedShape(long recordingId) {
+        boolean started = !windows.findByRecordingIdAndPipelineVersionOrderByWindowIndex(
+                recordingId,
+                TranscriptionWindowShape.PREPARED_30_SECONDS.pipelineVersion()
+        )
+                .isEmpty();
+        if (started) {
+            return TranscriptionWindowShape.PREPARED_30_SECONDS;
+        }
+        return TranscriptionWindowShape.PREPARED_TWO_MINUTES;
     }
 
     private List<AudioManifestPart> frozenParts(RecordingAudioFinalization finalization) {
@@ -209,13 +216,9 @@ public class IncrementalTranscriptionCoordinator {
     }
 
     private boolean available(RecordingSession session) {
-        boolean retained = session.isActive()
-                || (session.getStatus() == RecordingStatus.ENDED && session.getEndedAt() != null && clock.instant()
-                        .isBefore(
-                                session.getEndedAt()
-                                        .plus(Duration.ofDays(30))
-                        ));
-        return retained && workspaces.findById(session.getWorkspaceId())
+        boolean recordingAvailable = session.isActive()
+                || (session.getStatus() == RecordingStatus.ENDED && session.getEndedAt() != null);
+        return recordingAvailable && workspaces.findById(session.getWorkspaceId())
                 .isPresent()
                 && members.existsByWorkspaceIdAndMemberId(
                         session.getWorkspaceId(),

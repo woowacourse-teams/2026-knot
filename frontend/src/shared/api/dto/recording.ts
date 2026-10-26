@@ -157,7 +157,7 @@ export class RecordingAudioSaveDto {
   acceptUntil: string | null;
   /** `FAILED`일 때의 실패 이유 코드(예: `AUDIO_NO_CONTENT`). 최종화 작업이 없거나 실패가 아니면 null */
   failureCode: string | null;
-  /** 저장 재시도 API로 다시 시도할 수 있으면 true. 최종화 작업이 없거나, 폐기됐거나, 종료 30일이 지났으면 false */
+  /** 저장 재시도 API로 다시 시도할 수 있으면 true. 최종화 작업이 없거나, 폐기됐거나, 실제 재접수 조건을 충족하지 않으면 false. 경과 일수 제한은 없어요 */
   canRetry: boolean;
   /** 최종화 작업 ID. 작업이 만들어지기 전이면 null. 재시도해도 같은 ID예요 */
   jobId: number | null;
@@ -189,34 +189,55 @@ export class RecordingAudioSaveDto {
 
 /**
  * 현재 녹음의 화면용 진행 상태. `PROCESSING`은 녹음을 끝낸 뒤 오디오 준비 · 전사 · 문서 생성을 기다리거나 하는 중이에요.
- * 정리가 끝났거나(완료 · 내용 없음) 실패 · 폐기된 녹음은 상태 대신 204로 와요(ADR 867)
+ * `TRANSCRIPTION_FAILED`는 전사가, `DOCUMENT_FAILED`는 문서 생성이 끝내 실패한 녹음이에요.
+ * 현재 API 계약은 활성 → 처리 중 → 실패 순으로 한 건을 고르고, 가려진 이전 실패도 복원해요.
+ * 정리가 끝났거나(완료 · 내용 없음) 폐기된 녹음은 상태 대신 204로 와요(ADR 867)
  */
-export type CurrentRecordingStatus = "RECORDING" | "PAUSED" | "PROCESSING";
+export type CurrentRecordingStatus =
+  | "RECORDING"
+  | "PAUSED"
+  | "PROCESSING"
+  | "TRANSCRIPTION_FAILED"
+  | "DOCUMENT_FAILED";
 
-/** 내 현재 녹음 조회의 서버 응답 모양. 워크스페이스에서 내가 가장 최근에 시작한 녹음 한 건이에요 */
+/**
+ * 내 현재 녹음 조회의 서버 응답 모양. 현재 워크스페이스에서 본인 녹음 중 우선순위와 최신순으로 선택한 한 건이에요.
+ * `retryable`은 실패 상태와 함께 더해진 값이라, 그 전의 서버는 필드 자체를 주지 않아요
+ */
 export interface GetCurrentRecordingResponseRaw {
   recordingId: number;
   status: CurrentRecordingStatus;
   startedAt: string;
   elapsedMillis: number;
+  retryable?: boolean;
+  retryableJobIds?: number[];
 }
 
 /** 내 현재 녹음 조회 응답. 표시할 녹음이 없으면 서버가 본문 없이 204로 답하고 요청 함수가 `null`을 돌려줘요 */
 export class GetCurrentRecordingResponseDto {
   /** 녹음 세션 ID */
   recordingId: number;
-  /** 화면용 진행 상태. 가장 최근 녹음이 녹음 중 · 일시정지 · 문서 정리 중일 때만 와요 */
+  /** 화면용 진행 상태. 카드 우선순위로 선택된 녹음의 녹음 중 · 일시정지 · 문서 정리 중 · 전사 실패 · 문서 생성 실패 상태예요 */
   status: CurrentRecordingStatus;
   /** 녹음 시작 시각(ISO 8601) */
   startedAt: string;
   /** 조회 시점까지 누적 녹음 시간(ms). 일시정지 구간은 빠져요 */
   elapsedMillis: number;
+  /**
+   * 실패한 녹음을 다시 시도할 수 있으면 true. 실패 상태(`TRANSCRIPTION_FAILED` · `DOCUMENT_FAILED`)에서만 뜻이 있어요.
+   * 서버 필드 `retryable`을 이름만 바꿨고, 서버가 주지 않으면 false예요
+   */
+  isRetryable: boolean;
+  /** 문서 실패 중 현재 접수 가능한 작업 ID. 다른 상태와 확장 전 응답은 빈 배열이에요 */
+  retryableJobIds: number[];
 
   constructor(raw: GetCurrentRecordingResponseRaw) {
     this.recordingId = raw.recordingId;
     this.status = raw.status;
     this.startedAt = raw.startedAt;
     this.elapsedMillis = raw.elapsedMillis;
+    this.isRetryable = raw.retryable ?? false;
+    this.retryableJobIds = raw.retryableJobIds ?? [];
   }
 }
 

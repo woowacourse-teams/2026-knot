@@ -13,6 +13,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.RejectedExecutionException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -36,6 +37,7 @@ public class DocumentTopicWorker {
     private final DocumentTopicApplyService applyService;
     private final LlmDocumentTopicPlanner planner;
     private final MeterRegistry metrics;
+    private final DocumentTopicBatchRunner batches;
 
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public void execute(
@@ -69,6 +71,9 @@ public class DocumentTopicWorker {
             )
                     .increment();
         } catch (LlmException exception) {
+            if (exception.getErrorCode() == LlmErrorCode.LLM_CALL_INTERRUPTED) {
+                return;
+            }
             fail(
                     execution,
                     exception.getErrorCode()
@@ -86,6 +91,12 @@ public class DocumentTopicWorker {
             fail(
                     execution,
                     "STORAGE_ERROR",
+                    true
+            );
+        } catch (RejectedExecutionException exception) {
+            fail(
+                    execution,
+                    "EXECUTOR_UNAVAILABLE",
                     true
             );
         } catch (RuntimeException exception) {
@@ -120,7 +131,10 @@ public class DocumentTopicWorker {
                     )
             );
         }
-        return planAndCheckpoint(execution);
+        if (!execution.consolidate()) {
+            return batches.execute(execution);
+        }
+        return completePlan(execution);
     }
 
     private boolean apply(DocumentTopicExecution execution) {
@@ -129,31 +143,6 @@ public class DocumentTopicWorker {
         }
         applyService.apply(execution);
         return true;
-    }
-
-    private boolean planAndCheckpoint(DocumentTopicExecution execution) {
-        try {
-            return completePlan(execution);
-        } catch (LlmException exception) {
-            if (!checkpoints.isClaimCurrent(execution)) {
-                return false;
-            }
-            if (!canSplit(
-                    execution,
-                    exception
-            )) {
-                throw exception;
-            }
-            return planAndCheckpoint(execution.firstHalf());
-        }
-    }
-
-    private boolean canSplit(
-            DocumentTopicExecution execution,
-            LlmException exception
-    ) {
-        return !execution.consolidate() && execution.targets()
-                .size() > 1 && exception.getErrorCode() == LlmErrorCode.LLM_INPUT_LIMIT_EXCEEDED;
     }
 
     private boolean completePlan(DocumentTopicExecution execution) {

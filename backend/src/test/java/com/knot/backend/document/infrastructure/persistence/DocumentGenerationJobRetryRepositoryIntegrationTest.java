@@ -133,8 +133,9 @@ class DocumentGenerationJobRetryRepositoryIntegrationTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"attempt_count = 0", "user_retry_count = 4", "automatic_retry_count = -1",
-            "attempt_count = 5", "attempt_count = 2147483647, automatic_retry_count = 2147483647"})
+    @ValueSource(strings = {"attempt_count = 0", "user_retry_count = -1", "user_retry_count = 4",
+            "automatic_retry_count = -1", "attempt_count = 5",
+            "attempt_count = 2147483647, automatic_retry_count = 2147483647"})
     @DisplayName("횟수 범위와 전체·사용자·자동 시도 합계는 CHECK로 보장한다")
     void updateCounts_failure_constraint(String assignment) {
         // when & then
@@ -146,6 +147,22 @@ class DocumentGenerationJobRetryRepositoryIntegrationTest {
                         )
                         .update()
         ).isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    @Test
+    @DisplayName("사용자 재시도 횟수는 3회를 넘어도 전체 시도 합계와 맞으면 저장한다")
+    void updateCounts_success_userRetriesBeyondThree() {
+        // when
+        int updated = jdbc
+                .sql("UPDATE document_generation_jobs SET user_retry_count = 4, attempt_count = 5 WHERE id = :id")
+                .param(
+                        "id",
+                        jobId
+                )
+                .update();
+
+        // then
+        assertThat(updated).isEqualTo(1);
     }
 
     @Test

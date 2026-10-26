@@ -47,7 +47,8 @@ class PreparedTranscriptionWindowIntegrationTest {
     private static final String ORIGINAL_KEY = "recordings/1/audio.webm";
     private static final String ORIGINAL_VERSION = "original-v1";
     private static final String CHECKSUM = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
-    private static final long TOTAL_FRAMES = 960_000;
+    /** 2분 구간 하나와 10초 tail */
+    private static final long TOTAL_FRAMES = 130 * 16_000L;
 
     @Autowired
     private RecordingTranscriptionWindowService windowService;

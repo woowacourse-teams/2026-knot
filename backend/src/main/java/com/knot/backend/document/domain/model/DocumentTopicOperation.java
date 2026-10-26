@@ -20,6 +20,7 @@ import lombok.Getter;
 public class DocumentTopicOperation {
     public static final long DEADLINE_SECONDS = 1800;
     public static final long LEASE_SECONDS = 90;
+    public static final long REORGANIZATION_LEASE_SECONDS = 180;
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -36,6 +37,12 @@ public class DocumentTopicOperation {
 
     @Column(nullable = false, updatable = false)
     private UUID requestId;
+
+    @Column(updatable = false)
+    private Long targetVersionId;
+
+    @Column(updatable = false)
+    private Long restorationSourceOperationId;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, updatable = false)
@@ -100,6 +107,29 @@ public class DocumentTopicOperation {
         return operation;
     }
 
+    public static DocumentTopicOperation restoration(
+            long workspaceId,
+            long requesterId,
+            UUID requestId,
+            long versionId,
+            long sourceOperationId,
+            Instant now
+    ) {
+        if (versionId <= 0 || sourceOperationId <= 0) {
+            throw new DocumentException(DocumentErrorCode.INVALID_PARAMETER);
+        }
+        DocumentTopicOperation operation = reorganize(
+                workspaceId,
+                requesterId,
+                requestId,
+                now
+        );
+        operation.kind = DocumentTopicOperationKind.RESTORE;
+        operation.targetVersionId = versionId;
+        operation.restorationSourceOperationId = sourceOperationId;
+        return operation;
+    }
+
     public void capture(int count) {
         if (count < 0 || targetCount != 0 || status != DocumentTopicOperationStatus.QUEUED) {
             throw conflict();
@@ -119,7 +149,7 @@ public class DocumentTopicOperation {
         status = DocumentTopicOperationStatus.RUNNING;
         recordFirstStart(now);
         claimToken = UUID.randomUUID();
-        leaseUntil = now.plusSeconds(LEASE_SECONDS);
+        leaseUntil = now.plusSeconds(leaseSeconds());
         return claimToken;
     }
 
@@ -160,6 +190,56 @@ public class DocumentTopicOperation {
         this.consolidated = consolidated;
         retryCount = 0;
         requeue(now);
+    }
+
+    public void renewClaim(
+            UUID token,
+            Instant now
+    ) {
+        validateClaim(
+                token,
+                now
+        );
+        leaseUntil = now.plusSeconds(leaseSeconds());
+    }
+
+    public void recordBatchProgress(
+            UUID token,
+            int count,
+            Instant now
+    ) {
+        validateClaim(
+                token,
+                now
+        );
+        if (count < processedCount || count > targetCount || consolidated) {
+            throw conflict();
+        }
+        processedCount = count;
+        retryCount = 0;
+        renewClaim(
+                token,
+                now
+        );
+    }
+
+    public void deferBatches(
+            UUID token,
+            Instant retryAt,
+            Instant now
+    ) {
+        validateClaim(
+                token,
+                now
+        );
+        if (retryAt == null) {
+            throw conflict();
+        }
+        if (retryAt.isBefore(now)) {
+            retryAt = now;
+        }
+        retryCount = 1;
+        requeue(retryAt);
     }
 
     public void retry(
@@ -294,7 +374,7 @@ public class DocumentTopicOperation {
         }
         status = DocumentTopicOperationStatus.APPLYING;
         nextAttemptAt = now;
-        leaseUntil = now.plusSeconds(LEASE_SECONDS);
+        leaseUntil = now.plusSeconds(leaseSeconds());
     }
 
     public boolean ownsApplying(
@@ -335,7 +415,7 @@ public class DocumentTopicOperation {
         }
         retryCount++;
         claimToken = UUID.randomUUID();
-        leaseUntil = now.plusSeconds(LEASE_SECONDS);
+        leaseUntil = now.plusSeconds(leaseSeconds());
         return claimToken;
     }
 
@@ -367,6 +447,13 @@ public class DocumentTopicOperation {
         nextAttemptAt = at;
         claimToken = null;
         leaseUntil = null;
+    }
+
+    private long leaseSeconds() {
+        if (kind == DocumentTopicOperationKind.REORGANIZE) {
+            return REORGANIZATION_LEASE_SECONDS;
+        }
+        return LEASE_SECONDS;
     }
 
     private void recordFirstStart(Instant now) {

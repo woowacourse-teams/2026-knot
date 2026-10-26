@@ -187,58 +187,51 @@ class RecordingAudioCleanupIntegrationTest {
     }
 
     @Test
-    void failedRetentionClosesAtExactLogicalThirtyDays() {
-        // given
-        when(clock.instant()).thenReturn(
-                NOW.plus(Duration.ofDays(30))
-                        .minusNanos(1000)
-        );
-        state.schedule(1);
-        assertThat(scope()).isEqualTo("DORMANT");
-        when(clock.instant()).thenReturn(NOW.plus(Duration.ofDays(30)));
-        // when
-        state.schedule(1);
-        // then
-        assertThat(scope()).isEqualTo("ALL");
+    void failedAudioRemainsAvailableAfterThirtyDays() {
+        jdbc.sql("UPDATE recording_audio_finalizations SET status='FAILED',retryable=TRUE")
+                .update();
+        for (int days : new int[]{30, 31, 365}) {
+            when(clock.instant()).thenReturn(NOW.plus(Duration.ofDays(days)));
+            state.schedule(1);
+            assertThat(scope()).isEqualTo("DORMANT");
+            assertThat(repository.findCandidates(20)).isEmpty();
+            assertThat(state.claim(1)).isEmpty();
+        }
         assertThat(
                 column(
                         "frozen",
                         Boolean.class,
                         "recording_audio_streams"
                 )
-        ).isTrue();
+        ).isFalse();
         assertThat(
                 column(
                         "status",
                         String.class,
                         "recording_audio_finalizations"
                 )
-        ).isEqualTo("DISCARDED");
+        ).isEqualTo("FAILED");
         assertThat(
                 column(
                         "retryable",
                         Boolean.class,
                         "recording_audio_finalizations"
                 )
-        ).isFalse();
+        ).isTrue();
     }
 
     @Test
-    void readyRetentionUsesCompletionTimeAndRetainsHistoricalQuality() {
-        // given
+    void readyAudioSurvivesYearAndOnlyRawChunksAreCleaned() {
         ready();
         completedUpload(NOW.plusSeconds(10));
-        when(clock.instant()).thenReturn(NOW.plus(Duration.ofDays(30)));
+        when(clock.instant()).thenReturn(NOW.plus(Duration.ofDays(365)));
         state.schedule(1);
         assertThat(scope()).isEqualTo("RAW");
-        when(clock.instant()).thenReturn(
-                NOW.plusSeconds(10)
-                        .plus(Duration.ofDays(30))
-        );
-        // when
-        state.schedule(1);
-        // then
-        assertThat(scope()).isEqualTo("ALL");
+        assertThat(
+                state.claim(1)
+                        .orElseThrow()
+                        .storagePrefix()
+        ).isEqualTo("recordings/1/chunks/");
         assertThat(
                 column(
                         "status",
@@ -253,6 +246,37 @@ class RecordingAudioCleanupIntegrationTest {
                         "recording_audio_finalizations"
                 )
         ).isEqualTo("PARTIAL");
+        assertThat(
+                jdbc.sql("SELECT revoked_at FROM recording_audio_uploads")
+                        .query(java.sql.Timestamp.class)
+                        .optional()
+        ).isEmpty();
+    }
+
+    @Test
+    void previouslyScheduledAgeOnlyPrefixDeletionDoesNotRun() {
+        new TransactionTemplate(transactions).executeWithoutResult(
+                status -> repository.findForUpdate(1)
+                        .orElseThrow()
+                        .request(
+                                com.knot.backend.recording.domain.model.RecordingAudioCleanupScope.ALL,
+                                null,
+                                NOW
+                        )
+        );
+        when(clock.instant()).thenReturn(NOW.plus(Duration.ofDays(365)));
+        assertThat(
+                repository.findReady(
+                        clock.instant(),
+                        20
+                )
+        ).isEmpty();
+        assertThat(state.claim(1)).isEmpty();
+        worker.executeCleanup(1);
+        verify(
+                storage,
+                org.mockito.Mockito.never()
+        ).deleteRecordingPrefix(anyString());
     }
 
     @Test
@@ -535,14 +559,107 @@ class RecordingAudioCleanupIntegrationTest {
     }
 
     @Test
-    void noContentFailureSchedulesAllImmediately() {
+    void noContentFinalizationFailureKeepsAudio() {
         // given
         jdbc.sql("UPDATE recording_audio_finalizations SET status='FAILED',failure_code='AUDIO_NO_CONTENT'")
                 .update();
         // when
         state.schedule(1);
         // then
+        assertThat(scope()).isEqualTo("DORMANT");
+        assertThat(state.claim(1)).isEmpty();
+        assertThat(repository.findCandidates(20)).isEmpty();
+    }
+
+    @Test
+    void noContentDocumentResultCleansOnlyRawChunksAndKeepsFinalAudio() {
+        // given
+        ready();
+        completedUpload(NOW);
+        noContentDocumentResult();
+        // when
+        state.schedule(1);
+        // then
+        assertThat(scope()).isEqualTo("RAW");
+        assertThat(
+                state.claim(1)
+                        .orElseThrow()
+                        .storagePrefix()
+        ).isEqualTo("recordings/1/chunks/");
+        assertThat(
+                column(
+                        "revoked_at",
+                        Instant.class,
+                        "recording_audio_uploads"
+                )
+        ).isNull();
+    }
+
+    @Test
+    void previouslyScheduledNoContentAllCleanupDoesNotRun() {
+        // given
+        ready();
+        completedUpload(NOW);
+        noContentDocumentResult();
+        new TransactionTemplate(transactions).executeWithoutResult(
+                status -> repository.findForUpdate(1)
+                        .orElseThrow()
+                        .request(
+                                com.knot.backend.recording.domain.model.RecordingAudioCleanupScope.ALL,
+                                null,
+                                NOW
+                        )
+        );
+        when(clock.instant()).thenReturn(NOW.plusSeconds(60));
+        // when
+        worker.executeCleanup(1);
+        // then
+        assertThat(
+                repository.findReady(
+                        clock.instant(),
+                        20
+                )
+        ).isEmpty();
+        assertThat(state.claim(1)).isEmpty();
+        verify(
+                storage,
+                org.mockito.Mockito.never()
+        ).deleteRecordingPrefix(anyString());
+        assertThat(
+                column(
+                        "deleted_at",
+                        Instant.class,
+                        "recording_audio_uploads"
+                )
+        ).isNull();
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {
+            "UPDATE recording_sessions SET status='DISCARDED',end_reason=NULL",
+            "UPDATE workspace_members SET left_at=now()", "UPDATE workspaces SET deleted_at=now()"})
+    void discardDepartureAndWorkspaceDeletionStillScheduleAll(String cleanupReason) {
+        // given
+        ready();
+        completedUpload(NOW);
+        jdbc.sql(cleanupReason)
+                .update();
+        // when
+        state.schedule(1);
+        // then
         assertThat(scope()).isEqualTo("ALL");
+        assertThat(
+                state.claim(1)
+                        .orElseThrow()
+                        .storagePrefix()
+        ).isEqualTo("recordings/1/");
+        assertThat(
+                column(
+                        "revoked_at",
+                        Instant.class,
+                        "recording_audio_uploads"
+                )
+        ).isEqualTo(NOW);
     }
 
     @Test
@@ -755,6 +872,35 @@ class RecordingAudioCleanupIntegrationTest {
                     final_checksum='AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=',final_byte_length=46,
                     ready_at=CAST(:now AS TIMESTAMPTZ)
                 """)
+                .param(
+                        "now",
+                        NOW.toString()
+                )
+                .update();
+    }
+
+    private void noContentDocumentResult() {
+        long transcriptId = jdbc.sql("""
+                INSERT INTO transcripts (recording_session_id, content, created_at)
+                VALUES (1, '내용 없음 원문', CAST(:now AS TIMESTAMPTZ)) RETURNING id
+                """)
+                .param(
+                        "now",
+                        NOW.toString()
+                )
+                .query(Long.class)
+                .single();
+        jdbc.sql("""
+                INSERT INTO document_generation_batches
+                    (recording_session_id, transcript_id, topic_registration_state, accepted_at,
+                        registered_at, cleanup_requested_at, processing_status, finished_at)
+                VALUES (1, :transcriptId, 'NO_CONTENT', CAST(:now AS TIMESTAMPTZ), CAST(:now AS TIMESTAMPTZ),
+                    CAST(:now AS TIMESTAMPTZ), 'NO_CONTENT', CAST(:now AS TIMESTAMPTZ))
+                """)
+                .param(
+                        "transcriptId",
+                        transcriptId
+                )
                 .param(
                         "now",
                         NOW.toString()

@@ -1,9 +1,0 @@
-{
- "type":"object","additionalProperties":false,
- "required":["assignments","newCategories","categoryMapping"],
- "properties":{
-   "assignments":{"type":"array","items":{"type":"object","additionalProperties":false,"required":["documentId","categoryKey"],"properties":{"documentId":{"type":"integer"},"categoryKey":{"type":"string"}}}},
-   "newCategories":{"type":"array","items":{"type":"object","additionalProperties":false,"required":["key","name","description"],"properties":{"key":{"type":"string"},"name":{"type":"string"},"description":{"type":"string"}}}},
-   "categoryMapping":{"type":"array","items":{"type":"object","additionalProperties":false,"required":["sourceKey","targetKey"],"properties":{"sourceKey":{"type":"string"},"targetKey":{"type":"string"}}}}
- }
-}

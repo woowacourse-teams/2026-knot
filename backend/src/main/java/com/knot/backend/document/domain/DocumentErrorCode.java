@@ -8,6 +8,21 @@ import lombok.RequiredArgsConstructor;
 @Getter
 @RequiredArgsConstructor
 public enum DocumentErrorCode implements ErrorCode {
+    TOPIC_RESTORATION_NOT_AVAILABLE(
+            ErrorCategory.CONFLICT,
+            "TOPIC_RESTORATION_NOT_AVAILABLE",
+            "복원할 직전 주제 정리 기록이 없습니다"
+    ),
+    TOPIC_RESTORATION_VERSION_CONFLICT(
+            ErrorCategory.CONFLICT,
+            "TOPIC_RESTORATION_VERSION_CONFLICT",
+            "복원 대상이 변경됐습니다. 상태를 다시 확인해 주세요"
+    ),
+    INVALID_TOPIC_RESTORATION_DATA(
+            ErrorCategory.INTERNAL_SERVER_ERROR,
+            "INVALID_TOPIC_RESTORATION_DATA",
+            "주제 복원 자료가 올바르지 않습니다"
+    ),
     TOPIC_OPERATION_NOT_FOUND(
             ErrorCategory.NOT_FOUND,
             "TOPIC_OPERATION_NOT_FOUND",

@@ -10,6 +10,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 import lombok.Getter;
 
@@ -17,7 +18,7 @@ import lombok.Getter;
 @Entity
 @Table(name = "recording_transcription_inputs")
 public class RecordingTranscriptionInput {
-    public static final String PIPELINE = "prepared-window-v1-30-5";
+    public static final String PIPELINE = TranscriptionWindowShape.PREPARED_TWO_MINUTES.pipelineVersion();
 
     @Id
     private Long recordingId;
@@ -93,6 +94,14 @@ public class RecordingTranscriptionInput {
 
     public String getPipelineVersion() {
         return PIPELINE;
+    }
+
+    /** 배포 전에 30초 구간으로 계획된 준비 입력도 같은 버전으로 끝까지 처리한다. */
+    public static List<String> windowPipelineVersions() {
+        return List.of(
+                TranscriptionWindowShape.PREPARED_30_SECONDS.pipelineVersion(),
+                PIPELINE
+        );
     }
 
     public boolean claim(

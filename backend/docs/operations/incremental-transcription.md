@@ -1,13 +1,13 @@
 # 녹음 중 구간 전사 운영
 
-PCM 녹음을 30초 core와 앞뒤 최대 5초 문맥으로 전사하고, 종료 후 남은 구간을 합쳐 기존 최종 전사·문서 생성 경로에 전달한다. FE endpoint와 payload는 유지한다. 이 문서는 로컬 구현의 실행 계약이며 운영 활성화·화자 품질·종료 후 30초 달성을 확인한 배포 기록이 아니다.
+PCM 녹음을 새 음성 2분 core와 직전 10초 문맥(미래 음성 없음)으로 전사하고, 종료 후 남은 구간을 합쳐 기존 최종 전사·문서 생성 경로에 전달한다. 결정은 [ADR 953](../adr/953-two-minute-window-transcription.md)이다. FE endpoint와 payload는 유지한다. 이 문서는 로컬 구현의 실행 계약이며 운영 활성화·화자 품질·종료 후 30초 달성을 확인한 배포 기록이 아니다.
 
 ## 활성화와 복귀
 
-`recording.audio-chunks.incremental-enabled`의 기본값은 false다. `RECORDING_INCREMENTAL_TRANSCRIPTION_ENABLED=true`로 설정하면 이후 시작하는 PCM 세션에 `pcm-window-v1-30-5`를 고정한다. 기존 PCM 저장·최종화 설정과 `knot.transcription.enabled`도 별도로 필요하다. 활성화 이후 새로 전사 접수되는 비구간 세션은 원본 업로드를 보존하고 준비 WAV를 만들어 `prepared-window-v1-30-5`로 처리한다. 이미 접수된 전체 전사는 기존 방식으로 완료한다.
+`recording.audio-chunks.incremental-enabled`의 기본값은 false다. `RECORDING_INCREMENTAL_TRANSCRIPTION_ENABLED=true`로 설정하면 이후 시작하는 PCM 세션에 `pcm-window-v2-120-10`을 고정한다. 이전에 `pcm-window-v1-30-5`로 고정된 세션은 30초 구간과 중앙 시각 병합으로 끝까지 처리한다. 기존 PCM 저장·최종화 설정과 `knot.transcription.enabled`도 별도로 필요하다. 활성화 이후 새로 전사 접수되는 비구간 세션은 원본 업로드를 보존하고 준비 WAV를 만들어 `prepared-window-v2-120-10`으로 처리한다. 배포 전에 `prepared-window-v1-30-5` 구간을 만든 준비 입력은 그 버전으로 끝낸다. 이미 접수된 전체 전사는 기존 방식으로 완료한다.
 
-1. AI의 선택적 `window` 요청과 화자 증거 반환, `/api/v1/audio-preparations`를 먼저 배포한다. runner profile의 `pythonBinary`, `sherpaLibrary`와 실제 모델을 확인한다. C API 구조 검증은 sherpa 1.13.6 기준이다.
-2. BE V59·V60·V61과 코드를 flag false로 배포한다. V60은 세션 pipeline, 최근 선점 시각과 구간 PROCESSING 전역 유일성을 추가한다. V61은 원본 버전과 준비 WAV, 복구 소유권을 저장한다.
+1. AI의 선택적 `window` 요청과 화자 증거 반환, `/api/v1/audio-preparations`, 130초 구간과 `decodePolicy`(#952)를 먼저 배포한다. 원음 시각을 출력하는 패치 `whisper-cli`(#951)도 먼저 지정한다. runner profile의 `pythonBinary`, `sherpaLibrary`와 실제 모델을 확인한다. C API 구조 검증은 sherpa 1.13.6 기준이다.
+2. BE V59·V60·V61·V69와 코드를 flag false로 배포한다. V69는 2분 pipeline 값을 허용하고 구간별 `decode_policy`를 추가한다. V60은 세션 pipeline, 최근 선점 시각과 구간 PROCESSING 전역 유일성을 추가한다. V61은 원본 버전과 준비 WAV, 복구 소유권을 저장한다.
 3. 실제 Chrome·저장소·AI·DB 환경에서 동시 녹음 2개의 종료 시간을 검증한다. 긴 전체 전사 작업이 슬롯을 점유하는 경우도 따로 기록한다.
 4. 검증 후 신규 녹음에 flag를 적용한다. 다시 false로 바꿔도 이미 pipeline이 고정된 세션은 구간 경로를 끝까지 수행한다. 진행 중인 구간 세션이 있으면 구간을 모르는 구버전 BE로 즉시 되돌리지 않는다.
 
@@ -26,7 +26,7 @@ PCM 녹음을 30초 core와 앞뒤 최대 5초 문맥으로 전사하고, 종료
 
 입력은 정확한 S3 version·checksum·frame 범위로 고정한다. 구간 WAV는 `recordings/{id}/windows/{manifestSha256}.wav`에 조건부 저장한다. RAW가 정리된 뒤에는 확정된 최종 WAV의 같은 version·byte range를 읽는다. 임시 WAV는 기존 PID·프로세스 시작 시각 기반 정리 규약을 따른다.
 
-AI는 입력 hash·pipeline·model·frame과 단어 시각·화자 embedding을 반환한다. BE는 입력 identity를 검증한 뒤 구간 결과를 최대 1MiB JSON으로 저장한다. 병합은 단어 중심 시각으로 core 소유권을 정하고, 실제 embedding의 cosine 유사도로 구간 간 화자를 연결한다. 화자를 정하지 못한 단어도 보존하며 최종 `speakerNumber`는 null이다. 유사도 0.65는 구현값이며 검수된 화자 정확도 보장이 아니다.
+AI는 입력 hash·pipeline·model·frame과 단어 시각·화자 embedding을 반환한다. BE는 입력 identity를 검증한 뒤 구간 결과를 최대 1MiB JSON으로 저장한다. 2분 구간은 녹음 중 `WITH_VOCABULARY`, 종료 후 계획의 마지막 구간만 `DEFAULT_ONLY`로 AI에 디코딩 정책을 보낸다. 30초 구간은 정책 필드를 보내지 않는다. 2분 구간 병합은 직전 10초에서 두 구간이 같이 받아 적은 단어를 정렬해 한 번만 남긴다. 정렬하지 못한 이음매는 경계 시각으로 자르고 오른쪽 첫 단어의 시작을 왼쪽 마지막 단어 뒤로 맞춘다. 30초 구간은 단어 중심 시각으로 core 소유권을 정한다. 2분 구간 결과에 AI의 5초 이하 화자 근거 조각(`observations`)이 있으면, 모든 구간과 tail이 끝난 뒤 core가 가진 조각을 녹음 전체에서 다시 묶고(시드 고정 k-means++, 조각 4개당 군집 1개·최대 12개, 중심 코사인 0.75 이상 병합) 단어마다 겹침·1초 안의 가까운 화자·직전 화자 순으로 배정한 뒤 문장 단위 다수결로 맞춘다. 조각이 없는 이전 AI 결과와 30초 구간은 실제 embedding의 cosine 유사도로 구간 간 화자를 연결한다. 2026-10 사람 정답 녹음 5개에서 다시 묶는 방식은 화자 정확도 82.7/46.9/76.5/95.8/96.5%, 구간별 연결은 76.5/57.8/56.9/77.3/70.6%였다. 화자를 정하지 못한 단어도 보존하며 최종 `speakerNumber`는 null이다. 유사도 0.65는 구현값이며 검수된 화자 정확도 보장이 아니다.
 
 모든 구간과 tail이 성공하고 PCM 최종 오디오 또는 준비 WAV가 READY일 때만 전체 전사·발화·문서 접수를 같은 트랜잭션으로 저장한다. 무음 전체는 기존 `NO_CONTENT` 실패로 처리한다. ALL 정리는 준비 작업과 구간을 취소하고 결과·embedding을 지우며 전체 recording prefix를 반복 회수한다. RAW 정리는 chunks만 삭제한다.
 

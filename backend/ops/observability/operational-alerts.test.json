@@ -1,0 +1,249 @@
+{
+  "rule_files": [],
+  "evaluation_interval": "1m",
+  "tests": [
+    {
+      "name": "healthy services with inactive standby",
+      "interval": "1m",
+      "input_series": [
+        {
+          "series": "knot_systemd_service_failed{env=\"prod\",unit=\"knot-backend-green.service\"}",
+          "values": "0x120"
+        },
+        {
+          "series": "knot_required_service_active{env=\"prod\",unit=\"nginx.service\"}",
+          "values": "1x120"
+        },
+        {
+          "series": "knot_backend_service_active{env=\"prod\"}",
+          "values": "1x120"
+        },
+        {
+          "series": "knot_service_check_success{env=\"prod\"}",
+          "values": "1x120"
+        }
+      ],
+      "promql_expr_test": [
+        {
+          "expr": "max(knot_systemd_service_failed{env=\"prod\"}) + (1 - min(knot_required_service_active{env=\"prod\"})) + (1 - min(knot_backend_service_active{env=\"prod\"})) + (1 - min(knot_service_check_success{env=\"prod\"}))",
+          "eval_time": "30m",
+          "exp_samples": [
+            {
+              "labels": "{}",
+              "value": 0
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "failed standby must be visible",
+      "interval": "1m",
+      "input_series": [
+        {
+          "series": "knot_systemd_service_failed{env=\"prod\",unit=\"knot-backend-green.service\"}",
+          "values": "1x120"
+        },
+        {
+          "series": "knot_required_service_active{env=\"prod\",unit=\"nginx.service\"}",
+          "values": "1x120"
+        },
+        {
+          "series": "knot_backend_service_active{env=\"prod\"}",
+          "values": "1x120"
+        },
+        {
+          "series": "knot_service_check_success{env=\"prod\"}",
+          "values": "1x120"
+        }
+      ],
+      "promql_expr_test": [
+        {
+          "expr": "max(knot_systemd_service_failed{env=\"prod\"}) + (1 - min(knot_required_service_active{env=\"prod\"})) + (1 - min(knot_backend_service_active{env=\"prod\"})) + (1 - min(knot_service_check_success{env=\"prod\"}))",
+          "eval_time": "30m",
+          "exp_samples": [
+            {
+              "labels": "{}",
+              "value": 1
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "no active backend",
+      "interval": "1m",
+      "input_series": [
+        {
+          "series": "knot_systemd_service_failed{env=\"prod\",unit=\"knot-backend-green.service\"}",
+          "values": "0x120"
+        },
+        {
+          "series": "knot_required_service_active{env=\"prod\",unit=\"nginx.service\"}",
+          "values": "1x120"
+        },
+        {
+          "series": "knot_backend_service_active{env=\"prod\"}",
+          "values": "0x120"
+        },
+        {
+          "series": "knot_service_check_success{env=\"prod\"}",
+          "values": "1x120"
+        }
+      ],
+      "promql_expr_test": [
+        {
+          "expr": "max(knot_systemd_service_failed{env=\"prod\"}) + (1 - min(knot_required_service_active{env=\"prod\"})) + (1 - min(knot_backend_service_active{env=\"prod\"})) + (1 - min(knot_service_check_success{env=\"prod\"}))",
+          "eval_time": "30m",
+          "exp_samples": [
+            {
+              "labels": "{}",
+              "value": 1
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "missing operational heartbeat",
+      "interval": "1m",
+      "input_series": [],
+      "promql_expr_test": [
+        {
+          "expr": "(max(time() - knot_operational_check_timestamp_seconds{env=\"prod\"}) > bool 180) or absent(knot_operational_check_timestamp_seconds{env=\"prod\"})",
+          "eval_time": "30m",
+          "exp_samples": [
+            {
+              "labels": "{env=\"prod\"}",
+              "value": 1
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "stale operational heartbeat",
+      "interval": "1m",
+      "input_series": [
+        {
+          "series": "knot_operational_check_timestamp_seconds{env=\"prod\"}",
+          "values": "0x120"
+        }
+      ],
+      "promql_expr_test": [
+        {
+          "expr": "(max(time() - knot_operational_check_timestamp_seconds{env=\"prod\"}) > bool 180) or absent(knot_operational_check_timestamp_seconds{env=\"prod\"})",
+          "eval_time": "30m",
+          "exp_samples": [
+            {
+              "labels": "{}",
+              "value": 1
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "healthy RDS metadata",
+      "interval": "1m",
+      "input_series": [
+        {
+          "series": "knot_rds_backup_latest_restorable_timestamp_seconds{env=\"prod\"}",
+          "values": "0x120"
+        },
+        {
+          "series": "knot_rds_backup_check_success{env=\"prod\"}",
+          "values": "1x120"
+        },
+        {
+          "series": "knot_rds_backup_retention_days{env=\"prod\"}",
+          "values": "1x120"
+        },
+        {
+          "series": "knot_rds_backup_check_timestamp_seconds{env=\"prod\"}",
+          "values": "1800x120"
+        }
+      ],
+      "promql_expr_test": [
+        {
+          "expr": "(max(time() - knot_rds_backup_latest_restorable_timestamp_seconds{env=\"prod\"}) > bool 3600) + (1 - min(knot_rds_backup_check_success{env=\"prod\"})) + (min(knot_rds_backup_retention_days{env=\"prod\"}) < bool 1) + (max(time() - knot_rds_backup_check_timestamp_seconds{env=\"prod\"}) > bool 900)",
+          "eval_time": "30m",
+          "exp_samples": [
+            {
+              "labels": "{}",
+              "value": 0
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "RDS restore point older than one hour",
+      "interval": "1m",
+      "input_series": [
+        {
+          "series": "knot_rds_backup_latest_restorable_timestamp_seconds{env=\"prod\"}",
+          "values": "0x120"
+        },
+        {
+          "series": "knot_rds_backup_check_success{env=\"prod\"}",
+          "values": "1x120"
+        },
+        {
+          "series": "knot_rds_backup_retention_days{env=\"prod\"}",
+          "values": "1x120"
+        },
+        {
+          "series": "knot_rds_backup_check_timestamp_seconds{env=\"prod\"}",
+          "values": "7200x120"
+        }
+      ],
+      "promql_expr_test": [
+        {
+          "expr": "(max(time() - knot_rds_backup_latest_restorable_timestamp_seconds{env=\"prod\"}) > bool 3600) + (1 - min(knot_rds_backup_check_success{env=\"prod\"})) + (min(knot_rds_backup_retention_days{env=\"prod\"}) < bool 1) + (max(time() - knot_rds_backup_check_timestamp_seconds{env=\"prod\"}) > bool 900)",
+          "eval_time": "120m",
+          "exp_samples": [
+            {
+              "labels": "{}",
+              "value": 1
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "failed AWS query retains previous metadata but alerts",
+      "interval": "1m",
+      "input_series": [
+        {
+          "series": "knot_rds_backup_latest_restorable_timestamp_seconds{env=\"prod\"}",
+          "values": "0x120"
+        },
+        {
+          "series": "knot_rds_backup_check_success{env=\"prod\"}",
+          "values": "0x120"
+        },
+        {
+          "series": "knot_rds_backup_retention_days{env=\"prod\"}",
+          "values": "1x120"
+        },
+        {
+          "series": "knot_rds_backup_check_timestamp_seconds{env=\"prod\"}",
+          "values": "1800x120"
+        }
+      ],
+      "promql_expr_test": [
+        {
+          "expr": "(max(time() - knot_rds_backup_latest_restorable_timestamp_seconds{env=\"prod\"}) > bool 3600) + (1 - min(knot_rds_backup_check_success{env=\"prod\"})) + (min(knot_rds_backup_retention_days{env=\"prod\"}) < bool 1) + (max(time() - knot_rds_backup_check_timestamp_seconds{env=\"prod\"}) > bool 900)",
+          "eval_time": "30m",
+          "exp_samples": [
+            {
+              "labels": "{}",
+              "value": 1
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

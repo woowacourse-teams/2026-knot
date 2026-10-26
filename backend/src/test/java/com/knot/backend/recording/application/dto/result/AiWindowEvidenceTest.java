@@ -110,8 +110,8 @@ class AiWindowEvidenceTest {
     }
 
     @ParameterizedTest
-    @ValueSource(longs = {0, -1, 960001})
-    @DisplayName("입력 범위는 양수이며 최대 60초를 넘지 않는다")
+    @ValueSource(longs = {0, -1, 2080001})
+    @DisplayName("입력 범위는 양수이며 최대 130초를 넘지 않는다")
     void create_failure_invalidInputSpan(long end) {
         // given
         List<AiWindowEvidence.Token> tokens = List.of();
@@ -558,5 +558,182 @@ class AiWindowEvidenceTest {
                 embedding,
                 voicedFrames
         );
+    }
+
+    @Test
+    @DisplayName("AI의 화자 근거 조각과 segment 번호를 저장할 JSON에 그대로 보존한다")
+    void serialize_success_observationsRoundTrip() {
+        // given
+        ObjectMapper mapper = new ObjectMapper();
+        AiWindowEvidence evidence = new AiWindowEvidence(
+                1,
+                "v1",
+                HASH,
+                0,
+                32000,
+                "model",
+                List.of(
+                        new AiWindowEvidence.Token(
+                                0,
+                                8000,
+                                "첫",
+                                "s",
+                                0
+                        )
+                ),
+                List.of(
+                        new AiWindowEvidence.Speaker(
+                                "s",
+                                List.of(),
+                                0
+                        )
+                ),
+                List.of(
+                        new AiWindowEvidence.Observation(
+                                0,
+                                24000,
+                                "s",
+                                Collections.nCopies(
+                                        512,
+                                        .333333333
+                                )
+                        )
+                )
+        );
+
+        // when
+        AiWindowEvidence restored = mapper.readValue(
+                mapper.writeValueAsString(evidence),
+                AiWindowEvidence.class
+        );
+
+        // then
+        assertThat(restored).isEqualTo(evidence);
+    }
+
+    @Test
+    @DisplayName("이전 AI 결과처럼 화자 근거 조각이 없으면 빈 목록으로 읽는다")
+    void deserialize_success_withoutObservations() {
+        // given
+        String json = """
+                {"schemaVersion":1,"pipelineVersion":"v1","inputManifestSha256":"%s","inputStartFrame":0,
+                "inputEndFrame":16000,"modelVersion":"model","tokens":[],"speakers":[]}
+                """.formatted(HASH);
+
+        // when
+        AiWindowEvidence evidence = new ObjectMapper().readValue(
+                json,
+                AiWindowEvidence.class
+        );
+
+        // then
+        assertThat(evidence.observations()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("입력 밖이거나 모르는 화자의 근거 조각은 거절한다")
+    void create_failure_invalidObservation() {
+        // given
+        List<Double> vector = Collections.nCopies(
+                512,
+                .1
+        );
+
+        // when
+        Throwable outside = catchThrowable(
+                () -> observed(
+                        new AiWindowEvidence.Observation(
+                                0,
+                                16001,
+                                "s",
+                                vector
+                        )
+                )
+        );
+        Throwable unknown = catchThrowable(
+                () -> observed(
+                        new AiWindowEvidence.Observation(
+                                0,
+                                8000,
+                                "other",
+                                vector
+                        )
+                )
+        );
+        Throwable shortVector = catchThrowable(
+                () -> new AiWindowEvidence.Observation(
+                        0,
+                        8000,
+                        "s",
+                        List.of(.1)
+                )
+        );
+
+        // then
+        assertThat(outside).isInstanceOf(RecordingException.class);
+        assertThat(unknown).isInstanceOf(RecordingException.class);
+        assertThat(shortVector).isInstanceOf(RecordingException.class);
+    }
+
+    private AiWindowEvidence observed(AiWindowEvidence.Observation observation) {
+        return new AiWindowEvidence(
+                1,
+                "v1",
+                HASH,
+                0,
+                16000,
+                "model",
+                List.of(),
+                List.of(
+                        new AiWindowEvidence.Speaker(
+                                "s",
+                                List.of(),
+                                0
+                        )
+                ),
+                List.of(observation)
+        );
+    }
+
+    @Test
+    @DisplayName("저장 JSON 1MiB 안에 들어가지 않을 만큼 많은 화자 근거 조각은 거절한다")
+    void create_failure_tooManyObservations() {
+        // given
+        List<AiWindowEvidence.Observation> observations = Collections.nCopies(
+                161,
+                new AiWindowEvidence.Observation(
+                        0,
+                        8000,
+                        "s",
+                        Collections.nCopies(
+                                512,
+                                .1
+                        )
+                )
+        );
+
+        // when
+        Throwable failure = catchThrowable(
+                () -> new AiWindowEvidence(
+                        1,
+                        "v1",
+                        HASH,
+                        0,
+                        16000,
+                        "model",
+                        List.of(),
+                        List.of(
+                                new AiWindowEvidence.Speaker(
+                                        "s",
+                                        List.of(),
+                                        0
+                                )
+                        ),
+                        observations
+                )
+        );
+
+        // then
+        assertThat(failure).isInstanceOf(RecordingException.class);
     }
 }

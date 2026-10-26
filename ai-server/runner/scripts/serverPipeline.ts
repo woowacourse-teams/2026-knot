@@ -1,12 +1,15 @@
 import { spawn, type ChildProcess } from 'node:child_process'
 import { access, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
-import { pathToFileURL } from 'node:url'
-import { assembleWindowResult, validWindow, type WindowInput } from './windowResult'
-import { assignSpeakers, mergeUtterances } from '../src/core/merge'
+import { fileURLToPath, pathToFileURL } from 'node:url'
+import { assembleWindowResult, measuredWordGroups, validWindow, type WindowInput } from './windowResult'
+import { assignSpeakers, mergeUtterances, SERVER_SPEAKER_POLICY } from '../src/core/merge'
+import { hasDecoderRepetition, prefersRetry } from '../src/core/repetition'
+import type { SttWord } from '../src/core/types'
+import { fuseVocabulary, VOCABULARY_PROMPT } from '../src/core/vocabularyFusion'
 import { buildDiarizeArgs, parseDiarizeOutput } from '../src/main/pipeline/diarize'
 import { normalizeWavFile } from '../src/main/pipeline/normalize'
-import { buildWhisperArgs, parseWhisperOutput } from '../src/main/pipeline/whisper'
+import { assertRestoredVadTimestamps, buildWhisperArgs, parseWhisperOutput } from '../src/main/pipeline/whisper'
 
 export interface ServerManifest {
   audioPath: string
@@ -19,6 +22,7 @@ export interface ServerManifest {
     whisperBinary: string
     diarizeBinary: string
     whisperModel: string
+    whisperVadEnabled?: boolean
     vadModel: string
     segmentationModel: string
     embeddingModel: string
@@ -35,6 +39,7 @@ export const validateManifest = (value: unknown): ServerManifest => {
   if (
     !manifest ||
     !manifest.profile ||
+    (manifest.profile.whisperVadEnabled !== undefined && typeof manifest.profile.whisperVadEnabled !== 'boolean') ||
     (manifest.speakerCount !== undefined && !positiveInteger(manifest.speakerCount)) ||
     !positiveInteger(manifest.profile.sttThreads) ||
     !positiveInteger(manifest.profile.diarizeThreads)
@@ -62,8 +67,17 @@ export const validateManifest = (value: unknown): ServerManifest => {
   return manifest
 }
 
+/** URL pathname은 공백을 %20으로 남기므로 파일 경로로 바꿔 같은 폴더의 스크립트를 찾는다. */
+export const siblingScriptPath = (moduleUrl: string, name: string) =>
+  path.join(path.dirname(fileURLToPath(moduleUrl)), name)
+
+/** 원음 길이를 가진 단어가 없는 전체 전사 segment는 단어 없이 segment 시각으로 화자를 배정한다. */
+const hasMeasuredWord = (words: SttWord[]) =>
+  words.some(word => Math.round(word.end * 16000) > Math.round(word.start * 16000))
+
 export const assembleResult = (raw: Buffer, diarization: string, speakerCount?: number) => {
-  const segments = parseWhisperOutput(raw)
+  const segments = parseWhisperOutput(raw).map(segment => segment.words && hasMeasuredWord(segment.words)
+    ? { ...segment, words: measuredWordGroups(segment.words) } : { ...segment, words: [] })
   const speakerSegments = parseDiarizeOutput(diarization)
   if (segments.some((item) => item.text.trim()) && !speakerSegments.length) {
     throw new Error('DIARIZATION_EMPTY')
@@ -72,8 +86,9 @@ export const assembleResult = (raw: Buffer, diarization: string, speakerCount?: 
     assignSpeakers({
       segments,
       speakerSegments,
-      isMinorSpeakerAbsorbed: !speakerCount
-    })
+      ...SERVER_SPEAKER_POLICY
+    }),
+    SERVER_SPEAKER_POLICY
   )
   if (
     utterances.some(
@@ -91,6 +106,9 @@ export const assembleResult = (raw: Buffer, diarization: string, speakerCount?: 
   }
   return { schemaVersion: 1 as const, rawWhisperJson: raw.toString('utf8'), utterances }
 }
+
+/** 반복 재시도와 용어 디코딩은 이 시간 안에 끝나지 않으면 버리고 기본 디코딩 결과를 쓴다. */
+const OPTIONAL_DECODE_TIMEOUT_MS = 120_000
 
 /** No native output reaches logs: diarization stdout is only parsed in memory. */
 export const runServerPipeline = async (manifest: ServerManifest) => {
@@ -148,6 +166,28 @@ export const runServerPipeline = async (manifest: ServerManifest) => {
         } else resolve(Buffer.concat(chunks).toString('utf8'))
       })
     })
+  /** 실패하거나 제한 시간을 넘겨도 작업 전체를 멈추지 않는 보조 실행. 취소는 그대로 전파한다. */
+  const runOptional = (command: string, args: string[]) =>
+    new Promise<boolean>((resolve, reject) => {
+      if (aborted) {
+        reject(new Error(abortCode))
+        return
+      }
+      const child = spawn(command, args, { stdio: 'ignore', shell: false })
+      children.add(child)
+      const timeout = setTimeout(() => child.kill('SIGKILL'), OPTIONAL_DECODE_TIMEOUT_MS)
+      child.once('error', () => {
+        clearTimeout(timeout)
+        children.delete(child)
+        resolve(false)
+      })
+      child.once('close', (code) => {
+        clearTimeout(timeout)
+        children.delete(child)
+        if (aborted) reject(new Error(abortCode))
+        else resolve(code === 0)
+      })
+    })
   try {
     await Promise.all(
       [
@@ -169,22 +209,45 @@ export const runServerPipeline = async (manifest: ServerManifest) => {
     await normalizeWavFile({ inputPath: manifest.audioPath, outputPath: normalized })
     if (aborted) throw new Error(abortCode)
     const p = manifest.profile
-    const stt = () =>
-      run(
-        p.whisperBinary,
-        buildWhisperArgs({
-          modelPath: p.whisperModel,
-          audioPath: normalized,
-          outputPath: prefix,
-          threads: p.sttThreads,
-          vadModelPath: p.vadModel
-        }),
-        false,
-        'STT_FAILED'
-      )
+    const whisperArgs = (outputPath: string, options: { prompt?: string; maxContext?: number } = {}) =>
+      buildWhisperArgs({
+        modelPath: p.whisperModel,
+        audioPath: normalized,
+        outputPath,
+        threads: p.sttThreads,
+        vadEnabled: p.whisperVadEnabled ?? true,
+        vadModelPath: p.vadModel,
+        ...options
+      })
+    const stt = () => run(p.whisperBinary, whisperArgs(prefix), false, 'STT_FAILED')
+    const readDecode = async (outputPath: string) => {
+      const decodedRaw = await readFile(`${outputPath}.json`)
+      if (p.whisperVadEnabled ?? true) assertRestoredVadTimestamps(decodedRaw)
+      return { raw: decodedRaw, segments: parseWhisperOutput(decodedRaw) }
+    }
+    const optionalDecode = async (name: string, options: { prompt?: string; maxContext?: number }) => {
+      const outputPath = path.join(manifest.outputDirectory, name)
+      if (!await runOptional(p.whisperBinary, whisperArgs(outputPath, options))) return undefined
+      return readDecode(outputPath)
+    }
+    /**
+     * 구간마다 기본 디코딩에 반복 사고가 있으면 이어받기 없이(-mc 0) 한 번만 다시 디코딩한다.
+     * WITH_VOCABULARY 구간은 고정 용어 프롬프트로 한 번 더 디코딩해 용어만 합친다.
+     */
+    const decodeWindow = async (window: WindowInput) => {
+      let selected = await readDecode(prefix)
+      if (hasDecoderRepetition(selected.segments)) {
+        const retry = await optionalDecode('whisper-retry', { maxContext: 0 })
+        if (retry && prefersRetry(selected.segments, retry.segments)) selected = retry
+      }
+      if (window.decodePolicy !== 'WITH_VOCABULARY') return selected
+      const vocabulary = await optionalDecode('whisper-vocabulary', { prompt: VOCABULARY_PROMPT })
+      if (!vocabulary) return selected
+      return { raw: selected.raw, segments: fuseVocabulary(selected.segments, vocabulary.segments) }
+    }
     const evidencePath = path.join(manifest.outputDirectory, 'window-speakers.json')
     const diarize = () => manifest.window ? run(
-      p.pythonBinary!, [path.join(path.dirname(new URL(import.meta.url).pathname), 'windowDiarization.py'),
+      p.pythonBinary!, [siblingScriptPath(import.meta.url, 'windowDiarization.py'),
         path.join(manifest.outputDirectory, 'window-input.json'), evidencePath], false, 'DIARIZATION_FAILED'
     ) : run(
         p.diarizeBinary,
@@ -203,10 +266,11 @@ export const runServerPipeline = async (manifest: ServerManifest) => {
         JSON.stringify({...manifest, audioPath: normalized}), {mode:0o600})
     }
     const [, diarization] = await Promise.all([stt(), diarize()])
-    const raw = await readFile(`${prefix}.json`)
-    const result = manifest.window ? assembleWindowResult(raw,
-      JSON.parse(await readFile(evidencePath,'utf8')), manifest.window)
-      : assembleResult(raw, diarization, manifest.speakerCount)
+    const decoded = manifest.window ? await decodeWindow(manifest.window) : await readDecode(prefix)
+    const result = manifest.window
+      ? assembleWindowResult(decoded.raw, JSON.parse(await readFile(evidencePath,'utf8')),
+        manifest.window, decoded.segments)
+      : assembleResult(decoded.raw, diarization, manifest.speakerCount)
     if (manifest.window && Buffer.byteLength(JSON.stringify(result),'utf8') > 1048576)
       throw new Error('OUTPUT_LIMIT')
     if (aborted) throw new Error(abortCode)

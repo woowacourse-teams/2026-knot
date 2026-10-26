@@ -6,6 +6,8 @@ import static org.assertj.core.api.Assertions.catchThrowable;
 import com.knot.backend.recording.application.dto.result.PreparedWindowSource;
 import com.knot.backend.recording.domain.RecordingException;
 import com.knot.backend.recording.domain.model.RecordingTranscriptionWindow;
+import com.knot.backend.recording.domain.model.TranscriptionDecodePolicy;
+import com.knot.backend.recording.domain.model.TranscriptionWindowShape;
 import java.time.Instant;
 import java.util.List;
 import org.junit.jupiter.api.DisplayName;
@@ -23,6 +25,41 @@ class PreparedTranscriptionWindowPlannerTest {
             + ".wav";
     private final ObjectMapper mapper = new ObjectMapper();
     private final RecordingTranscriptionWindowPlanner planner = new RecordingTranscriptionWindowPlanner(mapper);
+
+    @Test
+    @DisplayName("준비 WAV도 2분 구간과 직전 10초로 나누고 마지막 구간만 기본 디코딩으로 요청한다")
+    void planPrepared_success_twoMinuteWindows() {
+        // given
+        PreparedWindowSource source = new PreparedWindowSource(
+                KEY,
+                "prepared-v1",
+                CHECKSUM,
+                44 + 250 * 32_000L,
+                250 * 16_000L
+        );
+
+        // when
+        List<RecordingTranscriptionWindow> windows = planner.planPrepared(
+                1,
+                TranscriptionWindowShape.PREPARED_TWO_MINUTES,
+                source,
+                NOW
+        );
+
+        // then
+        assertThat(windows).extracting(RecordingTranscriptionWindow::getInputStartFrame)
+                .containsExactly(
+                        0L,
+                        110 * 16_000L,
+                        230 * 16_000L
+                );
+        assertThat(windows).extracting(RecordingTranscriptionWindow::getDecodePolicy)
+                .containsExactly(
+                        TranscriptionDecodePolicy.WITH_VOCABULARY,
+                        TranscriptionDecodePolicy.WITH_VOCABULARY,
+                        TranscriptionDecodePolicy.DEFAULT_ONLY
+                );
+    }
 
     @Test
     @DisplayName("준비 WAV 전체를 30초 core와 5초 문맥으로 나누고 마지막 짧은 구간까지 포함한다")

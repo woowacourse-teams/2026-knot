@@ -37,13 +37,16 @@ import tools.jackson.databind.node.ArrayNode;
 @Component
 @ConditionalOnProperty(prefix = "knot.document-topic-reorganization", name = "enabled", havingValue = "true")
 public class LlmDocumentTopicPlanner {
+    private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(150);
+    private static final int BATCH_OUTPUT_TOKENS = 4096;
+    private static final int CONSOLIDATION_OUTPUT_TOKENS = 8192;
 
     private final LlmClient client;
     private final ObjectMapper mapper;
     private final DocumentTopicReorganizationProperties properties;
     private final String system;
     private final Clock clock;
-    private final JsonNode schema;
+    private final DocumentTopicOutputSchema schema;
 
     public LlmDocumentTopicPlanner(
             LlmClient client,
@@ -58,7 +61,7 @@ public class LlmDocumentTopicPlanner {
         this.properties = properties;
         this.clock = clock;
         system = readResource("reorganization-system.txt");
-        schema = mapper.readTree(readResource("reorganization-schema.json"));
+        schema = new DocumentTopicOutputSchema(mapper);
     }
 
     public DocumentTopicPlan plan(DocumentTopicExecution execution) {
@@ -70,7 +73,7 @@ public class LlmDocumentTopicPlanner {
                 clock.instant(),
                 execution.deadline()
         );
-        Duration timeout = Duration.ofSeconds(45);
+        Duration timeout = REQUEST_TIMEOUT;
         if (remaining.compareTo(timeout) < 0) {
             timeout = remaining;
         }
@@ -90,7 +93,7 @@ public class LlmDocumentTopicPlanner {
                                 )
                         ),
                         "document_topic_reorganization",
-                        schema,
+                        schema.create(execution),
                         new LlmGenerationOptions(
                                 0.1,
                                 0.9,
@@ -98,7 +101,7 @@ public class LlmDocumentTopicPlanner {
                                 1.0,
                                 false,
                                 null,
-                                4096
+                                outputTokens(execution)
                         ),
                         timeout
                 )
@@ -180,30 +183,15 @@ public class LlmDocumentTopicPlanner {
                 )
         );
         Map<Long, String> assignments = new LinkedHashMap<>();
-        for (JsonNode node : array(
+        JsonNode assignmentObject = object(
                 root,
                 "assignments"
-        )) {
-            requireObject(
-                    node,
-                    Set.of(
-                            "documentId",
-                            "categoryKey"
-                    )
+        );
+        for (Map.Entry<String, JsonNode> entry : assignmentObject.properties()) {
+            assignments.put(
+                    documentId(entry.getKey()),
+                    textValue(entry.getValue())
             );
-            JsonNode id = node.path("documentId");
-            if (!id.isIntegralNumber() || !id.canConvertToLong() || id.asLong() <= 0) {
-                throw invalid();
-            }
-            if (assignments.put(
-                    id.asLong(),
-                    text(
-                            node,
-                            "categoryKey"
-                    )
-            ) != null) {
-                throw invalid();
-            }
         }
         Map<String, String> names = new LinkedHashMap<>();
         Map<String, String> descriptions = new LinkedHashMap<>();
@@ -223,8 +211,11 @@ public class LlmDocumentTopicPlanner {
                     node,
                     "key"
             );
-            if (!key.matches("n:[A-Za-z0-9_-]{1,70}") || names.put(
+            if (!validNewKey(
                     key,
+                    execution.targets()
+                            .size()
+            ) || names.put(key,
                     text(
                             node,
                             "name"
@@ -241,29 +232,15 @@ public class LlmDocumentTopicPlanner {
             );
         }
         Map<String, String> mapping = new LinkedHashMap<>();
-        for (JsonNode node : array(
+        JsonNode mappingObject = object(
                 root,
                 "categoryMapping"
-        )) {
-            requireObject(
-                    node,
-                    Set.of(
-                            "sourceKey",
-                            "targetKey"
-                    )
+        );
+        for (Map.Entry<String, JsonNode> entry : mappingObject.properties()) {
+            mapping.put(
+                    entry.getKey(),
+                    textValue(entry.getValue())
             );
-            if (mapping.put(
-                    text(
-                            node,
-                            "sourceKey"
-                    ),
-                    text(
-                            node,
-                            "targetKey"
-                    )
-            ) != null) {
-                throw invalid();
-            }
         }
         DocumentTopicPlan plan = new DocumentTopicPlan(
                 assignments,
@@ -334,6 +311,47 @@ public class LlmDocumentTopicPlanner {
         }
     }
 
+    private int outputTokens(DocumentTopicExecution execution) {
+        if (execution.consolidate()) {
+            return CONSOLIDATION_OUTPUT_TOKENS;
+        }
+        return BATCH_OUTPUT_TOKENS;
+    }
+
+    private long documentId(String key) {
+        try {
+            long id = Long.parseLong(key);
+            if (id <= 0 || !Long.toString(id)
+                    .equals(key)) {
+                throw invalid();
+            }
+            return id;
+        } catch (NumberFormatException exception) {
+            throw invalid();
+        }
+    }
+
+    private boolean validNewKey(
+            String key,
+            int count
+    ) {
+        if (!key.matches("n:[1-9][0-9]{0,2}")) {
+            return false;
+        }
+        return Integer.parseInt(key.substring(2)) <= count;
+    }
+
+    private JsonNode object(
+            JsonNode root,
+            String name
+    ) {
+        JsonNode value = root.path(name);
+        if (!value.isObject()) {
+            throw invalid();
+        }
+        return value;
+    }
+
     private JsonNode array(
             JsonNode root,
             String name
@@ -349,7 +367,10 @@ public class LlmDocumentTopicPlanner {
             JsonNode node,
             String name
     ) {
-        JsonNode value = node.path(name);
+        return textValue(node.path(name));
+    }
+
+    private String textValue(JsonNode value) {
         if (!value.isString() || value.asString()
                 .length() > 500) {
             throw invalid();

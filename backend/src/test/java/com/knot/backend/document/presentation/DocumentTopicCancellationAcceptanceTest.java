@@ -146,8 +146,13 @@ class DocumentTopicCancellationAcceptanceTest {
     void cancel_success_completedRestoration() throws Exception {
         // given
         long id = operation("QUEUED");
+        long sourceId = fixtures.saveCompletedTopicOperation(
+                workspace,
+                owner
+        );
         jdbc.update(
-                "UPDATE document_topic_operations SET kind='RESTORE',status='CANCELLED',cancel_requested_at=created_at,finished_at=created_at WHERE id=?",
+                "UPDATE document_topic_operations SET kind='RESTORE',target_version_id=91,restoration_source_operation_id=?,status='CANCELLED',cancel_requested_at=created_at,finished_at=created_at WHERE id=?",
+                sourceId,
                 id
         );
         // when & then

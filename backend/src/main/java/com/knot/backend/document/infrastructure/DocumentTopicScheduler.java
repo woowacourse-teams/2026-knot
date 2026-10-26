@@ -1,6 +1,8 @@
 package com.knot.backend.document.infrastructure;
 
 import com.knot.backend.document.application.DocumentTopicWorker;
+import com.knot.backend.document.application.DocumentTopicRestorationWorker;
+import com.knot.backend.document.domain.model.DocumentTopicOperationKind;
 import com.knot.backend.document.application.DocumentTopicCancellationService;
 import com.knot.backend.document.domain.model.DocumentTopicOperation;
 import com.knot.backend.document.domain.repository.DocumentTopicOperationRepository;
@@ -24,6 +26,7 @@ public class DocumentTopicScheduler {
 
     private final DocumentTopicOperationRepository operations;
     private final DocumentTopicWorker worker;
+    private final DocumentTopicRestorationWorker restorations;
     private final TaskExecutor executor;
     private final Clock clock;
     private final DocumentTopicCancellationService cancellations;
@@ -31,12 +34,14 @@ public class DocumentTopicScheduler {
     public DocumentTopicScheduler(
             DocumentTopicOperationRepository operations,
             DocumentTopicWorker worker,
+            DocumentTopicRestorationWorker restorations,
             @Qualifier("documentTopicExecutor") TaskExecutor executor,
             Clock clock,
             DocumentTopicCancellationService cancellations
     ) {
         this.operations = operations;
         this.worker = worker;
+        this.restorations = restorations;
         this.executor = executor;
         this.clock = clock;
         this.cancellations = cancellations;
@@ -76,14 +81,23 @@ public class DocumentTopicScheduler {
         }
     }
 
+    private void execute(DocumentTopicOperation operation) {
+        if (operation.getKind() == DocumentTopicOperationKind.RESTORE) {
+            restorations.execute(
+                    operation.getWorkspaceId(),
+                    operation.getId()
+            );
+            return;
+        }
+        worker.execute(
+                operation.getWorkspaceId(),
+                operation.getId()
+        );
+    }
+
     private boolean submit(DocumentTopicOperation operation) {
         try {
-            executor.execute(
-                    () -> worker.execute(
-                            operation.getWorkspaceId(),
-                            operation.getId()
-                    )
-            );
+            executor.execute(() -> execute(operation));
             return true;
         } catch (TaskRejectedException exception) {
             return false;

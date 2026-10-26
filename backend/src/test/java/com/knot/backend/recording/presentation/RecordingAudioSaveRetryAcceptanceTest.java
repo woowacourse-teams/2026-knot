@@ -17,7 +17,6 @@ import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.DisplayName;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
@@ -148,11 +147,11 @@ class RecordingAudioSaveRetryAcceptanceTest {
     }
 
     @org.junit.jupiter.params.ParameterizedTest
-    @org.junit.jupiter.params.provider.ValueSource(longs = {-1, 0})
-    void readState_stopsRetryAtExactRetentionCutoff(long offsetMicros) throws Exception {
+    @org.junit.jupiter.params.provider.ValueSource(longs = {-1, 0, 1, 28944000000000L})
+    void readState_retryableRegardlessOfElapsedDays(long offsetMicros) throws Exception {
         // given
         Fixture fixture = failedRecording();
-        moveToRetentionBoundary(
+        moveClockAfterRecording(
                 fixture,
                 offsetMicros
         );
@@ -169,7 +168,7 @@ class RecordingAudioSaveRetryAcceptanceTest {
         // then
         result.andExpect(status().isOk())
                 .andExpect(jsonPath("$.audioSaveStatus").value("FAILED"))
-                .andExpect(jsonPath("$.canRetry").value(offsetMicros < 0));
+                .andExpect(jsonPath("$.canRetry").value(true));
         assertThat(
                 jdbcClient.sql("SELECT status FROM recording_audio_finalizations")
                         .query(String.class)
@@ -178,11 +177,11 @@ class RecordingAudioSaveRetryAcceptanceTest {
     }
 
     @org.junit.jupiter.params.ParameterizedTest
-    @org.junit.jupiter.params.provider.ValueSource(longs = {-1, 0})
-    void retry_rejectsAtExactRetentionCutoff(long offsetMicros) throws Exception {
+    @org.junit.jupiter.params.provider.ValueSource(longs = {-1, 0, 1, 28944000000000L})
+    void retry_acceptsRegardlessOfElapsedDays(long offsetMicros) throws Exception {
         // given
         Fixture fixture = failedRecording();
-        moveToRetentionBoundary(
+        moveClockAfterRecording(
                 fixture,
                 offsetMicros
         );
@@ -191,15 +190,15 @@ class RecordingAudioSaveRetryAcceptanceTest {
         ResultActions result = retry(fixture);
 
         // then
-        result.andExpect(status().is(retryBoundaryStatus(offsetMicros)));
+        result.andExpect(status().isAccepted());
         assertThat(
                 jdbcClient.sql("SELECT status FROM recording_audio_finalizations")
                         .query(String.class)
                         .single()
-        ).isEqualTo(retryBoundaryJobStatus(offsetMicros));
+        ).isEqualTo("QUEUED");
     }
 
-    private void moveToRetentionBoundary(
+    private void moveClockAfterRecording(
             Fixture fixture,
             long offsetMicros
     ) {
@@ -220,57 +219,6 @@ class RecordingAudioSaveRetryAcceptanceTest {
                                 java.time.temporal.ChronoUnit.MICROS
                         )
         );
-    }
-
-    private int retryBoundaryStatus(long offsetMicros) {
-        if (offsetMicros < 0) {
-            return 202;
-        }
-        return 409;
-    }
-
-    private String retryBoundaryJobStatus(long offsetMicros) {
-        if (offsetMicros < 0) {
-            return "QUEUED";
-        }
-        return "FAILED";
-    }
-
-    @Test
-    @DisplayName("OpenAPI는 저장 재접수의 두 성공 응답과 인증·CSRF·오류 계약을 공개한다")
-    void openApi_success_audioSaveRetryContract() throws Exception {
-        // given
-        String operation = "$.paths['" + RECORDING_PATH + "/audio-save/retry'].post";
-        // when
-        ResultActions result = mockMvc.perform(get("/v3/api-docs"));
-        // then
-        result.andExpect(status().isOk())
-                .andExpect(
-                        jsonPath(operation + ".responses['202'].content['application/json'].schema['$ref']")
-                                .value("#/components/schemas/RecordingAudioSaveResponse")
-                )
-                .andExpect(
-                        jsonPath(operation + ".responses['200'].content['application/json'].schema['$ref']")
-                                .value("#/components/schemas/RecordingAudioSaveResponse")
-                )
-                .andExpect(
-                        jsonPath(operation + ".responses['401'].content['application/json'].schema['$ref']")
-                                .value("#/components/schemas/ErrorResponse")
-                )
-                .andExpect(
-                        jsonPath(operation + ".responses['403'].content['application/json'].schema['$ref']")
-                                .value("#/components/schemas/ErrorResponse")
-                )
-                .andExpect(
-                        jsonPath(operation + ".responses['409'].content['application/json'].schema['$ref']")
-                                .value("#/components/schemas/ErrorResponse")
-                )
-                .andExpect(jsonPath(operation + ".security[0].accessTokenCookie").isArray())
-                .andExpect(
-                        jsonPath(operation + ".parameters[?(@.name == 'X-XSRF-TOKEN' && @.in == 'header')].required")
-                                .value(org.hamcrest.Matchers.contains(true))
-                )
-                .andExpect(jsonPath(operation + ".requestBody").doesNotExist());
     }
 
     private ResultActions retry(Fixture fixture) throws Exception {

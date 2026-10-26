@@ -26,7 +26,7 @@ class DocumentTopicOperationTest {
                 "TIMEOUT"
         );
         operation.claim(NOW.plusSeconds(7));
-        operation.recover(NOW.plusSeconds(98));
+        operation.recover(NOW.plusSeconds(188));
         assertThat(operation.getStartedAt()).isEqualTo(NOW.plusSeconds(1));
     }
 

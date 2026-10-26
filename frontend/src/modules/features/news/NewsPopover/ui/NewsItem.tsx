@@ -1,5 +1,5 @@
 import styled from "@emotion/styled";
-import { getRouterPath } from "@routes/PATH_ROUTE";
+import { getRouterPath, isWorkspaceRouteKey } from "@routes/PATH_ROUTE";
 import { Link, useParams } from "react-router";
 
 import ChevronRightIcon from "@/assets/icons/chevronRight.svg";
@@ -9,7 +9,7 @@ import type { ReleaseNoteItem } from "@/shared/types/releaseNote";
  * 새 소식 패널의 항목 하나. 제목과 설명 아래에 이미지와 「바로 가보기」는 있을 때만 보여 줘요(NEWS-R4).
  *
  * 피드백으로 고친 항목에는 맨 위에 「피드백 덕분에 바뀌었어요」 칩을 붙여요.
- * 「바로 가보기」는 지금 보고 있는 워크스페이스의 화면으로 옮겨요.
+ * 「바로 가보기」는 지금 보고 있는 워크스페이스의 화면으로 옮겨요. 앱에 없는 화면 이름이면 버튼을 숨겨요.
  */
 export default function NewsItem({
   title,
@@ -27,8 +27,8 @@ export default function NewsItem({
       <Description>{description}</Description>
       {/* 무엇이 바뀌었는지는 제목과 설명이 말해 주므로 이미지는 꾸밈으로 둬요 */}
       {image && <Image src={image} alt="" />}
-      {/* 워크스페이스 밖에서 열면 옮길 화면의 주소를 만들 수 없어요 */}
-      {link && workspaceId && (
+      {/* 워크스페이스 밖에서 열거나 Notion에 적힌 화면이 앱에 없으면 옮길 주소를 만들 수 없어요 */}
+      {link && workspaceId && isWorkspaceRouteKey(link) && (
         <GoLink to={getRouterPath({ routeKey: link, params: { workspaceId } })}>
           바로 가보기
           <ChevronRightIcon size={12} />

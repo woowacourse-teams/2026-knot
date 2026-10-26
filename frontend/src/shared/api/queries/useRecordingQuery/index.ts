@@ -10,6 +10,8 @@ const POLL_INTERVAL_MS = 3000;
 interface UseRecordingQueryParams {
   workspaceId: number;
   recordingId: number;
+  /** `false`면 저절로 조회하지 않고 `refetch`로 부를 때만 조회해요. 기본값은 `true` */
+  isEnabled?: boolean;
 }
 
 /**
@@ -31,10 +33,12 @@ interface UseRecordingQueryParams {
 const useRecordingQuery = ({
   workspaceId,
   recordingId,
+  isEnabled = true,
 }: UseRecordingQueryParams) => {
   return useQuery({
     queryKey: recordingKeys.detail({ workspaceId, recordingId }),
     queryFn: () => getRecordingApi({ workspaceId, recordingId }),
+    enabled: isEnabled,
     refetchInterval: (query) => {
       const { data, error } = query.state;
 

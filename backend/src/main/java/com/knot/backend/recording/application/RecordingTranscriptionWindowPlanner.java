@@ -8,6 +8,8 @@ import com.knot.backend.recording.domain.model.AudioManifestPart;
 import com.knot.backend.recording.domain.model.RecordingAudioChunk;
 import com.knot.backend.recording.domain.model.RecordingAudioChunkStatus;
 import com.knot.backend.recording.domain.model.RecordingTranscriptionWindow;
+import com.knot.backend.recording.domain.model.TranscriptionDecodePolicy;
+import com.knot.backend.recording.domain.model.TranscriptionWindowShape;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
@@ -34,11 +36,47 @@ public class RecordingTranscriptionWindowPlanner {
             List<RecordingAudioChunk> orderedChunks,
             Instant now
     ) {
+        return plan(
+                recordingId,
+                new Shape(
+                        pipelineVersion,
+                        coreFrames,
+                        contextFrames,
+                        contextFrames,
+                        null,
+                        null
+                ),
+                orderedChunks,
+                now
+        );
+    }
+
+    /** 녹음 중에는 마지막 구간을 알 수 없으므로 등록하는 구간은 모두 마지막이 아니다. */
+    public List<RecordingTranscriptionWindow> plan(
+            long recordingId,
+            TranscriptionWindowShape shape,
+            List<RecordingAudioChunk> orderedChunks,
+            Instant now
+    ) {
+        return plan(
+                recordingId,
+                Shape.of(shape),
+                orderedChunks,
+                now
+        );
+    }
+
+    private List<RecordingTranscriptionWindow> plan(
+            long recordingId,
+            Shape shape,
+            List<RecordingAudioChunk> orderedChunks,
+            Instant now
+    ) {
+        String pipelineVersion = shape.pipelineVersion();
+        long coreFrames = shape.coreFrames();
         validateInput(
                 recordingId,
-                pipelineVersion,
-                coreFrames,
-                contextFrames,
+                shape,
                 orderedChunks,
                 now
         );
@@ -53,13 +91,14 @@ public class RecordingTranscriptionWindowPlanner {
         long availableFrames = last.getSampleOffset() + last.getFrameCount();
         List<RecordingTranscriptionWindow> windows = new ArrayList<>();
         int firstPartIndex = 0;
-        for (long coreStart = 0; coreStart + coreFrames + contextFrames <= availableFrames; coreStart += coreFrames) {
+        for (long coreStart = 0; coreStart + coreFrames
+                + shape.afterFrames() <= availableFrames; coreStart += coreFrames) {
             long coreEnd = coreStart + coreFrames;
             long inputStart = Math.max(
                     0,
-                    coreStart - contextFrames
+                    coreStart - shape.beforeFrames()
             );
-            long inputEnd = coreEnd + contextFrames;
+            long inputEnd = coreEnd + shape.afterFrames();
             while (firstPartIndex < prefix.size() && endFrame(prefix.get(firstPartIndex)) <= inputStart) {
                 firstPartIndex++;
             }
@@ -86,6 +125,7 @@ public class RecordingTranscriptionWindowPlanner {
                             inputStart,
                             inputEnd,
                             manifestJson,
+                            shape.policy(),
                             UUID.randomUUID(),
                             now
                     )
@@ -103,11 +143,50 @@ public class RecordingTranscriptionWindowPlanner {
             List<AudioManifestPart> frozenParts,
             Instant now
     ) {
+        return planFinal(
+                recordingId,
+                new Shape(
+                        pipelineVersion,
+                        coreFrames,
+                        contextFrames,
+                        contextFrames,
+                        null,
+                        null
+                ),
+                totalFrames,
+                frozenParts,
+                now
+        );
+    }
+
+    public List<RecordingTranscriptionWindow> planFinal(
+            long recordingId,
+            TranscriptionWindowShape shape,
+            long totalFrames,
+            List<AudioManifestPart> frozenParts,
+            Instant now
+    ) {
+        return planFinal(
+                recordingId,
+                Shape.of(shape),
+                totalFrames,
+                frozenParts,
+                now
+        );
+    }
+
+    private List<RecordingTranscriptionWindow> planFinal(
+            long recordingId,
+            Shape shape,
+            long totalFrames,
+            List<AudioManifestPart> frozenParts,
+            Instant now
+    ) {
+        String pipelineVersion = shape.pipelineVersion();
+        long coreFrames = shape.coreFrames();
         validateInput(
                 recordingId,
-                pipelineVersion,
-                coreFrames,
-                contextFrames,
+                shape,
                 List.of(),
                 now
         );
@@ -125,10 +204,10 @@ public class RecordingTranscriptionWindowPlanner {
             );
             long inputStart = Math.max(
                     0,
-                    coreStart - contextFrames
+                    coreStart - shape.beforeFrames()
             );
             long inputEnd = Math.min(
-                    coreEnd + contextFrames,
+                    coreEnd + shape.afterFrames(),
                     totalFrames
             );
             while (firstPartIndex < frozenParts.size() && frozenParts.get(firstPartIndex)
@@ -163,6 +242,7 @@ public class RecordingTranscriptionWindowPlanner {
                             inputStart,
                             inputEnd,
                             manifest,
+                            shape.policy(coreEnd == totalFrames),
                             UUID.randomUUID(),
                             now
                     )
@@ -179,11 +259,46 @@ public class RecordingTranscriptionWindowPlanner {
             PreparedWindowSource source,
             Instant now
     ) {
+        return planPrepared(
+                recordingId,
+                new Shape(
+                        pipelineVersion,
+                        coreFrames,
+                        contextFrames,
+                        contextFrames,
+                        null,
+                        null
+                ),
+                source,
+                now
+        );
+    }
+
+    public List<RecordingTranscriptionWindow> planPrepared(
+            long recordingId,
+            TranscriptionWindowShape shape,
+            PreparedWindowSource source,
+            Instant now
+    ) {
+        return planPrepared(
+                recordingId,
+                Shape.of(shape),
+                source,
+                now
+        );
+    }
+
+    private List<RecordingTranscriptionWindow> planPrepared(
+            long recordingId,
+            Shape shape,
+            PreparedWindowSource source,
+            Instant now
+    ) {
+        String pipelineVersion = shape.pipelineVersion();
+        long coreFrames = shape.coreFrames();
         validateInput(
                 recordingId,
-                pipelineVersion,
-                coreFrames,
-                contextFrames,
+                shape,
                 List.of(),
                 now
         );
@@ -206,13 +321,13 @@ public class RecordingTranscriptionWindowPlanner {
             );
             long inputStart = Math.max(
                     0,
-                    coreStart - contextFrames
+                    coreStart - shape.beforeFrames()
             );
             long inputEnd = Math.min(
-                    coreEnd + contextFrames,
+                    coreEnd + shape.afterFrames(),
                     source.totalFrames()
             );
-            if (inputEnd - inputStart > 960_000) {
+            if (inputEnd - inputStart > TranscriptionWindowShape.MAX_INPUT_FRAMES) {
                 throw new RecordingException(RecordingErrorCode.INVALID_RECORDING_DATA);
             }
             String manifest = mapper.writeValueAsString(
@@ -234,6 +349,7 @@ public class RecordingTranscriptionWindowPlanner {
                             inputStart,
                             inputEnd,
                             manifest,
+                            shape.policy(coreEnd == source.totalFrames()),
                             UUID.randomUUID(),
                             now
                     )
@@ -287,16 +403,17 @@ public class RecordingTranscriptionWindowPlanner {
 
     private void validateInput(
             long recordingId,
-            String pipelineVersion,
-            long coreFrames,
-            long contextFrames,
+            Shape shape,
             List<RecordingAudioChunk> orderedChunks,
             Instant now
     ) {
+        String pipelineVersion = shape.pipelineVersion();
         if (recordingId <= 0 || pipelineVersion == null || pipelineVersion.isBlank()
-                || pipelineVersion.length() > MAX_PIPELINE_VERSION_LENGTH || coreFrames < MIN_CORE_FRAMES
-                || coreFrames > AudioChunkDescriptor.MAX_TOTAL_FRAME_COUNT || contextFrames < 0
-                || contextFrames > AudioChunkDescriptor.MAX_TOTAL_FRAME_COUNT || orderedChunks == null || now == null) {
+                || pipelineVersion.length() > MAX_PIPELINE_VERSION_LENGTH || shape.coreFrames() < MIN_CORE_FRAMES
+                || shape.coreFrames() > AudioChunkDescriptor.MAX_TOTAL_FRAME_COUNT || shape.beforeFrames() < 0
+                || shape.beforeFrames() > AudioChunkDescriptor.MAX_TOTAL_FRAME_COUNT || shape.afterFrames() < 0
+                || shape.afterFrames() > AudioChunkDescriptor.MAX_TOTAL_FRAME_COUNT || orderedChunks == null
+                || now == null) {
             throw new RecordingException(RecordingErrorCode.INVALID_RECORDING_DATA);
         }
     }
@@ -358,5 +475,37 @@ public class RecordingTranscriptionWindowPlanner {
             long inputEndFrame,
             List<AudioManifestPart> parts
     ) {
+    }
+
+    /** 구간 길이와 디코딩 정책. 마지막 구간 정책은 전체 길이를 아는 종료 후 계획에서만 쓴다. */
+    private record Shape(
+            String pipelineVersion,
+            long coreFrames,
+            long beforeFrames,
+            long afterFrames,
+            TranscriptionDecodePolicy middlePolicy,
+            TranscriptionDecodePolicy lastPolicy
+    ) {
+        private static Shape of(TranscriptionWindowShape shape) {
+            return new Shape(
+                    shape.pipelineVersion(),
+                    shape.coreFrames(),
+                    shape.beforeFrames(),
+                    shape.afterFrames(),
+                    shape.decodePolicy(false),
+                    shape.decodePolicy(true)
+            );
+        }
+
+        private TranscriptionDecodePolicy policy() {
+            return middlePolicy;
+        }
+
+        private TranscriptionDecodePolicy policy(boolean lastWindow) {
+            if (lastWindow) {
+                return lastPolicy;
+            }
+            return middlePolicy;
+        }
     }
 }

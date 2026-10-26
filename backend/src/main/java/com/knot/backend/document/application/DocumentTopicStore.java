@@ -5,6 +5,7 @@ import com.knot.backend.document.application.dto.result.DocumentTopicTarget;
 import com.knot.backend.document.domain.model.DocumentTopicPlan;
 import java.time.Instant;
 import java.util.List;
+import java.util.Set;
 
 public interface DocumentTopicStore {
 
@@ -19,6 +20,26 @@ public interface DocumentTopicStore {
     );
 
     List<DocumentTopicTarget> targets(long operationId);
+
+    List<DocumentTopicTarget> readyPending(
+            long operationId,
+            int limit,
+            Set<Long> excluded,
+            Instant now
+    );
+
+    boolean allPending(
+            long operationId,
+            Set<Long> documentIds
+    );
+
+    boolean retryBatch(
+            long operationId,
+            Set<Long> documentIds,
+            Instant retryAt
+    );
+
+    Instant nextBatchAttempt(long operationId);
 
     List<DocumentTopicCandidate> categories(long operationId);
 

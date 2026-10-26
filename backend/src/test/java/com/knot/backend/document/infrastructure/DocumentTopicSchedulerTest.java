@@ -1,6 +1,7 @@
 package com.knot.backend.document.infrastructure;
 
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
@@ -9,7 +10,9 @@ import static org.mockito.Mockito.when;
 
 import com.knot.backend.document.application.DocumentTopicCancellationService;
 import com.knot.backend.document.application.DocumentTopicWorker;
+import com.knot.backend.document.application.DocumentTopicRestorationWorker;
 import com.knot.backend.document.domain.model.DocumentTopicOperation;
+import com.knot.backend.document.domain.model.DocumentTopicOperationKind;
 import com.knot.backend.document.domain.repository.DocumentTopicOperationRepository;
 import java.time.Clock;
 import java.time.Instant;
@@ -29,11 +32,13 @@ class DocumentTopicSchedulerTest {
 
     private final DocumentTopicOperationRepository operations = mock(DocumentTopicOperationRepository.class);
     private final DocumentTopicWorker worker = mock(DocumentTopicWorker.class);
+    private final DocumentTopicRestorationWorker restorations = mock(DocumentTopicRestorationWorker.class);
     private final TaskExecutor executor = mock(TaskExecutor.class);
     private final DocumentTopicCancellationService cancellations = mock(DocumentTopicCancellationService.class);
     private final DocumentTopicScheduler scheduler = new DocumentTopicScheduler(
             operations,
             worker,
+            restorations,
             executor,
             Clock.fixed(
                     NOW,
@@ -106,6 +111,39 @@ class DocumentTopicSchedulerTest {
         verifyNoInteractions(
                 executor,
                 worker
+        );
+    }
+
+    @Test
+    @DisplayName("복원은 별도 워커로 보내고 재정리만 LLM 워커로 보낸다")
+    void dispatch_success_routesOperationKind() {
+        // given
+        DocumentTopicOperation restore = operation(1);
+        DocumentTopicOperation reorganize = operation(2);
+        when(restore.getKind()).thenReturn(DocumentTopicOperationKind.RESTORE);
+        when(reorganize.getKind()).thenReturn(DocumentTopicOperationKind.REORGANIZE);
+        when(operations.findDispatchable(NOW)).thenReturn(
+                List.of(
+                        restore,
+                        reorganize
+                )
+        );
+        doAnswer(invocation -> {
+            Runnable task = invocation.getArgument(0);
+            task.run();
+            return null;
+        }).when(executor)
+                .execute(ArgumentMatchers.any(Runnable.class));
+        // when
+        scheduler.dispatch();
+        // then
+        verify(restorations).execute(
+                12,
+                1
+        );
+        verify(worker).execute(
+                12,
+                2
         );
     }
 

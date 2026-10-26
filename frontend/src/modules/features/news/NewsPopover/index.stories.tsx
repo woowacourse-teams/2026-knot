@@ -1,8 +1,10 @@
+import { RELEASE_NOTES_RELAY_PATH } from "@api/fetch/relay/n";
 import styled from "@emotion/styled";
 import FeedbackPanel from "@features/feedback/FeedbackPanel";
 import { ToastProvider } from "@provider/context/toastContext";
 import { PATH_ROUTE } from "@routes/PATH_ROUTE";
 import type { Meta, StoryObj } from "@storybook/react-webpack5";
+import { http, HttpResponse } from "msw";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { userEvent, within } from "storybook/test";
 
@@ -23,7 +25,9 @@ const Stage = styled.div`
 /** 버튼을 눌러 메뉴를 열어요 */
 const openMenu = async (canvasElement: HTMLElement) => {
   await userEvent.click(
-    within(canvasElement).getByRole("button", { name: "새 소식과 피드백" }),
+    await within(canvasElement).findByRole("button", {
+      name: "새 소식과 피드백",
+    }),
   );
 };
 
@@ -46,12 +50,13 @@ const selectMenuItem = async (
  * - 버튼을 다시 누르거나, 바깥을 누르거나, ESC를 누르면 닫아요. 메뉴나 패널 안을 눌러서는 닫히지 않아요. 닫히면 버튼으로 포커스가 돌아와요.
  * - 피드백을 보내는 동안에는 바깥 · ESC · 버튼으로 닫히지 않아요.
  * - 열려 있는 동안 버튼은 채워진 모양이에요. 닫혀 있을 때 마우스를 올리거나 키보드로 포커스하면 툴팁 「새 소식과 피드백」이 떠요.
- * - 이 기기에서 새 소식을 한 번도 열지 않았으면 처음 그릴 때 메뉴 없이 새 소식 패널을 저절로 열어요. 녹음 중이거나 노트가 없으면 열지 않아요.
+ * - 노트를 받기 전에는 버튼을 그리지 않아요. 저절로 열지는 노트를 받은 뒤에 정해요.
+ * - 이 기기에서 새 소식을 한 번도 열지 않았으면 노트를 받은 뒤 메뉴 없이 새 소식 패널을 저절로 열어요. 녹음 중이거나 노트가 없거나 받지 못하면 열지 않아요.
  * - 새 소식 패널이 열리면(저절로든 메뉴에서 골라서든) 맨 위 노트를 읽음으로 남겨 다음부터는 저절로 열지 않아요.
  * - 휴대폰에서는 피드백을 사이드바에서 열어서, 버튼을 누르면 메뉴 없이 새 소식 패널을 바로 열어요.
  *
  * **패널 내용**
- * - 노트는 기획자가 릴리즈 직전에 `shared/constants/releaseNote`에 써서 배포와 함께 내요. 서버에서 받아 오지 않아요.
+ * - 노트는 main 머지마다 GitHub Actions의 Claude가 Notion 새 소식 DB에 쓰고, 프론트 Worker(`/relay/n`)가 그 DB에서 읽어 와요. 받지 못하면 빈 상태를 보여 줘요.
  * - 노트를 배포 날짜별(「10월 20일」)로 묶고 최신 날짜를 맨 위에 둬요. 같은 날 두 번 릴리즈하면 한 묶음에 모아요.
  * - 항목은 제목과 설명을 보여 주고, 이미지와 「바로 가보기」는 노트에 있을 때만 보여 줘요. 「바로 가보기」는 지금 보고 있는 워크스페이스의 그 화면으로 옮겨요.
  * - 사용자가 알려 준 문제를 고친 항목에는 「피드백 덕분에 바뀌었어요」 칩을 붙여요.
@@ -150,10 +155,16 @@ export const NoteList: Story = {
   },
 };
 
-/** 아직 낸 노트가 하나도 없을 때예요 */
+/** 아직 낸 노트가 하나도 없거나 노트를 받지 못했을 때예요 */
 export const Empty: Story = {
-  args: { notes: [] },
   parameters: {
+    msw: {
+      handlers: {
+        releaseNotes: http.get(`*${RELEASE_NOTES_RELAY_PATH}`, () =>
+          HttpResponse.json([]),
+        ),
+      },
+    },
     design: {
       type: "figma",
       url: "https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=4892-55258",

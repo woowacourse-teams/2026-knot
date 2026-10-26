@@ -18,7 +18,10 @@
     "commit": "node scripts/commit.mjs",
     "explain-diff": "node scripts/explain-diff.mjs",
     "storybook": "storybook dev -p 6006",
-    "build-storybook": "storybook build"
+    "build-storybook": "storybook build",
+    "test:qa": "node --test scripts/qa-link.test.mjs",
+    "test:release-note": "node --test scripts/release-note.test.mjs",
+    "qa:link": "node scripts/qa-link.mjs"
   },
   "devDependencies": {
     "@emotion/babel-plugin": "^11.13.5",

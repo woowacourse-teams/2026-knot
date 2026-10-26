@@ -1,9 +1,14 @@
 import { http, HttpResponse } from "msw";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { mockServer } from "@api/mock/server";
 
-import { relayToNotion, relayToPostHog, relayToSentry } from ".";
+import {
+  relayReleaseNotes,
+  relayToNotion,
+  relayToPostHog,
+  relayToSentry,
+} from ".";
 
 const SITE = "https://dev.knoted.kr";
 
@@ -465,5 +470,243 @@ describe("relayToNotion", () => {
     const response = await relayToNotion(toFeedbackRequest(feedback), env);
 
     expect(response.status).toBe(401);
+  });
+});
+
+describe("relayReleaseNotes", () => {
+  const DATABASE_ID = "release-note-db";
+  const NOTION_QUERY_URL = `https://api.notion.com/v1/databases/${DATABASE_ID}/query`;
+  const env = {
+    ASSETS: { fetch: vi.fn() },
+    NOTION_RELEASE_NOTE_TOKEN: "secret_read",
+    NOTION_RELEASE_NOTE_DATABASE_ID: DATABASE_ID,
+  };
+
+  interface RowParams {
+    noteId?: string;
+    releasedAt?: string;
+    title?: string;
+    description?: string;
+    link?: string;
+    isFromFeedback?: boolean;
+    isHighlight?: boolean;
+    order?: number | null;
+  }
+
+  const toText = (value: string) => (value ? [{ plain_text: value }] : []);
+
+  /** 새 소식 DB의 한 줄(항목 하나)을 Notion 조회 응답 모양으로 만들어요 */
+  const toRow = ({
+    noteId = "pr-947",
+    releasedAt = "2026-10-25",
+    title = "제목",
+    description = "설명",
+    link = "",
+    isFromFeedback = false,
+    isHighlight = false,
+    order = 1,
+  }: RowParams = {}) => ({
+    object: "page",
+    properties: {
+      제목: { type: "title", title: toText(title) },
+      "노트 id": { type: "rich_text", rich_text: toText(noteId) },
+      "배포 날짜": {
+        type: "date",
+        date: releasedAt ? { start: releasedAt } : null,
+      },
+      설명: { type: "rich_text", rich_text: toText(description) },
+      "바로 가보기": { type: "rich_text", rich_text: toText(link) },
+      "피드백 덕분": { type: "checkbox", checkbox: isFromFeedback },
+      "큰 변화": { type: "checkbox", checkbox: isHighlight },
+      순서: { type: "number", number: order },
+    },
+  });
+
+  /** Notion 조회로 넘어간 요청을 남기고, 정해 둔 응답을 돌려줘요 */
+  const captureNotionQueries = (
+    createResponse: () => Response = () =>
+      HttpResponse.json({ results: [], has_more: false }),
+  ) => {
+    const requests: Request[] = [];
+    mockServer.use(
+      http.post(NOTION_QUERY_URL, ({ request }) => {
+        requests.push(request.clone());
+
+        return createResponse();
+      }),
+    );
+
+    return requests;
+  };
+
+  const respondRows = (rows: ReturnType<typeof toRow>[]) =>
+    captureNotionQueries(() =>
+      HttpResponse.json({ results: rows, has_more: false }),
+    );
+
+  const requestNotes = (path = "/relay/n", { method = "GET" } = {}) =>
+    relayReleaseNotes(new Request(`${SITE}${path}`, { method }), env);
+
+  // Workers의 Cache API는 테스트 환경에 없어서, 주소별로 응답을 담아 두는 캐시로 바꿔 둬요
+  beforeEach(() => {
+    const store = new Map<string, Response>();
+    vi.stubGlobal("caches", {
+      open: async () => ({
+        match: async (request: Request) => store.get(request.url)?.clone(),
+        put: async (request: Request, response: Response) => {
+          store.set(request.url, response);
+        },
+      }),
+    });
+  });
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("새 소식 DB를 읽어 노트별로 묶고, 최신 노트를 맨 앞에, 항목은 순서대로 돌려준다", async () => {
+    const requests = respondRows([
+      toRow({ noteId: "v0.1.0", releasedAt: "2026-10-19", title: "옛 항목" }),
+      toRow({ noteId: "pr-947", title: "둘째 항목", order: 2 }),
+      toRow({
+        noteId: "pr-947",
+        title: "첫 항목",
+        description: "첫 설명",
+        link: "CHAT",
+        isFromFeedback: true,
+        isHighlight: true,
+        order: 1,
+      }),
+    ]);
+
+    const response = await requestNotes();
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Content-Type")).toBe("application/json");
+    expect(await response.json()).toEqual([
+      {
+        id: "pr-947",
+        releasedAt: "2026-10-25",
+        items: [
+          {
+            title: "첫 항목",
+            description: "첫 설명",
+            link: "CHAT",
+            isFromFeedback: true,
+            isHighlight: true,
+          },
+          {
+            title: "둘째 항목",
+            description: "설명",
+            isFromFeedback: false,
+            isHighlight: false,
+          },
+        ],
+      },
+      {
+        id: "v0.1.0",
+        releasedAt: "2026-10-19",
+        items: [
+          {
+            title: "옛 항목",
+            description: "설명",
+            isFromFeedback: false,
+            isHighlight: false,
+          },
+        ],
+      },
+    ]);
+    const [upstream] = requests;
+    expect(upstream.headers.get("Authorization")).toBe("Bearer secret_read");
+    expect(upstream.headers.get("Notion-Version")).toBe("2022-06-28");
+    expect(await upstream.json()).toEqual({
+      page_size: 100,
+      sorts: [{ property: "배포 날짜", direction: "descending" }],
+    });
+  });
+
+  it("같은 날 낸 노트는 나중에 머지한 PR의 노트를 앞에 둔다", async () => {
+    respondRows([toRow({ noteId: "pr-998" }), toRow({ noteId: "pr-1002" })]);
+
+    const response = await requestNotes();
+    const notes: { id: string }[] = await response.json();
+
+    expect(notes.map(({ id }) => id)).toEqual(["pr-1002", "pr-998"]);
+  });
+
+  it.each<[string, RowParams]>([
+    ["노트 id가 없는", { noteId: "" }],
+    ["배포 날짜가 없는", { releasedAt: "" }],
+    ["제목이 없는", { title: "" }],
+    ["설명이 없는", { description: "" }],
+  ])("%s 줄은 빼고 돌려준다", async (_, row) => {
+    respondRows([toRow({ title: "맞는 항목" }), toRow(row)]);
+
+    const response = await requestNotes();
+    const [note] = await response.json();
+
+    expect(note.items).toHaveLength(1);
+    expect(note.items[0].title).toBe("맞는 항목");
+  });
+
+  it("바로 가보기는 화면 이름을 확인하지 않고 그대로 넘겨, 모르는 화면이어도 항목은 남긴다", async () => {
+    respondRows([toRow({ link: "LOGIN" })]);
+
+    const response = await requestNotes();
+    const [note] = await response.json();
+
+    expect(note.items[0].link).toBe("LOGIN");
+  });
+
+  it("새 소식 DB가 비어 있으면 빈 배열을 돌려준다", async () => {
+    respondRows([]);
+
+    const response = await requestNotes();
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual([]);
+  });
+
+  it("한 번 읽은 노트는 캐시에서 돌려주고, 쿼리 문자열을 바꿔도 Notion을 다시 부르지 않는다", async () => {
+    const requests = respondRows([toRow()]);
+
+    await requestNotes();
+    const cached = await requestNotes("/relay/n?nocache=1");
+
+    expect(requests).toHaveLength(1);
+    expect(await cached.json()).toHaveLength(1);
+  });
+
+  it.each([
+    ["토큰이", { NOTION_RELEASE_NOTE_TOKEN: undefined }],
+    ["DB ID가", { NOTION_RELEASE_NOTE_DATABASE_ID: undefined }],
+  ])("%s 없으면 읽지 않고 503을 돌려준다", async (_, missing) => {
+    const requests = captureNotionQueries();
+
+    const response = await relayReleaseNotes(new Request(`${SITE}/relay/n`), {
+      ...env,
+      ...missing,
+    });
+
+    expect(response.status).toBe(503);
+    expect(requests).toHaveLength(0);
+  });
+
+  it("Notion이 실패하면 그 응답 코드를 그대로 돌려주고 캐시하지 않는다", async () => {
+    const requests = captureNotionQueries(
+      () => new HttpResponse('{"code":"object_not_found"}', { status: 404 }),
+    );
+
+    const response = await requestNotes();
+    await requestNotes();
+
+    expect(response.status).toBe(404);
+    expect(requests).toHaveLength(2);
+  });
+
+  it("GET이 아니면 읽지 않고 405를 돌려준다", async () => {
+    const requests = captureNotionQueries();
+
+    const response = await requestNotes("/relay/n", { method: "POST" });
+
+    expect(response.status).toBe(405);
+    expect(requests).toHaveLength(0);
   });
 });

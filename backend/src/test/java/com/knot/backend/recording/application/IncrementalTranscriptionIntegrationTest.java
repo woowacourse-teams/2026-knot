@@ -2,6 +2,8 @@ package com.knot.backend.recording.application;
 
 import com.knot.backend.recording.domain.RecordingException;
 import com.knot.backend.recording.domain.model.TranscriptionWindowStatus;
+import com.knot.backend.recording.domain.model.TranscriptionDecodePolicy;
+import com.knot.backend.recording.domain.model.TranscriptionWindowShape;
 import com.knot.backend.recording.domain.model.TranscriptionStatus;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowable;
@@ -35,8 +37,10 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -655,6 +659,76 @@ class IncrementalTranscriptionIntegrationTest {
                         null
                 )
         );
+    }
+
+    @Test
+    @DisplayName("녹음 pipeline은 기존 30초 버전과 새 2분 버전만 허용한다")
+    void migration_success_pipelineVersionsCoexist() {
+        // given
+        String update = "UPDATE recording_sessions SET incremental_pipeline_version=:pipeline WHERE id=1";
+
+        // when
+        int twoMinutes = jdbc.sql(update)
+                .param(
+                        "pipeline",
+                        TranscriptionWindowShape.LIVE_TWO_MINUTES.pipelineVersion()
+                )
+                .update();
+        int thirtySeconds = jdbc.sql(update)
+                .param(
+                        "pipeline",
+                        PIPELINE
+                )
+                .update();
+        Throwable unknown = catchThrowable(
+                () -> jdbc.sql(update)
+                        .param(
+                                "pipeline",
+                                "pcm-window-v3"
+                        )
+                        .update()
+        );
+
+        // then
+        assertThat(twoMinutes + thirtySeconds).isEqualTo(2);
+        assertThat(unknown).isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    @Test
+    @DisplayName("2분 구간의 디코딩 정책을 저장하고 claim으로 AI 요청까지 전달한다")
+    void claim_success_twoMinuteDecodePolicy() {
+        // given
+        RecordingTranscriptionWindow saved = windows.save(
+                RecordingTranscriptionWindow.queued(
+                        1,
+                        PIPELINE,
+                        0,
+                        0,
+                        480000,
+                        0,
+                        480000,
+                        "{\"schemaVersion\":1}",
+                        TranscriptionDecodePolicy.WITH_VOCABULARY,
+                        UUID.randomUUID(),
+                        NOW
+                )
+        );
+
+        // when
+        Optional<TranscriptionWindowClaim> claimed = claim(saved.getId());
+
+        // then
+        assertThat(claimed).map(TranscriptionWindowClaim::decodePolicy)
+                .contains(TranscriptionDecodePolicy.WITH_VOCABULARY);
+        assertThat(
+                jdbc.sql("SELECT decode_policy FROM recording_transcription_windows WHERE id=:id")
+                        .param(
+                                "id",
+                                saved.getId()
+                        )
+                        .query(String.class)
+                        .single()
+        ).isEqualTo("WITH_VOCABULARY");
     }
 
     private RecordingTranscriptionWindow saveWindow(int index) {

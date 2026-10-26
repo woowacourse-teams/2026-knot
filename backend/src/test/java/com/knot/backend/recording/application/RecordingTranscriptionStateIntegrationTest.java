@@ -12,7 +12,6 @@ import com.knot.backend.testsupport.LogCapture;
 import com.knot.backend.document.DocumentFixtures;
 import com.knot.backend.document.application.DocumentGenerationIntakeService;
 import com.knot.backend.document.application.DocumentClassificationResultService;
-import com.knot.backend.document.application.DocumentRetentionCleanupService;
 import com.knot.backend.document.application.dto.result.DocumentTopicClassificationResult;
 import com.knot.backend.document.domain.repository.DocumentGenerationJobRepository;
 import com.knot.backend.recording.application.dto.result.AiTranscript;
@@ -29,6 +28,7 @@ import com.knot.backend.recording.domain.model.StoredAudioObject;
 import com.knot.backend.recording.domain.model.TranscriptionStatus;
 import com.knot.backend.testsupport.TestApplicationProperties;
 import com.knot.backend.testsupport.TestcontainersConfiguration;
+import com.knot.backend.workspace.domain.WorkspaceException;
 import com.knot.backend.workspace.domain.repository.WorkspaceRepository;
 import java.sql.Timestamp;
 import java.time.Clock;
@@ -73,8 +73,6 @@ class RecordingTranscriptionStateIntegrationTest {
     private RecordingTranscriptionStateService recordingTranscriptionStateService;
     @Autowired
     private DocumentClassificationResultService classifications;
-    @Autowired
-    private DocumentRetentionCleanupService retention;
     @Autowired
     private DocumentGenerationJobRepository documentGenerationJobRepository;
     @Autowired
@@ -232,7 +230,7 @@ class RecordingTranscriptionStateIntegrationTest {
     }
 
     @Test
-    @DisplayName("실패 재시도 후 이전 시도의 결과와 실패 통지는 무시한다")
+    @DisplayName("1년 된 오디오도 실패 재시도하고 이전 시도의 결과·실패 통지는 무시한다")
     void retry_success_ignoresOldAttempt() {
         // given
         register(
@@ -244,6 +242,16 @@ class RecordingTranscriptionStateIntegrationTest {
                 previous,
                 "AI_TIMEOUT"
         );
+        jdbc.sql("UPDATE recording_audio_uploads SET completed_at=:at,reserved_at=:at WHERE recording_id=:id")
+                .param(
+                        "at",
+                        java.sql.Timestamp.from(NOW.minus(java.time.Duration.ofDays(365)))
+                )
+                .param(
+                        "id",
+                        recordingId
+                )
+                .update();
         // when
         RecordingTranscriptionRetryResult retry = recordingTranscriptionStateService.retry(
                 workspaceId,
@@ -386,8 +394,8 @@ class RecordingTranscriptionStateIntegrationTest {
     }
 
     @Test
-    @DisplayName("다른 회원은 실패한 녹음을 재시도할 수 없다")
-    void retry_failure_otherMember() {
+    @DisplayName("녹음을 시작하지 않은 현재 멤버도 실패한 녹음의 전사를 재시도할 수 있다")
+    void retry_success_otherMember() {
         // given
         register(
                 workspaceId,
@@ -403,19 +411,101 @@ class RecordingTranscriptionStateIntegrationTest {
                 otherMember
         );
         // when
+        RecordingTranscriptionRetryResult result = recordingTranscriptionStateService.retry(
+                workspaceId,
+                otherMember,
+                recordingId
+        );
+        // then
+        assertThat(result.status()).isEqualTo(TranscriptionStatus.QUEUED);
+        assertThat(
+                recordingTranscriptionStateService.findSnapshot(recordingId)
+                        .status()
+        ).isEqualTo(TranscriptionStatus.QUEUED);
+    }
+
+    @Test
+    @DisplayName("현재 Workspace 멤버가 아니면 전사를 재시도할 수 없다")
+    void retry_failure_nonMember() {
+        // given
+        register(
+                workspaceId,
+                recordingId
+        );
+        recordingTranscriptionStateService.fail(
+                currentExecution(),
+                "AI_TIMEOUT"
+        );
+        long outsider = fixtures.saveMember("외부 회원");
+        // when
         Throwable failure = catchThrowable(
                 () -> recordingTranscriptionStateService.retry(
                         workspaceId,
-                        otherMember,
+                        outsider,
                         recordingId
                 )
         );
         // then
-        assertThat(failure).isInstanceOf(RecordingException.class);
+        assertThat(failure).isInstanceOf(WorkspaceException.class);
         assertThat(
                 recordingTranscriptionStateService.findSnapshot(recordingId)
                         .status()
         ).isEqualTo(TranscriptionStatus.FAILED);
+    }
+
+    @Test
+    @DisplayName("녹음을 시작한 멤버와 다른 멤버의 동시 전사 재시도는 한 건만 접수한다")
+    void retry_success_concurrentMembersSingleAcceptance() throws Exception {
+        // given
+        register(
+                workspaceId,
+                recordingId
+        );
+        recordingTranscriptionStateService.fail(
+                currentExecution(),
+                "AI_TIMEOUT"
+        );
+        long otherMember = fixtures.saveMember("다른 회원");
+        fixtures.join(
+                workspaceId,
+                otherMember
+        );
+        CyclicBarrier barrier = new CyclicBarrier(2);
+        List<String> outcomes;
+        // when
+        try (ExecutorService executor = Executors.newFixedThreadPool(2)) {
+            Future<String> owner = executor.submit(
+                    () -> awaitAndRetry(
+                            barrier,
+                            memberId
+                    )
+            );
+            Future<String> other = executor.submit(
+                    () -> awaitAndRetry(
+                            barrier,
+                            otherMember
+                    )
+            );
+            outcomes = List.of(
+                    owner.get(
+                            10,
+                            TimeUnit.SECONDS
+                    ),
+                    other.get(
+                            10,
+                            TimeUnit.SECONDS
+                    )
+            );
+        }
+        // then
+        assertThat(outcomes).containsExactlyInAnyOrder(
+                "ACCEPTED",
+                "TRANSCRIPTION_RETRY_NOT_ALLOWED"
+        );
+        assertThat(
+                recordingTranscriptionStateService.findSnapshot(recordingId)
+                        .status()
+        ).isEqualTo(TranscriptionStatus.QUEUED);
     }
 
     @Test
@@ -566,8 +656,8 @@ class RecordingTranscriptionStateIntegrationTest {
     }
 
     @Test
-    @DisplayName("내용 없음 원문 보존 기한 정리는 성공 상태를 유지하며 원문과 발화를 삭제한다")
-    void complete_success_retentionReleasesTranscript() {
+    @DisplayName("내용 없음 분류 뒤에도 전사 성공 상태와 원문·발화를 남기고 오디오 삭제 예약을 만들지 않는다")
+    void complete_success_noContentKeepsTranscript() {
         // given
         register(
                 workspaceId,
@@ -580,9 +670,6 @@ class RecordingTranscriptionStateIntegrationTest {
         long jobId = jdbc.sql("SELECT id FROM document_generation_jobs")
                 .query(Long.class)
                 .single();
-        long batchId = jdbc.sql("SELECT id FROM document_generation_batches")
-                .query(Long.class)
-                .single();
         transactions.executeWithoutResult(
                 status -> documentGenerationJobRepository.findByWorkspaceIdAndIdForUpdate(
                         workspaceId,
@@ -591,21 +678,22 @@ class RecordingTranscriptionStateIntegrationTest {
                         .orElseThrow()
                         .startRunning(NOW)
         );
+        // when
         classifications.completeClassification(
                 workspaceId,
                 jobId,
                 1,
                 DocumentTopicClassificationResult.fromNames(List.of())
         );
-        // when
-        retention.cleanup(
-                workspaceId,
-                recordingId,
-                batchId
-        );
         // then
-        assertThat(count("transcripts")).isZero();
-        assertThat(count("transcript_segments")).isZero();
+        assertThat(
+                jdbc.sql("SELECT processing_status FROM document_generation_batches")
+                        .query(String.class)
+                        .single()
+        ).isEqualTo("NO_CONTENT");
+        assertThat(count("transcripts")).isEqualTo(1);
+        assertThat(count("transcript_segments")).isPositive();
+        assertThat(count("recording_audio_deletion_tasks")).isZero();
         assertThat(
                 recordingTranscriptionStateService.findSnapshot(recordingId)
                         .status()
@@ -1066,8 +1154,8 @@ class RecordingTranscriptionStateIntegrationTest {
     }
 
     @Test
-    @DisplayName("원본 정리 배치 전에도 30일이 지난 음원은 전사나 문서로 채택하지 않는다")
-    void complete_success_retentionExpiredBeforeCleanup() {
+    @DisplayName("30일이 지난 사용 가능한 음원도 전사와 문서로 채택한다")
+    void complete_success_oldAudioStillAdopted() {
         // given
         register(
                 workspaceId,
@@ -1093,12 +1181,12 @@ class RecordingTranscriptionStateIntegrationTest {
                 transcript()
         );
         // then
-        assertThat(count("transcripts")).isZero();
-        assertThat(count("document_generation_jobs")).isZero();
+        assertThat(count("transcripts")).isEqualTo(1);
+        assertThat(count("document_generation_jobs")).isPositive();
         assertThat(
                 recordingTranscriptionStateService.findSnapshot(recordingId)
-                        .failureCode()
-        ).isEqualTo("RECORDING_UNAVAILABLE");
+                        .status()
+        ).isEqualTo(TranscriptionStatus.SUCCEEDED);
     }
 
     @Test
@@ -1879,6 +1967,27 @@ class RecordingTranscriptionStateIntegrationTest {
                     .orElseThrow();
             recordingTranscriptionStateService.registerAutomatic(recording.getId());
         });
+    }
+
+    private String awaitAndRetry(
+            CyclicBarrier barrier,
+            long requestedMemberId
+    ) throws Exception {
+        barrier.await(
+                5,
+                TimeUnit.SECONDS
+        );
+        try {
+            recordingTranscriptionStateService.retry(
+                    workspaceId,
+                    requestedMemberId,
+                    recordingId
+            );
+            return "ACCEPTED";
+        } catch (RecordingException exception) {
+            return exception.getErrorCode()
+                    .getCode();
+        }
     }
 
     private void awaitAndRegister(

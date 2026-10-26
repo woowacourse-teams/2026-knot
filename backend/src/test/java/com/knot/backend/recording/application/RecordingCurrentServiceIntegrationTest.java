@@ -185,8 +185,8 @@ class RecordingCurrentServiceIntegrationTest {
 
     @ParameterizedTest
     @EnumSource(value = DocumentGenerationProcessingStatus.class, names = {"SUCCEEDED", "FAILED", "NO_CONTENT"})
-    @DisplayName("최신 녹음이 최종 처리 상태면 이전 생성 중 녹음으로 대체하지 않는다")
-    void findCurrent_success_latestTerminalDoesNotFallBack(DocumentGenerationProcessingStatus status) {
+    @DisplayName("최신 녹음이 최종 상태라도 이전 생성 중 녹음을 다시 선택한다")
+    void findCurrent_success_latestTerminalRestoresPreviousProcessing(DocumentGenerationProcessingStatus status) {
         // given
         long memberId = saveMember("terminal-member");
         long workspaceId = saveWorkspace("최신 팀");
@@ -230,8 +230,240 @@ class RecordingCurrentServiceIntegrationTest {
         );
 
         // then
-        assertThat(result).isEmpty();
+        assertThat(result).hasValueSatisfying(current -> {
+            assertThat(current.recordingId()).isEqualTo(previous.id());
+            assertThat(current.status()).isEqualTo(CurrentRecordingStatus.PROCESSING);
+        });
         assertThat(storedBatch(previous.id()).get("processing_status")).isEqualTo("RUNNING");
+    }
+
+    @Test
+    void findCurrent_success_activeThenProcessingThenPreviousFailure() {
+        long memberId = saveMember("restore-member");
+        long workspaceId = saveWorkspace("복원 팀");
+        saveWorkspaceMember(
+                workspaceId,
+                memberId
+        );
+        StartedRecording failed = startRecording(
+                workspaceId,
+                memberId
+        );
+        recordingService.end(
+                workspaceId,
+                memberId,
+                failed.id(),
+                failed.control()
+        );
+        saveTranscriptionFailure(failed.id());
+        StartedRecording latest = startRecording(
+                workspaceId,
+                memberId
+        );
+        assertThat(
+                recordingService.findCurrent(
+                        workspaceId,
+                        memberId
+                )
+                        .orElseThrow()
+                        .recordingId()
+        ).isEqualTo(latest.id());
+        recordingService.end(
+                workspaceId,
+                memberId,
+                latest.id(),
+                latest.control()
+        );
+        saveBatch(
+                latest.id(),
+                DocumentGenerationProcessingStatus.RUNNING
+        );
+        assertThat(
+                recordingService.findCurrent(
+                        workspaceId,
+                        memberId
+                )
+                        .orElseThrow()
+                        .status()
+        ).isEqualTo(CurrentRecordingStatus.PROCESSING);
+        jdbcClient.sql(
+                "UPDATE document_generation_batches SET processing_status='SUCCEEDED', finished_at=CURRENT_TIMESTAMP WHERE recording_session_id=:id"
+        )
+                .param(
+                        "id",
+                        latest.id()
+                )
+                .update();
+        var result = recordingService.findCurrent(
+                workspaceId,
+                memberId
+        )
+                .orElseThrow();
+        assertThat(result.recordingId()).isEqualTo(failed.id());
+        assertThat(result.status()).isEqualTo(CurrentRecordingStatus.TRANSCRIPTION_FAILED);
+        assertThat(result.retryable()).isFalse();
+        assertThat(result.retryableJobIds()).isEmpty();
+    }
+
+    @Test
+    void findCurrent_success_documentFailureRetryableRegardlessOfUserRetriesUntilDisplayPeriod() {
+        long memberId = saveMember("document-member");
+        long workspaceId = saveWorkspace("실패 팀");
+        saveWorkspaceMember(
+                workspaceId,
+                memberId
+        );
+        StartedRecording recording = startRecording(
+                workspaceId,
+                memberId
+        );
+        recordingService.end(
+                workspaceId,
+                memberId,
+                recording.id(),
+                recording.control()
+        );
+        saveBatch(
+                recording.id(),
+                DocumentGenerationProcessingStatus.FAILED
+        );
+        long jobId = saveFailedJob(recording.id());
+        Map<String, Object> before = storedRow(
+                "document_generation_jobs",
+                jobId
+        );
+        var result = recordingService.findCurrent(
+                workspaceId,
+                memberId
+        )
+                .orElseThrow();
+        assertThat(result.status()).isEqualTo(CurrentRecordingStatus.DOCUMENT_FAILED);
+        assertThat(result.retryable()).isTrue();
+        assertThat(result.retryableJobIds()).containsExactly(jobId);
+        assertThat(
+                storedRow(
+                        "document_generation_jobs",
+                        jobId
+                )
+        ).isEqualTo(before);
+        jdbcClient.sql("UPDATE document_generation_jobs SET user_retry_count=3, attempt_count=4 WHERE id=:id")
+                .param(
+                        "id",
+                        jobId
+                )
+                .update();
+        result = recordingService.findCurrent(
+                workspaceId,
+                memberId
+        )
+                .orElseThrow();
+        assertThat(result.status()).isEqualTo(CurrentRecordingStatus.DOCUMENT_FAILED);
+        assertThat(result.retryable()).isTrue();
+        assertThat(result.retryableJobIds()).containsExactly(jobId);
+        jdbcClient.sql(
+                "UPDATE document_generation_jobs SET last_failed_at=CURRENT_TIMESTAMP - INTERVAL '169 hours', expires_at=CURRENT_TIMESTAMP - INTERVAL '1 hour' WHERE id=:id"
+        )
+                .param(
+                        "id",
+                        jobId
+                )
+                .update();
+        assertThat(
+                recordingService.findCurrent(
+                        workspaceId,
+                        memberId
+                )
+        ).isEmpty();
+    }
+
+    @Test
+    void findCurrent_success_latestFailureTieAndTenantIsolation() {
+        long memberId = saveMember("owner");
+        long otherId = saveMember("other");
+        long workspaceId = saveWorkspace("첫 팀");
+        long otherWorkspace = saveWorkspace("다른 팀");
+        saveWorkspaceMember(
+                workspaceId,
+                memberId
+        );
+        saveWorkspaceMember(
+                workspaceId,
+                otherId
+        );
+        saveWorkspaceMember(
+                otherWorkspace,
+                memberId
+        );
+        long expected = 0;
+        for (int index = 0; index < 4; index++) {
+            long targetWorkspace = index == 3 ? otherWorkspace : workspaceId;
+            long targetMember = index == 2 ? otherId : memberId;
+            StartedRecording recording = startRecording(
+                    targetWorkspace,
+                    targetMember
+            );
+            recordingService.end(
+                    targetWorkspace,
+                    targetMember,
+                    recording.id(),
+                    recording.control()
+            );
+            saveTranscriptionFailure(recording.id());
+            jdbcClient.sql("UPDATE recording_sessions SET started_at=CAST(:at AS TIMESTAMPTZ) WHERE id=:id")
+                    .param(
+                            "at",
+                            CREATED_AT.toString()
+                    )
+                    .param(
+                            "id",
+                            recording.id()
+                    )
+                    .update();
+            if (index == 1)
+                expected = recording.id();
+        }
+        assertThat(
+                recordingService.findCurrent(
+                        workspaceId,
+                        memberId
+                )
+                        .orElseThrow()
+                        .recordingId()
+        ).isEqualTo(expected);
+    }
+
+    private void saveTranscriptionFailure(long recordingId) {
+        jdbcClient.sql(
+                "INSERT INTO recording_transcriptions (recording_session_id, attempt_id, status, failure_code) VALUES (:id, :attempt, 'FAILED', 'TEST_FAILURE')"
+        )
+                .param(
+                        "id",
+                        recordingId
+                )
+                .param(
+                        "attempt",
+                        UUID.randomUUID()
+                )
+                .update();
+    }
+
+    private long saveFailedJob(long recordingId) {
+        return jdbcClient
+                .sql(
+                        """
+                                INSERT INTO document_generation_jobs
+                                    (transcript_id, batch_id, stage, status, created_at, updated_at, last_failed_at, expires_at, failure_cause)
+                                SELECT transcript_id, id, 'CLASSIFICATION', 'FAILED', accepted_at, CURRENT_TIMESTAMP,
+                                    CURRENT_TIMESTAMP, CURRENT_TIMESTAMP + INTERVAL '168 hours', 'INTERNAL'
+                                FROM document_generation_batches WHERE recording_session_id=:id RETURNING id
+                                """
+                )
+                .param(
+                        "id",
+                        recordingId
+                )
+                .query(Long.class)
+                .single();
     }
 
     private Map<String, Object> storedRow(

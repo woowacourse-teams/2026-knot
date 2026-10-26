@@ -18,6 +18,10 @@ interface CurrentRecordingItemProps {
   onOpenRecording?: () => void;
   /** 넘기면 문서 정리 화면으로 가는 「보기」 버튼을 보여 줘요 */
   onOpenRecordingDocuments?: () => void;
+  /** 넘기면 실패한 정리를 다시 접수하는 「다시 시도」 버튼을 보여 줘요 */
+  onRetry?: () => void;
+  /** 다시 시도 요청의 응답을 기다리는 중인지. 그동안 「다시 시도」를 누를 수 없어요 */
+  isRetrying?: boolean;
 }
 
 /**
@@ -29,8 +33,13 @@ export default function CurrentRecordingItem({
   elapsedTime,
   onOpenRecording,
   onOpenRecordingDocuments,
+  onRetry,
+  isRetrying = false,
 }: CurrentRecordingItemProps) {
   const { label, hint } = RECORDING_STATUS_COPY[recordingStatus];
+  const isFailed =
+    recordingStatus === "transcriptionFailed" ||
+    recordingStatus === "documentFailed";
 
   return (
     <Container>
@@ -46,7 +55,7 @@ export default function CurrentRecordingItem({
           </StatusText>
         </Status>
         <Title>{title}</Title>
-        <Hint>{hint}</Hint>
+        {(!isFailed || onRetry) && <Hint>{hint}</Hint>}
       </Info>
 
       {onOpenRecording && (
@@ -59,16 +68,34 @@ export default function CurrentRecordingItem({
           보기
         </Button>
       )}
+      {onRetry && (
+        <Button
+          size="sm"
+          variant="filled"
+          isLoading={isRetrying}
+          onClick={onRetry}
+        >
+          다시 시도
+        </Button>
+      )}
     </Container>
   );
 }
 
-/** 상태 줄의 글자색과 점 색. 녹음 중은 빨강, 일시정지는 회색, 문서 정리 중은 청록이에요 */
+/** 상태 줄의 글자색과 점 색. 녹음 중은 빨강, 일시정지는 회색, 문서 정리 중은 청록, 두 실패는 녹음 중보다 어두운 빨강(Sub/Warning-700)이에요 */
 const statusColors = (theme: Theme) =>
   ({
     recording: { text: theme.sub.warning[600], dot: theme.sub.warning[600] },
     paused: { text: theme.neutral[600], dot: theme.neutral[400] },
     organizing: { text: theme.sub.accent[700], dot: theme.sub.accent[500] },
+    transcriptionFailed: {
+      text: theme.sub.warning[700],
+      dot: theme.sub.warning[700],
+    },
+    documentFailed: {
+      text: theme.sub.warning[700],
+      dot: theme.sub.warning[700],
+    },
   }) satisfies Record<CurrentRecordingStatus, { text: string; dot: string }>;
 
 const Container = styled.div`

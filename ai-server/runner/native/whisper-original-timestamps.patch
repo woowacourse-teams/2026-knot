@@ -1,0 +1,29 @@
+diff --git a/examples/cli/cli.cpp b/examples/cli/cli.cpp
+index c64976a..d4c6a9e 100644
+--- a/examples/cli/cli.cpp
++++ b/examples/cli/cli.cpp
+@@ -730,7 +730,9 @@ static void output_json(
+         start_obj("params");
+             value_s("model", params.model.c_str(), false);
+             value_s("language", params.language.c_str(), false);
+-            value_b("translate", params.translate, true);
++            value_b("translate", params.translate, false);
++            value_b("vad", params.vad, false);
++            value_s("token_timestamps", "original", true);
+         end_obj(false);
+         start_obj("result");
+             value_s("language", whisper_lang_str(whisper_full_lang_id(ctx)), true);
+@@ -766,10 +768,13 @@ static void output_json(
+                         merged.reserve(n);
+                         for (int j = 0; j < n; ) {
+                             auto tok = whisper_full_get_token_data(ctx, i, j);
++                            tok.t0 = whisper_full_get_token_t0(ctx, i, j);
++                            tok.t1 = whisper_full_get_token_t1(ctx, i, j);
+                             merged_token m{ whisper_token_to_str(ctx, tok.id), tok, tok.t1 };
+                             ++j;
+                             while (j < n && utf8_trailing_bytes_needed(m.text) > 0) {
+                                 auto tok_next = whisper_full_get_token_data(ctx, i, j);
++                                tok_next.t1 = whisper_full_get_token_t1(ctx, i, j);
+                                 m.text += whisper_token_to_str(ctx, tok_next.id);
+                                 if (tok_next.t1 > -1) {
+                                     m.t1 = tok_next.t1;

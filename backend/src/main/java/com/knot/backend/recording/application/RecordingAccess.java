@@ -51,6 +51,37 @@ public class RecordingAccess {
             long memberId,
             long recordingId
     ) {
+        RecordingSession session = loadForUpdate(
+                workspaceId,
+                memberId,
+                recordingId
+        );
+        session.validateControlledBy(
+                workspaceId,
+                memberId
+        );
+        return session;
+    }
+
+    public RecordingSession loadWorkspaceRecordingForUpdate(
+            long workspaceId,
+            long memberId,
+            long recordingId
+    ) {
+        RecordingSession session = loadForUpdate(
+                workspaceId,
+                memberId,
+                recordingId
+        );
+        session.validateBelongsTo(workspaceId);
+        return session;
+    }
+
+    private RecordingSession loadForUpdate(
+            long workspaceId,
+            long memberId,
+            long recordingId
+    ) {
         lockMember(
                 workspaceId,
                 memberId
@@ -58,13 +89,8 @@ public class RecordingAccess {
         if (recordingId <= 0) {
             throw new RecordingException(RecordingErrorCode.INVALID_RECORDING_DATA);
         }
-        RecordingSession session = recordingSessionRepository.findByIdForUpdate(recordingId)
+        return recordingSessionRepository.findByIdForUpdate(recordingId)
                 .orElseThrow(() -> new RecordingException(RecordingErrorCode.RECORDING_NOT_FOUND));
-        session.validateControlledBy(
-                workspaceId,
-                memberId
-        );
-        return session;
     }
 
     public RecordingSession loadControlledForUpdate(

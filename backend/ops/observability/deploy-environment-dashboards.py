@@ -56,7 +56,7 @@ def common_provider(text):
     return providers
 
 
-def deploy(root, stage, apply, dev_count=7):
+def deploy(root, stage, apply, dev_count=7, prod_count=7):
     os.umask(0o077)
     assert os.geteuid() == 0, "Run on the existing NCP server as root."
     config_path = Path("provisioning/alerting/knot.json")
@@ -83,7 +83,7 @@ def deploy(root, stage, apply, dev_count=7):
     templates = json.loads((stage / template_path).read_text())
     assert len(templates["templates"]) == 1
     uids = set()
-    for directory, count, env in zip(directories, [dev_count, 5], ["dev", "prod"]):
+    for directory, count, env in zip(directories, [dev_count, prod_count], ["dev", "prod"]):
         dashboards = list((stage / directory).glob("*.json"))
         assert len(dashboards) == count
         assert {path.name for path in (root / directory).glob("*.json")} <= \
@@ -93,7 +93,8 @@ def deploy(root, stage, apply, dev_count=7):
             assert dashboard["uid"].startswith("knot-" + env + "-")
             assert dashboard["uid"] not in uids
             uids.add(dashboard["uid"])
-            assert not dashboard["templating"]["list"]
+            assert not any(variable["name"] in {"env", "instance", "db"}
+                           for variable in dashboard["templating"]["list"]), "Environment must stay pinned."
     common_files = list((root / "dashboards").glob("*.json"))
     assert len(common_files) == 6, "Expected six preserved common dashboards."
     common_hashes = {path.name: hashlib.sha256(path.read_bytes()).hexdigest()
@@ -123,14 +124,21 @@ def deploy(root, stage, apply, dev_count=7):
     before = snapshot()
     previous_templates = api("/api/v1/provisioning/templates")
     before_contract = runtime_contract(**before)
-    assert len(before["rules"]) == 15
+    expected_rule_uids = {rule["uid"] for group in new_config["groups"] for rule in group["rules"]}
+    # Additional provisioning files (service/backup checks) are preserved by this
+    # dashboard-only installer; don't treat their rules as unexpected or remove them.
+    for path in (root / "provisioning/alerting").glob("*.json"):
+        if path.name != config_path.name:
+            expected_rule_uids.update(rule["uid"] for group in json.loads(path.read_text()).get("groups", [])
+                                      for rule in group["rules"])
+    assert {rule["uid"] for rule in before["rules"]} == expected_rule_uids, "Runtime alert rule drift."
     for entry in api("/api/search?type=dash-db&limit=1000"):
         if entry["uid"] in uids:
             assert entry.get("folderTitle") == "Knot-" + entry["uid"].split("-")[1], \
                 "Dashboard UID already belongs to another folder."
     print(json.dumps({"preflight": "pass", "apply": apply,
                       "commonDashboards": 6, "newDashboards": len(uids),
-                      "alertRules": 15, "fileAlertContract": digest(alert_contract(old_config)),
+                      "alertRules": len(expected_rule_uids), "fileAlertContract": digest(alert_contract(old_config)),
                       "runtimeAlertContract": digest(before_contract)}, ensure_ascii=False))
     if not apply:
         return
@@ -186,7 +194,7 @@ def deploy(root, stage, apply, dev_count=7):
             assert installed[uid]["folderTitle"] == "Knot-" + uid.split("-")[1]
             fetched = api("/api/dashboards/uid/" + uid)
             assert fetched["meta"]["provisioned"]
-        for env, count in [("dev", dev_count), ("prod", 5)]:
+        for env, count in [("dev", dev_count), ("prod", prod_count)]:
             assert len([entry for entry in search if entry.get("folderTitle") == "Knot-" + env]) == count
         assert len([entry for entry in search if entry.get("folderTitle") == "Knot"]) == 6
         receiver = next(item for item in after["contacts"] if item["uid"] == "knot-discord")
@@ -230,5 +238,7 @@ if __name__ == "__main__":
     parser.add_argument("--apply", action="store_true", help="Back up, install, and reload after preflight.")
     parser.add_argument("--dev-count", type=int, choices=[7, 8], default=7,
                         help="Use 8 when including the explicitly requested catalog 17175 dashboard.")
+    parser.add_argument("--prod-count", type=int, choices=[7, 8], default=7,
+                        help="Use 8 only with a stage preserving the existing request tracing dashboard.")
     arguments = parser.parse_args()
-    deploy(arguments.root, arguments.stage, arguments.apply, arguments.dev_count)
+    deploy(arguments.root, arguments.stage, arguments.apply, arguments.dev_count, arguments.prod_count)

@@ -74,8 +74,6 @@ class DocumentCategoryExecutionIntegrationTest {
     @Autowired
     private DocumentCategoryProperties properties;
     @Autowired
-    private DocumentRetentionCleanupService cleanup;
-    @Autowired
     private DocumentGenerationResultService results;
     @Autowired
     private io.micrometer.core.instrument.MeterRegistry metrics;
@@ -917,39 +915,14 @@ class DocumentCategoryExecutionIntegrationTest {
     }
 
     @Test
-    @DisplayName("진행 중 임시 본문과 원문은 보존 정리가 삭제하지 않고 삭제 Workspace는 공개하지 않는다")
-    void cleanup_success_preparedRetentionAndWorkspaceDeletion() {
+    @DisplayName("기간이 지나도 진행 중 임시 본문과 원문은 남고 삭제 Workspace의 Job은 문서를 공개하지 않는다")
+    void execute_success_preparedDocumentKeptAndWorkspaceDeletionNotPublished() {
         // given
         worker.execute(
                 workspaceId,
                 jobId
         );
-        long batch = jdbc.sql("SELECT batch_id FROM document_generation_jobs WHERE id = :id")
-                .param(
-                        "id",
-                        jobId
-                )
-                .query(Long.class)
-                .single();
-        long recording = jdbc.sql("SELECT recording_session_id FROM document_generation_batches WHERE id = :id")
-                .param(
-                        "id",
-                        batch
-                )
-                .query(Long.class)
-                .single();
         when(clock.instant()).thenReturn(NOW.plusSeconds(8 * 24 * 60 * 60));
-
-        // when
-        cleanup.cleanup(
-                workspaceId,
-                recording,
-                batch
-        );
-
-        // then
-        assertThat(count("prepared_documents")).isEqualTo(1);
-        assertThat(count("transcripts")).isEqualTo(1);
         jdbc.sql("UPDATE workspaces SET deleted_at = :time WHERE id = :id")
                 .param(
                         "time",
@@ -971,18 +944,8 @@ class DocumentCategoryExecutionIntegrationTest {
         assertThat(text("status")).isEqualTo("FAILED");
         assertThat(text("failure_cause")).isEqualTo("WORKSPACE_DELETED");
         assertThat(count("documents")).isZero();
-        when(clock.instant()).thenReturn(NOW.plusSeconds(16 * 24 * 60 * 60));
-
-        // when
-        cleanup.cleanup(
-                workspaceId,
-                recording,
-                batch
-        );
-
-        // then
-        assertThat(count("prepared_documents")).isZero();
-        assertThat(count("transcripts")).isZero();
+        assertThat(count("prepared_documents")).isEqualTo(1);
+        assertThat(count("transcripts")).isEqualTo(1);
     }
 
     private long anotherJob(String topic) {

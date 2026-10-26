@@ -3,6 +3,10 @@ package com.knot.backend.recording.application;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowable;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.any;
+import java.util.List;
+import com.knot.backend.recording.domain.model.RecordingAudioUpload;
+import com.knot.backend.recording.domain.repository.RecordingAudioUploadRepository;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -34,7 +38,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
-import com.knot.backend.document.application.dto.result.DocumentGenerationProgressResult;
+import com.knot.backend.document.application.dto.result.DocumentGenerationHomeResult;
 import com.knot.backend.document.domain.model.DocumentGenerationProcessingStatus;
 import com.knot.backend.recording.domain.model.AudioFinalizationStatus;
 import com.knot.backend.recording.domain.model.RecordingAudioFinalization;
@@ -56,6 +60,8 @@ class RecordingCurrentServiceTest {
     private com.knot.backend.recording.domain.repository.RecordingAudioFinalizationRepository finalizations;
     private com.knot.backend.recording.domain.repository.RecordingTranscriptionRepository transcriptions;
     private com.knot.backend.document.application.DocumentGenerationProgressService documentProgress;
+    private RecordingAudioUploadRepository uploads;
+    private com.knot.backend.global.config.TranscriptionProperties transcriptionProperties;
     private RecordingService service;
 
     @BeforeEach
@@ -66,6 +72,9 @@ class RecordingCurrentServiceTest {
         finalizations = mock(com.knot.backend.recording.domain.repository.RecordingAudioFinalizationRepository.class);
         transcriptions = mock(com.knot.backend.recording.domain.repository.RecordingTranscriptionRepository.class);
         documentProgress = mock(com.knot.backend.document.application.DocumentGenerationProgressService.class);
+        uploads = mock(RecordingAudioUploadRepository.class);
+        transcriptionProperties = mock(com.knot.backend.global.config.TranscriptionProperties.class);
+        when(transcriptionProperties.enabled()).thenReturn(true);
         service = new RecordingService(
                 new RecordingAccess(
                         workspaceRepository,
@@ -87,7 +96,9 @@ class RecordingCurrentServiceTest {
                 finalizations,
                 mock(com.knot.backend.recording.domain.repository.RecordingAudioCleanupRepository.class),
                 transcriptions,
-                documentProgress
+                documentProgress,
+                uploads,
+                transcriptionProperties
         );
     }
 
@@ -98,9 +109,10 @@ class RecordingCurrentServiceTest {
         prepareAccess();
         RecordingSession session = recordingSession();
         when(
-                recordingSessionRepository.findLatestByWorkspaceIdAndMemberId(
+                recordingSessionRepository.findCurrentByWorkspaceIdAndMemberId(
                         WORKSPACE_ID,
-                        MEMBER_ID
+                        MEMBER_ID,
+                        NOW
                 )
         ).thenReturn(Optional.of(session));
 
@@ -129,9 +141,10 @@ class RecordingCurrentServiceTest {
         RecordingSession session = recordingSession();
         session.pause(STARTED_AT.plusSeconds(20));
         when(
-                recordingSessionRepository.findLatestByWorkspaceIdAndMemberId(
+                recordingSessionRepository.findCurrentByWorkspaceIdAndMemberId(
                         WORKSPACE_ID,
-                        MEMBER_ID
+                        MEMBER_ID,
+                        NOW
                 )
         ).thenReturn(Optional.of(session));
 
@@ -164,9 +177,10 @@ class RecordingCurrentServiceTest {
                 NOW
         );
         when(
-                recordingSessionRepository.findLatestByWorkspaceIdAndMemberId(
+                recordingSessionRepository.findCurrentByWorkspaceIdAndMemberId(
                         WORKSPACE_ID,
-                        MEMBER_ID
+                        MEMBER_ID,
+                        NOW
                 )
         ).thenAnswer(invocation -> {
             session.resume(resumedAt);
@@ -191,7 +205,9 @@ class RecordingCurrentServiceTest {
                 finalizations,
                 mock(com.knot.backend.recording.domain.repository.RecordingAudioCleanupRepository.class),
                 transcriptions,
-                documentProgress
+                documentProgress,
+                uploads,
+                transcriptionProperties
         );
 
         // when
@@ -213,9 +229,10 @@ class RecordingCurrentServiceTest {
         // given
         prepareAccess();
         when(
-                recordingSessionRepository.findLatestByWorkspaceIdAndMemberId(
+                recordingSessionRepository.findCurrentByWorkspaceIdAndMemberId(
                         WORKSPACE_ID,
-                        MEMBER_ID
+                        MEMBER_ID,
+                        NOW
                 )
         ).thenReturn(Optional.empty());
 
@@ -236,9 +253,10 @@ class RecordingCurrentServiceTest {
         prepareAccess();
         RecordingSession session = recordingSession();
         when(
-                recordingSessionRepository.findLatestByWorkspaceIdAndMemberId(
+                recordingSessionRepository.findCurrentByWorkspaceIdAndMemberId(
                         WORKSPACE_ID,
-                        MEMBER_ID
+                        MEMBER_ID,
+                        NOW
                 )
         ).thenReturn(Optional.of(session));
 
@@ -330,9 +348,10 @@ class RecordingCurrentServiceTest {
         verify(
                 recordingSessionRepository,
                 never()
-        ).findLatestByWorkspaceIdAndMemberId(
+        ).findCurrentByWorkspaceIdAndMemberId(
                 anyLong(),
-                anyLong()
+                anyLong(),
+                any(Instant.class)
         );
     }
 
@@ -362,9 +381,10 @@ class RecordingCurrentServiceTest {
         // given
         prepareEndedRecording();
         when(
-                documentProgress.findProgress(
+                documentProgress.findHomeProgress(
                         WORKSPACE_ID,
-                        RECORDING_ID
+                        RECORDING_ID,
+                        NOW
                 )
         ).thenReturn(Optional.of(progress(status)));
 
@@ -387,9 +407,10 @@ class RecordingCurrentServiceTest {
         // given
         prepareEndedRecording();
         when(
-                documentProgress.findProgress(
+                documentProgress.findHomeProgress(
                         WORKSPACE_ID,
-                        RECORDING_ID
+                        RECORDING_ID,
+                        NOW
                 )
         ).thenReturn(Optional.of(progress(status)));
 
@@ -433,8 +454,8 @@ class RecordingCurrentServiceTest {
     }
 
     @Test
-    @DisplayName("전사가 최종 실패한 최신 녹음은 문서 생성 중으로 표시하지 않는다")
-    void findCurrent_success_failedTranscriptionExcluded() {
+    @DisplayName("전사가 실패하면 파일을 쓸 수 없어도 실패 상태와 재시도 불가를 반환한다")
+    void findCurrent_success_failedTranscriptionVisible() {
         // given
         prepareEndedRecording();
         RecordingTranscription transcription = mock(RecordingTranscription.class);
@@ -448,7 +469,11 @@ class RecordingCurrentServiceTest {
         );
 
         // then
-        assertThat(result).isEmpty();
+        assertThat(result).hasValueSatisfying(current -> {
+            assertThat(current.status()).isEqualTo(CurrentRecordingStatus.TRANSCRIPTION_FAILED);
+            assertThat(current.retryable()).isFalse();
+            assertThat(current.retryableJobIds()).isEmpty();
+        });
     }
 
     @ParameterizedTest
@@ -501,9 +526,10 @@ class RecordingCurrentServiceTest {
         RecordingSession session = recordingSession();
         session.discard(STARTED_AT.plusSeconds(20));
         when(
-                recordingSessionRepository.findLatestByWorkspaceIdAndMemberId(
+                recordingSessionRepository.findCurrentByWorkspaceIdAndMemberId(
                         WORKSPACE_ID,
-                        MEMBER_ID
+                        MEMBER_ID,
+                        NOW
                 )
         ).thenReturn(Optional.of(session));
 
@@ -522,29 +548,139 @@ class RecordingCurrentServiceTest {
         );
     }
 
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.CsvSource({"true,true,true", "true,false,false", "false,true,false"})
+    @DisplayName("전사 재접수는 기능 활성화와 사용 가능한 오디오가 모두 필요하다")
+    void findCurrent_success_retryableTranscription(
+            boolean enabled,
+            boolean available,
+            boolean expected
+    ) {
+        prepareEndedRecording();
+        RecordingTranscription transcription = mock(RecordingTranscription.class);
+        when(transcription.getStatus()).thenReturn(TranscriptionStatus.FAILED);
+        when(transcriptions.findByRecordingSessionId(RECORDING_ID)).thenReturn(Optional.of(transcription));
+        Instant old = NOW.minus(java.time.Duration.ofDays(365));
+        RecordingAudioUpload upload = RecordingAudioUpload.reserve(
+                RECORDING_ID,
+                "recordings/old.webm",
+                "audio/webm",
+                100,
+                old
+        );
+        upload.complete(
+                com.knot.backend.recording.domain.model.StoredAudioObject.of(
+                        100,
+                        "audio/webm",
+                        "old-v1"
+                ),
+                old.plusSeconds(60)
+        );
+        if (!available)
+            upload.recordDeleted(NOW);
+        when(transcriptionProperties.enabled()).thenReturn(enabled);
+        when(uploads.findByRecordingId(RECORDING_ID)).thenReturn(Optional.of(upload));
+
+        assertThat(
+                service.findCurrent(
+                        WORKSPACE_ID,
+                        MEMBER_ID
+                )
+        ).hasValueSatisfying(current -> {
+            assertThat(current.status()).isEqualTo(CurrentRecordingStatus.TRANSCRIPTION_FAILED);
+            assertThat(current.retryable()).isEqualTo(expected);
+            assertThat(current.retryableJobIds()).isEmpty();
+        });
+    }
+
+    @Test
+    @DisplayName("문서 실패는 실제 접수 가능한 작업 ID와 일치하는 재시도 여부를 반환한다")
+    void findCurrent_success_retryableDocumentJobs() {
+        prepareEndedRecording();
+        when(
+                documentProgress.findHomeProgress(
+                        WORKSPACE_ID,
+                        RECORDING_ID,
+                        NOW
+                )
+        ).thenReturn(
+                Optional.of(
+                        new DocumentGenerationHomeResult(
+                                DocumentGenerationProcessingStatus.FAILED,
+                                true,
+                                List.of(
+                                        88L,
+                                        91L
+                                )
+                        )
+                )
+        );
+
+        assertThat(
+                service.findCurrent(
+                        WORKSPACE_ID,
+                        MEMBER_ID
+                )
+        ).hasValueSatisfying(current -> {
+            assertThat(current.status()).isEqualTo(CurrentRecordingStatus.DOCUMENT_FAILED);
+            assertThat(current.retryable()).isTrue();
+            assertThat(current.retryableJobIds()).containsExactly(
+                    88L,
+                    91L
+            );
+        });
+    }
+
+    @Test
+    @DisplayName("표시 기한 안의 문서 실패는 접수 가능한 작업이 없어도 제목을 유지한다")
+    void findCurrent_success_nonRetryableDocumentFailure() {
+        prepareEndedRecording();
+        when(
+                documentProgress.findHomeProgress(
+                        WORKSPACE_ID,
+                        RECORDING_ID,
+                        NOW
+                )
+        ).thenReturn(
+                Optional.of(
+                        new DocumentGenerationHomeResult(
+                                DocumentGenerationProcessingStatus.FAILED,
+                                true,
+                                List.of()
+                        )
+                )
+        );
+
+        assertThat(
+                service.findCurrent(
+                        WORKSPACE_ID,
+                        MEMBER_ID
+                )
+        ).hasValueSatisfying(current -> {
+            assertThat(current.status()).isEqualTo(CurrentRecordingStatus.DOCUMENT_FAILED);
+            assertThat(current.retryable()).isFalse();
+            assertThat(current.retryableJobIds()).isEmpty();
+        });
+    }
+
     private void prepareEndedRecording() {
         prepareAccess();
         RecordingSession session = recordingSession();
         session.end(STARTED_AT.plusSeconds(20));
         when(
-                recordingSessionRepository.findLatestByWorkspaceIdAndMemberId(
+                recordingSessionRepository.findCurrentByWorkspaceIdAndMemberId(
                         WORKSPACE_ID,
-                        MEMBER_ID
+                        MEMBER_ID,
+                        NOW
                 )
         ).thenReturn(Optional.of(session));
     }
 
-    private DocumentGenerationProgressResult progress(DocumentGenerationProcessingStatus status) {
-        return new DocumentGenerationProgressResult(
-                100L,
-                RECORDING_ID,
+    private DocumentGenerationHomeResult progress(DocumentGenerationProcessingStatus status) {
+        return new DocumentGenerationHomeResult(
                 status,
-                0,
-                0,
-                0,
-                0,
-                null,
-                null
+                false,
+                List.of()
         );
     }
 

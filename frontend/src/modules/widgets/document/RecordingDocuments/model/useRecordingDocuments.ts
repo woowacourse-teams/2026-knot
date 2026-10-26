@@ -6,6 +6,7 @@ import { TOAST_MESSAGES } from "@constants/toastMessages";
 import useRedirectToLoginOnUnauthorized from "@hooks/domain/auth/useRedirectToLoginOnUnauthorized";
 import { useToast } from "@provider/context/toastContext";
 import { getRecordingDocumentsStatus } from "@utils/getRecordingDocumentsStatus";
+import { isRetryRejectedError } from "@utils/isRetryRejectedError";
 import { isUnauthorizedError } from "@utils/isUnauthorizedError";
 import { useEffect, useState } from "react";
 
@@ -19,11 +20,6 @@ interface UseRecordingDocumentsParams {
 /** 다시 물어도 결과가 같은 조회 실패(4xx). 이 실패를 받으면 3초마다 하던 조회도 멈춰요 */
 const isUnrecoverableLoadError = (error: unknown) =>
   isHttpError(error) && error.isClientError;
-
-/** 다시 시도할 수 없다는 응답. 실패 상태가 아니거나 다시 시도할 수 있는 횟수를 다 쓴 작업(409) · 없는 작업(404) */
-const isRetryRejectedError = (error: unknown) =>
-  isHttpError(error, HTTP_ERROR_TYPE.conflict) ||
-  isHttpError(error, HTTP_ERROR_TYPE.notFound);
 
 /**
  * 정리 화면이 그릴 상태(`viewStatus`)를 정해요. 주소에서 읽은 id를 확인하지 않고 그대로 조회하고, 잘못된 id는 서버 응답(400 · 404)으로 알아요.
