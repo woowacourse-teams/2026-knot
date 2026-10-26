@@ -65,6 +65,8 @@ const FAKE_AMPLITUDE = 0.5;
 class FakeAnalyserNode {
   fftSize = 2048;
 
+  connect() {}
+
   getFloatTimeDomainData(array: Float32Array) {
     array.fill(FAKE_AMPLITUDE);
   }
@@ -79,6 +81,10 @@ class FakeAudioContext {
 
   createAnalyser() {
     return new FakeAnalyserNode();
+  }
+
+  createMediaStreamDestination() {
+    return { stream: new FakeMediaStream(), channelCount: 2 };
   }
 
   close() {
