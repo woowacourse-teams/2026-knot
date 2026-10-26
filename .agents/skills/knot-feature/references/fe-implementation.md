@@ -32,6 +32,9 @@
   이슈 `메모`에 「디자인 대기」가 있으면 `gh issue view <번호> --comments`의 「디자인 완료」 댓글에 있는
   Figma 링크(화면이나 상태별 node-id)를 읽어 그대로 구현한다. 댓글이 없으면 시작하지 않고, 이슈 링크를
   기획 컨펌 담당에게 전달했는지 확인하라고 알리고 멈춘다.
+- Figma MCP가 시트 제한(뷰어 계정의 월 읽기 한도 등)으로 막히면 추측해서 구현하지 않는다. 멈추고, 막힌
+  화면 링크와 함께 기획 컨펌 담당에게 화면 캡처나 수치(간격, 색, 글자 크기)를 요청하라고 안내한다. 받은
+  자료는 이슈 댓글로 남겨 다음 실행도 읽게 한다.
 - 기존 프론트 하네스를 그대로 쓴다. `frontend/CLAUDE.md`의 작업 절차와 `frontend/.claude/rules`,
   `project-structure`, `create-story`, `create-pr-content`, `review` 스킬, `code-reviewer` 에이전트.
   저장소 루트 `.claude/skills`에 이 스킬들의 링크가 있어 루트 세션에서도 찾는다. 브랜치는
