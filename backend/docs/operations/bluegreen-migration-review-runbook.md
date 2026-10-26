@@ -5,12 +5,59 @@ JAR 조합에 대해서만 발급하는 한시 검토 기록이다. 애플리케
 
 ## 검토 순서
 
+2026-10-26 Prod 서버에는 읽기 전용 `knot-deploy-preflight` 명령을 설치했다.
+후보 아카이브가 준비되면 먼저 다음 명령으로 **실제 Nginx 활성 슬롯**과 대조한다.
+
+```bash
+sudo knot-deploy-preflight prod /opt/codedeploy-agent/deployment-root/<배포그룹>/<배포ID>/deployment-archive
+```
+
+이 명령은 `/usr/local/lib/knot-deploy/verify_migration_compatibility.py`를 사용한다.
+후보 아카이브 안의 Python 코드를 실행하지 않으며 승인 파일·서비스·라우트·DB를 변경하지 않는다.
+명령 소스는 `backend/scripts/deployment_preflight.sh`다.
+
+- SQL 동일: `added=<none>`, `rolling`, 종료 코드 0. 별도 승인 파일이 필요 없다.
+- 추가 SQL: 유효한 정확한 JAR 조합 검토 기록이 없으면 비정상 종료한다. 아래 검토를 먼저 한다.
+- 기존 SQL 변경·삭제 또는 활성 슬롯/라우트 불일치: 배포 전에 중단하고 원인을 확인한다.
+
+V72까지 적용한 이후 SQL이 같은 새 코드 배포에도 V67~V72 승인 파일을 다시 발급할 필요는 없다.
+V73 등 새로운 SQL은 별도 검토 대상이다. 사전 점검 통과는 실제 배포 성공을 대신하지 않는다.
+
+### 사전 점검 도구 설치·갱신
+
+운영자가 검토한 checkout의 `backend/`에서 설치한다. Bash, Python 3, systemd와 현재 환경의
+위 Nginx 설정 경로가 필요하다. 기존 설치본이 있으면 보호된 운영 백업 경로에 먼저 보관하고,
+후보 배포 아카이브에서 파일을 복사하지 않는다.
+
+```bash
+sudo install -d -o root -g root -m 0755 /usr/local/lib/knot-deploy
+sudo install -o root -g root -m 0644 scripts/verify_migration_compatibility.py \
+  /usr/local/lib/knot-deploy/verify_migration_compatibility.py
+sudo install -o root -g root -m 0644 scripts/deployment_preflight.sh \
+  /usr/local/lib/knot-deploy/deployment_preflight.sh
+printf '%s\n' '#!/bin/sh' \
+  'exec /bin/bash /usr/local/lib/knot-deploy/deployment_preflight.sh "$@"' \
+  | sudo tee /usr/local/sbin/knot-deploy-preflight >/dev/null
+sudo chown root:root /usr/local/sbin/knot-deploy-preflight
+sudo chmod 0755 /usr/local/sbin/knot-deploy-preflight
+sudo knot-deploy-preflight --help
+```
+
+검사기 갱신도 검토가 필요하다. 설치본과 후보의 검사기 내용이 다르면 사전 점검은 차단한다.
+설치는 운영자 수동 작업이며 이 도구를 CodePipeline/CodeDeploy에 자동 연결하지 않는다.
+Dev는 첫 인자를 `dev`로 지정한다. Prod 설치 관측과 Dev 호스트 설치 여부는 구분한다.
+
+### 추가 SQL 검토
+
 1. 실제 활성 슬롯의 JAR와 배포 후보 JAR를 확보하고 각각 `sha256sum`을 기록한다.
 2. SQL 파일 목록뿐 아니라 내용을 비교한다. 기존 SQL의 내용 변경·삭제·과거 버전 추가는
    이 방식으로 배포할 수 없다. DB의 현재 Flyway 이력과도 대조한다.
 3. 구버전의 조회·쓰기·기본값·제약 호환성과 데이터 보정 영향을 확인한다. SQL fixture만으로
    Worker 메시지/작업 형식이나 모든 Java 기능이 검증됐다고 판단하지 않는다.
 4. 실제 실행 프로세스의 기능 플래그·큐·실행 작업과 신규 바이너리의 기본값을 확인한다.
+   후보 systemd unit이 읽는 EnvironmentFile/추가 properties의 적용 예정 플래그도 대조한다.
+   기존 프로세스가 파일 수정 이전의 값으로 실행 중일 수 있으므로 기존 프로세스만으로
+   후보 설정을 추정하지 않는다. 비밀값 전체를 출력하지 말고 검토 대상 플래그만 확인한다.
 5. Prod는 `rolling`으로 구·신 버전 공존이 가능할 때만 진행한다. Dev Worker 형식이 달라지면
    점검 시간을 승인받고 `serial-workers`를 선택한다. 알 수 없는 호환성은 차단 상태로 둔다.
 
@@ -60,6 +107,13 @@ sudo python3 scripts/verify_migration_compatibility.py \
 승인 파일을 자동 생성하지 않는다.
 
 ## 실패와 복구
+
+승인 파일 누락으로 이미 실패한 경우에는 파일을 준비·검증한 뒤 CodeDeploy의 해당 실패 배포에서
+`배포 재시도`를 사용하면 같은 빌드 산출물로 복구할 수 있다. 추가 CodeBuild가 필요하지 않다.
+CodePipeline 원래 실행이 자동 롤백으로 superseded되면 기존 단계 재시도는 불가능할 수 있다.
+이때 CodeDeploy 재시도의 성공과 원래 파이프라인 실패 이력을 구분한다. 향후 파이프라인 자동
+롤백의 성공 기준도 새 릴리즈로 맞추려면 원래 파이프라인에서 소스 커밋을 고정해 한 번 성공시킨다.
+설정·IAM·GitHub 연결을 바꾸거나 중복 실행하지 않는다.
 
 - 승인 실패: 후보 기동 전에 중단한다. 기한·해시·환경이 달라졌으면 검토부터 다시 한다.
 - Dev 순차 교체: health 외 요청을 잠시 503으로 막고 drain → 기존 Worker 종료 → 후보
