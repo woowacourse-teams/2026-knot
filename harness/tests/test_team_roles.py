@@ -88,8 +88,23 @@ class ProposalPeopleTest(unittest.TestCase):
 
     def test_repository_members_used_so_far_have_notion_ids(self):
         data = tr.load_team()
-        for login in ("vlmbuyd", "poketopa", "jyt6640"):
+        for login in ("vlmbuyd", "poketopa", "jyt6640", "geongyu09"):
             self.assertTrue(tr.find_member(data, login).get("notion"), login)
+
+    def test_assignees_are_implementers_with_notion_ids(self):
+        result = tr.proposal_assignees(team(), ["Eastar-DS", "vlmbuyd", "Eastar-DS"])
+        self.assertEqual([a["notion"] for a in result["assignees"]], [EASTAR_NOTION, YUWOL_NOTION])
+        self.assertEqual(result["missing"], [])
+
+    def test_assignee_without_notion_id_goes_to_missing(self):
+        # 노션 ID가 없으면 담당자 칸 대신 확정 댓글에 이름으로 적는다.
+        result = tr.proposal_assignees(team(), ["geongyu09", "vlmbuyd"])
+        self.assertEqual([a["github"] for a in result["assignees"]], ["vlmbuyd"])
+        self.assertEqual([m["name"] for m in result["missing"]], ["도넛"])
+
+    def test_assignees_need_implementer(self):
+        with self.assertRaises(ValueError):
+            tr.proposal_assignees(team(), [])
 
 
 class MemberTest(unittest.TestCase):

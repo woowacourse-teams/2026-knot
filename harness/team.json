@@ -3,7 +3,7 @@
   "members": [
     {"github": "vlmbuyd", "name": "유월", "area": "frontend", "notion": "336328ab-ea57-45f4-b351-80b35a95b12a"},
     {"github": "Eastar-DS", "name": "이스타", "area": "frontend"},
-    {"github": "geongyu09", "name": "도넛", "area": "frontend"},
+    {"github": "geongyu09", "name": "도넛", "area": "frontend", "notion": "20d91413-f358-4762-a807-8d42af4cf0f1"},
     {"github": "jyt6640", "name": "흑곰", "area": "backend", "notion": "1399bd9c-b5c2-4965-ab16-6045e0b73e20"},
     {"github": "poketopa", "name": "루덴스", "area": "backend", "notion": "7da3c8f4-360e-4f54-838e-e810e8855690"}
   ],

@@ -97,6 +97,23 @@ def proposal_people(team: dict[str, Any], author: str) -> dict[str, Any]:
     }
 
 
+def proposal_assignees(team: dict[str, Any], logins: list[str]) -> dict[str, Any]:
+    """확정한 제안 페이지의 `담당자`에 넣을 사람을 정한다.
+
+    담당자는 제안의 「구현할 사람」이다. 노션은 사람 속성에 추가된 사람에게 알림을 보내므로 확정할 때
+    이 칸을 채우는 것이 담당자에게 가는 컨펌 알림이다. 노션 ID가 명단에 없는 사람은 `missing`으로
+    돌려주고, 입구는 그 사람을 담당자 칸 대신 확정 댓글 본문에 이름으로 적는다.
+    """
+    if not logins:
+        raise ValueError("담당자로 넣을 GitHub 계정이 없습니다. 제안의 「구현할 사람」을 확인하세요")
+    assignees: list[dict[str, Any]] = []
+    missing: list[dict[str, Any]] = []
+    for login in dict.fromkeys(logins):
+        member = describe_member(team, login)
+        (assignees if member.get("notion") else missing).append(member)
+    return {"assignees": assignees, "missing": missing}
+
+
 def check_confirmation(team: dict[str, Any], notion_users: list[str]) -> dict[str, Any]:
     """제안 페이지 `컨펌한 사람`(노션 사용자 ID)이 기획 컨펌 담당인지 확인한다.
 
@@ -203,6 +220,11 @@ def main(argv: list[str] | None = None) -> int:
     people_parser = sub.add_parser("proposal-people", help="제안 페이지의 제안자와 검토자")
     people_parser.add_argument("--author", required=True, help="요청자의 GitHub 계정")
     people_parser.add_argument("--pretty", action="store_true")
+    assignees_parser = sub.add_parser("proposal-assignees", help="확정한 제안 페이지의 담당자")
+    assignees_parser.add_argument(
+        "--implementer", nargs="+", required=True, help="제안의 「구현할 사람」 GitHub 계정"
+    )
+    assignees_parser.add_argument("--pretty", action="store_true")
     confirmation_parser = sub.add_parser(
         "confirmation", help="제안 페이지 컨펌한 사람이 기획 컨펌 담당인지 확인"
     )
@@ -236,6 +258,8 @@ def main(argv: list[str] | None = None) -> int:
             }
         elif args.command == "proposal-people":
             payload = proposal_people(team, args.author)
+        elif args.command == "proposal-assignees":
+            payload = proposal_assignees(team, args.implementer)
         elif args.command == "confirmation":
             payload = check_confirmation(team, args.notion)
         else:
