@@ -1,5 +1,6 @@
 import { GetMeResponseDto } from "@api/dto/auth";
 import { GetDocumentsResponseDto } from "@api/dto/document";
+import { GetRecordingsResponseDto } from "@api/dto/recording";
 import {
   GetWorkspaceResponseDto,
   GetWorkspacesResponseDto,
@@ -7,19 +8,22 @@ import {
 import { PostWorkspaceInvitationResponseDto } from "@api/dto/workspaceInvitation";
 import { meResponse } from "@api/mock/responses/auth";
 import { documentsResponse } from "@api/mock/responses/document";
+import { recordingsResponse } from "@api/mock/responses/recording";
 import {
   workspaceDetailResponse,
   workspacesResponse,
 } from "@api/mock/responses/workspace";
 import { workspaceInvitationResponse } from "@api/mock/responses/workspaceInvitation";
 import { expect, test, type Page } from "@playwright/test";
+import { formatDate } from "@utils/formatDate";
+import { formatDurationFromSeconds } from "@utils/formatDurationFromSeconds";
 
 /**
  * 워크스페이스 홈 화면(`/workspace/:workspaceId`) E2E.
  *
  * 홈 진입, 사이드바 열고 닫기, 문서 목록의 폴더 펼침·접힘과 문서 이동, 초대 링크·코드 복사까지
  * 홈 화면 위에서 사용자가 밟는 플로우를 페이지 단위로 확인해요.
- * 회원·워크스페이스·초대·최근 문서·사이드바 문서 목록은 dev 서버의 msw mock 응답(`API_MOCKING`)에서 오므로
+ * 회원·워크스페이스·초대·녹음 기록·사이드바 문서 목록은 dev 서버의 msw mock 응답(`API_MOCKING`)에서 오므로
  * 기대값도 같은 응답을 DTO로 변환해 가져와요.
  */
 
@@ -41,12 +45,6 @@ const WORKSPACE_ID = new GetWorkspacesResponseDto(workspacesResponse)
 const HOME_PATH = `/workspace/${WORKSPACE_ID}`;
 
 const GREETING = `반가워요, ${expectedMe.nickname} 님`;
-// 최근 추가된 문서 카드는 최신순 문서 가운데 앞의 세 개를 보여 줘요
-const RECENT_DOCUMENT_TITLES = new GetDocumentsResponseDto(
-  documentsResponse,
-).items
-  .slice(0, 3)
-  .map(({ title }) => title);
 const INVITE_CODE = expectedInvitation.code;
 const DISPLAY_INVITE_LINK = `/invite/${expectedInvitation.linkToken}`;
 
@@ -86,6 +84,10 @@ const getCard = ({ page, title }: GetCardParams) =>
     .locator("section")
     .filter({ has: page.getByRole("heading", { name: title }) });
 
+/** 홈 왼쪽 위의 「녹음 기록」 카드 */
+const getRecordingHistoryCard = (page: Page) =>
+  page.getByRole("region", { name: "녹음 기록" });
+
 const readClipboard = (page: Page) =>
   page.evaluate(() => navigator.clipboard.readText());
 
@@ -106,17 +108,11 @@ test.describe("홈 진입", () => {
       page.getByRole("heading", { name: "Notion 동기화" }),
     ).toBeHidden();
 
-    const recentDocumentsCard = getCard({ page, title: "최근 추가된 문서" });
+    await expect(getRecordingHistoryCard(page)).toBeVisible();
+    await expect(getCard({ page, title: "확인이 필요한 문서" })).toBeVisible();
     await expect(
-      recentDocumentsCard.getByRole("link", { name: "전체 보기" }),
-    ).toBeVisible();
-    await expect(
-      recentDocumentsCard.getByRole("list").getByRole("link"),
-    ).toHaveText(
-      RECENT_DOCUMENT_TITLES.map((title) => new RegExp(`^${title}`)),
-    );
-
-    await expect(getCard({ page, title: "진행 중인 녹음" })).toBeVisible();
+      page.getByRole("heading", { name: "최근 추가된 문서" }),
+    ).toBeHidden();
 
     const inviteCard = getCard({ page, title: "팀원 초대" });
     await expect(
@@ -281,75 +277,226 @@ test.describe("팀원 초대 카드", () => {
   });
 });
 
-test.describe("홈 녹음 실패 카드", () => {
-  const getRecordingCard = (page: Page) =>
-    page.getByRole("region", { name: "진행 중인 녹음" });
+test.describe("홈 녹음 기록 카드", () => {
+  // dev 서버의 녹음 기록 mock은 20개씩 잘라 주므로 첫 묶음은 앞의 20개예요
+  const PAGE_SIZE = 20;
+  const expectedRecordings = new GetRecordingsResponseDto(recordingsResponse)
+    .items;
+  const firstPage = expectedRecordings.slice(0, PAGE_SIZE);
+  const findRecording = (
+    predicate: (recording: (typeof expectedRecordings)[number]) => boolean,
+  ) => expectedRecordings.find(predicate)!;
+  const COMPLETED = findRecording(
+    ({ processingStatus }) => processingStatus === "COMPLETED",
+  );
+  const PROCESSING = findRecording(
+    ({ processingStatus }) => processingStatus === "PROCESSING",
+  );
+  const TRANSCRIPTION_FAILED = findRecording(
+    ({ processingStatus }) => processingStatus === "TRANSCRIPTION_FAILED",
+  );
+  const DOCUMENT_FAILED_RETRYABLE = findRecording(
+    ({ processingStatus, isRetryable }) =>
+      processingStatus === "DOCUMENT_FAILED" && isRetryable,
+  );
+  const DOCUMENT_FAILED_NOT_RETRYABLE = findRecording(
+    ({ processingStatus, isRetryable }) =>
+      processingStatus === "DOCUMENT_FAILED" && !isRetryable,
+  );
+  const NO_CONTENT = findRecording(
+    ({ processingStatus }) => processingStatus === "NO_CONTENT",
+  );
 
-  for (const { scenario, title } of [
-    { scenario: "transcriptionFailed", title: "녹음을 글로 옮기지 못했어요" },
-    { scenario: "documentFailed", title: "문서를 만들지 못했어요" },
-  ]) {
-    test(`[HOME-024-06] ${scenario}: 실패를 표시하고 재시도 접수 후 처리 중으로 돌아간다 @core`, async ({
-      page,
-    }) => {
-      await page.goto(`${HOME_PATH}?mock.currentRecording=${scenario}`);
-      const card = getRecordingCard(page);
-      await expect(card.getByText(title, { exact: true })).toBeVisible();
-      await expect(
-        page.getByRole("button", { name: "회의 녹음 시작" }),
-      ).toBeVisible();
-
-      await expect(
-        card.getByText("다시 시도할 수 있어요", { exact: true }),
-      ).toBeVisible();
-      await expect(card.getByText(/보관해요/)).toHaveCount(0);
-      await card.getByRole("button", { name: "다시 시도" }).click();
-
-      await expect(
-        card.getByText("문서 정리 중", { exact: true }),
-      ).toBeVisible();
-      await expect(card.getByRole("button", { name: "보기" })).toBeVisible();
-    });
-
-    test(`[HOME-024-06] ${scenario}: 재시도 불가 실패도 제목을 유지하고 버튼·재시도 안내를 숨긴다`, async ({
-      page,
-    }) => {
-      await page.goto(
-        `${HOME_PATH}?mock.currentRecording=${scenario}NotRetryable`,
+  /** 그 녹음의 행. 행은 서버가 준 순서 그대로예요 */
+  const getRow = (page: Page, recordingId: number) =>
+    getRecordingHistoryCard(page)
+      .getByRole("listitem")
+      .nth(
+        firstPage.findIndex(
+          (recording) => recording.recordingId === recordingId,
+        ),
       );
-      const card = getRecordingCard(page);
 
-      await expect(card.getByText(title, { exact: true })).toBeVisible();
-      await expect(card.getByRole("button", { name: "다시 시도" })).toHaveCount(
+  /** 카드 아래 끝이 화면에 들어오게 한 뒤 카드 안 목록을 끝까지 내려요. 사람이 휠로 내리면 페이지도 이어서 내려가요 */
+  const scrollListToEnd = (page: Page) =>
+    getRecordingHistoryCard(page)
+      .getByRole("list")
+      .evaluate((list) => {
+        const scrollArea = list.parentElement!;
+        scrollArea.closest("section")!.scrollIntoView({ block: "end" });
+        scrollArea.scrollTo({ top: scrollArea.scrollHeight });
+      });
+
+  test("[STT-R32, STT-R33] 행은 서버가 준 최신순이고, 완료 행은 날짜와 길이 칩, 그 밖의 행은 처리 상태를 보여 준다 @core", async ({
+    page,
+  }) => {
+    const card = getRecordingHistoryCard(page);
+
+    await expect(card.getByRole("listitem")).toHaveCount(firstPage.length);
+    for (const [index, { title }] of firstPage.entries()) {
+      await expect(
+        card.getByRole("listitem").nth(index).getByTitle(title),
+      ).toBeVisible();
+    }
+
+    const completedRow = getRow(page, COMPLETED.recordingId);
+    await expect(completedRow).toContainText(formatDate(COMPLETED.startedAt));
+    await expect(completedRow).toContainText(
+      formatDurationFromSeconds(COMPLETED.recordingDurationSeconds),
+    );
+    await expect(getRow(page, PROCESSING.recordingId)).not.toContainText(
+      formatDate(PROCESSING.startedAt),
+    );
+    await expect(card.getByRole("link", { name: "전체 보기" })).toHaveCount(0);
+  });
+
+  test("[STT-R32, STT-R33] 목록을 끝까지 내려도 카드 제목과 맨 위 줄은 그대로 보인다", async ({
+    page,
+  }) => {
+    await page.goto(`${HOME_PATH}?mock.currentRecording=recording`);
+    const card = getRecordingHistoryCard(page);
+    await expect(card.getByRole("listitem").first()).toBeVisible();
+
+    await scrollListToEnd(page);
+
+    await expect(
+      card.getByRole("heading", { name: "녹음 기록" }),
+    ).toBeInViewport();
+    await expect(
+      card.getByRole("button", { name: "녹음 화면으로" }),
+    ).toBeInViewport();
+  });
+
+  test("[STT-R51] 행마다 녹음 문서와 같은 처리 상태를 보여 준다 @core", async ({
+    page,
+  }) => {
+    for (const [recording, status] of [
+      [PROCESSING, "문서 정리 중"],
+      [TRANSCRIPTION_FAILED, "녹음을 글로 옮기지 못했어요"],
+      [DOCUMENT_FAILED_RETRYABLE, "문서를 만들지 못했어요"],
+      [NO_CONTENT, "변환된 음성 기록이 없어요."],
+    ] as const) {
+      await expect(getRow(page, recording.recordingId)).toContainText(status);
+    }
+  });
+
+  test("[STT-R51, STT-R34] 다시 시도할 수 있는 실패 행에만 「다시 시도」가 있고, 「다시 시도할 수 있어요」 문구는 없다", async ({
+    page,
+  }) => {
+    for (const { recordingId } of [
+      TRANSCRIPTION_FAILED,
+      DOCUMENT_FAILED_RETRYABLE,
+    ]) {
+      const row = getRow(page, recordingId);
+      await expect(
+        row.getByRole("button", { name: "다시 시도" }),
+      ).toBeVisible();
+      await expect(row.getByRole("link", { name: "녹음 보기" })).toHaveCount(0);
+    }
+
+    const notRetryableRow = getRow(
+      page,
+      DOCUMENT_FAILED_NOT_RETRYABLE.recordingId,
+    );
+    await expect(notRetryableRow).toContainText("문서를 만들지 못했어요");
+    await expect(
+      notRetryableRow.getByRole("button", { name: "다시 시도" }),
+    ).toHaveCount(0);
+    await expect(
+      notRetryableRow.getByRole("link", { name: "녹음 보기" }),
+    ).toBeVisible();
+    await expect(
+      getRecordingHistoryCard(page).getByText("다시 시도할 수 있어요"),
+    ).toHaveCount(0);
+  });
+
+  for (const { failure, recording } of [
+    { failure: "전사 실패", recording: TRANSCRIPTION_FAILED },
+    { failure: "문서 생성 실패", recording: DOCUMENT_FAILED_RETRYABLE },
+  ]) {
+    test(`[STT-R34, STT-R42] ${failure} 행에서 「다시 시도」를 누르면 그 행이 문서 정리 중으로 바뀐다 @core`, async ({
+      page,
+    }) => {
+      const row = getRow(page, recording.recordingId);
+
+      await row.getByRole("button", { name: "다시 시도" }).click();
+
+      await expect(row).toContainText("문서 정리 중");
+      await expect(row.getByRole("button", { name: "다시 시도" })).toHaveCount(
         0,
       );
-      await expect(
-        card.getByText("다시 시도할 수 있어요", { exact: true }),
-      ).toHaveCount(0);
-      await expect(
-        card.getByText("진행 중인 녹음이 없어요", { exact: true }),
-      ).toHaveCount(0);
     });
   }
 
-  test("[HOME-024-03] 처리 완료 후 이전 실패가 다시 선택되면 빈 카드 대신 실패를 표시한다", async ({
+  test("[STT-R34] 「녹음 보기」를 누르면 그 행의 녹음 문서로 간다", async ({
     page,
   }) => {
-    await page.goto(`${HOME_PATH}?mock.currentRecording=processing`);
-    const card = getRecordingCard(page);
-    await expect(card.getByText("문서 정리 중", { exact: true })).toBeVisible();
-    await page.evaluate(() =>
-      localStorage.setItem(
-        "knot.mock.scenario",
-        JSON.stringify({ currentRecording: "transcriptionFailedNotRetryable" }),
-      ),
-    );
+    await getRow(page, COMPLETED.recordingId)
+      .getByRole("link", { name: "녹음 보기" })
+      .click();
 
-    await expect(
-      card.getByText("녹음을 글로 옮기지 못했어요", { exact: true }),
-    ).toBeVisible({ timeout: 10_000 });
-    await expect(card.getByRole("button", { name: "다시 시도" })).toHaveCount(
-      0,
+    await expect(page).toHaveURL(
+      `${HOME_PATH}/recordings/${COMPLETED.recordingId}/document`,
     );
   });
+
+  test("[STT-R34, STT-R21] 문서 정리 중 행의 「녹음 보기」는 누를 수 없다", async ({
+    page,
+  }) => {
+    const viewRecording = getRow(page, PROCESSING.recordingId).getByRole(
+      "link",
+      { name: "녹음 보기" },
+    );
+
+    await expect(viewRecording).toHaveAttribute("aria-disabled", "true");
+    await expect(viewRecording).not.toHaveAttribute("href");
+  });
+
+  test("[STT-R51, STT-R33] 목록 끝까지 내리면 다음 묶음을 받아, 그 행도 같은 규칙으로 보여 준다", async ({
+    page,
+  }) => {
+    const card = getRecordingHistoryCard(page);
+    await expect(card.getByRole("listitem")).toHaveCount(firstPage.length);
+
+    await scrollListToEnd(page);
+
+    await expect(card.getByRole("listitem")).toHaveCount(
+      expectedRecordings.length,
+    );
+    const lastRecording = expectedRecordings[expectedRecordings.length - 1];
+    await expect(card.getByRole("listitem").last()).toContainText(
+      formatDate(lastRecording.startedAt),
+    );
+  });
+
+  test("[STT-R24] 내 진행 중 녹음이 없으면 맨 위 줄이 없다", async ({
+    page,
+  }) => {
+    const card = getRecordingHistoryCard(page);
+    await expect(card.getByRole("listitem").first()).toBeVisible();
+
+    await expect(
+      card.getByRole("button", { name: "녹음 화면으로" }),
+    ).toHaveCount(0);
+  });
+
+  for (const { scenario, status } of [
+    { scenario: "recording", status: "녹음 중" },
+    { scenario: "paused", status: "일시정지" },
+  ]) {
+    test(`[STT-R24] 녹음 기록 맨 위 줄에 내 ${status} 녹음을 보여 주고, 다른 탭의 녹음이면 「녹음 화면으로」를 누를 수 없다`, async ({
+      page,
+    }) => {
+      await page.goto(`${HOME_PATH}?mock.currentRecording=${scenario}`);
+      const card = getRecordingHistoryCard(page);
+
+      await expect(
+        card.getByText(`${expectedMe.nickname} 님의 녹음`).first(),
+      ).toBeVisible();
+      await expect(card.getByText(new RegExp(`^${status} · `))).toBeVisible();
+      await expect(
+        card.getByRole("button", { name: "녹음 화면으로" }),
+      ).toBeDisabled();
+    });
+  }
 });
