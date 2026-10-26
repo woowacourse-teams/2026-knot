@@ -114,9 +114,7 @@ class RunnerStagesTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {
-            "[]",
-            "{\"decodeCount\":1,\"defaultDecodeMs\":10}",
+    @ValueSource(strings = {"[]", "{\"decodeCount\":1,\"defaultDecodeMs\":10}",
             "{\"decodeCount\":0,\"defaultDecodeMs\":10,\"diarizationMs\":10}",
             "{\"decodeCount\":4,\"defaultDecodeMs\":10,\"diarizationMs\":10}",
             "{\"decodeCount\":1,\"defaultDecodeMs\":-1,\"diarizationMs\":10}",
@@ -124,9 +122,7 @@ class RunnerStagesTest {
             "{\"decodeCount\":1,\"defaultDecodeMs\":\"10\",\"diarizationMs\":10}",
             "{\"decodeCount\":1,\"defaultDecodeMs\":3600001,\"diarizationMs\":10}",
             "{\"decodeCount\":2,\"defaultDecodeMs\":10,\"diarizationMs\":10,\"retryRan\":\"true\"}",
-            "{\"decodeCount\":1,\"defaultDecodeMs\":10,\"diarizationMs\":10,\"text\":\"안녕\"}",
-            "not json"
-    })
+            "{\"decodeCount\":1,\"defaultDecodeMs\":10,\"diarizationMs\":10,\"text\":\"안녕\"}", "not json"})
     @DisplayName("형식이 틀리거나 승인하지 않은 항목이 있으면 단계 기록 전체를 버린다")
     void read_empty_invalidStages(String body) throws Exception {
         // given
