@@ -1,8 +1,11 @@
+import { TOAST_MESSAGES } from "@constants/toastMessages";
 import { ThemeProvider } from "@emotion/react";
 import { DialogProvider } from "@provider/context/dialogContext";
+import { ToastProvider } from "@provider/context/toastContext";
 import { theme } from "@provider/themeProvider";
 import { useRecordingStore } from "@store/recordingStore";
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
+import { MemoryRouter } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import MeetingAudioOption from ".";
@@ -53,15 +56,21 @@ const renderDuringRecording = async () => {
 
   render(
     <ThemeProvider theme={theme}>
-      <DialogProvider>
-        <MeetingAudioOption />
-      </DialogProvider>
+      <MemoryRouter>
+        <ToastProvider>
+          <DialogProvider>
+            <MeetingAudioOption />
+          </DialogProvider>
+        </ToastProvider>
+      </MemoryRouter>
     </ThemeProvider>,
   );
 };
 
 const ANDROID_CHROME_UA =
   "Mozilla/5.0 (Linux; Android 16; Pixel 10) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0.0.0 Mobile Safari/537.36";
+
+const EARPHONE_TOAST = TOAST_MESSAGES.MEETING_AUDIO_CONNECTED.message;
 
 /** 화상 회의 줄의 상태와 설명. 바뀌면 화면 낭독기가 읽어요 */
 const meetingSource = () => screen.getByRole("status");
@@ -129,7 +138,7 @@ describe("MeetingAudioOption", () => {
     expect(queryButton(MEETING_AUDIO_COPY.OPTION)).not.toBeInTheDocument();
   });
 
-  it("[STT-R44, STT-R45] 함께 녹음하기를 누르면 공유 창보다 먼저 연결 안내와 녹음 고지를 보여 주고, 공유할 화면 고르기를 눌러야 공유 창을 연다", async () => {
+  it("[STT-R44, STT-R45] 함께 녹음하기를 누르면 공유 창보다 먼저 연결 안내와 녹음 고지를 보여 주고, 공유할 화면 고르기를 눌러야 공유 창을 열며, 연결되면 이어폰 토스트를 띄운다", async () => {
     useBrowser(CHROME_UA);
     const getDisplayMedia = vi
       .spyOn(navigator.mediaDevices, "getDisplayMedia")
@@ -155,6 +164,7 @@ describe("MeetingAudioOption", () => {
     // 함께 녹음하는 동안에는 버튼을 숨겨요
     expect(queryButton(MEETING_AUDIO_COPY.OPTION)).not.toBeInTheDocument();
     expect(useRecordingStore.getState().meetingAudioStatus).toBe("on");
+    expect(screen.getByText(EARPHONE_TOAST)).toBeInTheDocument();
   });
 
   it("[STT-R45] 연결 안내는 브라우저에서가 기본이고, 설치한 앱에서를 고르면 전체 화면과 시스템 오디오 공유 단계로 바뀐다", async () => {
@@ -231,6 +241,7 @@ describe("MeetingAudioOption", () => {
       "aria-busy",
       "true",
     );
+    expect(screen.queryByText(EARPHONE_TOAST)).not.toBeInTheDocument();
     expect(useRecordingStore.getState().status).toBe("recording");
   });
 
@@ -249,6 +260,7 @@ describe("MeetingAudioOption", () => {
     expect(meetingSource()).toHaveTextContent(
       MEETING_AUDIO_COPY.MEETING_DESCRIPTION.noAudio,
     );
+    expect(screen.queryByText(EARPHONE_TOAST)).not.toBeInTheDocument();
     expect(useRecordingStore.getState().status).toBe("recording");
 
     getDisplayMedia.mockResolvedValue(createSharedTab().stream);

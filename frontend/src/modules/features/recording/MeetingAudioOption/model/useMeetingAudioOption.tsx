@@ -1,6 +1,10 @@
+import { TOAST_MESSAGES } from "@constants/toastMessages";
 import useRecordingState from "@hooks/domain/recording/useRecordingState";
 import { useDialog } from "@provider/context/dialogContext";
+import { useToast } from "@provider/context/toastContext";
 import { useState } from "react";
+
+import HeadphonesIcon from "@/assets/icons/headphones.svg";
 
 import type { MeetingSourceState } from "../types/meetingSource";
 import MeetingAudioConnectDialog from "../ui/MeetingAudioConnectDialog";
@@ -13,11 +17,12 @@ const isMobileDevice = () =>
  * 녹음 화면의 「화상 회의 상대방 목소리」 줄을 다룹니다.
  *
  * 「함께 녹음하기」나 「다시 연결하기」를 누르면 연결 안내 모달을 먼저 띄우고, 모달의 「공유할 화면 고르기」를 누른 그 자리에서
- * 공유 창을 열어요. 공유 창은 사용자의 누름 안에서만 열리기 때문이에요. 공유 창에서 고르는 동안은 `connecting`이에요.
- * 녹음을 끝내는 동안에는 버튼을 숨겨요.
+ * 공유 창을 열어요. 공유 창은 사용자의 누름 안에서만 열리기 때문이에요. 공유 창에서 고르는 동안은 `connecting`이고,
+ * 회의 소리를 받아 연결되면 이어폰 토스트를 띄워요. 녹음을 끝내는 동안에는 버튼을 숨겨요.
  */
 export const useMeetingAudioOption = () => {
   const { open } = useDialog();
+  const { show } = useToast();
   const {
     status,
     isEnding,
@@ -34,7 +39,16 @@ export const useMeetingAudioOption = () => {
         onConfirm={() => {
           close();
           setIsConnecting(true);
-          void connectMeetingAudio().finally(() => setIsConnecting(false));
+          void connectMeetingAudio()
+            .then((isConnected) => {
+              if (isConnected) {
+                show({
+                  ...TOAST_MESSAGES.MEETING_AUDIO_CONNECTED,
+                  icon: HeadphonesIcon,
+                });
+              }
+            })
+            .finally(() => setIsConnecting(false));
         }}
       />
     ));
