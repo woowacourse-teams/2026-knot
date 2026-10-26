@@ -3,9 +3,11 @@ import { markRecordingStart } from "@utils/recordingStartTrace";
 
 import type { RecordingAudioMode } from "@/shared/types/recording";
 
+import { captureMeetingAudio } from "./meetingAudio";
 import Microphone from "./microphone";
 import {
   isRecordingAudioTypeSupported,
+  stopTracks,
   UnsupportedRecordingAudioTypeError,
 } from "./microphoneConnection";
 import PcmChunkUploadQueue, {
@@ -17,6 +19,12 @@ import RecordedAudio from "./recordedAudio";
 
 /** 녹음이 없는 상태·녹음 중·일시정지. 한 번에 하나만 녹음해요. */
 export type RecordingStatus = "idle" | "recording" | "paused";
+
+/**
+ * 회의 소리를 함께 녹음하는지. `on`일 때만 회의 소리를 마이크와 섞어 녹음해요.
+ * `noAudio`(소리 없이 공유함)와 `stopped`(함께 녹음하다 공유가 멈춤)는 `off`처럼 마이크만 녹음하면서 그 사실을 알려요
+ */
+export type MeetingAudioStatus = "off" | "on" | "noAudio" | "stopped";
 
 /** 서버에 열어 둔 녹음 세션. 일시정지·재개·종료 요청 경로에 들어가요 */
 export interface RecordingSession {
@@ -64,6 +72,8 @@ interface RecordingState {
   isEnding: boolean;
   /** 끝낸 PCM 녹음의 조각을 아직 올리는 중인지. 큐가 비거나 멈추거나 시한이 지나면 `false`가 돼요 */
   isUploadingChunks: boolean;
+  /** 회의 소리를 함께 녹음하는지. 녹음을 비우면 `off`로 돌아가요 */
+  meetingAudioStatus: MeetingAudioStatus;
 }
 
 interface RecordingActions {
@@ -100,6 +110,11 @@ interface RecordingActions {
   discardRecording: (params?: DiscardRecordingParams) => void;
   /** 마이크가 끊겼다는 표시(`isMicrophoneLost`)를 지워요 */
   clearMicrophoneLost: () => void;
+  /**
+   * 브라우저 공유 창을 열어 받은 회의 소리를 마이크와 섞어 진행 중인 같은 녹음에 이어 담아요. 사용자의 누름 안에서 불러야 해요.
+   * 공유 창을 닫으면 마이크만 녹음하고, 소리 없이 공유하면 공유를 끄고 `noAudio`로 알려요
+   */
+  connectMeetingAudio: () => Promise<void>;
 }
 
 const IDLE_STATE: RecordingState = {
@@ -112,6 +127,7 @@ const IDLE_STATE: RecordingState = {
   microphoneErrorName: null,
   isEnding: false,
   isUploadingChunks: false,
+  meetingAudioStatus: "off",
 };
 
 /** 진행 중인 구간을 누적 시간에 더해 시간 표시를 멈춰요 */
@@ -139,6 +155,10 @@ const freezeElapsed = ({
  * 전송 큐가 바로 올리고, 일시정지하면 남은 소리를 마지막 조각으로 봉인해요. 끝낸 뒤에도 큐는 녹음과 따로 남아
  * 시한까지 남은 조각을 올리고, 그동안은 `isUploadingChunks`로 알려요.
  *
+ * 회의 소리는 녹음 중에 공유 창으로 받아 녹음기와 PCM 수집기에 마이크와 섞어 넣어요. 마이크나 수집기를 새로 받으면
+ * 다시 섞고, 브라우저의 공유 중지로 끝나면 마이크 끊김과 달리 일시정지하지 않고 마이크만으로 이어 가요.
+ * 녹음을 끝내거나 버리면 공유도 꺼요.
+ *
  * 여기는 브라우저 안의 녹음만 다루고, 서버 녹음 세션 요청은 `@hooks/domain/recording/useRecordingControl`이 맡아요.
  * 화면은 도메인 훅으로 읽고, 테스트는 녹음이 테스트끼리 새지 않도록 여기서 직접 초기화해요.
  */
@@ -151,6 +171,13 @@ export const useRecordingStore = create<RecordingState & RecordingActions>()((
   let chunkQueue: PcmChunkUploadQueue | null = null;
   /** 마지막 일시정지의 봉인. 수집기를 바꾸기 전에 기다려 마지막 조각을 잃지 않아요 */
   let pcmFlushed: Promise<void> = Promise.resolve();
+  /** 함께 녹음 중인 회의 소리 공유. `meetingAudioStatus`가 `on`일 때만 있어요 */
+  let meetingAudio: MediaStream | null = null;
+
+  const stopMeetingAudio = () => {
+    if (meetingAudio) stopTracks(meetingAudio);
+    meetingAudio = null;
+  };
 
   const handleLost = () => {
     void get().pauseRecording();
@@ -162,14 +189,18 @@ export const useRecordingStore = create<RecordingState & RecordingActions>()((
     onLost: handleLost,
   });
 
-  /** 받아 둔 마이크로 PCM 수집기를 만들어요. 봉인한 조각은 큐로 넘겨요 */
-  const createPcmCollector = (stream: MediaStream) =>
-    PcmCollector.create({
+  /** 받아 둔 마이크로 PCM 수집기를 만들어요. 봉인한 조각은 큐로 넘기고, 함께 녹음 중인 회의 소리도 섞어요 */
+  const createPcmCollector = async (stream: MediaStream) => {
+    const collector = await PcmCollector.create({
       stream,
       // 올리지 못한 조각은 큐가 들고 있다가 drain으로 알려 주므로 여기선 삼켜요. 복구는 #794에서 붙여요
       onChunk: (pcm) => void chunkQueue?.enqueue(pcm).catch(() => undefined),
       onLost: handleLost,
     });
+    if (meetingAudio) collector.addAudio(meetingAudio);
+
+    return collector;
+  };
 
   return {
     ...IDLE_STATE,
@@ -238,6 +269,7 @@ export const useRecordingStore = create<RecordingState & RecordingActions>()((
       const connection = await microphone.connect();
       set({ microphoneErrorName: microphone.errorName });
       if (!connection) return false;
+      if (meetingAudio) connection.addAudio(meetingAudio);
 
       if (pcmCollector) {
         // 멈춘 수집기의 마지막 봉인이 끝난 뒤에 닫아야 그 조각을 잃지 않아요
@@ -290,6 +322,7 @@ export const useRecordingStore = create<RecordingState & RecordingActions>()((
 
       await pcmCollector?.flush();
       await microphone.stop();
+      stopMeetingAudio();
       set({ analyser: null });
 
       return recordedAudio.toBlob();
@@ -314,6 +347,7 @@ export const useRecordingStore = create<RecordingState & RecordingActions>()((
 
     discardRecording: ({ acceptUntil } = {}) => {
       microphone.disconnect();
+      stopMeetingAudio();
       // 서버가 먼저 끝낸 녹음의 남은 소리는 봉인하지 않고 버려요
       pcmCollector?.close();
       pcmCollector = null;
@@ -335,5 +369,31 @@ export const useRecordingStore = create<RecordingState & RecordingActions>()((
     },
 
     clearMicrophoneLost: () => set({ isMicrophoneLost: false }),
+
+    connectMeetingAudio: async () => {
+      if (get().status === "idle" || meetingAudio) return;
+
+      const shared = await captureMeetingAudio();
+      if (shared === "cancelled" || shared === "noAudio") {
+        set({ meetingAudioStatus: shared === "noAudio" ? "noAudio" : "off" });
+        return;
+      }
+      // 공유 창을 연 사이 녹음이 끝났으면 받은 공유를 바로 꺼요
+      if (get().status === "idle") {
+        stopTracks(shared);
+        return;
+      }
+
+      meetingAudio = shared;
+      microphone.addAudio(shared);
+      pcmCollector?.addAudio(shared);
+      // 우리가 끈 트랙은 `ended`를 보내지 않으므로, 이 알림은 브라우저의 공유 중지나 공유한 탭 닫기예요
+      shared.getAudioTracks()[0].addEventListener("ended", () => {
+        if (meetingAudio !== shared) return;
+        stopMeetingAudio();
+        set({ meetingAudioStatus: "stopped" });
+      });
+      set({ meetingAudioStatus: "on" });
+    },
   };
 });
