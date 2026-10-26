@@ -217,22 +217,26 @@ class DocumentRecordingListQueryIntegrationTest {
                         "recordingDurationSeconds"
                 )
                 .isEqualTo(recentRecording(untitled));
-        assertThat(page.get(0)
-                .documents()).containsExactly(
-                        new DocumentRecordingDocumentResult(
-                                summarized,
-                                "탈퇴 데이터 보존 범위",
-                                "탈퇴 후 30일간 데이터를 보관하기로 했다."
-                        )
-                );
-        assertThat(page.get(1)
-                .documents()).containsExactly(
-                        new DocumentRecordingDocumentResult(
-                                withoutSummary,
-                                "탈퇴 안내 문구",
-                                null
-                        )
-                );
+        assertThat(
+                page.get(0)
+                        .documents()
+        ).containsExactly(
+                new DocumentRecordingDocumentResult(
+                        summarized,
+                        "탈퇴 데이터 보존 범위",
+                        "탈퇴 후 30일간 데이터를 보관하기로 했다."
+                )
+        );
+        assertThat(
+                page.get(1)
+                        .documents()
+        ).containsExactly(
+                new DocumentRecordingDocumentResult(
+                        withoutSummary,
+                        "탈퇴 안내 문구",
+                        null
+                )
+        );
     }
 
     @Test
