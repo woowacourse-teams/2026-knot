@@ -5,6 +5,7 @@ import com.knot.backend.recording.application.dto.result.PreparedWindowSource;
 import com.knot.backend.recording.domain.RecordingErrorCode;
 import com.knot.backend.recording.domain.RecordingException;
 import com.knot.backend.recording.domain.model.AudioManifestPart;
+import com.knot.backend.recording.domain.model.TranscriptionWindowShape;
 import com.knot.backend.recording.domain.model.StoredAudioChunk;
 import java.io.IOException;
 import java.io.InputStream;
@@ -27,7 +28,6 @@ import tools.jackson.databind.ObjectMapper;
 
 @Component
 public class TranscriptionWindowAudioAssembler {
-    private static final long MAX_INPUT_FRAMES = 960_000;
     private static final long MAX_RECORDING_FRAMES = 115_200_000;
     private static final int BUFFER_SIZE = 16_384;
 
@@ -191,7 +191,7 @@ public class TranscriptionWindowAudioAssembler {
         if (manifest == null || (manifest.schemaVersion() != 1 && manifest.schemaVersion() != 2)
                 || manifest.inputStartFrame() < 0 || manifest.inputEndFrame() <= manifest.inputStartFrame()
                 || manifest.inputEndFrame() > MAX_RECORDING_FRAMES
-                || manifest.inputEndFrame() - manifest.inputStartFrame() > MAX_INPUT_FRAMES) {
+                || manifest.inputEndFrame() - manifest.inputStartFrame() > TranscriptionWindowShape.MAX_INPUT_FRAMES) {
             throw mismatch();
         }
         if (manifest.schemaVersion() == 2) {

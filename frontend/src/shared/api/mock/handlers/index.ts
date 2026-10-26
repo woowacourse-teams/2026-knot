@@ -40,10 +40,12 @@ import { recordingPauseHandlers } from "./api/v1/workspaces/[workspaceId]/record
 import { recordingResumeHandlers } from "./api/v1/workspaces/[workspaceId]/recordings/[recordingId]/resume";
 import { currentRecordingHandlers } from "./api/v1/workspaces/[workspaceId]/recordings/current";
 import { feedbackRelayHandlers } from "./relay/f";
+import { releaseNotesRelayHandlers } from "./relay/n";
 
 // 리다이렉트 엔드포인트(OAuth 시작·로그아웃)는 XHR 응답이 아니라 두지 않아요
 export const handlers = [
   ...feedbackRelayHandlers,
+  ...releaseNotesRelayHandlers,
   ...authMeHandlers,
   ...authCsrfHandlers,
   ...authNicknameHandlers,

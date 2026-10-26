@@ -1,0 +1,511 @@
+{
+  "apiVersion": 1,
+  "groups": [
+    {
+      "orgId": 1,
+      "name": "Knot operational checks",
+      "folder": "Knot Alerts",
+      "interval": "30s",
+      "rules": [
+        {
+          "uid": "knot-dev-service-state",
+          "title": "Knot DEV 서비스 상태 이상",
+          "condition": "B",
+          "data": [
+            {
+              "refId": "A",
+              "relativeTimeRange": {
+                "from": 600,
+                "to": 0
+              },
+              "datasourceUid": "knot-prometheus",
+              "model": {
+                "refId": "A",
+                "expr": "max(knot_systemd_service_failed{env=\"dev\"}) + (1 - min(knot_required_service_active{env=\"dev\"})) + (1 - min(knot_backend_service_active{env=\"dev\"})) + (1 - min(knot_service_check_success{env=\"dev\"}))",
+                "instant": true,
+                "range": false,
+                "intervalMs": 1000,
+                "maxDataPoints": 43200,
+                "datasource": {
+                  "type": "prometheus",
+                  "uid": "knot-prometheus"
+                }
+              }
+            },
+            {
+              "refId": "B",
+              "relativeTimeRange": {
+                "from": 0,
+                "to": 0
+              },
+              "datasourceUid": "__expr__",
+              "model": {
+                "refId": "B",
+                "type": "threshold",
+                "expression": "A",
+                "datasource": {
+                  "type": "__expr__",
+                  "uid": "__expr__"
+                },
+                "conditions": [
+                  {
+                    "evaluator": {
+                      "type": "gt",
+                      "params": [
+                        0
+                      ]
+                    },
+                    "operator": {
+                      "type": "and"
+                    },
+                    "query": {
+                      "params": [
+                        "B"
+                      ]
+                    },
+                    "reducer": {
+                      "type": "last"
+                    },
+                    "type": "query"
+                  }
+                ],
+                "intervalMs": 1000,
+                "maxDataPoints": 43200
+              }
+            }
+          ],
+          "noDataState": "Alerting",
+          "execErrState": "Alerting",
+          "for": "2m",
+          "annotations": {
+            "display_name": "서비스 상태 이상",
+            "summary": "필수 서비스 비활성, backend 활성 슬롯 없음, 실패 상태 또는 상태 조회 실패가 지속됩니다.",
+            "description": "systemctl --failed와 nginx/docker/codedeploy-agent 및 backend 슬롯 상태를 확인하세요. 대기 슬롯의 정상 inactive는 경보하지 않습니다."
+          },
+          "labels": {
+            "project": "knot",
+            "severity": "warning",
+            "env": "dev",
+            "service": "infrastructure"
+          },
+          "isPaused": false
+        },
+        {
+          "uid": "knot-dev-operational-check-stale",
+          "title": "Knot DEV 운영 상태 점검 누락",
+          "condition": "B",
+          "data": [
+            {
+              "refId": "A",
+              "relativeTimeRange": {
+                "from": 600,
+                "to": 0
+              },
+              "datasourceUid": "knot-prometheus",
+              "model": {
+                "refId": "A",
+                "expr": "(max(time() - knot_operational_check_timestamp_seconds{env=\"dev\"}) > bool 180) or absent(knot_operational_check_timestamp_seconds{env=\"dev\"})",
+                "instant": true,
+                "range": false,
+                "intervalMs": 1000,
+                "maxDataPoints": 43200,
+                "datasource": {
+                  "type": "prometheus",
+                  "uid": "knot-prometheus"
+                }
+              }
+            },
+            {
+              "refId": "B",
+              "relativeTimeRange": {
+                "from": 0,
+                "to": 0
+              },
+              "datasourceUid": "__expr__",
+              "model": {
+                "refId": "B",
+                "type": "threshold",
+                "expression": "A",
+                "datasource": {
+                  "type": "__expr__",
+                  "uid": "__expr__"
+                },
+                "conditions": [
+                  {
+                    "evaluator": {
+                      "type": "gt",
+                      "params": [
+                        0
+                      ]
+                    },
+                    "operator": {
+                      "type": "and"
+                    },
+                    "query": {
+                      "params": [
+                        "B"
+                      ]
+                    },
+                    "reducer": {
+                      "type": "last"
+                    },
+                    "type": "query"
+                  }
+                ],
+                "intervalMs": 1000,
+                "maxDataPoints": 43200
+              }
+            }
+          ],
+          "noDataState": "Alerting",
+          "execErrState": "Alerting",
+          "for": "3m",
+          "annotations": {
+            "display_name": "운영 상태 점검 누락",
+            "summary": "서비스·백업 점검 표본이 3분 이상 갱신되지 않거나 없습니다.",
+            "description": "knot-operational-check.timer와 service, textfile 경로 및 Alloy를 확인하세요."
+          },
+          "labels": {
+            "project": "knot",
+            "severity": "warning",
+            "env": "dev",
+            "service": "infrastructure"
+          },
+          "isPaused": false
+        },
+        {
+          "uid": "knot-dev-rds-backup-state",
+          "title": "Knot DEV RDS 복구 가능 시각 지연",
+          "condition": "B",
+          "data": [
+            {
+              "refId": "A",
+              "relativeTimeRange": {
+                "from": 600,
+                "to": 0
+              },
+              "datasourceUid": "knot-prometheus",
+              "model": {
+                "refId": "A",
+                "expr": "(max(time() - knot_rds_backup_latest_restorable_timestamp_seconds{env=\"dev\"}) > bool 3600) + (1 - min(knot_rds_backup_check_success{env=\"dev\"})) + (min(knot_rds_backup_retention_days{env=\"dev\"}) < bool 1) + (max(time() - knot_rds_backup_check_timestamp_seconds{env=\"dev\"}) > bool 900)",
+                "instant": true,
+                "range": false,
+                "intervalMs": 1000,
+                "maxDataPoints": 43200,
+                "datasource": {
+                  "type": "prometheus",
+                  "uid": "knot-prometheus"
+                }
+              }
+            },
+            {
+              "refId": "B",
+              "relativeTimeRange": {
+                "from": 0,
+                "to": 0
+              },
+              "datasourceUid": "__expr__",
+              "model": {
+                "refId": "B",
+                "type": "threshold",
+                "expression": "A",
+                "datasource": {
+                  "type": "__expr__",
+                  "uid": "__expr__"
+                },
+                "conditions": [
+                  {
+                    "evaluator": {
+                      "type": "gt",
+                      "params": [
+                        0
+                      ]
+                    },
+                    "operator": {
+                      "type": "and"
+                    },
+                    "query": {
+                      "params": [
+                        "B"
+                      ]
+                    },
+                    "reducer": {
+                      "type": "last"
+                    },
+                    "type": "query"
+                  }
+                ],
+                "intervalMs": 1000,
+                "maxDataPoints": 43200
+              }
+            }
+          ],
+          "noDataState": "Alerting",
+          "execErrState": "Alerting",
+          "for": "10m",
+          "annotations": {
+            "display_name": "RDS 복구 가능 시각 지연",
+            "summary": "최근 복구 가능 시각이 1시간 이상 지연되거나 백업 비활성·메타데이터 조회 실패·조회 갱신 누락이 지속됩니다.",
+            "description": "RDS 자동 백업 설정·LatestRestorableTime과 점검 IAM 권한을 확인하세요. 복구 가능 시각은 실제 복원 시험의 성공을 보장하지 않습니다."
+          },
+          "labels": {
+            "project": "knot",
+            "severity": "warning",
+            "env": "dev",
+            "service": "infrastructure"
+          },
+          "isPaused": false
+        },
+        {
+          "uid": "knot-prod-service-state",
+          "title": "Knot PROD 서비스 상태 이상",
+          "condition": "B",
+          "data": [
+            {
+              "refId": "A",
+              "relativeTimeRange": {
+                "from": 600,
+                "to": 0
+              },
+              "datasourceUid": "knot-prometheus",
+              "model": {
+                "refId": "A",
+                "expr": "max(knot_systemd_service_failed{env=\"prod\"}) + (1 - min(knot_required_service_active{env=\"prod\"})) + (1 - min(knot_backend_service_active{env=\"prod\"})) + (1 - min(knot_service_check_success{env=\"prod\"}))",
+                "instant": true,
+                "range": false,
+                "intervalMs": 1000,
+                "maxDataPoints": 43200,
+                "datasource": {
+                  "type": "prometheus",
+                  "uid": "knot-prometheus"
+                }
+              }
+            },
+            {
+              "refId": "B",
+              "relativeTimeRange": {
+                "from": 0,
+                "to": 0
+              },
+              "datasourceUid": "__expr__",
+              "model": {
+                "refId": "B",
+                "type": "threshold",
+                "expression": "A",
+                "datasource": {
+                  "type": "__expr__",
+                  "uid": "__expr__"
+                },
+                "conditions": [
+                  {
+                    "evaluator": {
+                      "type": "gt",
+                      "params": [
+                        0
+                      ]
+                    },
+                    "operator": {
+                      "type": "and"
+                    },
+                    "query": {
+                      "params": [
+                        "B"
+                      ]
+                    },
+                    "reducer": {
+                      "type": "last"
+                    },
+                    "type": "query"
+                  }
+                ],
+                "intervalMs": 1000,
+                "maxDataPoints": 43200
+              }
+            }
+          ],
+          "noDataState": "Alerting",
+          "execErrState": "Alerting",
+          "for": "2m",
+          "annotations": {
+            "display_name": "서비스 상태 이상",
+            "summary": "필수 서비스 비활성, backend 활성 슬롯 없음, 실패 상태 또는 상태 조회 실패가 지속됩니다.",
+            "description": "systemctl --failed와 nginx/docker/codedeploy-agent 및 backend 슬롯 상태를 확인하세요. 대기 슬롯의 정상 inactive는 경보하지 않습니다."
+          },
+          "labels": {
+            "project": "knot",
+            "severity": "critical",
+            "env": "prod",
+            "service": "infrastructure"
+          },
+          "isPaused": false
+        },
+        {
+          "uid": "knot-prod-operational-check-stale",
+          "title": "Knot PROD 운영 상태 점검 누락",
+          "condition": "B",
+          "data": [
+            {
+              "refId": "A",
+              "relativeTimeRange": {
+                "from": 600,
+                "to": 0
+              },
+              "datasourceUid": "knot-prometheus",
+              "model": {
+                "refId": "A",
+                "expr": "(max(time() - knot_operational_check_timestamp_seconds{env=\"prod\"}) > bool 180) or absent(knot_operational_check_timestamp_seconds{env=\"prod\"})",
+                "instant": true,
+                "range": false,
+                "intervalMs": 1000,
+                "maxDataPoints": 43200,
+                "datasource": {
+                  "type": "prometheus",
+                  "uid": "knot-prometheus"
+                }
+              }
+            },
+            {
+              "refId": "B",
+              "relativeTimeRange": {
+                "from": 0,
+                "to": 0
+              },
+              "datasourceUid": "__expr__",
+              "model": {
+                "refId": "B",
+                "type": "threshold",
+                "expression": "A",
+                "datasource": {
+                  "type": "__expr__",
+                  "uid": "__expr__"
+                },
+                "conditions": [
+                  {
+                    "evaluator": {
+                      "type": "gt",
+                      "params": [
+                        0
+                      ]
+                    },
+                    "operator": {
+                      "type": "and"
+                    },
+                    "query": {
+                      "params": [
+                        "B"
+                      ]
+                    },
+                    "reducer": {
+                      "type": "last"
+                    },
+                    "type": "query"
+                  }
+                ],
+                "intervalMs": 1000,
+                "maxDataPoints": 43200
+              }
+            }
+          ],
+          "noDataState": "Alerting",
+          "execErrState": "Alerting",
+          "for": "3m",
+          "annotations": {
+            "display_name": "운영 상태 점검 누락",
+            "summary": "서비스·백업 점검 표본이 3분 이상 갱신되지 않거나 없습니다.",
+            "description": "knot-operational-check.timer와 service, textfile 경로 및 Alloy를 확인하세요."
+          },
+          "labels": {
+            "project": "knot",
+            "severity": "warning",
+            "env": "prod",
+            "service": "infrastructure"
+          },
+          "isPaused": false
+        },
+        {
+          "uid": "knot-prod-rds-backup-state",
+          "title": "Knot PROD RDS 복구 가능 시각 지연",
+          "condition": "B",
+          "data": [
+            {
+              "refId": "A",
+              "relativeTimeRange": {
+                "from": 600,
+                "to": 0
+              },
+              "datasourceUid": "knot-prometheus",
+              "model": {
+                "refId": "A",
+                "expr": "(max(time() - knot_rds_backup_latest_restorable_timestamp_seconds{env=\"prod\"}) > bool 3600) + (1 - min(knot_rds_backup_check_success{env=\"prod\"})) + (min(knot_rds_backup_retention_days{env=\"prod\"}) < bool 1) + (max(time() - knot_rds_backup_check_timestamp_seconds{env=\"prod\"}) > bool 900)",
+                "instant": true,
+                "range": false,
+                "intervalMs": 1000,
+                "maxDataPoints": 43200,
+                "datasource": {
+                  "type": "prometheus",
+                  "uid": "knot-prometheus"
+                }
+              }
+            },
+            {
+              "refId": "B",
+              "relativeTimeRange": {
+                "from": 0,
+                "to": 0
+              },
+              "datasourceUid": "__expr__",
+              "model": {
+                "refId": "B",
+                "type": "threshold",
+                "expression": "A",
+                "datasource": {
+                  "type": "__expr__",
+                  "uid": "__expr__"
+                },
+                "conditions": [
+                  {
+                    "evaluator": {
+                      "type": "gt",
+                      "params": [
+                        0
+                      ]
+                    },
+                    "operator": {
+                      "type": "and"
+                    },
+                    "query": {
+                      "params": [
+                        "B"
+                      ]
+                    },
+                    "reducer": {
+                      "type": "last"
+                    },
+                    "type": "query"
+                  }
+                ],
+                "intervalMs": 1000,
+                "maxDataPoints": 43200
+              }
+            }
+          ],
+          "noDataState": "Alerting",
+          "execErrState": "Alerting",
+          "for": "10m",
+          "annotations": {
+            "display_name": "RDS 복구 가능 시각 지연",
+            "summary": "최근 복구 가능 시각이 1시간 이상 지연되거나 백업 비활성·메타데이터 조회 실패·조회 갱신 누락이 지속됩니다.",
+            "description": "RDS 자동 백업 설정·LatestRestorableTime과 점검 IAM 권한을 확인하세요. 복구 가능 시각은 실제 복원 시험의 성공을 보장하지 않습니다."
+          },
+          "labels": {
+            "project": "knot",
+            "severity": "warning",
+            "env": "prod",
+            "service": "infrastructure"
+          },
+          "isPaused": false
+        }
+      ]
+    }
+  ]
+}

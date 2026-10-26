@@ -1,6 +1,21 @@
 import { GetMeResponseDto } from "@api/dto/auth";
+import { GetDocumentResponseDto } from "@api/dto/document";
+import {
+  GetWorkspaceResponseDto,
+  GetWorkspacesResponseDto,
+} from "@api/dto/workspace";
 import { meResponse } from "@api/mock/responses/auth";
+import { documentDetailsResponse } from "@api/mock/responses/document";
+import {
+  workspaceDetailResponse,
+  workspacesResponse,
+} from "@api/mock/responses/workspace";
+import { mockServer } from "@api/mock/server";
 import DockablePanel from "@composites/DockablePanel";
+import {
+  DOCUMENT_FROM_PARAM,
+  DOCUMENT_FROM_RECORDING,
+} from "@constants/document";
 import { ThemeProvider } from "@emotion/react";
 import { theme } from "@provider/themeProvider";
 import { getRouterPath, PATH_ROUTE } from "@routes/PATH_ROUTE";
@@ -11,8 +26,10 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import { saveLastConversationId } from "@utils/lastConversation";
+import { delay, http, HttpResponse } from "msw";
 import { createBrowserRouter, Outlet, RouterProvider } from "react-router";
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -39,15 +56,39 @@ const DOCUMENTS_PATH = getRouterPath({
   routeKey: "DOCUMENTS",
   params: { workspaceId: WORKSPACE_ID },
 });
-// 문서 하나를 보는 화면. GNB는 문서를 조회하지 않아 id는 아무 값이어도 돼요
+const expectedMe = new GetMeResponseDto(meResponse);
+const expectedWorkspace = new GetWorkspaceResponseDto(workspaceDetailResponse);
+const expectedDocument = new GetDocumentResponseDto(documentDetailsResponse[0]);
+const [, otherWorkspace] = new GetWorkspacesResponseDto(workspacesResponse)
+  .workspaces;
+
+// 문서 하나를 보는 화면. 위치 표시가 제목을 보여 주도록 mock에 있는 문서를 열어요
 const DOCUMENT_PATH = getRouterPath({
   routeKey: "DOCUMENT",
-  params: { workspaceId: WORKSPACE_ID, documentId: "101" },
+  params: {
+    workspaceId: WORKSPACE_ID,
+    documentId: String(expectedDocument.id),
+  },
 });
+const RECORDING_PATH = getRouterPath({
+  routeKey: "RECORDING",
+  params: { workspaceId: WORKSPACE_ID },
+});
+const RECORDING_DOCUMENTS_PATH = getRouterPath({
+  routeKey: "RECORDING_DOCUMENTS",
+  params: { workspaceId: WORKSPACE_ID, recordingId: "42" },
+});
+const OTHER_HOME_PATH = getRouterPath({
+  routeKey: "WORKSPACE_HOME",
+  params: { workspaceId: String(otherWorkspace.id) },
+});
+// 경로 파라미터 자리에 무엇이 와도 잡도록 fetch 상수 대신 패턴을 적어요
+const WORKSPACE_REQUEST = "*/api/v1/workspaces/:workspaceId";
+const DOCUMENT_REQUEST =
+  "*/api/v1/workspaces/:workspaceId/documents/:documentId";
 const DOCK_RAIL_ID = "test-dock-rail";
 const PANEL_TEXT = "패널 내용";
-
-const expectedMe = new GetMeResponseDto(meResponse);
+const LOCATION_LABEL = "지금 위치";
 
 const RIGHT_TEXT = "오른쪽 버튼";
 
@@ -89,6 +130,8 @@ const renderGnb = (initialPath = HOME_PATH) => {
         PATH_ROUTE.CHAT_SESSION,
         PATH_ROUTE.DOCUMENTS,
         PATH_ROUTE.DOCUMENT,
+        PATH_ROUTE.RECORDING,
+        PATH_ROUTE.RECORDING_DOCUMENTS,
       ].map((path) => ({ path, element: null })),
     },
   ]);
@@ -334,5 +377,141 @@ describe("WorkspaceGnb", () => {
 
     expect(panelTrigger).toHaveAttribute("aria-pressed", "false");
     expect(screen.queryByText(PANEL_TEXT)).not.toBeInTheDocument();
+  });
+});
+
+describe("WorkspaceGnb 위치 표시", () => {
+  /** GNB 왼쪽의 위치 표시. 이름과 탭 이름이 다 보일 때까지 기다려요 */
+  const findLocation = async (text: string) => {
+    const location = screen.getByRole("group", { name: LOCATION_LABEL });
+
+    await waitFor(() => expect(location).toHaveTextContent(text));
+
+    return location;
+  };
+
+  it.each([
+    { tab: "홈", path: HOME_PATH },
+    { tab: "탐색", path: CHAT_PATH },
+    { tab: "문서", path: DOCUMENTS_PATH },
+  ])(
+    "[WS-QA-058] $tab 탭에서는 워크스페이스 이름 뒤에 $tab을 보여준다",
+    async ({ tab, path }) => {
+      renderGnb(path);
+
+      const location = await findLocation(expectedWorkspace.name);
+
+      expect(location).toHaveTextContent(`${expectedWorkspace.name}${tab}`);
+    },
+  );
+
+  it("[WS-QA-058] 다른 워크스페이스로 옮기면 새 워크스페이스의 이름으로 바뀐다", async () => {
+    // mock 조회는 id와 무관하게 같은 이름이라, 다른 워크스페이스는 목록의 이름으로 답하게 해요
+    mockServer.use(
+      http.get(WORKSPACE_REQUEST, ({ params }) =>
+        HttpResponse.json({
+          ...workspaceDetailResponse,
+          name:
+            params.workspaceId === String(otherWorkspace.id)
+              ? otherWorkspace.name
+              : workspaceDetailResponse.name,
+        }),
+      ),
+    );
+    const { router } = renderGnb();
+    await findLocation(expectedWorkspace.name);
+
+    await act(async () => {
+      await router.navigate(OTHER_HOME_PATH);
+    });
+
+    const location = await findLocation(otherWorkspace.name);
+    expect(location).toHaveTextContent(`${otherWorkspace.name}홈`);
+  });
+
+  it("[WS-QA-059] 문서 하나를 보는 화면에서는 워크스페이스 이름 › 문서 › 문서 제목을 보여준다", async () => {
+    renderGnb(DOCUMENT_PATH);
+
+    const location = await findLocation(expectedDocument.title);
+
+    expect(location).toHaveTextContent(
+      `${expectedWorkspace.name}문서${expectedDocument.title}`,
+    );
+  });
+
+  it("문서를 불러오지 못하면 제목 자리 없이 워크스페이스 이름 › 문서까지 보여준다", async () => {
+    mockServer.use(
+      http.get(DOCUMENT_REQUEST, () =>
+        HttpResponse.json(
+          { code: "DOCUMENT_NOT_FOUND", message: "문서를 찾을 수 없습니다." },
+          { status: 404 },
+        ),
+      ),
+    );
+    renderGnb(DOCUMENT_PATH);
+
+    const location = await findLocation(expectedWorkspace.name);
+
+    await waitFor(() =>
+      expect(location.querySelectorAll("svg")).toHaveLength(1),
+    );
+    expect(location).toHaveTextContent(
+      new RegExp(`${expectedWorkspace.name}문서$`),
+    );
+  });
+
+  it.each([
+    { screenName: "녹음 화면", path: RECORDING_PATH },
+    { screenName: "녹음 뒤 정리 중 화면", path: RECORDING_DOCUMENTS_PATH },
+    {
+      screenName: "녹음 직후 문서 확인 화면",
+      path: `${DOCUMENT_PATH}?${DOCUMENT_FROM_PARAM}=${DOCUMENT_FROM_RECORDING}`,
+    },
+  ])(
+    "[WS-QA-060] $screenName처럼 탭이 아닌 화면에서는 워크스페이스 이름만 보여준다",
+    async ({ path }) => {
+      renderGnb(path);
+
+      const location = await findLocation(expectedWorkspace.name);
+
+      ["홈", "탐색", "문서"].forEach((tab) => {
+        expect(within(location).queryByText(tab)).not.toBeInTheDocument();
+      });
+    },
+  );
+
+  it("[WS-QA-061] 워크스페이스 이름은 눌러도 이동하거나 메뉴를 열지 않는다", async () => {
+    const { router } = renderGnb();
+    const location = await findLocation(expectedWorkspace.name);
+
+    fireEvent.click(within(location).getByText(expectedWorkspace.name));
+
+    expect(within(location).queryByRole("button")).not.toBeInTheDocument();
+    expect(within(location).queryByRole("link")).not.toBeInTheDocument();
+    expect(router.state.historyAction).toBe("POP");
+    expect(router.state.location.pathname).toBe(HOME_PATH);
+  });
+
+  it("[WS-QA-064] 불러오는 중에는 이름과 제목 자리를 비워 두고 아이콘은 첫 글자 없이 기본 모양으로 둔다", async () => {
+    // 응답을 끝내 보내지 않아 불러오는 중에 머물러요
+    mockServer.use(
+      http.get(WORKSPACE_REQUEST, async () => {
+        await delay("infinite");
+        return new HttpResponse(null);
+      }),
+      http.get(DOCUMENT_REQUEST, async () => {
+        await delay("infinite");
+        return new HttpResponse(null);
+      }),
+    );
+    renderGnb(DOCUMENT_PATH);
+
+    const location = screen.getByRole("group", { name: LOCATION_LABEL });
+
+    // 이름과 제목 자리는 글자 없는 회색 덩어리라, 보이는 글자는 탭 이름 「문서」뿐이에요
+    expect(location).toHaveTextContent(/^문서$/);
+    expect(
+      within(location).getByRole("img", { hidden: true }).querySelector("svg"),
+    ).toBeInTheDocument();
   });
 });

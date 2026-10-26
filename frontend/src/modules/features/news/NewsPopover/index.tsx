@@ -1,5 +1,5 @@
+import useReleaseNotesQuery from "@api/queries/useReleaseNotesQuery";
 import { SCREEN_CONDITION } from "@constants/breakpoint";
-import { RELEASE_NOTES } from "@constants/releaseNote";
 import Popover from "@composites/Popover";
 import styled from "@emotion/styled";
 import useMediaQuery from "@hooks/common/useMediaQuery";
@@ -7,7 +7,6 @@ import useIsSendingFeedback from "@hooks/domain/feedback/useIsSendingFeedback";
 import type { ReactNode } from "react";
 
 import LetterIcon from "@/assets/icons/letter.svg";
-import type { ReleaseNote } from "@/shared/types/releaseNote";
 
 import { useLastSeenNote } from "./model/useLastSeenNote";
 import NewsPopoverContent from "./ui/NewsPopoverContent";
@@ -18,8 +17,6 @@ interface RenderFeedbackPanelParams {
 }
 
 interface NewsPopoverProps {
-  /** 패널에 보여 줄 노트. 기본은 `shared/constants/releaseNote`의 노트이고, 빈 상태를 보려면 빈 배열을 넘겨요 */
-  notes?: ReleaseNote[];
   /**
    * 메뉴에서 「피드백 보내기」를 고르면 같은 자리에 그릴 피드백 패널.
    * 피드백은 다른 도메인이라 이 버튼이 직접 그리지 않고, 버튼을 놓는 레이아웃이 넘겨요
@@ -35,17 +32,20 @@ interface NewsPopoverProps {
  * 피드백을 보내는 동안에는 이 방법으로 닫지 않아요(FEEDBACK-R8).
  * 열려 있는 동안 버튼은 채워진 모양이고, 닫혀 있을 때 올리거나 포커스하면 툴팁 「새 소식과 피드백」을 보여 줘요.
  *
- * 이 기기에서 새 소식을 한 번도 열지 않은 사용자에게는 처음 그릴 때 메뉴 없이 새 소식 패널을 저절로 열어 줘요(NEWS-R6).
+ * 노트는 프론트 Worker가 Notion 새 소식 DB에서 읽어 와요(ADR 956). 받지 못하면 새 소식 패널은 빈 상태를 보여 줘요.
+ * 이 기기에서 새 소식을 한 번도 열지 않은 사용자에게는 노트를 받은 뒤 메뉴 없이 새 소식 패널을 저절로 열어 줘요(NEWS-R6).
  * 휴대폰에서는 피드백을 사이드바에서 열어서(FEEDBACK-R2), 누르면 메뉴 없이 새 소식 패널을 바로 열어요.
  */
-export default function NewsPopover({
-  notes = RELEASE_NOTES,
-  renderFeedbackPanel,
-}: NewsPopoverProps) {
+export default function NewsPopover({ renderFeedbackPanel }: NewsPopoverProps) {
+  const { data, isPending } = useReleaseNotesQuery();
+  const notes = data?.notes ?? [];
   const { isAutoOpen, markAsSeen } = useLastSeenNote({ notes });
   const { isMatched: isMobile } = useMediaQuery(SCREEN_CONDITION.mobile);
   const { isSendingFeedback } = useIsSendingFeedback();
   const initialView = isAutoOpen || isMobile ? "news" : "menu";
+
+  // 팝오버는 처음 그릴 때만 저절로 열지 봐서, 노트를 받기 전에는 버튼을 그리지 않아요
+  if (isPending) return null;
 
   return (
     <Popover

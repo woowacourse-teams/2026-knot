@@ -9,6 +9,8 @@ import com.knot.backend.recording.domain.model.AudioManifestPart;
 import com.knot.backend.recording.domain.model.RecordingAudioChunk;
 import com.knot.backend.recording.domain.model.RecordingTranscriptionWindow;
 import com.knot.backend.recording.domain.model.StoredAudioChunk;
+import com.knot.backend.recording.domain.model.TranscriptionDecodePolicy;
+import com.knot.backend.recording.domain.model.TranscriptionWindowShape;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Base64;
@@ -547,6 +549,122 @@ class RecordingTranscriptionWindowPlannerTest {
                         )
                 )
                 .toList();
+    }
+
+    @Test
+    @DisplayName("2분 구간은 미래 음성 없이 직전 10초만 문맥으로 쓰고 녹음 중에는 모두 용어 디코딩을 요청한다")
+    void plan_success_twoMinuteWindowsWithLookback() {
+        // given
+        List<RecordingAudioChunk> chunks = chunks(250);
+
+        // when
+        List<RecordingTranscriptionWindow> windows = planner.plan(
+                1,
+                TranscriptionWindowShape.LIVE_TWO_MINUTES,
+                chunks,
+                NOW
+        );
+
+        // then
+        assertThat(windows).extracting(RecordingTranscriptionWindow::getInputStartFrame)
+                .containsExactly(
+                        0L,
+                        110 * 16_000L
+                );
+        assertThat(windows).extracting(RecordingTranscriptionWindow::getInputEndFrame)
+                .containsExactly(
+                        120 * 16_000L,
+                        240 * 16_000L
+                );
+        assertThat(windows).extracting(RecordingTranscriptionWindow::getPipelineVersion)
+                .containsOnly("pcm-window-v2-120-10");
+        assertThat(windows).extracting(RecordingTranscriptionWindow::getDecodePolicy)
+                .containsOnly(TranscriptionDecodePolicy.WITH_VOCABULARY);
+    }
+
+    @Test
+    @DisplayName("2분 구간의 종료 계획은 마지막 구간만 기본 디코딩으로 요청한다")
+    void planFinal_success_twoMinuteLastWindowDefaultOnly() {
+        // given
+        List<AudioManifestPart> parts = manifest(chunks(250));
+
+        // when
+        List<RecordingTranscriptionWindow> windows = planner.planFinal(
+                1,
+                TranscriptionWindowShape.LIVE_TWO_MINUTES,
+                250 * 16_000L,
+                parts,
+                NOW
+        );
+
+        // then
+        assertThat(windows).extracting(RecordingTranscriptionWindow::getInputStartFrame)
+                .containsExactly(
+                        0L,
+                        110 * 16_000L,
+                        230 * 16_000L
+                );
+        assertThat(windows).extracting(RecordingTranscriptionWindow::getInputEndFrame)
+                .containsExactly(
+                        120 * 16_000L,
+                        240 * 16_000L,
+                        250 * 16_000L
+                );
+        assertThat(windows).extracting(RecordingTranscriptionWindow::getDecodePolicy)
+                .containsExactly(
+                        TranscriptionDecodePolicy.WITH_VOCABULARY,
+                        TranscriptionDecodePolicy.WITH_VOCABULARY,
+                        TranscriptionDecodePolicy.DEFAULT_ONLY
+                );
+    }
+
+    @Test
+    @DisplayName("녹음 중 등록한 2분 구간과 종료 계획의 같은 구간은 입력이 같다")
+    void planFinal_success_twoMinuteManifestMatchesLiveWindow() {
+        // given
+        List<RecordingAudioChunk> chunks = chunks(240);
+        RecordingTranscriptionWindow live = planner.plan(
+                1,
+                TranscriptionWindowShape.LIVE_TWO_MINUTES,
+                chunks,
+                NOW
+        )
+                .getLast();
+
+        // when
+        RecordingTranscriptionWindow ended = planner.planFinal(
+                1,
+                TranscriptionWindowShape.LIVE_TWO_MINUTES,
+                240 * 16_000L,
+                manifest(chunks),
+                NOW
+        )
+                .getLast();
+
+        // then
+        assertThat(ended.getManifestSha256()).isEqualTo(live.getManifestSha256());
+        assertThat(ended.getDecodePolicy()).isEqualTo(TranscriptionDecodePolicy.DEFAULT_ONLY);
+    }
+
+    @Test
+    @DisplayName("30초 구간은 디코딩 정책을 정하지 않아 AI 요청 모양을 바꾸지 않는다")
+    void planFinal_success_thirtySecondWindowsWithoutPolicy() {
+        // given
+        List<AudioManifestPart> parts = manifest(chunks(40));
+
+        // when
+        List<RecordingTranscriptionWindow> windows = planner.planFinal(
+                1,
+                TranscriptionWindowShape.LIVE_30_SECONDS,
+                40 * 16_000L,
+                parts,
+                NOW
+        );
+
+        // then
+        assertThat(windows).hasSize(2);
+        assertThat(windows).extracting(RecordingTranscriptionWindow::getDecodePolicy)
+                .containsOnlyNulls();
     }
 
     private List<RecordingAudioChunk> chunks(int count) {

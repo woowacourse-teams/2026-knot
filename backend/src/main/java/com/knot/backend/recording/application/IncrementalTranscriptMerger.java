@@ -40,6 +40,25 @@ public class IncrementalTranscriptMerger {
             long totalFrames,
             double similarityThreshold
     ) {
+        return merge(
+                windows,
+                totalFrames,
+                similarityThreshold,
+                false
+        );
+    }
+
+    /**
+     * seamAligned이면 인접 구간의 겹친 단어를 정렬해 이어 붙이고, 아니면 단어 중앙 시각이 속한 core가 그 단어를 가진다. 2분
+     * 구간 결과에 화자 근거 조각이 있으면 녹음 전체의 조각을 다시 묶어 단어마다 화자를 다시 배정하고, 없으면 구간마다 중심 vector로
+     * 화자를 연결한다.
+     */
+    public AiTranscript merge(
+            List<RecordingTranscriptionWindow> windows,
+            long totalFrames,
+            double similarityThreshold,
+            boolean seamAligned
+    ) {
         if (windows == null || windows.isEmpty() || totalFrames <= 0 || totalFrames > MAX_RECORDING_FRAMES
                 || !Double.isFinite(similarityThreshold) || similarityThreshold < -1 || similarityThreshold > 1
                 || windows.stream()
@@ -49,8 +68,49 @@ public class IncrementalTranscriptMerger {
         List<RecordingTranscriptionWindow> ordered = windows.stream()
                 .sorted(Comparator.comparingLong(RecordingTranscriptionWindow::getCoreStartFrame))
                 .toList();
+        List<AiWindowEvidence> evidences = verifiedEvidence(
+                ordered,
+                totalFrames
+        );
+        boolean reclustered = seamAligned && reclusterable(evidences);
+        List<List<OwnedToken>> owned = ownedTokens(
+                ordered,
+                evidences,
+                totalFrames,
+                seamAligned,
+                reclustered
+        );
         List<AiTranscript.Utterance> utterances = new ArrayList<>();
         List<VoiceCentroid> centroids = new ArrayList<>();
+        for (int index = 0; index < ordered.size(); index++) {
+            Map<String, String> labels = sameLabels(owned.get(index));
+            if (!reclustered) {
+                labels = assignSpeakers(
+                        owned.get(index),
+                        evidences.get(index),
+                        centroids,
+                        ordered.get(index)
+                                .getWindowIndex(),
+                        similarityThreshold
+                );
+            }
+            appendUtterances(
+                    utterances,
+                    owned.get(index),
+                    labels
+            );
+        }
+        return new AiTranscript(
+                1,
+                rawTranscript(utterances),
+                utterances
+        );
+    }
+
+    private List<AiWindowEvidence> verifiedEvidence(
+            List<RecordingTranscriptionWindow> ordered,
+            long totalFrames
+    ) {
         String pipeline = ordered.getFirst()
                 .getPipelineVersion();
         long recordingId = ordered.getFirst()
@@ -58,6 +118,7 @@ public class IncrementalTranscriptMerger {
         String model = null;
         long expectedStart = 0;
         int expectedIndex = 0;
+        List<AiWindowEvidence> evidences = new ArrayList<>();
         for (RecordingTranscriptionWindow window : ordered) {
             if (window.getRecordingId() != recordingId || !pipeline.equals(window.getPipelineVersion())
                     || window.getWindowIndex() != expectedIndex || window.getCoreStartFrame() != expectedStart
@@ -70,34 +131,242 @@ public class IncrementalTranscriptMerger {
                 throw invalidData();
             }
             model = evidence.modelVersion();
-            List<OwnedToken> owned = ownedTokens(
-                    window,
-                    evidence,
-                    totalFrames
-            );
-            Map<String, String> labels = assignSpeakers(
-                    owned,
-                    evidence,
-                    centroids,
-                    window.getWindowIndex(),
-                    similarityThreshold
-            );
-            appendUtterances(
-                    utterances,
-                    owned,
-                    labels
-            );
+            evidences.add(evidence);
             expectedStart = window.getCoreEndFrame();
             expectedIndex++;
         }
         if (expectedStart != totalFrames) {
             throw invalidData();
         }
-        return new AiTranscript(
-                1,
-                rawTranscript(utterances),
-                utterances
+        return evidences;
+    }
+
+    private List<List<OwnedToken>> ownedTokens(
+            List<RecordingTranscriptionWindow> ordered,
+            List<AiWindowEvidence> evidences,
+            long totalFrames,
+            boolean seamAligned,
+            boolean reclustered
+    ) {
+        if (reclustered) {
+            return alignedTokens(
+                    ordered,
+                    evidences,
+                    reclusteredSpeakers(
+                            ordered,
+                            evidences
+                    )
+            );
+        }
+        if (seamAligned) {
+            return alignedTokens(
+                    ordered,
+                    evidences,
+                    evidences.stream()
+                            .map(
+                                    evidence -> evidence.tokens()
+                                            .stream()
+                                            .map(AiWindowEvidence.Token::speakerId)
+                                            .toList()
+                            )
+                            .toList()
+            );
+        }
+        List<List<OwnedToken>> owned = new ArrayList<>();
+        for (int index = 0; index < ordered.size(); index++) {
+            owned.add(
+                    ownedTokens(
+                            ordered.get(index),
+                            evidences.get(index),
+                            totalFrames
+                    )
+            );
+        }
+        return owned;
+    }
+
+    /** speakers는 구간마다 토큰과 같은 순서의 화자다. */
+    private List<List<OwnedToken>> alignedTokens(
+            List<RecordingTranscriptionWindow> ordered,
+            List<AiWindowEvidence> evidences,
+            List<List<String>> speakers
+    ) {
+        List<TranscriptSeamAligner.Window> windows = new ArrayList<>();
+        for (int index = 0; index < ordered.size(); index++) {
+            RecordingTranscriptionWindow window = ordered.get(index);
+            long offset = evidences.get(index)
+                    .inputStartFrame();
+            List<AiWindowEvidence.Token> tokens = evidences.get(index)
+                    .tokens();
+            List<TranscriptSeamAligner.Token> absolute = new ArrayList<>();
+            for (int position = 0; position < tokens.size(); position++) {
+                AiWindowEvidence.Token token = tokens.get(position);
+                absolute.add(
+                        new TranscriptSeamAligner.Token(
+                                offset + token.startFrame(),
+                                offset + token.endFrame(),
+                                token.text()
+                                        .strip(),
+                                speakers.get(index)
+                                        .get(position)
+                        )
+                );
+            }
+            windows.add(
+                    new TranscriptSeamAligner.Window(
+                            window.getCoreStartFrame(),
+                            window.getCoreEndFrame(),
+                            window.getInputStartFrame(),
+                            window.getInputEndFrame(),
+                            absolute
+                    )
+            );
+        }
+        return TranscriptSeamAligner.stitch(windows)
+                .stream()
+                .map(
+                        tokens -> tokens.stream()
+                                .map(
+                                        token -> new OwnedToken(
+                                                token.startFrame(),
+                                                token.endFrame(),
+                                                token.text(),
+                                                token.speakerId()
+                                        )
+                                )
+                                .toList()
+                )
+                .toList();
+    }
+
+    /**
+     * 모든 토큰이 Whisper segment 번호를 가진 새 AI 결과이고 화자 근거 조각이 있을 때만 다시 묶는다. AI 배포 전후로 이전
+     * 결과가 섞이면 그 구간의 문장 경계를 알 수 없으므로 녹음 전체를 기존 중심 연결로 병합한다.
+     */
+    private static boolean reclusterable(List<AiWindowEvidence> evidences) {
+        boolean observed = evidences.stream()
+                .anyMatch(
+                        evidence -> !evidence.observations()
+                                .isEmpty()
+                );
+        boolean segmented = evidences.stream()
+                .flatMap(
+                        evidence -> evidence.tokens()
+                                .stream()
+                )
+                .allMatch(token -> token.segment() != null);
+        return observed && segmented;
+    }
+
+    /**
+     * core가 가진 화자 근거 조각(조각 중앙이 core 안)을 녹음 전체에서 다시 묶고, 구간마다 Whisper segment 단위로 단어를
+     * 그 화자 구간에 배정한다. 2026-10 구간 실험의 adaptive 재군집과 단어 배정을 그대로 따른다.
+     */
+    private List<List<String>> reclusteredSpeakers(
+            List<RecordingTranscriptionWindow> ordered,
+            List<AiWindowEvidence> evidences
+    ) {
+        List<SpeakerAssigner.SpeakerSpan> owned = new ArrayList<>();
+        List<float[]> vectors = new ArrayList<>();
+        for (int index = 0; index < ordered.size(); index++) {
+            RecordingTranscriptionWindow window = ordered.get(index);
+            long offset = evidences.get(index)
+                    .inputStartFrame();
+            for (AiWindowEvidence.Observation observation : evidences.get(index)
+                    .observations()) {
+                long start = offset + observation.startFrame();
+                long end = offset + observation.endFrame();
+                if (start + end < window.getCoreStartFrame() * 2 || start + end >= window.getCoreEndFrame() * 2) {
+                    continue;
+                }
+                owned.add(
+                        new SpeakerAssigner.SpeakerSpan(
+                                Math.max(
+                                        start,
+                                        window.getCoreStartFrame()
+                                ) / FRAMES_PER_SECOND,
+                                Math.min(
+                                        end,
+                                        window.getCoreEndFrame()
+                                ) / FRAMES_PER_SECOND,
+                                ""
+                        )
+                );
+                vectors.add(floats(observation.embedding()));
+            }
+        }
+        int[] labels = SpeakerReclusterer.labels(vectors);
+        List<SpeakerAssigner.SpeakerSpan> spans = new ArrayList<>();
+        for (int index = 0; index < owned.size(); index++) {
+            spans.add(
+                    new SpeakerAssigner.SpeakerSpan(
+                            owned.get(index)
+                                    .start(),
+                            owned.get(index)
+                                    .end(),
+                            "SPEAKER_" + labels[index]
+                    )
+            );
+        }
+        spans.sort(
+                Comparator.comparingDouble(SpeakerAssigner.SpeakerSpan::start)
+                        .thenComparingDouble(SpeakerAssigner.SpeakerSpan::end)
         );
+        List<List<String>> speakers = new ArrayList<>();
+        for (AiWindowEvidence evidence : evidences) {
+            speakers.add(
+                    SpeakerAssigner.assign(
+                            segmentWords(evidence),
+                            spans
+                    )
+            );
+        }
+        return speakers;
+    }
+
+    /** 토큰을 같은 Whisper segment 번호가 이어지는 묶음으로 나눈다. 시간은 녹음 기준 초다. */
+    private List<List<SpeakerAssigner.Word>> segmentWords(AiWindowEvidence evidence) {
+        List<List<SpeakerAssigner.Word>> segments = new ArrayList<>();
+        Integer previous = null;
+        for (AiWindowEvidence.Token token : evidence.tokens()) {
+            if (segments.isEmpty() || !Objects.equals(
+                    previous,
+                    token.segment()
+            )) {
+                segments.add(new ArrayList<>());
+            }
+            previous = token.segment();
+            segments.getLast()
+                    .add(
+                            new SpeakerAssigner.Word(
+                                    (evidence.inputStartFrame() + token.startFrame()) / FRAMES_PER_SECOND,
+                                    (evidence.inputStartFrame() + token.endFrame()) / FRAMES_PER_SECOND,
+                                    token.text()
+                            )
+                    );
+        }
+        return segments;
+    }
+
+    private static float[] floats(List<Double> embedding) {
+        float[] vector = new float[embedding.size()];
+        for (int index = 0; index < vector.length; index++) {
+            vector[index] = embedding.get(index)
+                    .floatValue();
+        }
+        return vector;
+    }
+
+    /** 재군집한 토큰은 이미 녹음 전체의 화자 라벨을 가진다. */
+    private static Map<String, String> sameLabels(List<OwnedToken> tokens) {
+        Map<String, String> labels = new HashMap<>();
+        tokens.forEach(
+                token -> labels.put(
+                        token.speakerId(),
+                        token.speakerId()
+                )
+        );
+        return labels;
     }
 
     private AiWindowEvidence readEvidence(RecordingTranscriptionWindow window) {

@@ -34,6 +34,7 @@ import com.knot.backend.recording.application.dto.result.RecordingStartResult;
 import com.knot.backend.recording.domain.RecordingErrorCode;
 import com.knot.backend.recording.domain.RecordingException;
 import com.knot.backend.recording.domain.model.RecordingSession;
+import com.knot.backend.recording.domain.model.TranscriptionWindowShape;
 import com.knot.backend.recording.domain.model.RecordingStatus;
 import com.knot.backend.recording.domain.model.RecordingEndReason;
 import com.knot.backend.recording.domain.repository.RecordingSessionRepository;
@@ -121,7 +122,7 @@ public class RecordingService {
             );
             if (session.getAudioMode() == RecordingAudioMode.PCM16_CHUNKS_V1
                     && audioChunksProperties.incrementalEnabled()) {
-                session.enableIncrementalTranscription("pcm-window-v1-30-5");
+                session.enableIncrementalTranscription(TranscriptionWindowShape.LIVE_TWO_MINUTES.pipelineVersion());
             }
             RecordingSession saved = recordingSessionRepository.save(session);
             if (saved.getAudioMode() == RecordingAudioMode.PCM16_CHUNKS_V1) {

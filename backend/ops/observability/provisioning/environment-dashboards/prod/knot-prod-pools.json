@@ -1,0 +1,768 @@
+{
+  "title": "PROD 06 Tomcat·DB 연결 풀",
+  "uid": "knot-prod-pools",
+  "schemaVersion": 41,
+  "version": 1,
+  "tags": [
+    "knot",
+    "prod",
+    "pools"
+  ],
+  "refresh": "30s",
+  "timezone": "Asia/Seoul",
+  "time": {
+    "from": "now-30m",
+    "to": "now"
+  },
+  "templating": {
+    "list": []
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "text",
+      "title": "PROD · 이 화면 읽는 법",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 3
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "PROD 요청 처리와 DB 연결 풀입니다. **Tomcat busy → Hikari active/max → pending** 순서로 보세요.\n\npending은 연결을 기다리는 요청입니다. 오래 지속되면 앱 로그와 RDS를 함께 확인하세요. Hikari 연결 수는 RDS 전체 연결 수와 다릅니다."
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Tomcat busy threads",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "knot-prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "tomcat_threads_busy_threads{env=\"prod\",job=\"spring\"}",
+          "legendFormat": "{{env}} {{instance}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "noValue": "데이터 없음 / 미연결"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "id": 2,
+      "gridPos": {
+        "x": 0,
+        "y": 3,
+        "w": 12,
+        "h": 8
+      },
+      "description": "PROD의 Tomcat busy threads 지표입니다. 같은 시간대의 요청·앱 로그와 함께 확인하세요. 데이터 없음은 정상 0이 아닙니다."
+    },
+    {
+      "type": "timeseries",
+      "title": "Tomcat 최대 threads",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "knot-prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "tomcat_threads_config_max_threads{env=\"prod\",job=\"spring\"}",
+          "legendFormat": "{{env}} {{instance}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "noValue": "데이터 없음 / 미연결"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "id": 3,
+      "gridPos": {
+        "x": 12,
+        "y": 3,
+        "w": 12,
+        "h": 8
+      },
+      "description": "PROD의 Tomcat 최대 threads 지표입니다. 같은 시간대의 요청·앱 로그와 함께 확인하세요. 데이터 없음은 정상 0이 아닙니다."
+    },
+    {
+      "type": "timeseries",
+      "title": "Hikari active connections",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "knot-prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "hikaricp_connections_active{env=\"prod\",job=\"spring\"}",
+          "legendFormat": "{{env}} {{pool}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "noValue": "데이터 없음 / 미연결"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "id": 4,
+      "gridPos": {
+        "x": 0,
+        "y": 11,
+        "w": 12,
+        "h": 8
+      },
+      "description": "PROD의 Hikari active connections 지표입니다. 같은 시간대의 요청·앱 로그와 함께 확인하세요. 데이터 없음은 정상 0이 아닙니다."
+    },
+    {
+      "type": "timeseries",
+      "title": "Hikari idle connections",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "knot-prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "hikaricp_connections_idle{env=\"prod\",job=\"spring\"}",
+          "legendFormat": "{{env}} {{pool}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "noValue": "데이터 없음 / 미연결"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "id": 5,
+      "gridPos": {
+        "x": 12,
+        "y": 11,
+        "w": 12,
+        "h": 8
+      },
+      "description": "PROD의 Hikari idle connections 지표입니다. 같은 시간대의 요청·앱 로그와 함께 확인하세요. 데이터 없음은 정상 0이 아닙니다."
+    },
+    {
+      "type": "timeseries",
+      "title": "Hikari pending connections",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "knot-prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "hikaricp_connections_pending{env=\"prod\",job=\"spring\"}",
+          "legendFormat": "{{env}} {{pool}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "noValue": "데이터 없음 / 미연결"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "id": 6,
+      "gridPos": {
+        "x": 0,
+        "y": 19,
+        "w": 12,
+        "h": 8
+      },
+      "description": "PROD의 Hikari pending connections 지표입니다. 같은 시간대의 요청·앱 로그와 함께 확인하세요. 데이터 없음은 정상 0이 아닙니다."
+    },
+    {
+      "type": "timeseries",
+      "title": "Hikari max connections",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "knot-prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "hikaricp_connections_max{env=\"prod\",job=\"spring\"}",
+          "legendFormat": "{{env}} {{pool}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "noValue": "데이터 없음 / 미연결"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "id": 7,
+      "gridPos": {
+        "x": 12,
+        "y": 19,
+        "w": 12,
+        "h": 8
+      },
+      "description": "PROD의 Hikari max connections 지표입니다. 같은 시간대의 요청·앱 로그와 함께 확인하세요. 데이터 없음은 정상 0이 아닙니다."
+    },
+    {
+      "type": "timeseries",
+      "title": "Hikari timeout 증가율",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "knot-prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "rate(hikaricp_connections_timeout_total{env=\"prod\",job=\"spring\"}[2m])",
+          "legendFormat": "{{env}} {{pool}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "noValue": "데이터 없음 / 미연결"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "id": 8,
+      "gridPos": {
+        "x": 0,
+        "y": 27,
+        "w": 12,
+        "h": 8
+      },
+      "description": "PROD의 Hikari timeout 증가율 지표입니다. 같은 시간대의 요청·앱 로그와 함께 확인하세요. 데이터 없음은 정상 0이 아닙니다."
+    },
+    {
+      "type": "timeseries",
+      "title": "DB connection acquire 평균",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "knot-prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "rate(hikaricp_connections_acquire_seconds_sum{env=\"prod\",job=\"spring\"}[2m]) / (rate(hikaricp_connections_acquire_seconds_count{env=\"prod\",job=\"spring\"}[2m]) > 0)",
+          "legendFormat": "{{env}} {{pool}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "noValue": "데이터 없음 / 미연결"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "id": 9,
+      "gridPos": {
+        "x": 12,
+        "y": 27,
+        "w": 12,
+        "h": 8
+      },
+      "description": "PROD의 DB connection acquire 평균 지표입니다. 같은 시간대의 요청·앱 로그와 함께 확인하세요. 데이터 없음은 정상 0이 아닙니다."
+    },
+    {
+      "type": "timeseries",
+      "title": "Tomcat current threads",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "knot-prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "tomcat_threads_current_threads{env=\"prod\",job=\"spring\"}",
+          "legendFormat": "{{env}} {{name}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "noValue": "데이터 없음 / 미연결"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "id": 10,
+      "gridPos": {
+        "x": 0,
+        "y": 35,
+        "w": 12,
+        "h": 8
+      },
+      "description": "PROD의 Tomcat current threads 지표입니다. 같은 시간대의 요청·앱 로그와 함께 확인하세요. 데이터 없음은 정상 0이 아닙니다."
+    },
+    {
+      "type": "timeseries",
+      "title": "Tomcat current connections",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "knot-prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "tomcat_connections_current_connections{env=\"prod\",job=\"spring\"}",
+          "legendFormat": "{{env}} {{name}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "noValue": "데이터 없음 / 미연결"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "id": 11,
+      "gridPos": {
+        "x": 12,
+        "y": 35,
+        "w": 12,
+        "h": 8
+      },
+      "description": "PROD의 Tomcat current connections 지표입니다. 같은 시간대의 요청·앱 로그와 함께 확인하세요. 데이터 없음은 정상 0이 아닙니다."
+    },
+    {
+      "type": "timeseries",
+      "title": "Tomcat max connections",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "knot-prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "tomcat_connections_config_max_connections{env=\"prod\",job=\"spring\"}",
+          "legendFormat": "{{env}} {{name}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "noValue": "데이터 없음 / 미연결"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "id": 12,
+      "gridPos": {
+        "x": 0,
+        "y": 43,
+        "w": 12,
+        "h": 8
+      },
+      "description": "PROD의 Tomcat max connections 지표입니다. 같은 시간대의 요청·앱 로그와 함께 확인하세요. 데이터 없음은 정상 0이 아닙니다."
+    },
+    {
+      "type": "timeseries",
+      "title": "Tomcat busy 비율",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "knot-prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "100 * tomcat_threads_busy_threads{env=\"prod\",job=\"spring\"} / tomcat_threads_config_max_threads{env=\"prod\",job=\"spring\"}",
+          "legendFormat": "{{env}} {{name}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "noValue": "데이터 없음 / 미연결"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "id": 13,
+      "gridPos": {
+        "x": 12,
+        "y": 43,
+        "w": 12,
+        "h": 8
+      },
+      "description": "PROD의 Tomcat busy 비율 지표입니다. 같은 시간대의 요청·앱 로그와 함께 확인하세요. 데이터 없음은 정상 0이 아닙니다."
+    },
+    {
+      "type": "timeseries",
+      "title": "Hikari active 비율",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "knot-prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "100 * hikaricp_connections_active{env=\"prod\",job=\"spring\"} / hikaricp_connections_max{env=\"prod\",job=\"spring\"}",
+          "legendFormat": "{{env}} {{pool}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "noValue": "데이터 없음 / 미연결"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "id": 14,
+      "gridPos": {
+        "x": 0,
+        "y": 51,
+        "w": 12,
+        "h": 8
+      },
+      "description": "PROD의 Hikari active 비율 지표입니다. 같은 시간대의 요청·앱 로그와 함께 확인하세요. 데이터 없음은 정상 0이 아닙니다."
+    },
+    {
+      "type": "timeseries",
+      "title": "DB connection usage 평균",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "knot-prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "rate(hikaricp_connections_usage_seconds_sum{env=\"prod\",job=\"spring\"}[5m]) / (rate(hikaricp_connections_usage_seconds_count{env=\"prod\",job=\"spring\"}[5m]) > 0)",
+          "legendFormat": "{{env}} {{pool}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "noValue": "데이터 없음 / 미연결"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "id": 15,
+      "gridPos": {
+        "x": 12,
+        "y": 51,
+        "w": 12,
+        "h": 8
+      },
+      "description": "PROD의 DB connection usage 평균 지표입니다. 같은 시간대의 요청·앱 로그와 함께 확인하세요. 데이터 없음은 정상 0이 아닙니다."
+    },
+    {
+      "type": "timeseries",
+      "title": "DB connection acquire 최대",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "knot-prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "hikaricp_connections_acquire_seconds_max{env=\"prod\",job=\"spring\"}",
+          "legendFormat": "{{env}} {{pool}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "noValue": "데이터 없음 / 미연결"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "id": 16,
+      "gridPos": {
+        "x": 0,
+        "y": 59,
+        "w": 12,
+        "h": 8
+      },
+      "description": "PROD의 DB connection acquire 최대 지표입니다. 같은 시간대의 요청·앱 로그와 함께 확인하세요. 데이터 없음은 정상 0이 아닙니다."
+    },
+    {
+      "type": "timeseries",
+      "title": "Hikari timeout 5분 증가",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "knot-prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "increase(hikaricp_connections_timeout_total{env=\"prod\",job=\"spring\"}[5m])",
+          "legendFormat": "{{env}} {{pool}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "noValue": "데이터 없음 / 미연결"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "id": 17,
+      "gridPos": {
+        "x": 12,
+        "y": 59,
+        "w": 12,
+        "h": 8
+      },
+      "description": "PROD의 Hikari timeout 5분 증가 지표입니다. 같은 시간대의 요청·앱 로그와 함께 확인하세요. 데이터 없음은 정상 0이 아닙니다."
+    }
+  ],
+  "links": [
+    {
+      "title": "01 전체 상태",
+      "type": "link",
+      "url": "/d/knot-prod-overview",
+      "keepTime": true,
+      "includeVars": false
+    },
+    {
+      "title": "02 API 요청·오류",
+      "type": "link",
+      "url": "/d/knot-prod-api",
+      "keepTime": true,
+      "includeVars": false
+    },
+    {
+      "title": "03 로그",
+      "type": "link",
+      "url": "/d/knot-prod-logs",
+      "keepTime": true,
+      "includeVars": false
+    },
+    {
+      "title": "04 서버 자원",
+      "type": "link",
+      "url": "/d/knot-prod-infra",
+      "keepTime": true,
+      "includeVars": false
+    },
+    {
+      "title": "05 Spring 앱",
+      "type": "link",
+      "url": "/d/knot-prod-spring",
+      "keepTime": true,
+      "includeVars": false
+    },
+    {
+      "title": "06 Tomcat·DB 연결 풀",
+      "type": "link",
+      "url": "/d/knot-prod-pools",
+      "keepTime": true,
+      "includeVars": false
+    },
+    {
+      "title": "07 RDS",
+      "type": "link",
+      "url": "/d/knot-prod-rds",
+      "keepTime": true,
+      "includeVars": false
+    },
+    {
+      "title": "DEV로 이동",
+      "type": "link",
+      "url": "/d/knot-dev-overview",
+      "keepTime": true,
+      "includeVars": false
+    }
+  ],
+  "description": "PROD 전용 Tomcat·DB 연결 풀. 환경이 쿼리에 고정되어 URL 변수로 다른 환경을 섞지 않습니다."
+}

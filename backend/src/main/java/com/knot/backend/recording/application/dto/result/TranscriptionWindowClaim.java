@@ -1,5 +1,6 @@
 package com.knot.backend.recording.application.dto.result;
 
+import com.knot.backend.recording.domain.model.TranscriptionDecodePolicy;
 import java.util.UUID;
 
 public record TranscriptionWindowClaim(
@@ -9,6 +10,7 @@ public record TranscriptionWindowClaim(
         UUID ownerToken,
         long claimEpoch,
         String manifestJson,
-        String manifestSha256
+        String manifestSha256,
+        TranscriptionDecodePolicy decodePolicy
 ) {
 }

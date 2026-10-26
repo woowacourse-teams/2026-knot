@@ -20,6 +20,7 @@
     "storybook": "storybook dev -p 6006",
     "build-storybook": "storybook build",
     "test:qa": "node --test scripts/qa-link.test.mjs",
+    "test:release-note": "node --test scripts/release-note.test.mjs",
     "qa:link": "node scripts/qa-link.mjs"
   },
   "devDependencies": {
