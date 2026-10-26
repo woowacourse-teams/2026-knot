@@ -83,6 +83,20 @@ def find_member(team: dict[str, Any], login: str) -> dict[str, Any]:
     raise ValueError(f"harness/team.json에 없는 GitHub 계정입니다: {login}")
 
 
+def proposal_people(team: dict[str, Any], author: str) -> dict[str, Any]:
+    """제안 페이지의 `제안자`와 `검토자`에 넣을 사람을 정한다.
+
+    검토자는 기획 컨펌 담당이다. 노션은 사람 속성에 추가된 사람에게 알림을 보내므로 이 칸이 1차 컨펌
+    요청 알림이 된다. 제안자의 노션 ID가 명단에 없으면 `notion`이 None이고, 입구는 Notion MCP에
+    로그인한 요청자 계정(`self`)으로 채운다.
+    """
+    author_member = describe_member(team, author)
+    return {
+        "proposer": {**author_member, "notion": author_member.get("notion")},
+        "reviewers": [describe_member(team, login) for login in team["plan_confirmers"]],
+    }
+
+
 def check_confirmation(team: dict[str, Any], notion_users: list[str]) -> dict[str, Any]:
     """제안 페이지 `컨펌한 사람`(노션 사용자 ID)이 기획 컨펌 담당인지 확인한다.
 
@@ -186,6 +200,9 @@ def main(argv: list[str] | None = None) -> int:
     member_parser.add_argument("--pretty", action="store_true")
     confirmers_parser = sub.add_parser("confirmers", help="1차 컨펌을 받을 사람")
     confirmers_parser.add_argument("--pretty", action="store_true")
+    people_parser = sub.add_parser("proposal-people", help="제안 페이지의 제안자와 검토자")
+    people_parser.add_argument("--author", required=True, help="요청자의 GitHub 계정")
+    people_parser.add_argument("--pretty", action="store_true")
     confirmation_parser = sub.add_parser(
         "confirmation", help="제안 페이지 컨펌한 사람이 기획 컨펌 담당인지 확인"
     )
@@ -217,6 +234,8 @@ def main(argv: list[str] | None = None) -> int:
             payload = {
                 "plan_confirmers": [describe_member(team, login) for login in team["plan_confirmers"]]
             }
+        elif args.command == "proposal-people":
+            payload = proposal_people(team, args.author)
         elif args.command == "confirmation":
             payload = check_confirmation(team, args.notion)
         else:

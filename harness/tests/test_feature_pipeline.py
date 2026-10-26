@@ -45,7 +45,7 @@ def pending_state():
         "done_condition": "development",
         "remote_write_authorized": True,
         "implementer": "vlmbuyd",
-        "plan_confirmation": {"required": True, "status": "pending", "proposal_url": "https://app.notion.com/p/proposal"},
+        "plan_confirmation": {"required": True, "status": "pending", "proposal_url": "https://app.notion.com/p/proposal", "proposer": "poketopa", "reviewers": ["vlmbuyd"]},
         "answers": [],
         "steps": [
             {"agent": "기능 요구사항", "message": "기존과 대조해 제안해라", "result": proposal_result()},
@@ -60,6 +60,8 @@ def confirmed_plan(confirmed_by=None):
         "required": True,
         "status": "confirmed",
         "proposal_url": "https://app.notion.com/p/proposal",
+        "proposer": "poketopa",
+        "reviewers": ["vlmbuyd"],
         "confirmed_by": confirmed_by or ["vlmbuyd"],
         "confirmed_at": "2026-10-26",
         "evidence": "확정 버튼, 컨펌 기록: 범위를 탐색 답변으로 좁힘",
@@ -226,6 +228,21 @@ class PlanConfirmationTest(unittest.TestCase):
             )
         self.assertEqual(result.returncode, 1)
         self.assertIn("must include a plan confirmer", result.stdout)
+
+    def test_required_proposal_needs_proposer_and_reviewer(self):
+        # 2026-10-26 첫 제안: 제안자가 비고 기획 컨펌 담당에게 알림이 가지 않았다.
+        state = pending_state()
+        del state["plan_confirmation"]["proposer"]
+        state["plan_confirmation"]["reviewers"] = []
+        errors = fp.validate_state(state)
+        self.assertTrue(any("proposer is required" in e for e in errors))
+        self.assertTrue(any("reviewers is required" in e for e in errors))
+
+    def test_reviewers_must_include_plan_confirmer(self):
+        state = pending_state()
+        state["plan_confirmation"]["reviewers"] = ["Eastar-DS"]
+        errors = fp.validate_state(state, ["vlmbuyd"])
+        self.assertTrue(any("reviewers must include a plan confirmer" in e for e in errors))
 
     def test_not_needed_matches_required_false(self):
         state = valid_state()

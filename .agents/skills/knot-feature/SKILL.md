@@ -282,11 +282,15 @@ QA 시나리오, 기획서)을 정한다. 평소에는 FE는 FE, BE는 BE 작업
    - 확정된 기획 안에서 끝나는 요청(`done`, `next`에 「기존과 대조해 업데이트해라」)이면
      `plan_confirmation`을 `{"required": false, "status": "not_needed"}`로 적고 그 메시지로 다시 부른다.
    - 기능 추가, 수정, 삭제(`needs_user_input`, `question`에 제안 페이지 URL)이면 `plan_confirmation`을
-     `{"required": true, "status": "pending", "proposal_url": "<제안 페이지>"}`로 적고 흐름을 멈춘다.
-     제안 페이지 링크와 세 줄 요약을 보여 주고, 기획 컨펌 담당(`python3 harness/team_roles.py
-     confirmers`)이 「이 제안 확정해 줘」로 확정하면 「확정된 제안 반영해 줘」나 「이 제안 이어서 해 줘」로
-     이어 가라고 안내한다. 기획 컨펌 담당에게는 제안 페이지 댓글 멘션으로 노션 알림이 가므로 따로 링크를
-     보낼 필요가 없다. 컨펌은 확정 명령의 기록으로만 한다. 제안에 새
+     `{"required": true, "status": "pending", "proposal_url": "<제안 페이지>"}`로 적는다.
+     멈추기 전에 입구가 제안 페이지를 다시 읽어 `제안자`와 `검토자`가 채워졌는지 확인한다. 비어 있으면
+     `python3 harness/team_roles.py proposal-people --author <implementer>` 결과(제안자 노션 ID가 없으면
+     Notion MCP의 `self`)로 직접 채우고 다시 읽는다. 확인한 값을 `plan_confirmation.proposer`(GitHub 계정)와
+     `reviewers`(GitHub 계정 목록)에 적는다. `feature_pipeline.py state`는 이 두 값이 없거나 `reviewers`에
+     기획 컨펌 담당이 없으면 실패한다.
+     그다음 흐름을 멈추고 제안 페이지 링크와 세 줄 요약을 보여 주며, 기획 컨펌 담당이 「이 제안 확정해
+     줘」로 확정하면 「확정된 제안 반영해 줘」나 「이 제안 이어서 해 줘」로 이어 가라고 안내한다. 기획 컨펌
+     담당에게는 `검토자` 칸으로 노션 알림이 가므로 따로 링크를 보낼 필요가 없다. 컨펌은 확정 명령의 기록으로만 한다. 제안에 새
      디자인이 필요하다고 적혀 있으면 요청자에게 Figma 편집이 되는지 묻고, 되면 「실험 · 반영 전
      시안」 페이지에 초안을 만들어 제안 페이지 「디자인」에 링크하게 하고, 안 되면 제안의 디자인
      요청을 그대로 두게 한다. 상태 파일은 재개를 위해 남긴다.
