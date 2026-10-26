@@ -92,6 +92,37 @@ public final class TranscriptionLog {
         log.log(message);
     }
 
+    /** runner 단계별 처리 시간처럼 검증을 마친 숫자 측정값만 한 줄로 남긴다. */
+    public static void measured(
+            String event,
+            UUID attemptId,
+            Map<String, Object> measures
+    ) {
+        Map<String, Object> fields = new LinkedHashMap<>();
+        fields.put(
+                "event",
+                event
+        );
+        fields.put(
+                "outcome",
+                "measured"
+        );
+        fields.put(
+                "attemptId",
+                attemptId.toString()
+        );
+        fields.putAll(measures);
+        LoggingEventBuilder log = LOGGER.atInfo();
+        fields.forEach(log::addKeyValue);
+        String message;
+        try {
+            message = MAPPER.writeValueAsString(fields);
+        } catch (RuntimeException ignored) {
+            message = "Recording transcription measurement";
+        }
+        log.log(message);
+    }
+
     public static <T> T stage(
             String event,
             UUID attemptId,
