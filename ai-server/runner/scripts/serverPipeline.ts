@@ -107,6 +107,27 @@ export const assembleResult = (raw: Buffer, diarization: string, speakerCount?: 
   return { schemaVersion: 1 as const, rawWhisperJson: raw.toString('utf8'), utterances }
 }
 
+/**
+ * 한 번의 전사에서 단계별로 걸린 시간(ms)과 디코딩 횟수. 전사 문장, 프롬프트, 경로는 넣지 않는다.
+ * 재시도와 용어 디코딩 항목은 구간 전사에만 있고, 시간 항목은 실제로 실행한 디코딩만 남는다.
+ */
+export interface RunnerStages {
+  decodeCount: number
+  defaultDecodeMs: number
+  diarizationMs: number
+  retryRan?: boolean
+  retryAdopted?: boolean
+  retryDecodeMs?: number
+  vocabularyRan?: boolean
+  vocabularyDecodeMs?: number
+}
+
+const timed = async <T>(work: () => Promise<T>) => {
+  const started = performance.now()
+  const value = await work()
+  return { value, ms: Math.round(performance.now() - started) }
+}
+
 /** 반복 재시도와 용어 디코딩은 이 시간 안에 끝나지 않으면 버리고 기본 디코딩 결과를 쓴다. */
 const OPTIONAL_DECODE_TIMEOUT_MS = 120_000
 
@@ -234,16 +255,22 @@ export const runServerPipeline = async (manifest: ServerManifest) => {
      * 구간마다 기본 디코딩에 반복 사고가 있으면 이어받기 없이(-mc 0) 한 번만 다시 디코딩한다.
      * WITH_VOCABULARY 구간은 고정 용어 프롬프트로 한 번 더 디코딩해 용어만 합친다.
      */
-    const decodeWindow = async (window: WindowInput) => {
+    const decodeWindow = async (window: WindowInput, stages: RunnerStages) => {
       let selected = await readDecode(prefix)
+      Object.assign(stages, { retryRan: false, retryAdopted: false, vocabularyRan: false })
       if (hasDecoderRepetition(selected.segments)) {
-        const retry = await optionalDecode('whisper-retry', { maxContext: 0 })
-        if (retry && prefersRetry(selected.segments, retry.segments)) selected = retry
+        const retry = await timed(() => optionalDecode('whisper-retry', { maxContext: 0 }))
+        Object.assign(stages, { decodeCount: stages.decodeCount + 1, retryRan: true, retryDecodeMs: retry.ms })
+        if (retry.value && prefersRetry(selected.segments, retry.value.segments)) {
+          selected = retry.value
+          stages.retryAdopted = true
+        }
       }
       if (window.decodePolicy !== 'WITH_VOCABULARY') return selected
-      const vocabulary = await optionalDecode('whisper-vocabulary', { prompt: VOCABULARY_PROMPT })
-      if (!vocabulary) return selected
-      return { raw: selected.raw, segments: fuseVocabulary(selected.segments, vocabulary.segments) }
+      const vocabulary = await timed(() => optionalDecode('whisper-vocabulary', { prompt: VOCABULARY_PROMPT }))
+      Object.assign(stages, { decodeCount: stages.decodeCount + 1, vocabularyRan: true, vocabularyDecodeMs: vocabulary.ms })
+      if (!vocabulary.value) return selected
+      return { raw: selected.raw, segments: fuseVocabulary(selected.segments, vocabulary.value.segments) }
     }
     const evidencePath = path.join(manifest.outputDirectory, 'window-speakers.json')
     const diarize = () => manifest.window ? run(
@@ -265,8 +292,10 @@ export const runServerPipeline = async (manifest: ServerManifest) => {
       await writeFile(path.join(manifest.outputDirectory, 'window-input.json'),
         JSON.stringify({...manifest, audioPath: normalized}), {mode:0o600})
     }
-    const [, diarization] = await Promise.all([stt(), diarize()])
-    const decoded = manifest.window ? await decodeWindow(manifest.window) : await readDecode(prefix)
+    const [sttRun, diarizationRun] = await Promise.all([timed(stt), timed(diarize)])
+    const diarization = diarizationRun.value
+    const stages: RunnerStages = { decodeCount: 1, defaultDecodeMs: sttRun.ms, diarizationMs: diarizationRun.ms }
+    const decoded = manifest.window ? await decodeWindow(manifest.window, stages) : await readDecode(prefix)
     const result = manifest.window
       ? assembleWindowResult(decoded.raw, JSON.parse(await readFile(evidencePath,'utf8')),
         manifest.window, decoded.segments)
@@ -274,6 +303,8 @@ export const runServerPipeline = async (manifest: ServerManifest) => {
     if (manifest.window && Buffer.byteLength(JSON.stringify(result),'utf8') > 1048576)
       throw new Error('OUTPUT_LIMIT')
     if (aborted) throw new Error(abortCode)
+    await writeFile(path.join(manifest.outputDirectory, 'stages.json'), JSON.stringify(stages), { mode: 0o600 })
+      .catch(() => undefined)
     const temporary = path.join(manifest.outputDirectory, 'result.json.tmp')
     await writeFile(temporary, JSON.stringify(result), { encoding: 'utf8', mode: 0o600 })
     await rename(temporary, path.join(manifest.outputDirectory, 'result.json'))

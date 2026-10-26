@@ -158,6 +158,9 @@ test('headless fake engines produce an atomic complete artifact', async () => {
     assert.equal(result.schemaVersion, 1)
     assert.equal(result.utterances[0].text, '안녕')
     await assert.rejects(readFile(path.join(directory, 'result.json.tmp')))
+    const stages = JSON.parse(await readFile(path.join(directory, 'stages.json'), 'utf8'))
+    assert.deepEqual(Object.keys(stages).sort(), ['decodeCount', 'defaultDecodeMs', 'diarizationMs'])
+    assert.equal(stages.decodeCount, 1)
   } finally {
     await rm(directory, { recursive: true, force: true })
   }
