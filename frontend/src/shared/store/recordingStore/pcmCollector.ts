@@ -111,6 +111,11 @@ export default class PcmCollector {
     this.node.port.postMessage("start");
   }
 
+  /** 회의 소리 같은 다른 소리를 마이크와 섞어 함께 모아요. 그 소리가 끝나도 `onLost`로 알리지 않아요 */
+  addAudio(stream: MediaStream) {
+    this.audioContext.createMediaStreamSource(stream).connect(this.node);
+  }
+
   /**
    * 남은 소리를 마지막 조각으로 봉인해 `onChunk`로 넘길 때까지 기다려요.
    * 컨텍스트가 멈췄으면 응답이 오지 않으므로 받은 소리까지만 두고 바로 끝나요
