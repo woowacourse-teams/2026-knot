@@ -24,7 +24,7 @@ public interface RecordingTranscriptApi {
             summary = "녹음 전사 조회",
             description = "녹음 문서 화면이 제목·요약과 따로 전사를 불러온다. 현재 Workspace 멤버는 녹음을 시작한 Member·녹음 참여 여부와 "
                     + "관계없이 조회한다. 열 수 있는 녹음은 최근 녹음 목록의 포함 조건과 같다. "
-                    + "성공 Transcript가 저장되고 NO_CONTENT가 아님이 정해진 녹음에서만 200이며, 그 녹음의 문서 정리 입력으로 쓴 "
+                    + "성공 Transcript가 저장되고 주제가 등록돼 NO_CONTENT가 아님이 정해진 녹음에서만 200이며, 그 녹음의 문서 정리 입력으로 쓴 "
                     + "전체 원문과 구간을 문서 원문 조회와 같은 데이터·정렬로 준다. 화면은 processingStatus가 DOCUMENT_FAILED·COMPLETED일 때 부른다. "
                     + "조회는 녹음·전사·문서 확인 기록을 바꾸지 않는다"
     )
@@ -43,7 +43,7 @@ public interface RecordingTranscriptApi {
                             schema = @Schema(implementation = ErrorResponse.class))),
             @ApiResponse(responseCode = "404", description = "WORKSPACE_NOT_FOUND: Workspace가 없거나 삭제됨. "
                     + "RECORDING_NOT_FOUND: 없는 녹음, 다른 Workspace의 녹음, 녹음 문서를 열 수 없는 녹음(녹음 중·일시정지·폐기·음성 저장 실패). "
-                    + "RECORDING_TRANSCRIPT_NOT_FOUND: 보여 줄 전사가 없음(전사 전·전사 실패·NO_CONTENT)",
+                    + "RECORDING_TRANSCRIPT_NOT_FOUND: 보여 줄 전사가 없음(전사 전·전사 실패·주제 분류 전·주제 분류 실패·NO_CONTENT)",
                     content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE,
                             schema = @Schema(implementation = ErrorResponse.class)))
     })

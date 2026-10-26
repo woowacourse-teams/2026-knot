@@ -3,6 +3,7 @@ package com.knot.backend.document.application;
 import com.knot.backend.document.application.dto.result.DocumentGenerationProgressResult;
 import com.knot.backend.document.application.dto.result.DocumentGenerationSummaryResult;
 import com.knot.backend.document.application.dto.result.DocumentGenerationHomeResult;
+import com.knot.backend.document.application.dto.result.DocumentGenerationStatusResult;
 import com.knot.backend.document.domain.model.DocumentGenerationProcessingStatus;
 import com.knot.backend.document.domain.model.DocumentText;
 import java.util.List;
@@ -46,29 +47,77 @@ public class DocumentGenerationProgressService {
                             .filter(DocumentGenerationJob::isFailed)
                             .filter(job -> job.getExpiresAt() != null && now.isBefore(job.getExpiresAt()))
                             .toList();
-                    java.util.Map<Long, Boolean> usableInputs = new java.util.HashMap<>();
-                    List<Long> retryable = visible.stream()
-                            .filter(job -> job.canRetryByUser(now))
-                            .filter(
-                                    job -> usableInputs.computeIfAbsent(
-                                            job.getTranscriptId(),
-                                            transcriptId -> hasUsableInput(
-                                                    workspaceId,
-                                                    recordingSessionId,
-                                                    transcriptId
-                                            )
-                                    )
-                            )
-                            .map(DocumentGenerationJob::getId)
-                            .distinct()
-                            .sorted()
-                            .toList();
                     return new DocumentGenerationHomeResult(
                             batch.getProcessingStatus(),
                             !visible.isEmpty(),
-                            retryable
+                            retryableJobIds(
+                                    workspaceId,
+                                    recordingSessionId,
+                                    visible,
+                                    now
+                            )
                     );
                 });
+    }
+
+    // 녹음 문서는 홈 진행 카드의 7일 표시 기한과 관계없이 실패 Job을 모두 재시도 대상으로 본다.
+    @Transactional(readOnly = true)
+    public Optional<DocumentGenerationStatusResult> findRecordingProgress(
+            long workspaceId,
+            long recordingSessionId,
+            Instant now
+    ) {
+        return batches.findByWorkspaceIdAndRecordingSessionId(
+                workspaceId,
+                recordingSessionId
+        )
+                .map(batch -> {
+                    if (batch.getProcessingStatus() != DocumentGenerationProcessingStatus.FAILED) {
+                        return new DocumentGenerationStatusResult(
+                                batch.getProcessingStatus(),
+                                List.of()
+                        );
+                    }
+                    List<DocumentGenerationJob> failed = jobs.findAllByBatchId(batch.getId())
+                            .stream()
+                            .filter(DocumentGenerationJob::isFailed)
+                            .toList();
+                    return new DocumentGenerationStatusResult(
+                            batch.getProcessingStatus(),
+                            retryableJobIds(
+                                    workspaceId,
+                                    recordingSessionId,
+                                    failed,
+                                    now
+                            )
+                    );
+                });
+    }
+
+    // 문서 생성 Job 재시도 접수 조건: 사용자 재시도가 가능한 FAILED Job이고 저장된 입력 원문을 쓸 수 있다.
+    private List<Long> retryableJobIds(
+            long workspaceId,
+            long recordingSessionId,
+            List<DocumentGenerationJob> failed,
+            Instant now
+    ) {
+        java.util.Map<Long, Boolean> usableInputs = new java.util.HashMap<>();
+        return failed.stream()
+                .filter(job -> job.canRetryByUser(now))
+                .filter(
+                        job -> usableInputs.computeIfAbsent(
+                                job.getTranscriptId(),
+                                transcriptId -> hasUsableInput(
+                                        workspaceId,
+                                        recordingSessionId,
+                                        transcriptId
+                                )
+                        )
+                )
+                .map(DocumentGenerationJob::getId)
+                .distinct()
+                .sorted()
+                .toList();
     }
 
     private boolean hasUsableInput(

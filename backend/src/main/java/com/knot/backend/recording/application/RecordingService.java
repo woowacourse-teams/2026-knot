@@ -2,15 +2,10 @@ package com.knot.backend.recording.application;
 
 import com.knot.backend.document.application.DocumentGenerationProgressService;
 import com.knot.backend.document.application.dto.result.DocumentGenerationHomeResult;
-import com.knot.backend.recording.domain.model.RecordingAudioUpload;
-import com.knot.backend.recording.domain.repository.RecordingAudioUploadRepository;
 import java.util.List;
 import com.knot.backend.document.domain.model.DocumentGenerationProcessingStatus;
 import com.knot.backend.recording.application.dto.result.CurrentRecordingStatus;
 import com.knot.backend.recording.domain.model.AudioFinalizationStatus;
-import com.knot.backend.recording.domain.model.RecordingTranscription;
-import com.knot.backend.recording.domain.model.TranscriptionStatus;
-import com.knot.backend.recording.domain.repository.RecordingTranscriptionRepository;
 import com.knot.backend.recording.domain.repository.RecordingAudioChunkRepository;
 import com.knot.backend.recording.domain.model.RecordingAudioSealKind;
 import com.knot.backend.recording.domain.model.RecordingAudioChunk;
@@ -62,10 +57,8 @@ public class RecordingService {
     private final RecordingAudioChunkRepository chunks;
     private final RecordingAudioFinalizationRepository finalizations;
     private final RecordingAudioCleanupRepository audioCleanup;
-    private final RecordingTranscriptionRepository transcriptions;
+    private final RecordingTranscriptionFailure transcriptionFailure;
     private final DocumentGenerationProgressService documentProgress;
-    private final RecordingAudioUploadRepository uploads;
-    private final com.knot.backend.global.config.TranscriptionProperties transcriptionProperties;
 
     @Transactional
     public RecordingStartResult start(
@@ -370,19 +363,12 @@ public class RecordingService {
                     measuredAt
             );
         }
-        boolean transcriptionFailed = transcriptions.findByRecordingSessionId(session.getId())
-                .map(RecordingTranscription::getStatus)
-                .filter(TranscriptionStatus.FAILED::equals)
-                .isPresent();
-        if (transcriptionFailed) {
-            boolean retryable = transcriptionProperties.enabled() && uploads.findByRecordingId(session.getId())
-                    .filter(RecordingAudioUpload::isAudioAvailable)
-                    .isPresent();
+        if (transcriptionFailure.isFailed(session.getId())) {
             return Optional.of(
                     failedResult(
                             session,
                             CurrentRecordingStatus.TRANSCRIPTION_FAILED,
-                            retryable,
+                            transcriptionFailure.isRetryable(session.getId()),
                             List.of(),
                             measuredAt
                     )

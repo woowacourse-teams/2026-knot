@@ -8,6 +8,7 @@ import org.springframework.jdbc.core.simple.JdbcClient;
 
 public class RecordingHistoryFixture {
     public static final Instant CREATED_AT = Instant.parse("2026-10-20T00:00:00Z");
+    public static final String MEETING_SUMMARY = "## 한눈에 보기\n- 탈퇴 시 데이터 보존 범위를 논의했다.";
     private static final String CONTROL_TOKEN_HASH = "a".repeat(64);
 
     private final JdbcClient jdbcClient;
@@ -375,6 +376,61 @@ public class RecordingHistoryFixture {
                 .param(
                         "title",
                         title
+                )
+                .param(
+                        "createdAt",
+                        Timestamp.from(CREATED_AT)
+                )
+                .update();
+    }
+
+    public void deleteAudio(long recordingId) {
+        jdbcClient.sql("UPDATE recording_audio_uploads SET deleted_at=completed_at WHERE recording_id=:recordingId")
+                .param(
+                        "recordingId",
+                        recordingId
+                )
+                .update();
+    }
+
+    public void meetingSummary(
+            long recordingId,
+            long transcriptId,
+            String status
+    ) {
+        boolean running = "RUNNING".equals(status);
+        jdbcClient.sql("""
+                INSERT INTO recording_meeting_summaries (recording_id, transcript_id, status, content, attempt_no,
+                    claim_token, lease_until, next_run_at, created_at)
+                VALUES (:recordingId, :transcriptId, :status, :content, 1, :claimToken, :leaseUntil, :createdAt,
+                    :createdAt)
+                """)
+                .param(
+                        "recordingId",
+                        recordingId
+                )
+                .param(
+                        "transcriptId",
+                        transcriptId
+                )
+                .param(
+                        "status",
+                        status
+                )
+                .param(
+                        "content",
+                        "SUCCEEDED".equals(status) ? MEETING_SUMMARY : null,
+                        Types.VARCHAR
+                )
+                .param(
+                        "claimToken",
+                        running ? UUID.randomUUID() : null,
+                        Types.OTHER
+                )
+                .param(
+                        "leaseUntil",
+                        running ? Timestamp.from(CREATED_AT.plusSeconds(60)) : null,
+                        Types.TIMESTAMP
                 )
                 .param(
                         "createdAt",
