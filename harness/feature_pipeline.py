@@ -184,7 +184,7 @@ def validate_plan_confirmation(
     """기능 추가, 수정, 삭제는 1차 컨펌 전에 노션, Figma, 이슈, PR을 바꾸지 않는다.
 
     확정 전 제안은 노션 「기능 요구사항 검토」 DB의 제안 페이지(`proposal_url`)에만 있다.
-    1차 컨펌의 근거는 제안 페이지의 확정 버튼 기록(`상태`, `컨펌한 사람`, `컨펌 날짜`)뿐이다.
+    1차 컨펌의 근거는 제안 페이지의 확정 기록(`상태`, `컨펌한 사람`, `컨펌 날짜`)뿐이다.
     `plan_confirmers`를 주면 `confirmed_by`에 기획 컨펌 담당이 있는지도 본다.
     """
     confirmation = state.get("plan_confirmation")

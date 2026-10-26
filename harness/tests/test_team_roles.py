@@ -161,6 +161,8 @@ class CliTest(unittest.TestCase):
         code, payload = self.run_cli("confirmers")
         self.assertEqual(code, 0)
         self.assertIn("유월", [item["name"] for item in payload["plan_confirmers"]])
+        # 제안 페이지 댓글에서 기획 컨펌 담당을 멘션할 노션 사용자 ID
+        self.assertTrue(all(item.get("notion") for item in payload["plan_confirmers"]))
 
 
 if __name__ == "__main__":

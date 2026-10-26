@@ -91,7 +91,7 @@ def check_confirmation(team: dict[str, Any], notion_users: list[str]) -> dict[st
     상태 파일 `plan_confirmation.confirmed_by`에 그대로 쓴다.
     """
     if not notion_users:
-        raise ValueError("제안 페이지의 컨펌한 사람이 비어 있습니다. 확정 버튼으로 컨펌했는지 확인하세요")
+        raise ValueError("제안 페이지의 컨펌한 사람이 비어 있습니다. 기획 컨펌 담당이 「이 제안 확정해 줘」로 확정했는지 확인하세요")
     wanted = {_normalize_notion_id(user) for user in notion_users}
     confirmed_by = [
         member["github"]
@@ -108,13 +108,16 @@ def check_confirmation(team: dict[str, Any], notion_users: list[str]) -> dict[st
 
 def describe_member(team: dict[str, Any], login: str) -> dict[str, Any]:
     member = find_member(team, login)
-    return {
+    described = {
         "github": member["github"],
         "name": member["name"],
         "label": member["name"],
         "area": member["area"],
         "area_label": AREA_LABELS[member["area"]],
     }
+    if member.get("notion"):
+        described["notion"] = member["notion"]
+    return described
 
 
 def review_plan(
