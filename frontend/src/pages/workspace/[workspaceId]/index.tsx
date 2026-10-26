@@ -2,8 +2,7 @@ import { MEDIA_QUERY } from "@constants/breakpoint";
 import styled from "@emotion/styled";
 import MemberGreeting from "@features/member/MemberGreeting";
 import PendingDocumentsCard from "@widgets/document/PendingDocumentsCard";
-import RecentDocumentsCard from "@widgets/document/RecentDocumentsCard";
-import RecordingListCard from "@widgets/recording/RecordingListCard";
+import RecordingHistoryCard from "@widgets/recording/RecordingHistoryCard";
 import WorkspaceInviteMemberCard from "@widgets/workspace/WorkspaceInviteMemberCard";
 
 /**
@@ -14,12 +13,13 @@ import WorkspaceInviteMemberCard from "@widgets/workspace/WorkspaceInviteMemberC
  * 이 화면 위에서 처리되는 상태 변형이다.
  *
  * GNB·사이드바·하단 Dock은 `WorkspaceLayout`이 담당하고, 이 페이지는 인사와 카드를 두 열로 놓기만 한다.
- * 윗줄(312px)은 확인이 필요한 문서 · 최근 추가된 문서, 아랫줄(214px)은 진행 중인 녹음 · 팀원 초대다(HOME-R2).
+ * 왼쪽 열은 녹음 기록이 두 줄을 차지하고, 오른쪽 열은 윗줄(312px)에 확인이 필요한 문서, 아랫줄(214px)에 팀원 초대다(HOME-R1 · R2).
  * 카드는 저마다 따로 불러와, 한 카드가 실패해도 그 카드 안에서만 알린다(HOME-R6).
  *
  * @see https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=1562-2616 홈/기본
  * @see https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=1917-18135 홈/처음 사용
  * @see https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=3805-38611 홈/불러오는 중
+ * @see https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=5422-4668 홈/녹음 기록
  */
 export default function WorkspaceHomePage() {
   return (
@@ -27,9 +27,8 @@ export default function WorkspaceHomePage() {
       <PageColumn>
         <MemberGreeting />
         <CardGrid>
+          <RecordingHistoryCard />
           <PendingDocumentsCard />
-          <RecentDocumentsCard />
-          <RecordingListCard />
           <WorkspaceInviteMemberCard />
         </CardGrid>
       </PageColumn>
@@ -64,10 +63,10 @@ const PageColumn = styled.div`
 
 /**
  * 피그마 Grid: 왼쪽 열 652px · 오른쪽 열 400px, 윗줄 312px · 아랫줄 214px, 사이 28px.
- * 화면이 좁으면 왼쪽 열부터 줄어들고, 카드는 칸의 높이를 채워요.
+ * 녹음 기록은 왼쪽 열의 두 줄을 차지해요. 화면이 좁으면 왼쪽 열부터 줄어들고, 카드는 칸의 높이를 채워요.
  *
- * 태블릿은 2열을 지키고 오른쪽 열만 280px로 줄여요. 모바일은 한 열로 쌓고 카드 높이는 내용에 맞춰요(RESP-R5).
- * 모바일 순서는 확인이 필요한 문서, 진행 중인 녹음, 최근 추가된 문서, 팀원 초대예요.
+ * 태블릿은 2열을 지키고 오른쪽 열만 330px로 줄여요. 모바일은 한 열로 쌓고 카드 높이는 카드가 정해요(RESP-R5).
+ * 모바일 순서는 녹음 기록, 확인이 필요한 문서, 팀원 초대예요.
  */
 const CardGrid = styled.div`
   display: grid;
@@ -75,8 +74,13 @@ const CardGrid = styled.div`
   grid-template-columns: minmax(0, 40.75rem) minmax(0, 25rem); /* 652px 400px */
   gap: 1.75rem; /* 28px */
 
+  /* 녹음 기록(첫 번째)은 왼쪽 열의 두 줄을 차지해요 */
+  & > :first-child {
+    grid-row: span 2;
+  }
+
   ${MEDIA_QUERY.belowDesktop} {
-    grid-template-columns: minmax(0, 1fr) 17.5rem; /* 280px */
+    grid-template-columns: minmax(0, 1fr) 20.625rem; /* 330px */
   }
 
   ${MEDIA_QUERY.mobile} {
@@ -84,10 +88,8 @@ const CardGrid = styled.div`
     grid-template-columns: minmax(0, 1fr);
     gap: 1rem; /* 16px */
 
-    /* 최근 추가된 문서(2번째)와 팀원 초대(4번째)를 진행 중인 녹음 뒤로 보내요 */
-    & > :nth-child(2),
-    & > :nth-child(4) {
-      order: 1;
+    & > :first-child {
+      grid-row: auto;
     }
   }
 `;
