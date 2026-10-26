@@ -1,7 +1,7 @@
 {
   "version": 1,
   "members": [
-    {"github": "vlmbuyd", "name": "유월", "area": "frontend"},
+    {"github": "vlmbuyd", "name": "유월", "area": "frontend", "notion": "336328ab-ea57-45f4-b351-80b35a95b12a"},
     {"github": "Eastar-DS", "name": "이스타", "area": "frontend"},
     {"github": "geongyu09", "name": "도넛", "area": "frontend"},
     {"github": "jyt6640", "name": "흑곰", "area": "backend"},

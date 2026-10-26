@@ -30,6 +30,7 @@ def validate_team(team: Any) -> list[str]:
     if not isinstance(members, list) or not members:
         return ["members must be a non-empty list"]
     logins: list[str] = []
+    notion_ids: list[str] = []
     for index, member in enumerate(members):
         prefix = f"members[{index}]"
         if not isinstance(member, dict):
@@ -43,8 +44,16 @@ def validate_team(team: Any) -> list[str]:
             errors.append(f"{prefix}.area must be one of {', '.join(AREAS)}")
         if isinstance(member.get("github"), str):
             logins.append(member["github"])
+        notion = member.get("notion")
+        if notion is not None:
+            if not isinstance(notion, str) or not notion.strip():
+                errors.append(f"{prefix}.notion must be a Notion user ID")
+            else:
+                notion_ids.append(_normalize_notion_id(notion))
     if len(logins) != len(set(logins)):
         errors.append("members.github must be unique")
+    if len(notion_ids) != len(set(notion_ids)):
+        errors.append("members.notion must be unique")
     confirmers = team.get("plan_confirmers")
     if not isinstance(confirmers, list) or not confirmers:
         errors.append("plan_confirmers must be a non-empty list")
@@ -52,9 +61,19 @@ def validate_team(team: Any) -> list[str]:
         for login in confirmers:
             if login not in logins:
                 errors.append(f"plan_confirmers has unknown member: {login}")
+            elif not any(
+                member.get("github") == login and member.get("notion") for member in members
+            ):
+                # 1차 컨펌은 제안 페이지 `컨펌한 사람`(노션 사용자)으로 확인하므로 노션 ID가 있어야 한다.
+                errors.append(f"plan_confirmers needs a notion user ID: {login}")
     if team.get("release_merger") not in logins:
         errors.append("release_merger must be a member")
     return errors
+
+
+def _normalize_notion_id(value: str) -> str:
+    """`user://`나 하이픈 유무와 관계없이 같은 노션 사용자 ID로 비교한다."""
+    return value.strip().removeprefix("user://").replace("-", "").lower()
 
 
 def find_member(team: dict[str, Any], login: str) -> dict[str, Any]:
@@ -62,6 +81,29 @@ def find_member(team: dict[str, Any], login: str) -> dict[str, Any]:
         if member["github"].lower() == login.lower():
             return member
     raise ValueError(f"harness/team.json에 없는 GitHub 계정입니다: {login}")
+
+
+def check_confirmation(team: dict[str, Any], notion_users: list[str]) -> dict[str, Any]:
+    """제안 페이지 `컨펌한 사람`(노션 사용자 ID)이 기획 컨펌 담당인지 확인한다.
+
+    디스코드나 구두 컨펌은 근거로 쓰지 않는다. 제안 페이지의 `상태`가 확정이고 `컨펌한 사람`에
+    기획 컨펌 담당이 있어야 1차 컨펌으로 본다. 돌려주는 `confirmed_by`는 GitHub 계정이라
+    상태 파일 `plan_confirmation.confirmed_by`에 그대로 쓴다.
+    """
+    if not notion_users:
+        raise ValueError("제안 페이지의 컨펌한 사람이 비어 있습니다. 확정 버튼으로 컨펌했는지 확인하세요")
+    wanted = {_normalize_notion_id(user) for user in notion_users}
+    confirmed_by = [
+        member["github"]
+        for member in team["members"]
+        if member["github"] in team["plan_confirmers"]
+        and member.get("notion")
+        and _normalize_notion_id(member["notion"]) in wanted
+    ]
+    if not confirmed_by:
+        names = ", ".join(describe_member(team, login)["name"] for login in team["plan_confirmers"])
+        raise ValueError(f"컨펌한 사람이 기획 컨펌 담당({names})이 아닙니다")
+    return {"confirmed_by": confirmed_by}
 
 
 def describe_member(team: dict[str, Any], login: str) -> dict[str, Any]:
@@ -141,6 +183,13 @@ def main(argv: list[str] | None = None) -> int:
     member_parser.add_argument("--pretty", action="store_true")
     confirmers_parser = sub.add_parser("confirmers", help="1차 컨펌을 받을 사람")
     confirmers_parser.add_argument("--pretty", action="store_true")
+    confirmation_parser = sub.add_parser(
+        "confirmation", help="제안 페이지 컨펌한 사람이 기획 컨펌 담당인지 확인"
+    )
+    confirmation_parser.add_argument(
+        "--notion", nargs="*", default=[], help="제안 페이지 `컨펌한 사람`의 노션 사용자 ID"
+    )
+    confirmation_parser.add_argument("--pretty", action="store_true")
     review_parser = sub.add_parser("review", help="PR 담당자, 라벨, 리뷰어, 승인 조건")
     review_parser.add_argument("--area", required=True, choices=AREAS)
     review_parser.add_argument("--author", required=True, help="PR을 여는 사람의 GitHub 계정")
@@ -165,6 +214,8 @@ def main(argv: list[str] | None = None) -> int:
             payload = {
                 "plan_confirmers": [describe_member(team, login) for login in team["plan_confirmers"]]
             }
+        elif args.command == "confirmation":
+            payload = check_confirmation(team, args.notion)
         else:
             payload = review_plan(
                 team, args.area, args.author, args.plan_changed, args.design_changed

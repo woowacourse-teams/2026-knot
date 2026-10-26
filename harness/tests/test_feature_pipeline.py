@@ -55,6 +55,17 @@ def pending_state():
     }
 
 
+def confirmed_plan(confirmed_by=None):
+    return {
+        "required": True,
+        "status": "confirmed",
+        "proposal_url": "https://app.notion.com/p/proposal",
+        "confirmed_by": confirmed_by or ["vlmbuyd"],
+        "confirmed_at": "2026-10-26",
+        "evidence": "확정 버튼, 컨펌 기록: 범위를 탐색 답변으로 좁힘",
+    }
+
+
 def valid_state():
     return {
         "request": "탐색 답변에 복사 버튼 만들어 줘",
@@ -63,13 +74,7 @@ def valid_state():
         "done_condition": "development",
         "remote_write_authorized": False,
         "implementer": "vlmbuyd",
-        "plan_confirmation": {
-            "required": True,
-            "status": "confirmed",
-            "proposal_url": "https://app.notion.com/p/proposal",
-            "confirmed_by": ["유월"],
-            "evidence": "컨펌 날짜 2026-10-26, 바뀐 점 없음",
-        },
+        "plan_confirmation": confirmed_plan(),
         "answers": [{"to": "이슈", "question": "게시할까요?", "answer": "허용"}],
         "steps": [
             {"agent": "기능 요구사항", "message": "기존과 대조해 제안해라", "result": proposal_result()},
@@ -182,7 +187,7 @@ class PlanConfirmationTest(unittest.TestCase):
         del state["plan_confirmation"]["proposal_url"]
         self.assertTrue(any("proposal_url" in e for e in fp.validate_state(state)))
 
-    def test_confirmed_needs_who_and_evidence(self):
+    def test_confirmed_needs_who_when_and_evidence(self):
         state = valid_state()
         state["plan_confirmation"] = {
             "required": True,
@@ -193,7 +198,34 @@ class PlanConfirmationTest(unittest.TestCase):
         }
         errors = fp.validate_state(state)
         self.assertTrue(any("confirmed_by" in e for e in errors))
+        self.assertTrue(any("confirmed_at" in e for e in errors))
         self.assertTrue(any("evidence" in e for e in errors))
+
+    def test_confirmed_by_button_record_passes(self):
+        state = valid_state()
+        state["plan_confirmation"] = confirmed_plan()
+        self.assertEqual(fp.validate_state(state, ["vlmbuyd"]), [])
+
+    def test_confirmed_by_non_confirmer_fails(self):
+        # 기획 컨펌 담당이 아닌 팀원이 상태를 확정으로 바꾼 경우
+        state = valid_state()
+        state["plan_confirmation"] = confirmed_plan(confirmed_by=["Eastar-DS"])
+        errors = fp.validate_state(state, ["vlmbuyd"])
+        self.assertTrue(any("must include a plan confirmer" in e for e in errors))
+
+    def test_state_cli_checks_repository_confirmers(self):
+        state = valid_state()
+        state["plan_confirmation"] = confirmed_plan(confirmed_by=["jyt6640"])
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "state.json"
+            path.write_text(json.dumps(state, ensure_ascii=False), encoding="utf-8")
+            result = subprocess.run(
+                [sys.executable, str(ROOT / "harness" / "feature_pipeline.py"), "state", str(path)],
+                capture_output=True,
+                text=True,
+            )
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("must include a plan confirmer", result.stdout)
 
     def test_not_needed_matches_required_false(self):
         state = valid_state()

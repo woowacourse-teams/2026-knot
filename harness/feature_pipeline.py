@@ -109,7 +109,7 @@ def validate_result(result: Any, field: str = "result") -> list[str]:
     return errors
 
 
-def validate_state(state: Any) -> list[str]:
+def validate_state(state: Any, plan_confirmers: list[str] | None = None) -> list[str]:
     """입구가 관리하는 상태 파일을 검증한다."""
     if not isinstance(state, dict):
         return ["state must be an object"]
@@ -174,14 +174,18 @@ def validate_state(state: Any) -> list[str]:
         errors.append("implementer must be null or a GitHub login")
     if (state.get("issues") or state.get("prs")) and not _is_nonblank_string(implementer):
         errors.append("implementer is required before issues or prs are created")
-    errors.extend(validate_plan_confirmation(state))
+    errors.extend(validate_plan_confirmation(state, plan_confirmers))
     return errors
 
 
-def validate_plan_confirmation(state: dict[str, Any]) -> list[str]:
+def validate_plan_confirmation(
+    state: dict[str, Any], plan_confirmers: list[str] | None = None
+) -> list[str]:
     """기능 추가, 수정, 삭제는 1차 컨펌 전에 노션, Figma, 이슈, PR을 바꾸지 않는다.
 
     확정 전 제안은 노션 「기능 요구사항 검토」 DB의 제안 페이지(`proposal_url`)에만 있다.
+    1차 컨펌의 근거는 제안 페이지의 확정 버튼 기록(`상태`, `컨펌한 사람`, `컨펌 날짜`)뿐이다.
+    `plan_confirmers`를 주면 `confirmed_by`에 기획 컨펌 담당이 있는지도 본다.
     """
     confirmation = state.get("plan_confirmation")
     if confirmation is None:
@@ -209,6 +213,13 @@ def validate_plan_confirmation(state: dict[str, Any]) -> list[str]:
             errors.append("plan_confirmation.confirmed_by must be a non-empty list when confirmed")
         else:
             _string_list(confirmed_by, "plan_confirmation.confirmed_by", errors)
+            if plan_confirmers is not None and not set(confirmed_by) & set(plan_confirmers):
+                errors.append(
+                    "plan_confirmation.confirmed_by must include a plan confirmer: "
+                    f"{', '.join(plan_confirmers)}"
+                )
+        if not _is_nonblank_string(confirmation.get("confirmed_at")):
+            errors.append("plan_confirmation.confirmed_at is required when confirmed (제안 페이지 컨펌 날짜)")
         if not _is_nonblank_string(confirmation.get("evidence")):
             errors.append("plan_confirmation.evidence is required when confirmed")
     if status in UNCONFIRMED_STATUSES:
@@ -253,6 +264,12 @@ def render_notion_changes(changed: list[dict[str, Any]], for_issue: bool = False
     return f"{title}\n\n" + "\n".join(lines) + "\n"
 
 
+def _plan_confirmers() -> list[str]:
+    from team_roles import load_team
+
+    return list(load_team().get("plan_confirmers", []))
+
+
 def _load(path: str) -> Any:
     return json.loads(Path(path).read_text(encoding="utf-8"))
 
@@ -283,7 +300,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "result":
         return _report(validate_result(data), args.pretty)
     if args.command == "state":
-        return _report(validate_state(data), args.pretty)
+        return _report(validate_state(data, _plan_confirmers()), args.pretty)
     changed = collect_changed(data) if isinstance(data, dict) and "steps" in data else (
         data.get("changed", []) if isinstance(data, dict) else data
     )

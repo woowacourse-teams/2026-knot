@@ -10,12 +10,16 @@ sys.path.insert(0, str(ROOT / "harness"))
 import team_roles as tr  # noqa: E402
 
 
+YUWOL_NOTION = "336328ab-ea57-45f4-b351-80b35a95b12a"
+EASTAR_NOTION = "7bdae97e-48c3-426c-a4cf-a651069aab81"
+
+
 def team():
     return {
         "version": 1,
         "members": [
-            {"github": "vlmbuyd", "name": "유월", "area": "frontend"},
-            {"github": "Eastar-DS", "name": "이스타", "area": "frontend"},
+            {"github": "vlmbuyd", "name": "유월", "area": "frontend", "notion": YUWOL_NOTION},
+            {"github": "Eastar-DS", "name": "이스타", "area": "frontend", "notion": EASTAR_NOTION},
             {"github": "geongyu09", "name": "도넛", "area": "frontend"},
             {"github": "jyt6640", "name": "흑곰", "area": "backend"},
             {"github": "poketopa", "name": "루덴스", "area": "backend"},
@@ -38,6 +42,37 @@ class TeamFileTest(unittest.TestCase):
         data = team()
         data["members"].append({"github": "vlmbuyd", "name": "유월", "area": "backend"})
         self.assertIn("members.github must be unique", tr.validate_team(data))
+
+
+    def test_plan_confirmer_needs_notion_id(self):
+        # 1차 컨펌은 제안 페이지 컨펌한 사람(노션 사용자)으로 확인한다.
+        data = team()
+        data["plan_confirmers"] = ["geongyu09"]
+        self.assertIn("plan_confirmers needs a notion user ID: geongyu09", tr.validate_team(data))
+
+
+class ConfirmationTest(unittest.TestCase):
+    def test_confirmer_button_record_passes(self):
+        result = tr.check_confirmation(team(), [f"user://{YUWOL_NOTION}"])
+        self.assertEqual(result, {"confirmed_by": ["vlmbuyd"]})
+
+    def test_notion_id_without_hyphens_matches(self):
+        result = tr.check_confirmation(team(), [YUWOL_NOTION.replace("-", "").upper()])
+        self.assertEqual(result["confirmed_by"], ["vlmbuyd"])
+
+    def test_non_confirmer_fails(self):
+        with self.assertRaisesRegex(ValueError, "기획 컨펌 담당"):
+            tr.check_confirmation(team(), [EASTAR_NOTION])
+
+    def test_empty_confirmer_fails(self):
+        # 상태만 확정으로 바꾸고 버튼을 쓰지 않은 경우
+        with self.assertRaisesRegex(ValueError, "비어 있습니다"):
+            tr.check_confirmation(team(), [])
+
+    def test_added_confirmer_counts(self):
+        data = team()
+        data["plan_confirmers"] = ["vlmbuyd", "Eastar-DS"]
+        self.assertEqual(tr.check_confirmation(data, [EASTAR_NOTION])["confirmed_by"], ["Eastar-DS"])
 
 
 class MemberTest(unittest.TestCase):
@@ -114,6 +149,13 @@ class CliTest(unittest.TestCase):
         code, payload = self.run_cli("review", "--area", "frontend", "--author", "stranger")
         self.assertEqual(code, 1)
         self.assertEqual(payload["status"], "fail")
+
+    def test_confirmation_command(self):
+        code, payload = self.run_cli("confirmation", "--notion", YUWOL_NOTION)
+        self.assertEqual(code, 0)
+        self.assertEqual(payload["confirmed_by"], ["vlmbuyd"])
+        code, payload = self.run_cli("confirmation", "--notion", EASTAR_NOTION)
+        self.assertEqual(code, 1)
 
     def test_confirmers_command(self):
         code, payload = self.run_cli("confirmers")
