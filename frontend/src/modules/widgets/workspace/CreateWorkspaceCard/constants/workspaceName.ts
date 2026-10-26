@@ -10,7 +10,7 @@ export const WORKSPACE_NAME_MAX_LENGTH = 20;
 export const WORKSPACE_NAME_PATTERN = /^[가-힣ㄱ-ㅎㅏ-ㅣa-zA-Z ]*$/;
 
 export const WORKSPACE_NAME_ERROR_MESSAGE =
-  "한글, 영어와 공백만 사용할 수 있어요.";
+  "한글, 영어, 숫자와 공백만 사용할 수 있어요.";
 
 /**
  * 생성 요청이 실패했을 때 입력창 아래에 띄울 문구.
