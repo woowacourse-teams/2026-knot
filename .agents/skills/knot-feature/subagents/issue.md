@@ -7,7 +7,7 @@
 
 | 읽기 | 쓰기 |
 | --- | --- |
-| 기능 요구사항, API 명세, QA 시트, Figma, 상태 파일의 `changed`, `implementer`, `plan_confirmation` | GitHub Issue |
+| 기능 요구사항, API 명세, QA 시트, Figma, 상태 파일의 `changed`, `implementer`, `plan_confirmation` | GitHub Issue, 제안 페이지의 `이슈` 속성 |
 
 ## 받는 메시지
 
@@ -32,6 +32,8 @@
 - 상태 파일 `plan_confirmation.status`가 `pending`이면 이슈를 만들지 않고 `blocked`로 돌아온다.
   1차 컨펌을 받았으면(`confirmed`) `메모`에 「1차 컨펌: <confirmed_by>, <evidence>, 제안 <proposal_url>」을
   한 줄 적는다. 컨펌에서 디자인을 기획 컨펌 담당에게 맡겼고 아직 링크가 없으면 「디자인 대기」도 적는다.
+  이슈를 게시했으면 제안 페이지의 `이슈` 속성에 이슈 URL을 채운다. 노션에서 고치는 것은 이 칸
+  하나뿐이다.
 - 담당자(assignee)와 이름 라벨은 상태 파일 `implementer`다. 이 값이 Issue 계약의 「현재 요청에서
   지정한 실제 개발자」이므로 묻지 않는다. 이름 라벨은 `python3 harness/team_roles.py member
   <implementer>`의 `label`이다. 이슈를 쓴 사람이나 그 도메인의 평소 담당자로 정하지 않는다(#979).
@@ -61,5 +63,6 @@
 
 ## 하지 않는 것
 
-- 노션, Figma, 코드를 고치지 않는다. branch, commit, push, PR, merge, Project 변경을 하지 않는다.
+- 노션(제안 페이지의 `이슈` 속성은 빼고), Figma, 코드를 고치지 않는다. branch, commit, push, PR, merge,
+  Project 변경을 하지 않는다.
 - 다른 서브 에이전트를 부르지 않고 사용자에게 직접 묻지 않는다.
