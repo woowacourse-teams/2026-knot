@@ -75,6 +75,38 @@ class ConfirmationTest(unittest.TestCase):
         self.assertEqual(tr.check_confirmation(data, [EASTAR_NOTION])["confirmed_by"], ["Eastar-DS"])
 
 
+class ProposalPeopleTest(unittest.TestCase):
+    def test_reviewer_is_plan_confirmer_with_notion_id(self):
+        people = tr.proposal_people(team(), "Eastar-DS")
+        self.assertEqual(people["proposer"]["notion"], EASTAR_NOTION)
+        self.assertEqual([r["github"] for r in people["reviewers"]], ["vlmbuyd"])
+        self.assertEqual(people["reviewers"][0]["notion"], YUWOL_NOTION)
+
+    def test_proposer_without_notion_id_is_none(self):
+        # 명단에 노션 ID가 없으면 입구가 Notion MCP 로그인 계정으로 채운다.
+        self.assertIsNone(tr.proposal_people(team(), "geongyu09")["proposer"]["notion"])
+
+    def test_repository_members_used_so_far_have_notion_ids(self):
+        data = tr.load_team()
+        for login in ("vlmbuyd", "poketopa", "jyt6640", "geongyu09", "Eastar-DS"):
+            self.assertTrue(tr.find_member(data, login).get("notion"), login)
+
+    def test_assignees_are_implementers_with_notion_ids(self):
+        result = tr.proposal_assignees(team(), ["Eastar-DS", "vlmbuyd", "Eastar-DS"])
+        self.assertEqual([a["notion"] for a in result["assignees"]], [EASTAR_NOTION, YUWOL_NOTION])
+        self.assertEqual(result["missing"], [])
+
+    def test_assignee_without_notion_id_goes_to_missing(self):
+        # 노션 ID가 없으면 담당자 칸 대신 확정 댓글에 이름으로 적는다.
+        result = tr.proposal_assignees(team(), ["geongyu09", "vlmbuyd"])
+        self.assertEqual([a["github"] for a in result["assignees"]], ["vlmbuyd"])
+        self.assertEqual([m["name"] for m in result["missing"]], ["도넛"])
+
+    def test_assignees_need_implementer(self):
+        with self.assertRaises(ValueError):
+            tr.proposal_assignees(team(), [])
+
+
 class MemberTest(unittest.TestCase):
     def test_member_label_is_name(self):
         member = tr.describe_member(team(), "poketopa")

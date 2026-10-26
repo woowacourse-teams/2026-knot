@@ -207,6 +207,20 @@ def validate_plan_confirmation(
         errors.append("plan_confirmation.status must be not_needed when required is false")
     if required is True and not _is_url(confirmation.get("proposal_url")):
         errors.append("plan_confirmation.proposal_url must be the 기능 요구사항 검토 page URL")
+    if required is True:
+        # 제안 페이지를 만든 뒤 다시 읽어 확인한 제안자와 검토자(GitHub 계정). 검토자 칸이 알림이다.
+        if not _is_nonblank_string(confirmation.get("proposer")):
+            errors.append("plan_confirmation.proposer is required: 제안 페이지 제안자를 채우고 확인한다")
+        reviewers = confirmation.get("reviewers")
+        if not isinstance(reviewers, list) or not reviewers:
+            errors.append("plan_confirmation.reviewers is required: 제안 페이지 검토자를 채우고 확인한다")
+        else:
+            _string_list(reviewers, "plan_confirmation.reviewers", errors)
+            if plan_confirmers is not None and not set(reviewers) & set(plan_confirmers):
+                errors.append(
+                    "plan_confirmation.reviewers must include a plan confirmer: "
+                    f"{', '.join(plan_confirmers)}"
+                )
     if status == "confirmed":
         confirmed_by = confirmation.get("confirmed_by")
         if not isinstance(confirmed_by, list) or not confirmed_by:
