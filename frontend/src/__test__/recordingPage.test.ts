@@ -1,5 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 
+import { TOAST_MESSAGES } from "@constants/toastMessages";
+
 import { MEETING_AUDIO_COPY } from "../modules/features/recording/MeetingAudioOption/constants/meetingAudioCopy";
 
 const HOME_PATH = "/workspace/1";
@@ -110,14 +112,11 @@ const meetingAudioReconnect = (page: Page) =>
 const meetingAudioDialog = (page: Page) =>
   page.getByRole("dialog", { name: MEETING_AUDIO_COPY.DIALOG.TITLE });
 
-/** 「온라인 회의」 줄의 상태와 설명 */
+/** 「화상 회의 상대방 목소리」 줄의 상태와 설명 */
 const meetingSource = (page: Page) =>
   page
-    .getByRole("region", { name: MEETING_AUDIO_COPY.PANEL_TITLE })
-    .getByRole("status");
-
-/** 문구의 줄바꿈은 화면에서 띄어쓰기로 읽혀요 */
-const oneLine = (text: string) => text.replace(/\n/g, " ");
+    .getByRole("status")
+    .filter({ hasText: MEETING_AUDIO_COPY.MEETING_TITLE });
 
 const displayMediaCalls = (page: Page) =>
   page.evaluate(() => (window as unknown as ShareWindow).__displayMediaCalls);
@@ -150,16 +149,16 @@ test.describe("녹음 중 회의 소리 함께 녹음", () => {
     await expect(meetingAudioOption(page)).toBeVisible();
   });
 
-  test("[STT-R44, STT-R45] 함께 녹음하기를 누르면 공유 창보다 먼저 연결 안내와 녹음 고지, 이어폰 안내가 나온다", async ({
+  test("[STT-R44, STT-R45] 함께 녹음하기를 누르면 공유 창보다 먼저 연결 안내와 녹음 고지가 나오고, 연결되면 이어폰 토스트가 뜬다", async ({
     page,
   }) => {
     await startRecordingFromDock(page);
 
     await meetingAudioOption(page).click();
 
-    for (const notice of MEETING_AUDIO_COPY.DIALOG.NOTICES) {
-      await expect(meetingAudioDialog(page)).toContainText(oneLine(notice));
-    }
+    await expect(meetingAudioDialog(page)).toContainText(
+      MEETING_AUDIO_COPY.DIALOG.NOTICE,
+    );
     expect(await displayMediaCalls(page)).toBe(0);
 
     await meetingAudioDialog(page)
@@ -168,8 +167,11 @@ test.describe("녹음 중 회의 소리 함께 녹음", () => {
 
     await expect.poll(() => displayMediaCalls(page)).toBe(1);
     await expect(meetingSource(page)).toContainText(
-      oneLine(MEETING_AUDIO_COPY.MEETING_DESCRIPTION.on),
+      MEETING_AUDIO_COPY.MEETING_DESCRIPTION.on,
     );
+    await expect(
+      page.getByText(TOAST_MESSAGES.MEETING_AUDIO_CONNECTED.message),
+    ).toBeVisible();
     await expect(meetingAudioOption(page)).toBeHidden();
     await expectRecordingContinues(page);
   });
@@ -184,7 +186,7 @@ test.describe("녹음 중 회의 소리 함께 녹음", () => {
     await expect.poll(() => displayMediaCalls(page)).toBe(1);
     await expect(meetingAudioOption(page)).toBeEnabled();
     await expect(meetingSource(page)).toContainText(
-      oneLine(MEETING_AUDIO_COPY.MEETING_DESCRIPTION.off),
+      MEETING_AUDIO_COPY.MEETING_DESCRIPTION.off,
     );
     await expectRecordingContinues(page);
   });
@@ -197,7 +199,7 @@ test.describe("녹음 중 회의 소리 함께 녹음", () => {
     await shareMeetingAudio(page);
 
     await expect(meetingSource(page)).toContainText(
-      oneLine(MEETING_AUDIO_COPY.MEETING_DESCRIPTION.noAudio),
+      MEETING_AUDIO_COPY.MEETING_DESCRIPTION.noAudio,
     );
     await expect(meetingAudioReconnect(page)).toBeVisible();
     await expectRecordingContinues(page);
@@ -217,7 +219,7 @@ test.describe("녹음 중 회의 소리 함께 녹음", () => {
     });
 
     await expect(meetingSource(page)).toContainText(
-      oneLine(MEETING_AUDIO_COPY.MEETING_DESCRIPTION.stopped),
+      MEETING_AUDIO_COPY.MEETING_DESCRIPTION.stopped,
     );
     await expect(meetingAudioReconnect(page)).toBeVisible();
     await expectRecordingContinues(page);
