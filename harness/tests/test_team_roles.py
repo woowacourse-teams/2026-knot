@@ -88,7 +88,7 @@ class ProposalPeopleTest(unittest.TestCase):
 
     def test_repository_members_used_so_far_have_notion_ids(self):
         data = tr.load_team()
-        for login in ("vlmbuyd", "poketopa", "jyt6640", "geongyu09"):
+        for login in ("vlmbuyd", "poketopa", "jyt6640", "geongyu09", "Eastar-DS"):
             self.assertTrue(tr.find_member(data, login).get("notion"), login)
 
     def test_assignees_are_implementers_with_notion_ids(self):
