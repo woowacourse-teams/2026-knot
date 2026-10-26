@@ -154,6 +154,12 @@ public enum RecordingErrorCode implements ErrorCode {
             "녹음을 찾을 수 없습니다"
     ),
 
+    RECORDING_TRANSCRIPT_NOT_FOUND(
+            ErrorCategory.NOT_FOUND,
+            "RECORDING_TRANSCRIPT_NOT_FOUND",
+            "보여 줄 녹음 전사가 없습니다"
+    ),
+
     RECORDING_CONTROL_DENIED(
             ErrorCategory.FORBIDDEN,
             "RECORDING_CONTROL_DENIED",
