@@ -156,6 +156,12 @@ public class RecordingAudioUpload {
         return isCompleted() && deletedAt == null && revokedAt == null;
     }
 
+    // 저장소 버전이 없으면(V50 이전 완료 업로드) 같은 key의 다른 객체를 줄 수 있어 재생하지 않는다.
+    public boolean isPlayable() {
+        return isAudioAvailable() && storageVersionId != null && !storageVersionId.isBlank()
+                && !"null".equals(storageVersionId);
+    }
+
     public void validateAudioAvailable() {
         if (!isAudioAvailable()) {
             throw new RecordingException(RecordingErrorCode.AUDIO_UPLOAD_NOT_COMPLETED);
