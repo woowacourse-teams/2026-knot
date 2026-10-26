@@ -121,6 +121,23 @@ class ResultContractTest(unittest.TestCase):
         self.assertEqual(fp.validate_result(["done"]), ["result must be an object"])
 
 
+class DraftQuestionTest(unittest.TestCase):
+    def test_draft_question_before_proposal_is_valid(self):
+        # 초안 질문은 제안 페이지를 만들기 전이라 1차 컨펌 기록 없이 「제안해라」 단계만 있다.
+        question = {
+            "status": "needs_user_input",
+            "changed": [],
+            "next": [],
+            "question": "초안 질문\n1. 지금 무엇이 불편한가요?\n2. 이번에 하지 않을 것이 있나요?",
+            "side_effects": [],
+        }
+        self.assertEqual(fp.validate_result(question), [])
+        state = pending_state()
+        del state["plan_confirmation"]
+        state["steps"] = [{"agent": "기능 요구사항", "message": "기존과 대조해 제안해라", "result": question}]
+        self.assertEqual(fp.validate_state(state), [])
+
+
 class StateFileTest(unittest.TestCase):
     def test_valid_state_passes(self):
         self.assertEqual(fp.validate_state(valid_state()), [])
