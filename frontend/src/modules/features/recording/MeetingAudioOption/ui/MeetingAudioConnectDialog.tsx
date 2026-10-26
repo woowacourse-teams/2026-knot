@@ -23,10 +23,10 @@ interface MeetingAudioConnectDialogProps {
 }
 
 /**
- * 공유 창을 열기 전에 회의 위치별 공유 창 설정과 녹음 고지, 이어폰 안내를 보여 주는 모달(STT-R45).
- * Figma `Dialog/온라인 회의 연결`(5406-3567)이에요.
+ * 공유 창을 열기 전에 회의를 연 곳별 공유 창 설정과 녹음 고지를 보여 주는 모달(STT-R45).
+ * Figma `Dialog/화상 회의 연결`(5406-3567)이에요.
  *
- * 회의 위치는 브라우저 탭이 기본이고, 고른 위치에 따라 공유 창에서 고를 것과 예시 그림이 바뀌어요.
+ * 회의를 연 곳은 브라우저가 기본이고, 고른 곳에 따라 공유 창에서 고를 것과 예시 그림이 바뀌어요.
  * 바깥을 누르거나 ESC를 눌러도 [취소]와 같이 모달만 닫혀요.
  */
 export default function MeetingAudioConnectDialog({
@@ -100,14 +100,10 @@ export default function MeetingAudioConnectDialog({
           />
         </Steps>
 
-        <Notices>
-          {MEETING_AUDIO_COPY.DIALOG.NOTICES.map((notice) => (
-            <Notice key={notice}>
-              <CheckIcon aria-hidden />
-              {notice}
-            </Notice>
-          ))}
-        </Notices>
+        <Notice>
+          <CheckIcon aria-hidden />
+          {MEETING_AUDIO_COPY.DIALOG.NOTICE}
+        </Notice>
 
         <Actions>
           <Button size="md" variant="outline" isFullWidth onClick={onClose}>
@@ -280,18 +276,11 @@ const StepNumber = styled.span`
   color: ${({ theme }) => theme.neutral[0]};
 `;
 
-const Notices = styled.ul`
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem; /* 8px */
-`;
-
-const Notice = styled.li`
+const Notice = styled.p`
   display: flex;
   gap: 0.5rem; /* 8px */
   ${({ theme }) => theme.text.caption02};
   color: ${({ theme }) => theme.neutral[700]};
-  white-space: pre-line;
 
   & > svg {
     flex-shrink: 0;
