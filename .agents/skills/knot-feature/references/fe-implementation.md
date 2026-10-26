@@ -27,6 +27,8 @@
 - 다른 단계에 메시지를 보내 정보를 받지 않는다. GitHub 이슈, Figma, 노션 QA 시트에 직접 접근해
   스스로 처리한다. 도메인 규칙은 읽지 않는다.
 - 이슈 본문의 「노션 변경 사항」 링크가 정본 위치다. 이슈와 Figma가 있으면 다 구현할 수 있다.
+  이슈 `메모`에 「디자인 대기」가 있는데 Figma Design 페이지 링크가 아직 없으면 시작하지 않고
+  멈춘다.
 - 기존 프론트 하네스를 그대로 쓴다. `frontend/CLAUDE.md`의 작업 절차와 `frontend/.claude/rules`,
   `project-structure`, `create-story`, `create-pr-content`, `review` 스킬, `code-reviewer` 에이전트.
   저장소 루트 `.claude/skills`에 이 스킬들의 링크가 있어 루트 세션에서도 찾는다. 브랜치는
@@ -45,8 +47,13 @@
   co-author와 AI 생성 표시를 붙이지 않는다.
 - PR은 루트 `AGENTS.md` 「기능 구현 요청 파이프라인」의 PR 공통 규칙을 따른다. 첫 섹션
   `## 노션 변경 사항`에 이슈의 링크를 끌어와 적고, `관련 이슈`에 `Closes #<번호>`, `작업 내용`에
-  스토리북과 E2E 통과 결과, E2E 시나리오 설명을 넣는다. 이슈 라벨을 그대로 붙이고 assignee를
-  지정한다. 유월이 이 PR을 최종 컨펌한다.
+  스토리북과 E2E 통과 결과, E2E 시나리오 설명을 넣는다.
+- 담당자, 라벨, 리뷰어는 `python3 harness/team_roles.py review --area frontend --author <implementer>`
+  결과로 정한다. 1차 컨펌을 받은 작업이거나 구현 중 기획을 바꿨으면 `--plan-changed`, 디자인이 새로
+  생기거나 바뀌었으면 `--design-changed`를 붙인다. assignee와 이름 라벨은 결과대로, 작업 성격 라벨은
+  이슈에서 가져오고, `reviewers`에 리뷰를 요청한다. 구현 중 기획을 바꿨으면 무엇을 왜 바꿨는지
+  PR 본문에 적는다. FE 팀원 한 명 이상(기획이나 디자인이 바뀌었으면 기획 컨펌 담당도)이 승인하면
+  PR을 연 사람이 직접 머지한다.
 - PR을 올린 뒤 PR CI(`frontend-ci.yml`, PR #855 머지 뒤에는 `frontend-e2e.yml`)의 결과를 확인한다.
   이것이 QA 단계다. E2E가 실패하면 실패 루프 규칙대로 고쳐 다시 푸시하고, 통과한 결과와 E2E
   시나리오 설명을 PR 본문에 남긴 뒤에야 끝난다.

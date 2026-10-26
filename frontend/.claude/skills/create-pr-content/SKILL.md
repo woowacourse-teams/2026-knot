@@ -389,7 +389,7 @@ open /tmp/knot-pr/<slug>-assets
 - push, 라벨, 담당자, 리뷰어, Project 지정은 하지 않음.
 - PR 본문에 `🤖 Generated with Claude Code` 같은 생성 표기를 붙이지 않음.
 - 사용자가 `열지 않기` 또는 `바꾸지 않기`를 고르면 아무것도 하지 않고 끝냄.
-- `knot-feature` 흐름에서는 완료 조건 「개발까지」가 승인이므로 묻지 않고 push, PR 생성, 이슈 라벨과 담당자 지정까지 함. PR 본문 첫 섹션은 `## 노션 변경 사항`으로 두고 그 아래에 이 스킬의 본문을 이음.
+- `knot-feature` 흐름에서는 완료 조건 「개발까지」가 승인이므로 묻지 않고 push, PR 생성, 라벨과 담당자 지정, 리뷰어 요청까지 함. 담당자, 이름 라벨, 리뷰어는 이슈를 복사하지 않고 `python3 harness/team_roles.py review --area frontend --author <구현한 사람>` 결과를 씀. 머지는 하지 않음. PR 본문 첫 섹션은 `## 노션 변경 사항`으로 두고 그 아래에 이 스킬의 본문을 이음.
 
 ### 8-1. PR 상태 확인
 

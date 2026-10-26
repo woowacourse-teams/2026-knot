@@ -7,7 +7,7 @@
 
 | 읽기 | 쓰기 |
 | --- | --- |
-| 기능 요구사항, API 명세, QA 시트, Figma, 상태 파일의 `changed` | GitHub Issue |
+| 기능 요구사항, API 명세, QA 시트, Figma, 상태 파일의 `changed`, `implementer`, `plan_confirmation` | GitHub Issue |
 
 ## 받는 메시지
 
@@ -27,8 +27,14 @@
   (`.agents/skills/knot-issue-planning/SKILL.md`)의 절차대로 근거 조사, 위험 분류, 고위험이면
   `$knot-deep-interview`와 `$knot-grill-me`, ADR 판단, `harness/issue_planning.py` 판정을 거친다.
   운영 규칙은 `docs/harness/issue-planning.md`다.
-- 인터뷰, Grill, 담당자 확인처럼 사용자에게 물을 것은 `needs_user_input`으로 한 질문씩 돌려준다.
-  입구가 답을 붙여 다시 부르면 상태 파일의 답을 읽고 이어서 진행한다.
+- 인터뷰, Grill처럼 사용자에게 물을 것은 `needs_user_input`으로 한 질문씩 돌려준다. 입구가 답을
+  붙여 다시 부르면 상태 파일의 답을 읽고 이어서 진행한다.
+- 상태 파일 `plan_confirmation.status`가 `pending`이면 이슈를 만들지 않고 `blocked`로 돌아온다.
+  1차 컨펌을 받았으면(`confirmed`) `메모`에 「1차 컨펌: <confirmed_by 이름>, <evidence>」를 한 줄
+  적는다. 컨펌에서 디자인을 기획 컨펌 담당에게 맡겼고 아직 링크가 없으면 「디자인 대기」도 적는다.
+- 담당자(assignee)와 이름 라벨은 상태 파일 `implementer`다. 이 값이 Issue 계약의 「현재 요청에서
+  지정한 실제 개발자」이므로 묻지 않는다. 이름 라벨은 `python3 harness/team_roles.py member
+  <implementer>`의 `label`이다. 이슈를 쓴 사람이나 그 도메인의 평소 담당자로 정하지 않는다(#979).
 - 이슈 템플릿의 세 섹션(구현 기능 설명, TODO, 메모)만 쓴다. 「노션 변경 사항」은 반드시 넣되
   `##`를 쓸 수 없으므로 `구현 기능 설명`의 첫 부분에 굵은 글씨 목록으로 둔다. 형식은
   `references/return-contract.md`다. 이번 요청으로 바뀐 기능 요구사항, 도메인 규칙, API 명세,
@@ -44,7 +50,7 @@
   `remote_write_authorized`가 `true`일 때만 `--publish --repo woowacourse-teams/2026-Knot`를 쓴다.
   `false`면 dry-run 본문을 `question`에 담아 `needs_user_input`으로 게시 여부를 묻는다.
 - 게시 뒤 공통 라벨 규칙(`docs/harness/issue-planning.md`의 「Issue 라벨 선택과 게시 후 확인」)
-  대로 영역, 작업 성격, 담당자 라벨과 assignee를 붙이고 조회로 확인한다.
+  대로 영역, 작업 성격 라벨과 `implementer`의 이름 라벨, assignee를 붙이고 조회로 확인한다.
 - Issue 계약 snapshot은 저장소 밖 OS 임시 파일에만 만들고 판정이 끝나면 성공, 실패와 관계없이
   삭제한다. ADR 파일은 이 단계에서 만들지 않는다.
 

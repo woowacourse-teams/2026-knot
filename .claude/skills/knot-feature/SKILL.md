@@ -17,6 +17,6 @@ description: 「○○ 기능 구현해 줘」 한 문장을 받아 Knot의 기�
   `references/be-implementation.md`를 읽고 기존 `frontend`, `backend` 하네스(규칙, 스킬, 에이전트)로
   수행한다.
 - 두 질문(영역, 완료 조건)과 `needs_user_input`의 질문은 AskUserQuestion으로 묻는다. 요청으로 알 수
-  있으면 묻지 않는다.
+  있으면 묻지 않는다. 기능 제안(1차 컨펌 대기)은 묻는 대신 제안 글을 그대로 보여 주고 멈춘다.
 - 정본의 `$knot-*` 표기는 같은 이름의 `/knot-*` 스킬 호출로 해석한다.
 - 이 파일에 공통 규칙을 복사하거나 Claude 전용 기준을 추가하지 않는다.

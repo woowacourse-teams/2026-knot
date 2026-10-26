@@ -71,8 +71,11 @@ python3 harness/feature_pipeline.py render <state.json> --issue     # 이슈용 
   "area": "frontend | backend | both",
   "done_condition": "issue | development",
   "remote_write_authorized": false,
+  "implementer": "GitHub 계정",
+  "plan_confirmation": {"required": true, "status": "pending | confirmed | not_needed", "confirmed_by": ["vlmbuyd"], "evidence": "팀 채널 메시지 링크나 날짜, 컨펌에서 바뀐 점"},
   "answers": [{"to": "기능 요구사항", "question": "...", "answer": "..."}],
   "steps": [
+    {"agent": "기능 요구사항", "message": "기존과 대조해 제안해라", "result": {"status": "needs_user_input", "changed": [], "next": [], "question": "기능 제안: ...", "side_effects": []}},
     {"agent": "기능 요구사항", "message": "기존과 대조해 업데이트해라", "result": {"status": "done", "changed": [], "next": [], "question": "", "side_effects": []}}
   ],
   "issues": [{"area": "frontend", "number": 0, "url": "..."}],
@@ -82,3 +85,13 @@ python3 harness/feature_pipeline.py render <state.json> --issue     # 이슈용 
 
 `remote_write_authorized`는 사용자가 현재 요청에서 GitHub Issue 생성을 명시적으로 허용했을 때만
 `true`다. 이슈 서브 에이전트는 이 값이 `true`일 때만 `--publish`를 쓴다.
+
+`implementer`는 실제로 구현할 사람의 GitHub 계정이다. 이슈와 PR의 담당자와 이름 라벨이 이 값으로
+정해진다. 이슈나 PR이 생기기 전에 반드시 있어야 한다.
+
+`plan_confirmation`은 기능 추가, 수정, 삭제의 1차 컨펌 상태다. 기능 요구사항이 「제안해라」에서
+기능 제안을 돌려주면 `required: true`, `status: pending`이다. `pending`인 동안 상태 파일에는
+「기존과 대조해 제안해라」 단계만 있을 수 있고 `changed`, `issues`, `prs`는 비어 있어야 한다. 컨펌을
+받으면 `confirmed`와 함께 `confirmed_by`(GitHub 계정)와 `evidence`를 적는다. 확정된 기획 안에서
+끝나는 요청이면 `required: false`, `status: not_needed`다. `feature_pipeline.py state`가 이 규칙을
+검사한다.
