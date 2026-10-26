@@ -22,7 +22,7 @@ import CreateWorkspaceCard from ".";
 const expected = new PostWorkspaceResponseDto(workspaceCreateResponse);
 const VALID_NAME = "Knot 팀";
 const ELSEWHERE_PATH = "/elsewhere";
-const FORMAT_ERROR_MESSAGE = "한글, 영어와 공백만 사용할 수 있어요.";
+const FORMAT_ERROR_MESSAGE = "한글, 영어, 숫자와 공백만 사용할 수 있어요.";
 const UNKNOWN_ERROR_MESSAGE = "잠시 후 다시 시도해 주세요.";
 
 const renderCard = () => {
