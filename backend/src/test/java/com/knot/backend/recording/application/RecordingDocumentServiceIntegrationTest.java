@@ -36,7 +36,7 @@ import org.springframework.test.context.TestConstructor.AutowireMode;
 @Tag("integration")
 @Import(TestcontainersConfiguration.class)
 @TestApplicationProperties
-@SpringBootTest(properties = "knot.transcription.enabled=true")
+@SpringBootTest(properties = {"knot.transcription.enabled=true", "knot.transcription.token=test-token"})
 @TestConstructor(autowireMode = AutowireMode.ALL)
 class RecordingDocumentServiceIntegrationTest {
     private static final Instant STARTED_AT = Instant.parse("2026-10-24T09:00:00Z");
