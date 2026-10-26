@@ -11,4 +11,9 @@ public interface RecentRecordingQuery {
             RecentRecordingCursor cursor,
             int limit
     );
+
+    boolean contains(
+            long workspaceId,
+            long recordingId
+    );
 }
