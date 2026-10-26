@@ -34,28 +34,34 @@ jobs:
         working-directory: frontend
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-
-      - name: Set up Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-
+      # checkout 전이라 frontend 폴더가 아직 없어요
       - name: Find merged PR
         id: pr
+        working-directory: .
         env:
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr_number }}
         run: |
           pr=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" \
-            --jq 'select(.merged_at != null and .base.ref == "main") | .merged_at')
+            --jq 'select(.merged_at != null and .base.ref == "main") | "\(.merge_commit_sha) \(.merged_at)"')
           if [ -z "$pr" ]; then
             echo "### 새 소식 노트: #$PR_NUMBER 은 main에 머지된 PR이 아니라 쓰지 않았어요" >> "$GITHUB_STEP_SUMMARY"
             exit 1
           fi
           echo "number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
-          echo "merged_at=$pr" >> "$GITHUB_OUTPUT"
+          echo "sha=${pr% *}" >> "$GITHUB_OUTPUT"
+          echo "merged_at=${pr#* }" >> "$GITHUB_OUTPUT"
+
+      # 바로 가보기 화면 목록(PATH_ROUTE)을 그 머지 때의 main에서 읽어요
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ steps.pr.outputs.sha }}
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
 
       # 문구 기준은 Notion에서, 바로 가보기 화면은 앱 라우트 표(PATH_ROUTE)에서 읽어요
       - name: Read note guide and app screens
