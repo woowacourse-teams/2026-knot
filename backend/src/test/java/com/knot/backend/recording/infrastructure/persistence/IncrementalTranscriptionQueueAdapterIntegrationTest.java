@@ -115,7 +115,7 @@ class IncrementalTranscriptionQueueAdapterIntegrationTest {
     }
 
     @Test
-    void findCandidates_endedRecordingWinsOnlyWhenServiceHistoryTies() {
+    void findCandidates_endedRecordingPrecedesUnservedActiveRecording() {
         // given
         long active = recording();
         long ended = recording();
@@ -143,7 +143,7 @@ class IncrementalTranscriptionQueueAdapterIntegrationTest {
     }
 
     @Test
-    void findCandidates_servedEndedRecordingDoesNotStarveActiveBacklog() {
+    void findCandidates_servedEndedRecordingKeepsPriorityOverActiveBacklog() {
         // given
         long active = recording();
         long ended = recording();
@@ -172,7 +172,64 @@ class IncrementalTranscriptionQueueAdapterIntegrationTest {
         assertThat(
                 candidates.getFirst()
                         .recordingId()
-        ).isEqualTo(active);
+        ).isEqualTo(ended);
+    }
+
+    @Test
+    void findCandidates_endedRecordingsFinishOneByOneInEndOrder() {
+        // given
+        long active = recording();
+        long endedSecond = recording();
+        long endedFirst = recording();
+        long endedLast = recording();
+        for (int index = 0; index < 2; index++) {
+            window(
+                    active,
+                    index
+            );
+            window(
+                    endedSecond,
+                    index
+            );
+            window(
+                    endedFirst,
+                    index
+            );
+            window(
+                    endedLast,
+                    index
+            );
+        }
+        end(
+                endedSecond,
+                NOW.plusSeconds(10)
+        );
+        end(
+                endedFirst,
+                NOW.plusSeconds(5)
+        );
+        end(
+                endedLast,
+                NOW.plusSeconds(20)
+        );
+        List<Long> served = new ArrayList<>();
+
+        // when
+        for (int index = 0; index < 8; index++) {
+            served.add(completeNext(NOW.plusSeconds(index + 30)));
+        }
+
+        // then
+        assertThat(served).containsExactly(
+                endedFirst,
+                endedFirst,
+                endedSecond,
+                endedSecond,
+                endedLast,
+                endedLast,
+                active,
+                active
+        );
     }
 
     @ParameterizedTest
@@ -623,13 +680,23 @@ class IncrementalTranscriptionQueueAdapterIntegrationTest {
     }
 
     private void end(long recordingId) {
+        end(
+                recordingId,
+                NOW
+        );
+    }
+
+    private void end(
+            long recordingId,
+            Instant endedAt
+    ) {
         jdbc.sql("""
                 UPDATE recording_sessions SET status='ENDED',ended_at=:now,end_reason='USER_ENDED',
                     current_interval_started_at=NULL WHERE id=:id
                 """)
                 .param(
                         "now",
-                        java.sql.Timestamp.from(NOW)
+                        java.sql.Timestamp.from(endedAt)
                 )
                 .param(
                         "id",
