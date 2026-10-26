@@ -2,7 +2,8 @@ import { expect, test, type Locator, type Page } from "@playwright/test";
 
 const HOME_PATH = "/workspace/1";
 const CHAT_PATH = HOME_PATH + "/chat";
-const DOCUMENTS_PATH = HOME_PATH + "/documents";
+// 문서 탭은 늘 「녹음별」 탭으로 열려요(DOC-R9)
+const DOCUMENTS_PATH = HOME_PATH + "/documents/recordings";
 const NAV_LABEL = "워크스페이스 화면 이동";
 /** 새 화면이 처음 그려질 때 가장 옅은 정도. 이보다 옅으면 배경이 비쳐 깜빡여 보여요 */
 const MIN_SCREEN_OPACITY = 0.6;
@@ -410,7 +411,12 @@ test.describe("GNB 탭 전환", () => {
 
   test("같은 탭 안에서 옮길 때는 본문이 움직이지 않는다", async ({ page }) => {
     await openWorkspace(page, DOCUMENTS_PATH);
-    const documentLink = page.getByRole("main").getByRole("link").first();
+    // 「녹음별」 탭에서 문서 행은 목록 항목 안의 링크예요. 녹음 행(목록 밖)은 녹음 문서로 가요
+    const documentLink = page
+      .getByRole("main")
+      .getByRole("listitem")
+      .first()
+      .getByRole("link");
     const documentPath = (await documentLink.getAttribute("href"))!;
     await documentLink.click();
     await expect(page).not.toHaveURL(DOCUMENTS_PATH);

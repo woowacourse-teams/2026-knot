@@ -23,6 +23,7 @@ import WorkspaceAnalytics from "@/shared/components/domain/WorkspaceAnalytics";
 import type { RouteObject } from "react-router";
 
 import AuthGuard from "./AuthGuard";
+import DocumentsRedirect from "./DocumentsRedirect";
 import EntryRedirect from "./EntryRedirect";
 import GuestGuard from "./GuestGuard";
 import LandingGuard from "./LandingGuard";
@@ -156,8 +157,17 @@ export const routes: RouteObject[] = [
         path: PATH_ROUTE.RECORDING_DOCUMENTS,
         element: <RecordingDocumentsPage />,
       },
+      // 탭이 없는 문서 탭 주소는 「녹음별」 탭으로 보내요. 탭 주소는 글자가 고정이라 `:documentId`보다 먼저 맞아요
       {
         path: PATH_ROUTE.DOCUMENTS,
+        element: <DocumentsRedirect />,
+      },
+      {
+        path: PATH_ROUTE.DOCUMENTS_BY_RECORDING,
+        element: <DocumentsPage />,
+      },
+      {
+        path: PATH_ROUTE.DOCUMENTS_BY_TOPIC,
         element: <DocumentsPage />,
       },
       {

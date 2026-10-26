@@ -61,7 +61,10 @@ const renderRecentDocumentsCard = () => {
         ),
         children: [
           { path: PATH_ROUTE.WORKSPACE_HOME, element: <RecentDocumentsCard /> },
-          { path: PATH_ROUTE.DOCUMENTS, element: <p>문서 목록 화면</p> },
+          {
+            path: PATH_ROUTE.DOCUMENTS_BY_RECORDING,
+            element: <p>문서 목록 화면</p>,
+          },
           { path: PATH_ROUTE.DOCUMENT, element: <DocumentViewStub /> },
           // 이동을 확인할 수 있게 로그인 · 워크스페이스 선택 경로에 표시만 하는 화면을 둬요
           { path: PATH_ROUTE.LOGIN, element: <p>로그인 화면</p> },

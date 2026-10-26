@@ -8,7 +8,7 @@ import type { Meta, StoryObj } from "@storybook/react-webpack5";
 import { delay, http, HttpResponse } from "msw";
 import { MemoryRouter, Route, Routes } from "react-router";
 
-import DocumentList from ".";
+import TopicDocumentList from ".";
 
 const WORKSPACE_ID = 1;
 const DOCUMENTS_REQUEST = `*${DOCUMENTS_API_PATH(WORKSPACE_ID)}`;
@@ -19,8 +19,8 @@ const EMPTY_DOCUMENTS_RESPONSE = {
 } satisfies DocumentsResponse;
 
 /**
- * 워크스페이스의 문서를 폴더(주제)별로 모아 보여 주는 문서 목록 섹션이에요.
- * GNB의 「문서」를 누르면 열리는 문서 목록 화면의 가운데에 놓여요.
+ * 문서 탭 「주제별」 탭의 목록이에요. 워크스페이스의 문서를 폴더(주제)별로 모아 보여 줘요.
+ * 제목 「문서」와 탭은 문서 탭 섹션(`DocumentArchive`)이 그리고, 이 컴포넌트는 탭이 가리키는 목록만 그려요.
  *
  * **동작 규칙**
  * - 주소의 워크스페이스 문서를 다음 페이지가 없을 때까지 이어 받아 한 번에 보여 줘요. 폴더별로 묶으려면 문서 전체가 있어야 하기 때문이에요.
@@ -32,7 +32,7 @@ const EMPTY_DOCUMENTS_RESPONSE = {
  * - 행에는 제목 · 한 줄 요약 · 만든 날짜 · 녹음 길이가 있어요. 요약이 없는 문서는 빈 줄을 남기지 않고 제목 한 줄만 보여 줘요. 글이 길면 한 줄에서 말줄임해요.
  *   확인 여부와 문서 상태는 행에 보여 주지 않아요.
  * - 행을 누르면 그 문서의 문서 보기 화면으로 가요.
- * - 불러오는 중 · 문서 없음 · 불러오기 실패일 때도 제목 「문서」와 설명은 그대로 두고 목록 자리만 바꿔요.
+ * - 불러오는 중 · 문서 없음 · 불러오기 실패일 때는 목록 자리만 바꿔요.
  *   불러오는 중의 회색 덩어리는 실제 목록과 간격 · 높이가 같아서, 불러온 뒤 내용이 크게 움직이지 않아요.
  * - 서버 오류나 네트워크 문제로 못 불러오면 「목록을 불러오지 못했어요. 다시 시도해 주세요.」와 `다시 시도`를 보여 줘요.
  *   이어 받는 도중 한 번이라도 실패하면, 그때까지 받은 문서도 보여 주지 않고 같은 안내를 보여 줘요.
@@ -42,12 +42,12 @@ const EMPTY_DOCUMENTS_RESPONSE = {
  * - 로그인이 풀렸으면 로그인 화면으로, 워크스페이스 멤버가 아니거나 없는 워크스페이스면 마지막으로 본 다른 워크스페이스 홈이나 워크스페이스 선택 화면으로 보내고 오류 토스트로 알려요.
  */
 const meta = {
-  title: "Document/DocumentList",
-  component: DocumentList,
+  title: "Document/TopicDocumentList",
+  component: TopicDocumentList,
   parameters: {
     design: {
       type: "figma",
-      url: "https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=2017-36054",
+      url: "https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=5327-2221",
     },
   },
   // 다른 스토리에서 누른 문서 확인 기록이 목록 응답에 남지 않게, 스토리를 열 때마다 mock 상태를 처음으로 되돌려요
@@ -61,14 +61,14 @@ const meta = {
       <MemoryRouter
         initialEntries={[
           getRouterPath({
-            routeKey: "DOCUMENTS",
+            routeKey: "DOCUMENTS_BY_TOPIC",
             params: { workspaceId: String(WORKSPACE_ID) },
           }),
         ]}
       >
         <ToastProvider>
           <Routes>
-            <Route path={PATH_ROUTE.DOCUMENTS} element={<Story />} />
+            <Route path={PATH_ROUTE.DOCUMENTS_BY_TOPIC} element={<Story />} />
             <Route
               path={PATH_ROUTE.DOCUMENT}
               element={<p>문서 보기 화면으로 이동했어요.</p>}
@@ -78,7 +78,7 @@ const meta = {
       </MemoryRouter>
     ),
   ],
-} satisfies Meta<typeof DocumentList>;
+} satisfies Meta<typeof TopicDocumentList>;
 
 export default meta;
 
@@ -92,12 +92,12 @@ export const Default: Story = {};
 
 /**
  * 워크스페이스에 문서가 하나도 없을 때예요. 예: 아직 한 번도 녹음하지 않은 워크스페이스.
- * 제목과 설명은 그대로 두고, 목록 자리에 「아직 문서가 없어요」를 보여 줘요.
+ * 목록 자리에 「아직 문서가 없어요」를 보여 줘요.
  */
 export const NoDocuments: Story = {
   parameters: {
     // 문서 페이지에서는 스토리를 한 화면에 함께 그려 응답이 섞이므로, 응답을 덮는 스토리는 따로 그려요
-    docs: { story: { inline: false, iframeHeight: 460 } },
+    docs: { story: { inline: false, iframeHeight: 400 } },
     design: {
       type: "figma",
       url: "https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=2017-36187",
@@ -113,7 +113,7 @@ export const NoDocuments: Story = {
 };
 
 /**
- * 문서 목록을 불러오는 동안이에요. 제목과 설명은 그대로 두고, 목록 자리를 폴더 3개 · 행 4개 모양의 회색 덩어리로 채워요.
+ * 문서 목록을 불러오는 동안이에요. 목록 자리를 폴더 3개 · 행 4개 모양의 회색 덩어리로 채워요.
  * 요청 제한 시간(10초)이 지나면 불러오기 실패 모습으로 바뀌어요.
  */
 export const Loading: Story = {
@@ -122,7 +122,7 @@ export const Loading: Story = {
       type: "figma",
       url: "https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=3812-39476",
     },
-    docs: { story: { inline: false, iframeHeight: 680 } },
+    docs: { story: { inline: false, iframeHeight: 600 } },
     msw: {
       handlers: {
         documents: http.get(DOCUMENTS_REQUEST, async () => {
@@ -140,7 +140,7 @@ export const Loading: Story = {
  */
 export const LoadFailed: Story = {
   parameters: {
-    docs: { story: { inline: false, iframeHeight: 320 } },
+    docs: { story: { inline: false, iframeHeight: 260 } },
     design: {
       type: "figma",
       url: "https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=2115-8596",

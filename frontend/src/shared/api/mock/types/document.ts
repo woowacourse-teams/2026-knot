@@ -109,3 +109,31 @@ export interface DocumentTranscriptResponse {
   /** 1개 이상. 시작 시각 오름차순 */
   segments: DocumentTranscriptSegment[];
 }
+
+/** 녹음별 문서 목록의 문서 항목. 문서 카드의 id · title · summary와 같은 값 */
+export interface DocumentRecordingDocument {
+  id: number;
+  title: string;
+  /** 없으면 null */
+  summary: string | null;
+}
+
+/** 녹음별 문서 목록의 녹음 묶음. 문서가 1개 이상 나온 녹음만 */
+export interface DocumentRecording {
+  recordingId: number;
+  /** 서버가 만든 표시 제목. AI 제목이 없으면 `OO 님의 녹음` */
+  title: string;
+  startedAt: string;
+  recordingDurationSeconds: number;
+  /** `documents` 길이와 같고 1 이상 */
+  documentCount: number;
+  /** 생성 시각 오름차순(같으면 ID 오름차순). 나누지 않고 전부 */
+  documents: DocumentRecordingDocument[];
+}
+
+export interface DocumentRecordingsResponse {
+  /** 녹음 시작 시각 내림차순(같으면 녹음 ID 내림차순). 최대 20개 */
+  items: DocumentRecording[];
+  /** 마지막 페이지면 null */
+  nextCursor: string | null;
+}

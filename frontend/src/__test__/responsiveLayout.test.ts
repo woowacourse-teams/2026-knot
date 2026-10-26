@@ -2,7 +2,8 @@ import { expect, test, type Page } from "@playwright/test";
 
 const HOME_PATH = "/workspace/1";
 const CHAT_PATH = HOME_PATH + "/chat";
-const DOCUMENTS_PATH = HOME_PATH + "/documents";
+// 문서 탭은 늘 「녹음별」 탭으로 열려요(DOC-R9)
+const DOCUMENTS_PATH = HOME_PATH + "/documents/recordings";
 
 /** 반응형 기준(RESP)의 시안 폭과 가장 좁게 지켜야 하는 폭 */
 const VIEWPORTS = [
@@ -33,7 +34,13 @@ async function expectNoHorizontalOverflow(page: Page) {
 
 async function openFirstDocument(page: Page) {
   await page.goto(DOCUMENTS_PATH);
-  await page.getByRole("main").getByRole("link").first().click();
+  // 「녹음별」 탭에서 문서 행은 목록 항목 안의 링크예요. 녹음 행(목록 밖)은 녹음 문서로 가요
+  await page
+    .getByRole("main")
+    .getByRole("listitem")
+    .first()
+    .getByRole("link")
+    .click();
   await expect(page.getByRole("button", { name: /원문/ })).toBeVisible();
 }
 

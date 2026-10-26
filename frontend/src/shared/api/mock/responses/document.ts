@@ -3,6 +3,8 @@ import type {
   DocumentConfirmationsResponse,
   DocumentDetailResponse,
   DocumentListItem,
+  DocumentRecording,
+  DocumentRecordingsResponse,
   DocumentsResponse,
   DocumentTranscriptResponse,
   DocumentTranscriptSegment,
@@ -208,6 +210,53 @@ export const documentsResponse = {
   ],
   nextCursor: null,
 } satisfies DocumentsResponse;
+
+// 문서 목록의 문서가 나온 녹음들이에요. 표시 제목은 서버가 만들어 주는 값이라, AI 제목이 없는 녹음(40)은 대체 이름 그대로예요.
+// 시작 시각은 그 녹음의 첫 문서가 만들어진 시각보다 녹음 길이만큼 앞이에요
+const documentRecordingTitles = [
+  { recordingId: 44, title: "스프린트 회고 회의" },
+  { recordingId: 43, title: "온보딩 사용자 인터뷰" },
+  { recordingId: 42, title: "회원 탈퇴 정책 논의" },
+  { recordingId: 41, title: "검색 기능 사용성 인터뷰" },
+  { recordingId: 40, title: "유월 님의 녹음" },
+  { recordingId: 39, title: "첫 사용자 인터뷰" },
+];
+
+// 녹음마다 그 녹음에서 나온 문서를 묶어요. 묶음 안 문서는 서버 정렬(생성 시각 오름차순, 같으면 ID 오름차순)이에요.
+// 같은 문서가 문서 목록과 녹음별 목록 양쪽에서 같은 제목 · 요약으로 보이게 문서 목록의 항목에서 만들어요
+const toDocumentRecording = ({
+  recordingId,
+  title,
+}: (typeof documentRecordingTitles)[number]) => {
+  const documents = documentsResponse.items
+    .filter((item) => item.recordingSessionId === recordingId)
+    .sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id - b.id);
+  const [firstDocument] = documents;
+  const recordingDurationSeconds = firstDocument.recordingDurationSeconds;
+
+  return {
+    recordingId,
+    title,
+    startedAt: new Date(
+      new Date(firstDocument.createdAt).getTime() -
+        recordingDurationSeconds * 1000,
+    ).toISOString(),
+    recordingDurationSeconds,
+    documentCount: documents.length,
+    documents: documents.map(({ id, title: documentTitle, summary }) => ({
+      id,
+      title: documentTitle,
+      summary,
+    })),
+  } satisfies DocumentRecording;
+};
+
+// 문서 탭 「녹음별」 탭의 녹음 묶음 전체예요. 핸들러가 녹음 20개씩 잘라서 돌려줘요.
+// 순서는 서버 정렬(녹음 시작 시각 내림차순, 같으면 녹음 ID 내림차순)이고, 문서 목록의 녹음 순서와 같아요
+export const documentRecordingsResponse = {
+  items: documentRecordingTitles.map(toDocumentRecording),
+  nextCursor: null,
+} satisfies DocumentRecordingsResponse;
 
 // 로그인한 사람(auth mock의 me)을 확인 대상에 넣어, 문서 상세의 myConfirmationState와 맞춰요
 const me = {
