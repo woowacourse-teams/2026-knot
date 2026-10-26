@@ -3,6 +3,7 @@ import { GetChatMessagesResponseDto } from "@api/dto/chatMessage";
 import { PostDocumentGenerationJobRetryResponseDto } from "@api/dto/documentGenerationJob";
 import {
   GetDocumentConfirmationsResponseDto,
+  GetDocumentRecordingsResponseDto,
   GetDocumentResponseDto,
   GetDocumentsResponseDto,
   PutDocumentConfirmationResponseDto,
@@ -59,6 +60,7 @@ import {
   getWorkspacesApi,
 } from "@api/fetch/api/v1/workspaces";
 import { getWorkspaceApi } from "@api/fetch/api/v1/workspaces/[workspaceId]";
+import { getDocumentRecordingsApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/documentRecordings";
 import {
   getAllDocumentsApi,
   getDocumentsApi,
@@ -104,6 +106,7 @@ import { chatMessagesResponse } from "@api/mock/responses/chatMessage";
 import {
   documentConfirmationsResponse,
   documentDetailsResponse,
+  documentRecordingsResponse,
   documentsResponse,
 } from "@api/mock/responses/document";
 import {
@@ -308,6 +311,48 @@ describe("mock 기본 핸들러와 fetch 요청 함수의 대응", () => {
   });
 
   describe("문서", () => {
+    describe("GET /api/v1/workspaces/:workspaceId/document-recordings", () => {
+      const expected = new GetDocumentRecordingsResponseDto(
+        documentRecordingsResponse,
+      );
+
+      it("documentRecordingsResponse를 돌려준다. 녹음 하나의 문서는 모두 한 묶음에 담겨 있다", async () => {
+        const page = await getDocumentRecordingsApi({
+          workspaceId: WORKSPACE_ID,
+        });
+
+        expect(page).toEqual(expected);
+        page.items.forEach(({ documents, documentCount }) => {
+          expect(documents).toHaveLength(documentCount);
+          expect(documentCount).toBeGreaterThanOrEqual(1);
+        });
+      });
+
+      it("녹음별 묶음의 문서를 모두 모으면 문서 목록 조회의 문서 집합과 같다", async () => {
+        const documentIds = expected.items
+          .flatMap(({ documents }) => documents)
+          .map(({ id }) => id)
+          .sort((a, b) => a - b);
+        const listDocumentIds = new GetDocumentsResponseDto(documentsResponse)
+          .items.map(({ id }) => id)
+          .sort((a, b) => a - b);
+
+        expect(documentIds).toEqual(listDocumentIds);
+      });
+
+      it("없는 cursor면 400 INVALID_PARAMETER로 답한다", async () => {
+        await expect(
+          getDocumentRecordingsApi({
+            workspaceId: WORKSPACE_ID,
+            cursor: "없는 커서",
+          }),
+        ).rejects.toMatchObject({
+          type: HTTP_ERROR_TYPE.badRequest,
+          code: "INVALID_PARAMETER",
+        });
+      });
+    });
+
     describe("GET /api/v1/workspaces/:workspaceId/documents", () => {
       const expected = new GetDocumentsResponseDto(documentsResponse);
 

@@ -12,6 +12,10 @@ interface DocumentPendingListKeyParams {
   workspaceId: number;
 }
 
+interface DocumentRecordingListKeyParams {
+  workspaceId: number;
+}
+
 interface DocumentDetailKeyParams {
   workspaceId: number;
   documentId: number;
@@ -21,6 +25,9 @@ export const documentKeys = {
   all: ["documents"] as const,
   list: ({ workspaceId, recordingSessionId }: DocumentListKeyParams) =>
     [...documentKeys.all, "list", workspaceId, { recordingSessionId }] as const,
+  // 문서 탭 「녹음별」 탭의 녹음 묶음 목록. 같은 문서를 녹음 단위로 다시 받는 다른 조회라 키를 따로 둬요
+  recordingList: ({ workspaceId }: DocumentRecordingListKeyParams) =>
+    [...documentKeys.all, "recordingList", workspaceId] as const,
   // 홈 카드의 최근 문서. 문서 전체 목록과 받는 범위가 달라 키를 따로 둬요
   recentList: ({ workspaceId }: DocumentRecentListKeyParams) =>
     [...documentKeys.all, "recentList", workspaceId] as const,

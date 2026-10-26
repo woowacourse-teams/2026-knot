@@ -9,6 +9,7 @@ import { lastViewedWorkspaceHandlers } from "./api/v1/members/me/lastViewedWorks
 import { workspacesHandlers } from "./api/v1/workspaces";
 import { workspaceHandlers } from "./api/v1/workspaces/[workspaceId]";
 import { documentGenerationJobRetryHandlers } from "./api/v1/workspaces/[workspaceId]/documentGenerationJobs/[jobId]/retry";
+import { documentRecordingsHandlers } from "./api/v1/workspaces/[workspaceId]/documentRecordings";
 import { documentsHandlers } from "./api/v1/workspaces/[workspaceId]/documents";
 import { documentHandlers } from "./api/v1/workspaces/[workspaceId]/documents/[documentId]";
 import { documentConfirmationsHandlers } from "./api/v1/workspaces/[workspaceId]/documents/[documentId]/confirmations";
@@ -75,6 +76,7 @@ export const handlers = [
   ...recordingTranscriptionRetryHandlers,
   ...documentGenerationJobRetryHandlers,
   ...documentsHandlers,
+  ...documentRecordingsHandlers,
   ...documentHandlers,
   ...documentConfirmationsHandlers,
   ...documentMyConfirmationHandlers,
