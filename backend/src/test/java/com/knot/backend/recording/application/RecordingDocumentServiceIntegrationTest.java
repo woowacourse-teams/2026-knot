@@ -43,6 +43,8 @@ class RecordingDocumentServiceIntegrationTest {
 
     private final RecordingDocumentService recordingDocumentService;
     private final RecentRecordingQuery recentRecordingQuery;
+    private final MeetingSummaryGenerationService meetingSummaryGenerationService;
+    private final JdbcClient jdbcClient;
     private final RecordingHistoryFixture fixture;
     private final DocumentFixtures documentFixtures;
     private long workspaceId;
@@ -52,10 +54,13 @@ class RecordingDocumentServiceIntegrationTest {
     RecordingDocumentServiceIntegrationTest(
             RecordingDocumentService recordingDocumentService,
             RecentRecordingQuery recentRecordingQuery,
+            MeetingSummaryGenerationService meetingSummaryGenerationService,
             JdbcClient jdbcClient
     ) {
         this.recordingDocumentService = recordingDocumentService;
         this.recentRecordingQuery = recentRecordingQuery;
+        this.meetingSummaryGenerationService = meetingSummaryGenerationService;
+        this.jdbcClient = jdbcClient;
         this.fixture = new RecordingHistoryFixture(jdbcClient);
         this.documentFixtures = new DocumentFixtures(jdbcClient);
     }
@@ -301,6 +306,57 @@ class RecordingDocumentServiceIntegrationTest {
     }
 
     @Test
+    @DisplayName("요약 기능을 켜기 전에 끝난 녹음은 요약 접수 뒤에도, 여러 번 열어도 요약이 없다")
+    void find_success_endedBeforeMeetingSummaryActivation() {
+        // given
+        long recordingId = saved(
+                memberId,
+                0
+        );
+        succeededJobs(recordingId);
+        meetingSummaryGenerationService.registerEligible();
+
+        // when
+        RecordingDocumentResult first = find(recordingId);
+        RecordingDocumentResult second = find(recordingId);
+
+        // then
+        assertThat(first.meetingSummary()).isNull();
+        assertThat(second.meetingSummary()).isNull();
+        assertThat(meetingSummaryCount(recordingId)).isZero();
+    }
+
+    @Test
+    @DisplayName("주제 분류에 실패한 녹음은 DOCUMENT_FAILED로 분류 Job을 다시 시도하게 하고 AI 제목·요약을 공개하지 않는다")
+    void find_success_classificationFailed() {
+        // given
+        long recordingId = saved(
+                memberId,
+                0
+        );
+        long batchId = fixture.batch(
+                recordingId,
+                "WAITING_CLASSIFICATION",
+                "FAILED"
+        );
+        fixture.failedJob(batchId);
+        fixture.title(
+                recordingId,
+                "공개하면 안 되는 제목"
+        );
+
+        // when
+        RecordingDocumentResult document = find(recordingId);
+
+        // then
+        assertThat(document.processingStatus()).isEqualTo(RecordingDocumentProcessingStatus.DOCUMENT_FAILED);
+        assertThat(document.retryable()).isTrue();
+        assertThat(document.retryableJobIds()).hasSize(1);
+        assertThat(document.title()).isEqualTo("루덴스 님의 녹음");
+        assertThat(document.meetingSummary()).isNull();
+    }
+
+    @Test
     @DisplayName("요약은 SUCCEEDED일 때만 본문을 주고, FAILED이고 입력 전사를 쓸 수 있을 때만 retryable이다")
     void find_success_meetingSummary() {
         // given
@@ -542,6 +598,16 @@ class RecordingDocumentServiceIntegrationTest {
                 failedAt,
                 failedAt
         );
+    }
+
+    private long meetingSummaryCount(long recordingId) {
+        return jdbcClient.sql("SELECT COUNT(*) FROM recording_meeting_summaries WHERE recording_id=:recordingId")
+                .param(
+                        "recordingId",
+                        recordingId
+                )
+                .query(Long.class)
+                .single();
     }
 
     private Tuple listed(RecentRecordingItemResult item) {
