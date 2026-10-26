@@ -6,6 +6,16 @@ import lombok.Getter;
 
 @Getter
 public enum RecordingErrorCode implements ErrorCode {
+    MEETING_SUMMARY_RETRY_NOT_ALLOWED(
+            ErrorCategory.CONFLICT,
+            "MEETING_SUMMARY_RETRY_NOT_ALLOWED",
+            "지금 회의 전체 요약을 다시 접수할 수 없습니다"
+    ),
+    INVALID_MEETING_SUMMARY(
+            ErrorCategory.INTERNAL_SERVER_ERROR,
+            "INVALID_MEETING_SUMMARY",
+            "회의 전체 요약 응답이 올바르지 않습니다"
+    ),
     AUDIO_SAVE_OWNERSHIP_LOST(
             ErrorCategory.CONFLICT,
             "AUDIO_SAVE_OWNERSHIP_LOST",
