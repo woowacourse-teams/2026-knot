@@ -4,10 +4,19 @@ name: Release Note
 # 앱은 프론트 Worker(/relay/n)를 거쳐 그 DB를 읽어요. Claude나 Notion이 실패하면 이 실행을 다시 돌리면 같은 노트 id로 바꿔 넣어요.
 # 필요한 값: secrets.CLAUDE_CODE_OAUTH_TOKEN(claude setup-token), secrets.NOTION_RELEASE_NOTE_WRITE_TOKEN(새 소식 DB와 「릴리즈 노트」 페이지에 연결한 쓰기 연동),
 # vars.NOTION_RELEASE_NOTE_DATABASE_ID(새 소식 DB ID)
+# claude-code-action은 push 이벤트를 받지 않아서, main 대상 PR이 닫힐 때(머지만) 돌아요. 빠진 노트는 PR 번호를 넣어 손으로 돌려요.
 on:
-  push:
+  pull_request:
     branches:
       - main
+    types:
+      - closed
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: 노트를 쓸 PR 번호(main에 머지된 PR만)
+        required: true
+        type: number
 
 # Claude가 쓰는 github_token도 이 권한이라, 머지 PR과 그 안의 커밋 · PR을 읽기만 할 수 있어요
 permissions:
@@ -16,6 +25,7 @@ permissions:
 
 jobs:
   release-note:
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.merged
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
@@ -24,32 +34,38 @@ jobs:
         working-directory: frontend
 
     steps:
+      # checkout 전이라 frontend 폴더가 아직 없어요
+      - name: Find merged PR
+        id: pr
+        working-directory: .
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr_number }}
+        run: |
+          pr=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" \
+            --jq 'select(.merged_at != null and .base.ref == "main") | "\(.merge_commit_sha) \(.merged_at)"')
+          if [ -z "$pr" ]; then
+            echo "### 새 소식 노트: #$PR_NUMBER 은 main에 머지된 PR이 아니라 쓰지 않았어요" >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+          echo "number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
+          echo "sha=${pr% *}" >> "$GITHUB_OUTPUT"
+          echo "merged_at=${pr#* }" >> "$GITHUB_OUTPUT"
+
+      # 바로 가보기 화면 목록(PATH_ROUTE)을 그 머지 때의 main에서 읽어요
       - name: Checkout
         uses: actions/checkout@v6
+        with:
+          ref: ${{ steps.pr.outputs.sha }}
 
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
           node-version: 22
 
-      - name: Find merged PR
-        id: pr
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          pr=$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/pulls" \
-            --jq '[.[] | select(.merged_at != null and .base.ref == "main")][0] // empty | "\(.number) \(.merged_at)"')
-          if [ -z "$pr" ]; then
-            echo "### 새 소식 노트: 머지 PR이 없는 push라 쓰지 않았어요" >> "$GITHUB_STEP_SUMMARY"
-            exit 0
-          fi
-          echo "number=${pr% *}" >> "$GITHUB_OUTPUT"
-          echo "merged_at=${pr#* }" >> "$GITHUB_OUTPUT"
-
       # 문구 기준은 Notion에서, 바로 가보기 화면은 앱 라우트 표(PATH_ROUTE)에서 읽어요
       - name: Read note guide and app screens
         id: guide
-        if: steps.pr.outputs.number
         env:
           NOTION_TOKEN: ${{ secrets.NOTION_RELEASE_NOTE_WRITE_TOKEN }}
         run: node scripts/release-note.mjs guide
@@ -57,7 +73,6 @@ jobs:
       # Notion 토큰은 이 step에 넘기지 않아요. Claude는 노트 JSON만 내고, 쓰기는 다음 step의 스크립트가 해요
       - name: Write note with Claude
         id: claude
-        if: steps.pr.outputs.number
         uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
@@ -86,7 +101,6 @@ jobs:
             --json-schema '{"type":"object","properties":{"items":{"type":"array","items":{"type":"object","properties":{"title":{"type":"string"},"description":{"type":"string"},"link":{"type":"string","enum":${{ steps.guide.outputs.link_keys }}},"isFromFeedback":{"type":"boolean"},"isHighlight":{"type":"boolean"}},"required":["title","description"],"additionalProperties":false}}},"required":["items"],"additionalProperties":false}'
 
       - name: Publish note to Notion
-        if: steps.pr.outputs.number
         env:
           NOTION_TOKEN: ${{ secrets.NOTION_RELEASE_NOTE_WRITE_TOKEN }}
           NOTION_DATABASE_ID: ${{ vars.NOTION_RELEASE_NOTE_DATABASE_ID }}
