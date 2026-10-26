@@ -26,8 +26,11 @@ AGENTS = (
     "FE 구현 하네스",
     "BE 구현 하네스",
 )
+PROPOSE_MESSAGE = "기존과 대조해 제안해라"
+UPDATE_MESSAGE = "기존과 대조해 업데이트해라"
 MESSAGES = (
-    "기존과 대조해 업데이트해라",
+    PROPOSE_MESSAGE,
+    UPDATE_MESSAGE,
     "업데이트해라",
     "시나리오 뽑아 업데이트해라",
     "이슈 생성해",
@@ -35,6 +38,8 @@ MESSAGES = (
 )
 AREAS = ("frontend", "backend", "both")
 DONE_CONDITIONS = ("issue", "development")
+PLAN_CONFIRMATION_STATUSES = ("pending", "confirmed", "rejected", "not_needed")
+UNCONFIRMED_STATUSES = ("pending", "rejected")
 NOTION_CHANGES_TITLE = "노션 변경 사항"
 
 
@@ -104,7 +109,7 @@ def validate_result(result: Any, field: str = "result") -> list[str]:
     return errors
 
 
-def validate_state(state: Any) -> list[str]:
+def validate_state(state: Any, plan_confirmers: list[str] | None = None) -> list[str]:
     """입구가 관리하는 상태 파일을 검증한다."""
     if not isinstance(state, dict):
         return ["state must be an object"]
@@ -164,6 +169,69 @@ def validate_state(state: Any) -> list[str]:
                 number = item.get("number")
                 if not isinstance(number, int) or isinstance(number, bool) or number <= 0:
                     errors.append(f"{prefix}.number must be a positive integer")
+    implementer = state.get("implementer")
+    if implementer is not None and not _is_nonblank_string(implementer):
+        errors.append("implementer must be null or a GitHub login")
+    if (state.get("issues") or state.get("prs")) and not _is_nonblank_string(implementer):
+        errors.append("implementer is required before issues or prs are created")
+    errors.extend(validate_plan_confirmation(state, plan_confirmers))
+    return errors
+
+
+def validate_plan_confirmation(
+    state: dict[str, Any], plan_confirmers: list[str] | None = None
+) -> list[str]:
+    """기능 추가, 수정, 삭제는 1차 컨펌 전에 노션, Figma, 이슈, PR을 바꾸지 않는다.
+
+    확정 전 제안은 노션 「기능 요구사항 검토」 DB의 제안 페이지(`proposal_url`)에만 있다.
+    1차 컨펌의 근거는 제안 페이지의 확정 기록(`상태`, `컨펌한 사람`, `컨펌 날짜`)뿐이다.
+    `plan_confirmers`를 주면 `confirmed_by`에 기획 컨펌 담당이 있는지도 본다.
+    """
+    confirmation = state.get("plan_confirmation")
+    if confirmation is None:
+        return []
+    if not isinstance(confirmation, dict):
+        return ["plan_confirmation must be an object"]
+    errors: list[str] = []
+    required = confirmation.get("required")
+    status = confirmation.get("status")
+    if not isinstance(required, bool):
+        errors.append("plan_confirmation.required must be a boolean")
+    if status not in PLAN_CONFIRMATION_STATUSES:
+        errors.append(
+            f"plan_confirmation.status must be one of {', '.join(PLAN_CONFIRMATION_STATUSES)}"
+        )
+    if required is True and status == "not_needed":
+        errors.append("plan_confirmation.status cannot be not_needed when required is true")
+    if required is False and status in ("pending", "confirmed", "rejected"):
+        errors.append("plan_confirmation.status must be not_needed when required is false")
+    if required is True and not _is_url(confirmation.get("proposal_url")):
+        errors.append("plan_confirmation.proposal_url must be the 기능 요구사항 검토 page URL")
+    if status == "confirmed":
+        confirmed_by = confirmation.get("confirmed_by")
+        if not isinstance(confirmed_by, list) or not confirmed_by:
+            errors.append("plan_confirmation.confirmed_by must be a non-empty list when confirmed")
+        else:
+            _string_list(confirmed_by, "plan_confirmation.confirmed_by", errors)
+            if plan_confirmers is not None and not set(confirmed_by) & set(plan_confirmers):
+                errors.append(
+                    "plan_confirmation.confirmed_by must include a plan confirmer: "
+                    f"{', '.join(plan_confirmers)}"
+                )
+        if not _is_nonblank_string(confirmation.get("confirmed_at")):
+            errors.append("plan_confirmation.confirmed_at is required when confirmed (제안 페이지 컨펌 날짜)")
+        if not _is_nonblank_string(confirmation.get("evidence")):
+            errors.append("plan_confirmation.evidence is required when confirmed")
+    if status in UNCONFIRMED_STATUSES:
+        if collect_changed(state):
+            errors.append(f"plan_confirmation is {status}: 1차 컨펌 전에는 노션과 Figma를 바꾸지 않는다")
+        if state.get("issues") or state.get("prs"):
+            errors.append(f"plan_confirmation is {status}: 1차 컨펌 전에는 이슈와 PR을 만들지 않는다")
+        for index, step in enumerate(state.get("steps", [])):
+            if isinstance(step, dict) and step.get("message") not in (None, PROPOSE_MESSAGE):
+                errors.append(
+                    f"steps[{index}] runs before 1차 컨펌: {status} 동안에는 「{PROPOSE_MESSAGE}」만 실행한다"
+                )
     return errors
 
 
@@ -196,6 +264,12 @@ def render_notion_changes(changed: list[dict[str, Any]], for_issue: bool = False
     return f"{title}\n\n" + "\n".join(lines) + "\n"
 
 
+def _plan_confirmers() -> list[str]:
+    from team_roles import load_team
+
+    return list(load_team().get("plan_confirmers", []))
+
+
 def _load(path: str) -> Any:
     return json.loads(Path(path).read_text(encoding="utf-8"))
 
@@ -226,7 +300,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "result":
         return _report(validate_result(data), args.pretty)
     if args.command == "state":
-        return _report(validate_state(data), args.pretty)
+        return _report(validate_state(data, _plan_confirmers()), args.pretty)
     changed = collect_changed(data) if isinstance(data, dict) and "steps" in data else (
         data.get("changed", []) if isinstance(data, dict) else data
     )
