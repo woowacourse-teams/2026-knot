@@ -8,7 +8,10 @@ PCM 녹음은 시작 트랜잭션에서 독립 tombstone을 만든다. 부모 �
 | --- | --- | --- |
 | DORMANT | 최종화 전·복구 가능한 실패 | 삭제 없음 |
 | RAW | 최종 WAV 검증·DB 채택으로 READY 확정 | `recordings/{id}/chunks/` |
-| ALL | 폐기·소속 상실·워크스페이스 삭제·내용 없음·보관 만료 | `recordings/{id}/` |
+| ALL | 폐기·소속 상실·워크스페이스 삭제 | `recordings/{id}/` |
+
+#948에서 보관 만료, #973에서 내용 없음(NO_CONTENT 결과와 `AUDIO_NO_CONTENT` 최종화 실패)을 ALL 사유에서 뺐다.
+이미 ALL로 예약된 정리도 실행 직전 정책을 다시 계산해 사유가 맞지 않으면 실행하지 않는다.
 
 S3 설정의 기존 key prefix를 앞에 붙인다. 서버가 만드는 양수 ID와 고정 경로 외 입력은 거절한다. 다른 녹음 ID와 모호한 prefix를 삭제하지 않는다.
 

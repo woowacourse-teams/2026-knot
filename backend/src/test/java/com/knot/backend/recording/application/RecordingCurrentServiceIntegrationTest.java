@@ -306,7 +306,7 @@ class RecordingCurrentServiceIntegrationTest {
     }
 
     @Test
-    void findCurrent_success_documentFailureEligibleIdsAndNoMutation() {
+    void findCurrent_success_documentFailureRetryableRegardlessOfUserRetriesUntilDisplayPeriod() {
         long memberId = saveMember("document-member");
         long workspaceId = saveWorkspace("실패 팀");
         saveWorkspaceMember(
@@ -358,7 +358,8 @@ class RecordingCurrentServiceIntegrationTest {
         )
                 .orElseThrow();
         assertThat(result.status()).isEqualTo(CurrentRecordingStatus.DOCUMENT_FAILED);
-        assertThat(result.retryable()).isFalse();
+        assertThat(result.retryable()).isTrue();
+        assertThat(result.retryableJobIds()).containsExactly(jobId);
         jdbcClient.sql(
                 "UPDATE document_generation_jobs SET last_failed_at=CURRENT_TIMESTAMP - INTERVAL '169 hours', expires_at=CURRENT_TIMESTAMP - INTERVAL '1 hour' WHERE id=:id"
         )

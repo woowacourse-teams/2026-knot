@@ -51,8 +51,7 @@ public class RecordingDetailService {
                 recordingTranscriptionStateService.findSnapshot(recordingId),
                 documentGenerationProgressService.findSummary(
                         workspaceId,
-                        recordingId,
-                        now
+                        recordingId
                 )
                         .orElse(null),
                 now

@@ -6,6 +6,7 @@ import com.knot.backend.document.domain.DocumentException;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.time.Duration;
 import java.time.Instant;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -85,8 +86,8 @@ class DocumentGenerationJobTest {
     }
 
     @Test
-    @DisplayName("사용자 재시도 3회까지만 허용하고 재실패 때 횟수를 초기화하지 않는다")
-    void retryByUser_failure_fourthRetry() {
+    @DisplayName("사용자 재시도 횟수 제한 없이 네 번째 재시도도 접수하고 횟수는 기록용으로 계속 센다")
+    void retryByUser_success_fourthRetry() {
         // given
         DocumentGenerationJob job = failedJob();
         for (int retry = 1; retry <= 3; retry++) {
@@ -95,14 +96,13 @@ class DocumentGenerationJobTest {
         }
         Instant lastFailure = job.getLastFailedAt();
 
-        // when & then
-        assertRetryDenied(
-                job,
-                lastFailure.plusSeconds(1)
-        );
-        assertThat(job.getUserRetryCount()).isEqualTo(3);
-        assertThat(job.getAttemptCount()).isEqualTo(4);
-        assertThat(job.getExpiresAt()).isEqualTo(lastFailure.plusSeconds(168 * 3600));
+        // when
+        job.retryByUser(lastFailure.plusSeconds(1));
+
+        // then
+        assertThat(job.getStatus()).isEqualTo(DocumentGenerationJobStatus.QUEUED);
+        assertThat(job.getUserRetryCount()).isEqualTo(4);
+        assertThat(job.getAttemptCount()).isEqualTo(5);
     }
 
     @Test
@@ -131,37 +131,37 @@ class DocumentGenerationJobTest {
     }
 
     @Test
-    @DisplayName("168시간 만료 직전은 접수할 수 있다")
-    void retryByUser_success_beforeDeadline() {
+    @DisplayName("마지막 실패 뒤 홈 표시 기한인 168시간이 지나도 사용자 재시도를 접수한다")
+    void retryByUser_success_afterHomeDisplayPeriod() {
         // given
         DocumentGenerationJob job = failedJob();
+        Instant afterDisplayPeriod = job.getExpiresAt()
+                .plus(Duration.ofDays(365));
 
         // when
-        job.retryByUser(
-                job.getExpiresAt()
-                        .minusNanos(1000)
-        );
+        job.retryByUser(afterDisplayPeriod);
 
         // then
         assertThat(job.getStatus()).isEqualTo(DocumentGenerationJobStatus.QUEUED);
+        assertThat(job.getUserRetryCount()).isEqualTo(1);
     }
 
     @Test
-    @DisplayName("정확한 만료 시각과 이후는 접수하지 않고 상태·횟수를 유지한다")
-    void retryByUser_failure_expired() {
+    @DisplayName("표시 기한이 없는 과거 실패 Job도 사용자 재시도를 접수한다")
+    void retryByUser_success_withoutDisplayDeadline() {
         // given
         DocumentGenerationJob job = failedJob();
+        ReflectionTestUtils.setField(
+                job,
+                "expiresAt",
+                null
+        );
 
-        // when & then
-        assertRetryDenied(
-                job,
-                job.getExpiresAt()
-        );
-        assertRetryDenied(
-                job,
-                job.getExpiresAt()
-                        .plusSeconds(1)
-        );
+        // when
+        job.retryByUser(FAILED_AT.plusSeconds(1));
+
+        // then
+        assertThat(job.getStatus()).isEqualTo(DocumentGenerationJobStatus.QUEUED);
     }
 
     @ParameterizedTest
@@ -254,7 +254,7 @@ class DocumentGenerationJobTest {
     }
 
     @Test
-    @DisplayName("실패 기록은 마지막 실패 시각과 168시간 만료 시각을 저장한다")
+    @DisplayName("실패 기록은 마지막 실패 시각과 168시간 홈 표시 기한을 저장한다")
     void recordFailure_success() {
         // given
         Instant createdAt = Instant.parse("2026-10-06T00:00:00Z");
@@ -276,7 +276,7 @@ class DocumentGenerationJobTest {
     }
 
     @Test
-    @DisplayName("새로운 실패가 기록되면 마지막 실패 기준으로 기한을 갱신한다")
+    @DisplayName("새로운 실패가 기록되면 마지막 실패 기준으로 표시 기한을 갱신한다")
     void recordFailure_success_renewDeadline() {
         // given
         Instant createdAt = Instant.parse("2026-10-06T00:00:00Z");

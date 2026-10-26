@@ -18,11 +18,6 @@ import com.knot.backend.document.domain.repository.DocumentGenerationBatchReposi
 import com.knot.backend.document.domain.model.DocumentGenerationBatch;
 import com.knot.backend.document.domain.repository.DocumentGenerationJobRepository;
 import com.knot.backend.document.domain.model.DocumentGenerationJobStatus;
-import com.knot.backend.recording.domain.RecordingErrorCode;
-import com.knot.backend.recording.domain.RecordingException;
-import com.knot.backend.recording.domain.model.RecordingSession;
-import com.knot.backend.recording.domain.repository.RecordingSessionRepository;
-import java.util.UUID;
 import com.knot.backend.workspace.domain.model.Workspace;
 import com.knot.backend.workspace.domain.WorkspaceException;
 import com.knot.backend.workspace.domain.repository.WorkspaceMemberRepository;
@@ -45,7 +40,6 @@ class DocumentGenerationJobRetryServiceTest {
     private WorkspaceMemberRepository members;
     private DocumentGenerationJobRepository jobs;
     private DocumentGenerationInputQuery inputs;
-    private RecordingSessionRepository recordings;
     private DocumentGenerationJobRetryService service;
     private DocumentGenerationJob job;
 
@@ -55,7 +49,6 @@ class DocumentGenerationJobRetryServiceTest {
         members = mock(WorkspaceMemberRepository.class);
         jobs = mock(DocumentGenerationJobRepository.class);
         inputs = mock(DocumentGenerationInputQuery.class);
-        recordings = mock(RecordingSessionRepository.class);
         DocumentGenerationBatchRepository batches = mock(DocumentGenerationBatchRepository.class);
         when(batches.findByIdForUpdate(1L)).thenReturn(
                 Optional.of(
@@ -71,14 +64,12 @@ class DocumentGenerationJobRetryServiceTest {
                 members,
                 jobs,
                 inputs,
-                recordings,
                 batches,
                 Clock.fixed(
                         NOW,
                         ZoneOffset.UTC
                 )
         );
-        when(recordings.findById(4L)).thenReturn(Optional.of(recording(2L)));
         job = DocumentGenerationJob.queueClassification(
                 1,
                 3,
@@ -155,8 +146,7 @@ class DocumentGenerationJobRetryServiceTest {
         ).isInstanceOf(WorkspaceException.class);
         verifyNoInteractions(
                 jobs,
-                inputs,
-                recordings
+                inputs
         );
     }
 
@@ -181,8 +171,7 @@ class DocumentGenerationJobRetryServiceTest {
         ).isInstanceOf(WorkspaceException.class);
         verifyNoInteractions(
                 jobs,
-                inputs,
-                recordings
+                inputs
         );
     }
 
@@ -206,10 +195,7 @@ class DocumentGenerationJobRetryServiceTest {
                 )
         ).isInstanceOf(DocumentException.class)
                 .hasMessage(DocumentErrorCode.DOCUMENT_GENERATION_JOB_NOT_FOUND.getMessage());
-        verifyNoInteractions(
-                inputs,
-                recordings
-        );
+        verifyNoInteractions(inputs);
     }
 
     @Test
@@ -320,54 +306,34 @@ class DocumentGenerationJobRetryServiceTest {
                 workspaces,
                 members,
                 jobs,
-                inputs,
-                recordings
+                inputs
         );
     }
 
     @Test
-    @DisplayName("다른 Workspace 멤버의 녹음은 상태와 횟수를 변경하지 않고 거절한다")
-    void retry_failure_otherRecordingOwner() {
+    @DisplayName("녹음을 시작하지 않은 현재 멤버도 같은 Job 재시도를 접수한다")
+    void retry_success_otherWorkspaceMember() {
         // given
-        when(recordings.findById(4L)).thenReturn(Optional.of(recording(9L)));
-
-        // when & then
-        assertThatThrownBy(
-                () -> service.retry(
-                        1,
-                        2,
-                        88
+        long otherMemberId = 9L;
+        when(
+                members.existsByWorkspaceIdAndMemberId(
+                        1L,
+                        otherMemberId
                 )
-        ).isInstanceOf(RecordingException.class)
-                .hasMessage(RecordingErrorCode.RECORDING_CONTROL_DENIED.getMessage());
-        assertThat(job.getStatus()).isEqualTo(DocumentGenerationJobStatus.FAILED);
-        assertThat(job.getAttemptCount()).isEqualTo(1);
-        assertThat(job.getUserRetryCount()).isZero();
-        verify(
-                jobs,
-                never()
-        ).flush();
-    }
+        ).thenReturn(true);
 
-    @Test
-    @DisplayName("연결된 녹음이 없으면 재시도를 접수하지 않는다")
-    void retry_failure_missingRecording() {
-        // given
-        when(recordings.findById(4L)).thenReturn(Optional.empty());
-
-        // when & then
-        assertDeniedWithoutRequest();
-    }
-
-    private RecordingSession recording(long ownerId) {
-        return RecordingSession.start(
-                1L,
-                ownerId,
-                UUID.randomUUID(),
-                UUID.randomUUID(),
-                "a".repeat(64),
-                CREATED_AT
+        // when
+        DocumentGenerationJobRetryResult result = service.retry(
+                1,
+                otherMemberId,
+                88
         );
+
+        // then
+        assertThat(result.status()).isEqualTo(DocumentGenerationJobStatus.QUEUED);
+        assertThat(job.getAttemptCount()).isEqualTo(2);
+        assertThat(job.getUserRetryCount()).isEqualTo(1);
+        verify(jobs).flush();
     }
 
     private void assertDeniedWithoutRequest() {

@@ -24,7 +24,9 @@ public interface RecordingTranscriptionRetryApi {
     // @formatter:off
     @Operation(
             summary = "녹음 전사 재시도",
-            description = "실패한 본인 녹음의 전사를 새 시도 ID로 다시 접수한다. 종료·업로드 완료 상태이고 원본 오디오가 남아 있어야 한다. "
+            description = "현재 Workspace 멤버 누구나 같은 Workspace 녹음의 실패한 전사를 새 시도 ID로 다시 접수한다. "
+                    + "녹음을 시작한 Member가 아니어도 된다. 종료·업로드 완료 상태이고 원본 오디오가 남아 있어야 한다. "
+                    + "동시 요청 중 하나만 접수한다. "
                     + "진행 중·성공한 전사는 재시도하지 않는다. 다른 전사 실행 중에도 QUEUED로 보존한다. "
                     + "결과 미확정 실패는 이전 시도를 먼저 조회하며 기존 성공·실행 결과를 복구할 수 있다",
             parameters = @Parameter(
@@ -45,7 +47,7 @@ public interface RecordingTranscriptionRetryApi {
             @ApiResponse(responseCode = "401", description = "인증되지 않은 요청",
                     content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE,
                             schema = @Schema(implementation = ErrorResponse.class))),
-            @ApiResponse(responseCode = "403", description = "워크스페이스 소속 없음, 녹음 시작자가 아님 또는 CSRF 검증 실패",
+            @ApiResponse(responseCode = "403", description = "워크스페이스 소속 없음 또는 CSRF 검증 실패",
                     content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE,
                             schema = @Schema(implementation = ErrorResponse.class))),
             @ApiResponse(responseCode = "404", description = "워크스페이스·녹음 또는 업로드 예약 없음",
