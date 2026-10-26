@@ -1,48 +1,59 @@
 import useRecordingState from "@hooks/domain/recording/useRecordingState";
 import { useDialog } from "@provider/context/dialogContext";
+import { useState } from "react";
 
-import { MEETING_AUDIO_COPY } from "../constants/meetingAudioCopy";
-import MeetingAudioNoticeDialog from "../ui/MeetingAudioNoticeDialog";
+import type { MeetingSourceState } from "../types/meetingSource";
+import MeetingAudioConnectDialog from "../ui/MeetingAudioConnectDialog";
 
-const NOTICES = {
-  noAudio: MEETING_AUDIO_COPY.NO_AUDIO,
-  stopped: MEETING_AUDIO_COPY.STOPPED,
-} as const;
+/** 휴대폰, 태블릿인지. 공유 창으로 회의 소리를 받을 수 없어 「모바일은 지원 안 함」으로 알려요 */
+const isMobileDevice = () =>
+  /Android|iPhone|iPad|iPod|Mobi/i.test(navigator.userAgent);
 
 /**
- * 녹음 화면의 「회의 소리도 함께 녹음」 선택지를 다룹니다.
+ * 녹음 화면의 「녹음하는 소리」 패널을 다룹니다.
  *
- * 누르면 녹음 고지와 이어폰 권장 모달을 먼저 띄우고, 모달의 확인을 누른 그 자리에서 공유 창을 열어요.
- * 공유 창은 사용자의 누름 안에서만 열리기 때문이에요.
- * 함께 녹음하는 동안과 녹음을 끝내는 동안에는 선택지를 숨기고, 공유가 멈추면 다시 보여 줘요.
+ * 「함께 녹음하기」나 「다시 연결하기」를 누르면 연결 안내 모달을 먼저 띄우고, 모달의 「공유 창 열기」를 누른 그 자리에서
+ * 공유 창을 열어요. 공유 창은 사용자의 누름 안에서만 열리기 때문이에요. 공유 창에서 고르는 동안은 `connecting`이에요.
+ * 녹음을 끝내는 동안에는 버튼을 숨겨요.
  */
 export const useMeetingAudioOption = () => {
   const { open } = useDialog();
   const {
+    status,
     isEnding,
     isMeetingAudioSupported,
     meetingAudioStatus,
     connectMeetingAudio,
   } = useRecordingState();
+  const [isConnecting, setIsConnecting] = useState(false);
 
-  const handleOptionClick = () =>
+  const handleConnectClick = () =>
     open(({ close }) => (
-      <MeetingAudioNoticeDialog
+      <MeetingAudioConnectDialog
         onClose={close}
         onConfirm={() => {
           close();
-          void connectMeetingAudio();
+          setIsConnecting(true);
+          void connectMeetingAudio().finally(() => setIsConnecting(false));
         }}
       />
     ));
 
+  // 공유 창을 여는 브라우저가 있어도 모바일은 지원하지 않아요
+  const meetingState: MeetingSourceState = isMobileDevice()
+    ? "mobile"
+    : !isMeetingAudioSupported
+      ? "unsupported"
+      : isConnecting
+        ? "connecting"
+        : meetingAudioStatus === "on" && status === "paused"
+          ? "paused"
+          : meetingAudioStatus;
+
   return {
-    isSupported: isMeetingAudioSupported,
-    isOptionVisible: meetingAudioStatus !== "on" && !isEnding,
-    notice:
-      meetingAudioStatus === "noAudio" || meetingAudioStatus === "stopped"
-        ? NOTICES[meetingAudioStatus]
-        : null,
-    handleOptionClick,
+    isPaused: status === "paused",
+    meetingState,
+    isEnding,
+    handleConnectClick,
   };
 };

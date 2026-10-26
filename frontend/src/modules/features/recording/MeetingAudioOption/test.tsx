@@ -60,20 +60,28 @@ const renderDuringRecording = async () => {
   );
 };
 
-const queryOption = () =>
-  screen.queryByRole("button", { name: MEETING_AUDIO_COPY.OPTION });
+const ANDROID_CHROME_UA =
+  "Mozilla/5.0 (Linux; Android 16; Pixel 10) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0.0.0 Mobile Safari/537.36";
 
-const openNotice = () => {
-  fireEvent.click(queryOption()!);
+/** 문구의 줄바꿈은 화면에서 띄어쓰기로 읽혀요 */
+const oneLine = (text: string) => text.replace(/\n/g, " ");
 
-  return screen.getByRole("dialog", { name: MEETING_AUDIO_COPY.NOTICE_TITLE });
+/** 「온라인 회의」 줄의 상태와 설명. 바뀌면 화면 낭독기가 읽어요 */
+const meetingSource = () => screen.getByRole("status");
+
+const queryButton = (name: string) => screen.queryByRole("button", { name });
+
+const openDialog = (name: string = MEETING_AUDIO_COPY.OPTION) => {
+  fireEvent.click(queryButton(name)!);
+
+  return screen.getByRole("dialog", { name: MEETING_AUDIO_COPY.DIALOG.TITLE });
 };
 
-const confirmNotice = async (notice: HTMLElement) => {
+const confirmDialog = async (dialog: HTMLElement) => {
   await act(async () => {
     fireEvent.click(
-      within(notice).getByRole("button", {
-        name: MEETING_AUDIO_COPY.NOTICE_CONFIRM,
+      within(dialog).getByRole("button", {
+        name: MEETING_AUDIO_COPY.DIALOG.CONFIRM,
       }),
     );
   });
@@ -84,53 +92,111 @@ describe("MeetingAudioOption", () => {
     useRecordingStore.getState().discardRecording();
   });
 
-  it("[STT-R49] Chrome 계열이 아니면 선택지 대신 안내만 보이고 마이크 녹음은 그대로다", async () => {
+  it("[STT-R43] 마이크는 녹음 중으로, 온라인 회의는 함께 녹음하기로 보인다", async () => {
+    useBrowser(CHROME_UA);
+
+    await renderDuringRecording();
+
+    expect(
+      screen.getByRole("region", { name: MEETING_AUDIO_COPY.PANEL_TITLE }),
+    ).toHaveTextContent(
+      `${MEETING_AUDIO_COPY.MICROPHONE_TITLE}${MEETING_AUDIO_COPY.STATUS.RECORDING}`,
+    );
+    expect(meetingSource()).toHaveTextContent(
+      oneLine(MEETING_AUDIO_COPY.MEETING_DESCRIPTION.off),
+    );
+    expect(queryButton(MEETING_AUDIO_COPY.OPTION)).toBeInTheDocument();
+  });
+
+  it("[STT-R49] Chrome 계열이 아닌 컴퓨터 브라우저면 지원 안 함만 보이고 마이크 녹음은 그대로다", async () => {
     useBrowser(SAFARI_UA);
     const getDisplayMedia = vi.spyOn(navigator.mediaDevices, "getDisplayMedia");
 
     await renderDuringRecording();
 
-    expect(
-      screen.getByText(MEETING_AUDIO_COPY.UNSUPPORTED),
-    ).toBeInTheDocument();
-    expect(queryOption()).not.toBeInTheDocument();
+    expect(meetingSource()).toHaveTextContent(
+      MEETING_AUDIO_COPY.STATUS.UNSUPPORTED,
+    );
+    expect(meetingSource()).toHaveTextContent(
+      oneLine(MEETING_AUDIO_COPY.MEETING_DESCRIPTION.unsupported),
+    );
+    expect(queryButton(MEETING_AUDIO_COPY.OPTION)).not.toBeInTheDocument();
     expect(getDisplayMedia).not.toHaveBeenCalled();
     expect(useRecordingStore.getState().status).toBe("recording");
   });
 
-  it("[STT-R44, STT-R45] 선택지를 누르면 공유 창보다 먼저 녹음 고지와 이어폰 권장을 보여 주고, 확인해야 공유 창을 연다", async () => {
+  it("[STT-R49] 휴대폰에서는 Chrome이어도 모바일은 지원 안 함으로 보인다", async () => {
+    useBrowser(ANDROID_CHROME_UA);
+
+    await renderDuringRecording();
+
+    expect(meetingSource()).toHaveTextContent(MEETING_AUDIO_COPY.STATUS.MOBILE);
+    expect(queryButton(MEETING_AUDIO_COPY.OPTION)).not.toBeInTheDocument();
+  });
+
+  it("[STT-R44, STT-R45] 함께 녹음하기를 누르면 공유 창보다 먼저 연결 안내와 녹음 고지, 이어폰 안내를 보여 주고, 공유 창 열기를 눌러야 공유 창을 연다", async () => {
     useBrowser(CHROME_UA);
     const getDisplayMedia = vi
       .spyOn(navigator.mediaDevices, "getDisplayMedia")
       .mockResolvedValue(createSharedTab().stream);
     await renderDuringRecording();
 
-    const notice = openNotice();
+    const dialog = openDialog();
 
-    expect(
-      within(notice).getByText(MEETING_AUDIO_COPY.NOTICE_DESCRIPTION, {
-        normalizer: (text) => text,
-      }),
-    ).toBeInTheDocument();
+    for (const notice of MEETING_AUDIO_COPY.DIALOG.NOTICES) {
+      expect(
+        within(dialog).getByText(notice, { normalizer: (text) => text }),
+      ).toBeInTheDocument();
+    }
     expect(getDisplayMedia).not.toHaveBeenCalled();
 
-    await confirmNotice(notice);
+    await confirmDialog(dialog);
 
     expect(getDisplayMedia).toHaveBeenCalledOnce();
-    // 함께 녹음하는 동안에는 선택지를 숨겨요
-    expect(queryOption()).not.toBeInTheDocument();
+    expect(meetingSource()).toHaveTextContent(
+      MEETING_AUDIO_COPY.STATUS.RECORDING,
+    );
+    expect(meetingSource()).toHaveTextContent(
+      oneLine(MEETING_AUDIO_COPY.MEETING_DESCRIPTION.on),
+    );
+    // 함께 녹음하는 동안에는 버튼을 숨겨요
+    expect(queryButton(MEETING_AUDIO_COPY.OPTION)).not.toBeInTheDocument();
     expect(useRecordingStore.getState().meetingAudioStatus).toBe("on");
   });
 
-  it("[STT-R45] 고지에서 취소하면 공유 창을 열지 않는다", async () => {
+  it("[STT-R45] 연결 안내는 브라우저 탭이 기본이고, 회의 앱을 고르면 전체 화면과 시스템 오디오 공유 단계로 바뀐다", async () => {
+    useBrowser(CHROME_UA);
+    await renderDuringRecording();
+
+    const dialog = openDialog();
+    const { browserTab, meetingApp } = MEETING_AUDIO_COPY.LOCATIONS;
+
+    expect(
+      within(dialog).getByRole("radio", { name: new RegExp(browserTab.LABEL) }),
+    ).toBeChecked();
+    expect(within(dialog).getAllByRole("listitem")[0]).toHaveTextContent(
+      browserTab.STEPS[0],
+    );
+
+    fireEvent.click(
+      within(dialog).getByRole("radio", { name: new RegExp(meetingApp.LABEL) }),
+    );
+
+    for (const step of meetingApp.STEPS) {
+      expect(within(dialog).getByText(step)).toBeInTheDocument();
+    }
+    expect(within(dialog).queryByText(browserTab.STEPS[0])).toBeNull();
+  });
+
+  it("[STT-R45] 연결 안내에서 취소하면 공유 창을 열지 않는다", async () => {
     useBrowser(CHROME_UA);
     const getDisplayMedia = vi.spyOn(navigator.mediaDevices, "getDisplayMedia");
     await renderDuringRecording();
 
-    const notice = openNotice();
+    const dialog = openDialog();
     fireEvent.click(
-      within(notice).getByRole("button", {
-        name: MEETING_AUDIO_COPY.NOTICE_CANCEL,
+      within(dialog).getByRole("button", {
+        name: MEETING_AUDIO_COPY.DIALOG.CANCEL,
       }),
     );
 
@@ -138,56 +204,110 @@ describe("MeetingAudioOption", () => {
     expect(useRecordingStore.getState().meetingAudioStatus).toBe("off");
   });
 
-  it("[STT-R47] 공유 창을 닫으면 알림 없이 마이크만 녹음하고 선택지를 그대로 둔다", async () => {
+  it("[STT-R44] 공유 창에서 고르는 동안에는 버튼이 로딩으로 바뀌고 회의 화면을 고르라고 안내한다", async () => {
+    useBrowser(CHROME_UA);
+    vi.spyOn(navigator.mediaDevices, "getDisplayMedia").mockReturnValue(
+      new Promise(() => {}),
+    );
+    await renderDuringRecording();
+
+    await confirmDialog(openDialog());
+
+    expect(queryButton(MEETING_AUDIO_COPY.OPTION)).toHaveAttribute(
+      "aria-busy",
+      "true",
+    );
+    expect(meetingSource()).toHaveTextContent(
+      oneLine(MEETING_AUDIO_COPY.MEETING_DESCRIPTION.connecting),
+    );
+  });
+
+  it("[STT-R47] 공유 창을 닫으면 알림 없이 마이크만 녹음하고 처음 모습으로 돌아간다", async () => {
     useBrowser(CHROME_UA);
     vi.spyOn(navigator.mediaDevices, "getDisplayMedia").mockRejectedValue(
       new DOMException("Permission denied", "NotAllowedError"),
     );
     await renderDuringRecording();
 
-    await confirmNotice(openNotice());
+    await confirmDialog(openDialog());
 
-    expect(screen.getByRole("status")).toBeEmptyDOMElement();
-    expect(queryOption()).toBeInTheDocument();
+    expect(meetingSource()).toHaveTextContent(
+      oneLine(MEETING_AUDIO_COPY.MEETING_DESCRIPTION.off),
+    );
+    expect(queryButton(MEETING_AUDIO_COPY.OPTION)).not.toHaveAttribute(
+      "aria-busy",
+      "true",
+    );
     expect(useRecordingStore.getState().status).toBe("recording");
   });
 
-  it("[STT-R47] 소리 없이 공유하면 마이크만 녹음하며 회의 소리를 받지 못했다고 알린다", async () => {
+  it("[STT-R47] 소리 없이 공유하면 마이크만 녹음하며 소리가 없다고 알리고 다시 연결하기를 둔다", async () => {
     useBrowser(CHROME_UA);
-    vi.spyOn(navigator.mediaDevices, "getDisplayMedia").mockResolvedValue(
-      createSharedTab({ hasAudio: false }).stream,
-    );
+    const getDisplayMedia = vi
+      .spyOn(navigator.mediaDevices, "getDisplayMedia")
+      .mockResolvedValue(createSharedTab({ hasAudio: false }).stream);
     await renderDuringRecording();
 
-    await confirmNotice(openNotice());
+    await confirmDialog(openDialog());
 
-    expect(screen.getByRole("status")).toHaveTextContent(
-      MEETING_AUDIO_COPY.NO_AUDIO,
+    expect(meetingSource()).toHaveTextContent(
+      MEETING_AUDIO_COPY.STATUS.NO_AUDIO,
+    );
+    expect(meetingSource()).toHaveTextContent(
+      oneLine(MEETING_AUDIO_COPY.MEETING_DESCRIPTION.noAudio),
     );
     expect(useRecordingStore.getState().status).toBe("recording");
+
+    getDisplayMedia.mockResolvedValue(createSharedTab().stream);
+    await confirmDialog(openDialog(MEETING_AUDIO_COPY.RECONNECT));
+
+    expect(useRecordingStore.getState().meetingAudioStatus).toBe("on");
   });
 
-  it("[STT-R48] 함께 녹음하다 브라우저 공유 중지를 누르면 녹음은 이어지고 회의 소리 녹음이 멈췄다고 알린다", async () => {
+  it("[STT-R48] 함께 녹음하다 브라우저 공유 중지를 누르면 녹음은 이어지고 공유가 멈췄다고 알린다", async () => {
     useBrowser(CHROME_UA);
     const shared = createSharedTab();
     vi.spyOn(navigator.mediaDevices, "getDisplayMedia").mockResolvedValue(
       shared.stream,
     );
     await renderDuringRecording();
-    await confirmNotice(openNotice());
+    await confirmDialog(openDialog());
 
     act(() => {
       shared.audio.stop();
       shared.audio.dispatchEvent(new Event("ended"));
     });
 
-    expect(screen.getByRole("status")).toHaveTextContent(
-      MEETING_AUDIO_COPY.STOPPED,
+    expect(meetingSource()).toHaveTextContent(
+      MEETING_AUDIO_COPY.STATUS.STOPPED,
     );
-    expect(queryOption()).toBeInTheDocument();
+    expect(meetingSource()).toHaveTextContent(
+      oneLine(MEETING_AUDIO_COPY.MEETING_DESCRIPTION.stopped),
+    );
+    expect(queryButton(MEETING_AUDIO_COPY.RECONNECT)).toBeInTheDocument();
     expect(useRecordingStore.getState()).toMatchObject({
       status: "recording",
       isMicrophoneLost: false,
     });
+  });
+
+  it("함께 녹음하다 일시정지하면 마이크와 온라인 회의 모두 일시정지로 보인다", async () => {
+    useBrowser(CHROME_UA);
+    vi.spyOn(navigator.mediaDevices, "getDisplayMedia").mockResolvedValue(
+      createSharedTab().stream,
+    );
+    await renderDuringRecording();
+    await confirmDialog(openDialog());
+
+    await act(async () => {
+      await useRecordingStore.getState().pauseRecording();
+    });
+
+    expect(screen.getAllByText(MEETING_AUDIO_COPY.STATUS.PAUSED)).toHaveLength(
+      2,
+    );
+    expect(meetingSource()).toHaveTextContent(
+      MEETING_AUDIO_COPY.MEETING_DESCRIPTION.paused,
+    );
   });
 });
