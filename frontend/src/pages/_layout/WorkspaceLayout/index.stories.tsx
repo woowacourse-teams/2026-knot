@@ -78,12 +78,7 @@ function PreviewScreen({ title, cards }: PreviewScreenProps) {
 const HOME_SCREEN = (
   <PreviewScreen
     title="홈"
-    cards={[
-      "확인이 필요한 문서",
-      "최근 추가된 문서",
-      "진행 중인 녹음",
-      "팀원 초대",
-    ]}
+    cards={["녹음 기록", "확인이 필요한 문서", "팀원 초대"]}
   />
 );
 const CHAT_SCREEN = (

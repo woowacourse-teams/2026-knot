@@ -43,7 +43,7 @@ type Story = StoryObj<typeof meta>;
 /** 기본 정렬(`start`)이에요. 문구와 「다시 시도」를 왼쪽에 맞추고, 글 흐름 안에 들어갈 때 써요 */
 export const Default: Story = {};
 
-/** 영역 전체를 대신할 때예요. 예: 문서 목록을 불러오지 못했을 때, 홈의 최근 추가된 문서 카드가 문서를 불러오지 못했을 때 */
+/** 영역 전체를 대신할 때예요. 예: 문서 목록을 불러오지 못했을 때, 홈의 녹음 기록 카드가 녹음 기록을 불러오지 못했을 때 */
 export const Centered: Story = {
   args: { align: "center" },
   parameters: {
