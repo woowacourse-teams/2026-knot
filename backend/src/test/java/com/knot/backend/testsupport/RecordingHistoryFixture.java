@@ -384,6 +384,69 @@ public class RecordingHistoryFixture {
                 .update();
     }
 
+    // 배치에 주제를 등록하고 그 주제의 성공한 생성 Job과 Document를 만든다.
+    public long document(
+            long batchId,
+            String title,
+            String summary,
+            Instant createdAt
+    ) {
+        String topic = "주제 " + UUID.randomUUID();
+        jdbcClient.sql("""
+                INSERT INTO document_generation_batch_topics (batch_id, position, topic)
+                SELECT :batchId, count(*), :topic FROM document_generation_batch_topics WHERE batch_id = :batchId
+                """)
+                .param(
+                        "batchId",
+                        batchId
+                )
+                .param(
+                        "topic",
+                        topic
+                )
+                .update();
+        return jdbcClient.sql("""
+                WITH job AS (
+                    INSERT INTO document_generation_jobs (batch_id, stage, topic, transcript_id, status, created_at,
+                        updated_at)
+                    SELECT id, 'GENERATION', :topic, transcript_id, 'SUCCEEDED', :createdAt, :createdAt
+                    FROM document_generation_batches WHERE id = :batchId
+                    RETURNING id, batch_id, transcript_id
+                )
+                INSERT INTO documents (workspace_id, recording_session_id, source_transcript_id,
+                    document_generation_job_id, topic, title, summary, content, status, created_at)
+                SELECT s.workspace_id, s.id, job.transcript_id, job.id, :topic, :title, :summary, '# 읽기 전용 본문',
+                    'DRAFT', :createdAt
+                FROM job
+                JOIN document_generation_batches b ON b.id = job.batch_id
+                JOIN recording_sessions s ON s.id = b.recording_session_id
+                RETURNING id
+                """)
+                .param(
+                        "batchId",
+                        batchId
+                )
+                .param(
+                        "topic",
+                        topic
+                )
+                .param(
+                        "title",
+                        title
+                )
+                .param(
+                        "summary",
+                        summary,
+                        Types.VARCHAR
+                )
+                .param(
+                        "createdAt",
+                        Timestamp.from(createdAt)
+                )
+                .query(Long.class)
+                .single();
+    }
+
     public void deleteAudio(long recordingId) {
         jdbcClient.sql("UPDATE recording_audio_uploads SET deleted_at=completed_at WHERE recording_id=:recordingId")
                 .param(
