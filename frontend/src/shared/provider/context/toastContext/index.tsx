@@ -15,13 +15,15 @@ import {
 } from "react";
 import { useLocation, useNavigate, type To } from "react-router";
 
-import type { ToastVariant } from "@primitives/ui/Toast";
+import type { ToastIcon, ToastVariant } from "@primitives/ui/Toast";
 
 const MAX_TOAST_COUNT = 3;
 
 interface ToastOptions {
   variant: ToastVariant;
   message: string;
+  /** 종류의 기본 아이콘 대신 그릴 아이콘 */
+  icon?: ToastIcon;
 }
 
 interface NavigateWithToastParams {
