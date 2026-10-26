@@ -29,8 +29,9 @@
 - 「기능 요구사항 검토」 DB의 제안 페이지는 확정 전 문서라 구현 근거로 읽지 않는다. 이슈 `메모`의
   제안 링크는 배경을 볼 때만 연다.
 - 이슈 본문의 「노션 변경 사항」 링크가 정본 위치다. 이슈와 Figma가 있으면 다 구현할 수 있다.
-  이슈 `메모`에 「디자인 대기」가 있는데 Figma Design 페이지 링크가 아직 없으면 시작하지 않고
-  멈춘다.
+  이슈 `메모`에 「디자인 대기」가 있으면 `gh issue view <번호> --comments`의 「디자인 완료」 댓글에 있는
+  Figma 링크(화면이나 상태별 node-id)를 읽어 그대로 구현한다. 댓글이 없으면 시작하지 않고, 이슈 링크를
+  기획 컨펌 담당에게 전달했는지 확인하라고 알리고 멈춘다.
 - 기존 프론트 하네스를 그대로 쓴다. `frontend/CLAUDE.md`의 작업 절차와 `frontend/.claude/rules`,
   `project-structure`, `create-story`, `create-pr-content`, `review` 스킬, `code-reviewer` 에이전트.
   저장소 루트 `.claude/skills`에 이 스킬들의 링크가 있어 루트 세션에서도 찾는다. 브랜치는
