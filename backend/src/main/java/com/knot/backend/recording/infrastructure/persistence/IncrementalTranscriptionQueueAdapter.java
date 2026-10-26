@@ -42,6 +42,10 @@ public class IncrementalTranscriptionQueueAdapter implements IncrementalTranscri
                 .list();
     }
 
+    /**
+     * 끝난 녹음은 종료 시각이 이른 녹음부터 남은 구간을 모두 처리한다. 녹음 중인 녹음은 오래 기다린 녹음부터 돌아가며 처리한다. 근거는
+     * ADR 1006이다.
+     */
     @Override
     public List<WindowTask> findCandidates(
             Instant now,
@@ -72,10 +76,11 @@ public class IncrementalTranscriptionQueueAdapter implements IncrementalTranscri
                             WHERE t.recording_session_id=s.id AND t.status IN ('SUCCEEDED','FAILED'))))
                 ORDER BY CASE WHEN w.status='PROCESSING' THEN 0 ELSE 1 END,
                     CASE WHEN (s.incremental_pipeline_version IS NULL)=turn.prepared_first THEN 0 ELSE 1 END,
+                    CASE WHEN s.status='ENDED' THEN 0 ELSE 1 END,
+                    CASE WHEN s.status='ENDED' THEN s.ended_at END ASC,
                     (SELECT MAX(history.last_claimed_at) FROM recording_transcription_windows history
                         WHERE history.recording_id=w.recording_id AND history.last_claimed_at IS NOT NULL)
                         ASC NULLS FIRST,
-                    CASE WHEN s.status='ENDED' THEN 0 ELSE 1 END,
                     w.recording_id,w.window_index,w.next_run_at,w.id LIMIT :limit
                 """)
                 .param(
