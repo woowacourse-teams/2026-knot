@@ -16,6 +16,7 @@ import WorkspaceInvitePage from "@pages/workspace/[workspaceId]/invite";
 import WorkspaceJoinPage from "@pages/workspace/[workspaceId]/join";
 import RecordingPage from "@pages/workspace/[workspaceId]/recording";
 import RecordingDocumentsPage from "@pages/workspace/[workspaceId]/recordings/[recordingId]";
+import RecordingDocumentPage from "@pages/workspace/[workspaceId]/recordings/[recordingId]/document";
 import WorkspaceCodePage from "@pages/workspace/code";
 import WorkspaceCreatePage from "@pages/workspace/create";
 import RecordingHeartbeat from "@widgets/recording/RecordingHeartbeat";
@@ -156,6 +157,10 @@ export const routes: RouteObject[] = [
       {
         path: PATH_ROUTE.RECORDING_DOCUMENTS,
         element: <RecordingDocumentsPage />,
+      },
+      {
+        path: PATH_ROUTE.RECORDING_DOCUMENT,
+        element: <RecordingDocumentPage />,
       },
       // 탭이 없는 문서 탭 주소는 「녹음별」 탭으로 보내요. 탭 주소는 글자가 고정이라 `:documentId`보다 먼저 맞아요
       {
