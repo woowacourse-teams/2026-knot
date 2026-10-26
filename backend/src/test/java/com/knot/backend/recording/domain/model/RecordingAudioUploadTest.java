@@ -12,6 +12,8 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.NullAndEmptySource;
+import org.junit.jupiter.params.provider.ValueSource;
 
 class RecordingAudioUploadTest {
     private static final Instant RESERVED_AT = Instant.parse("2026-10-05T00:00:00Z");
@@ -290,6 +292,57 @@ class RecordingAudioUploadTest {
 
         // then
         assertThat(available).isFalse();
+    }
+
+    @Test
+    @DisplayName("저장소 버전이 기록된 사용할 수 있는 오디오는 재생할 수 있다")
+    void isPlayable_success_completedUploadWithVersion() {
+        // given
+        RecordingAudioUpload upload = completed();
+
+        // when
+        boolean playable = upload.isPlayable();
+
+        // then
+        assertThat(playable).isTrue();
+    }
+
+    @ParameterizedTest
+    @NullAndEmptySource
+    @ValueSource(strings = {"null", " "})
+    @DisplayName("저장소 버전이 기록되지 않은 완료 업로드는 다른 객체를 줄 수 있어 재생하지 않는다")
+    void isPlayable_success_falseWithoutVersion(String versionId) {
+        // given
+        RecordingAudioUpload upload = reserved();
+        upload.complete(
+                StoredAudioObject.of(
+                        1024L,
+                        "audio/webm",
+                        versionId
+                ),
+                RESERVED_AT.plusSeconds(60)
+        );
+
+        // when
+        boolean playable = upload.isPlayable();
+
+        // then
+        assertThat(upload.isAudioAvailable()).isTrue();
+        assertThat(playable).isFalse();
+    }
+
+    @Test
+    @DisplayName("정리가 시작된 업로드는 버전이 있어도 재생하지 않는다")
+    void isPlayable_success_falseWhenRevoked() {
+        // given
+        RecordingAudioUpload upload = completed();
+        upload.revoke(RESERVED_AT.plusSeconds(61));
+
+        // when
+        boolean playable = upload.isPlayable();
+
+        // then
+        assertThat(playable).isFalse();
     }
 
     @Test
