@@ -18,7 +18,7 @@ import lombok.Getter;
 @Table(name = "workspaces")
 public class Workspace {
     public static final int MAX_NAME_LENGTH = 20;
-    public static final String NAME_PATTERN_REGEX = "^(?=.*[가-힣A-Za-z])[가-힣A-Za-z ]+$";
+    public static final String NAME_PATTERN_REGEX = "^[가-힣A-Za-z0-9 ]+$";
     private static final Pattern NAME_PATTERN = Pattern.compile(NAME_PATTERN_REGEX);
     private static final long LAST_ACTIVE_MEMBER_COUNT = 1L;
 
