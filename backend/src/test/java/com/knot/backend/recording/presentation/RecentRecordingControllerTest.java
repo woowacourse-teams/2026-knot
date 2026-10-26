@@ -14,8 +14,9 @@ import com.knot.backend.auth.domain.model.AuthenticatedMember;
 import com.knot.backend.global.exception.GlobalExceptionHandler;
 import com.knot.backend.recording.application.RecentRecordingListService;
 import com.knot.backend.recording.application.dto.query.RecentRecordingListParameters;
-import com.knot.backend.recording.application.dto.result.RecentRecordingItemResult;
 import com.knot.backend.recording.application.dto.result.RecentRecordingListResult;
+import com.knot.backend.recording.application.dto.result.RecentRecordingRowResult;
+import com.knot.backend.recording.application.dto.result.RecordingDocumentProcessingStatus;
 import com.knot.backend.workspace.domain.WorkspaceErrorCode;
 import com.knot.backend.workspace.domain.WorkspaceException;
 import java.time.Instant;
@@ -69,7 +70,7 @@ class RecentRecordingControllerTest {
     }
 
     @Test
-    @DisplayName("최근 녹음 한 페이지를 녹음 ID·표시 제목·시작 시각·누적 길이와 다음 커서로 반환한다")
+    @DisplayName("최근 녹음 한 페이지를 녹음 ID·표시 제목·시작 시각·누적 길이·처리 상태·재시도 가능 여부와 다음 커서로 반환한다")
     void find_success() throws Exception {
         // given
         when(
@@ -84,11 +85,13 @@ class RecentRecordingControllerTest {
         ).thenReturn(
                 new RecentRecordingListResult(
                         List.of(
-                                new RecentRecordingItemResult(
+                                new RecentRecordingRowResult(
                                         512L,
                                         "회원 탈퇴 정책 논의",
                                         Instant.parse("2026-10-22T01:30:00Z"),
-                                        1980
+                                        1980,
+                                        RecordingDocumentProcessingStatus.DOCUMENT_FAILED,
+                                        true
                                 )
                         ),
                         "next"
@@ -109,7 +112,9 @@ class RecentRecordingControllerTest {
                 .andExpect(jsonPath("$.items[0].title").value("회원 탈퇴 정책 논의"))
                 .andExpect(jsonPath("$.items[0].startedAt").value("2026-10-22T01:30:00Z"))
                 .andExpect(jsonPath("$.items[0].recordingDurationSeconds").value(1980))
-                .andExpect(jsonPath("$.items[0].length()").value(4))
+                .andExpect(jsonPath("$.items[0].processingStatus").value("DOCUMENT_FAILED"))
+                .andExpect(jsonPath("$.items[0].retryable").value(true))
+                .andExpect(jsonPath("$.items[0].length()").value(6))
                 .andExpect(jsonPath("$.nextCursor").value("next"));
     }
 

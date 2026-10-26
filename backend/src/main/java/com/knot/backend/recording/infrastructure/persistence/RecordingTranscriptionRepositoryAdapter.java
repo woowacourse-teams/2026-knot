@@ -3,6 +3,8 @@ package com.knot.backend.recording.infrastructure.persistence;
 import com.knot.backend.recording.domain.model.RecordingTranscription;
 import com.knot.backend.recording.domain.repository.RecordingTranscriptionRepository;
 import com.knot.backend.recording.domain.model.TranscriptionStatus;
+import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Repository;
@@ -20,6 +22,11 @@ public class RecordingTranscriptionRepositoryAdapter implements RecordingTranscr
     @Override
     public Optional<RecordingTranscription> findByRecordingSessionId(long recordingSessionId) {
         return recordingTranscriptionJpaRepository.findByRecordingSessionId(recordingSessionId);
+    }
+
+    @Override
+    public List<RecordingTranscription> findAllByRecordingSessionIdIn(Collection<Long> recordingSessionIds) {
+        return recordingTranscriptionJpaRepository.findAllByRecordingSessionIdIn(recordingSessionIds);
     }
 
     @Override
