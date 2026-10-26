@@ -20,7 +20,6 @@ import com.knot.backend.recording.domain.repository.RecordingAudioStreamReposito
 import com.knot.backend.recording.domain.repository.RecordingAudioUploadRepository;
 import com.knot.backend.recording.domain.repository.RecordingSessionRepository;
 import com.knot.backend.recording.domain.repository.RecordingTranscriptionWindowRepository;
-import com.knot.backend.workspace.domain.repository.WorkspaceMemberRepository;
 import com.knot.backend.workspace.domain.repository.WorkspaceRepository;
 import java.time.Clock;
 import java.time.Duration;
@@ -47,7 +46,6 @@ public class RecordingTranscriptionWindowService {
     private final RecordingAudioCleanupRepository cleanup;
     private final RecordingTranscriptionWindowRepository windows;
     private final WorkspaceRepository workspaces;
-    private final WorkspaceMemberRepository members;
     private final RecordingTranscriptionWindowPlanner planner;
     private final ObjectMapper mapper;
     private final Clock clock;
@@ -410,11 +408,7 @@ public class RecordingTranscriptionWindowService {
         boolean recordingAvailable = session.isActive()
                 || (session.getStatus() == RecordingStatus.ENDED && session.getEndedAt() != null);
         return !revoked && !purged && recordingAvailable && workspaces.findById(session.getWorkspaceId())
-                .isPresent()
-                && members.existsByWorkspaceIdAndMemberId(
-                        session.getWorkspaceId(),
-                        session.getMemberId()
-                );
+                .isPresent();
     }
 
     private boolean hasInput(

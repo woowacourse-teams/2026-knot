@@ -1112,7 +1112,7 @@ class RecordingTranscriptionStateIntegrationTest {
     }
 
     @Test
-    @DisplayName("종료 후 시작자가 공유 워크스페이스에서 탈퇴하면 늦은 전사와 문서를 채택하지 않는다")
+    @DisplayName("종료 후 시작자가 공유 워크스페이스에서 탈퇴해도 늦은 전사와 문서를 채택한다")
     void complete_success_creatorLeftWorkspace() {
         // given
         long remaining = fixtures.saveMember("남은 회원");
@@ -1145,12 +1145,12 @@ class RecordingTranscriptionStateIntegrationTest {
                 transcript()
         );
         // then
-        assertThat(count("transcripts")).isZero();
-        assertThat(count("document_generation_jobs")).isZero();
+        assertThat(count("transcripts")).isEqualTo(1);
+        assertThat(count("document_generation_jobs")).isPositive();
         assertThat(
                 recordingTranscriptionStateService.findSnapshot(recordingId)
-                        .failureCode()
-        ).isEqualTo("RECORDING_UNAVAILABLE");
+                        .status()
+        ).isEqualTo(TranscriptionStatus.SUCCEEDED);
     }
 
     @Test

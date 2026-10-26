@@ -307,7 +307,7 @@ class PreparedTranscriptionWindowIntegrationTest {
     }
 
     @Test
-    @DisplayName("탈퇴 정리는 준비 WAV 상태와 저장된 구간 결과를 취소하고 지운다")
+    @DisplayName("폐기 정리는 준비 WAV 상태와 저장된 구간 결과를 취소하고 지운다")
     void schedule_success_cancelsPreparedInputAndPurgesWindowResults() {
         // given
         coordinator.advance(1);
@@ -320,7 +320,7 @@ class PreparedTranscriptionWindowIntegrationTest {
                         mapper.writeValueAsString(evidence(window))
                 )
         ).isTrue();
-        jdbc.sql("DELETE FROM workspace_members WHERE workspace_id=1 AND member_id=1")
+        jdbc.sql("UPDATE recording_sessions SET status='DISCARDED',end_reason=NULL WHERE id=1")
                 .update();
 
         // when

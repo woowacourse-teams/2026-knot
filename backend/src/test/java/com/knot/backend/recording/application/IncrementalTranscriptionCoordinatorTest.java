@@ -31,7 +31,6 @@ import com.knot.backend.recording.domain.repository.RecordingAudioUploadReposito
 import com.knot.backend.recording.domain.repository.RecordingSessionRepository;
 import com.knot.backend.recording.domain.repository.RecordingTranscriptionWindowRepository;
 import com.knot.backend.workspace.domain.model.Workspace;
-import com.knot.backend.workspace.domain.repository.WorkspaceMemberRepository;
 import com.knot.backend.workspace.domain.repository.WorkspaceRepository;
 import java.time.Clock;
 import java.time.Instant;
@@ -59,7 +58,6 @@ class IncrementalTranscriptionCoordinatorTest {
     private final RecordingAudioCleanupRepository cleanup = mock(RecordingAudioCleanupRepository.class);
     private final RecordingTranscriptionWindowRepository windows = mock(RecordingTranscriptionWindowRepository.class);
     private final WorkspaceRepository workspaces = mock(WorkspaceRepository.class);
-    private final WorkspaceMemberRepository members = mock(WorkspaceMemberRepository.class);
     private final RecordingTranscriptionWindowService windowService = mock(RecordingTranscriptionWindowService.class);
     private final IncrementalTranscriptMerger merger = mock(IncrementalTranscriptMerger.class);
     private final RecordingTranscriptionStateService state = mock(RecordingTranscriptionStateService.class);
@@ -76,7 +74,6 @@ class IncrementalTranscriptionCoordinatorTest {
             cleanup,
             windows,
             workspaces,
-            members,
             windowService,
             new RecordingTranscriptionWindowPlanner(mapper),
             merger,
@@ -93,12 +90,6 @@ class IncrementalTranscriptionCoordinatorTest {
         when(sessions.findWorkspaceIdById(1)).thenReturn(Optional.of(2L));
         when(workspaces.findIncludingDeletedByIdForUpdate(2L)).thenReturn(Optional.of(mock(Workspace.class)));
         when(workspaces.findById(2L)).thenReturn(Optional.of(mock(Workspace.class)));
-        when(
-                members.existsByWorkspaceIdAndMemberId(
-                        2L,
-                        3L
-                )
-        ).thenReturn(true);
         when(sessions.findByIdForUpdate(1)).thenReturn(Optional.of(session));
         when(session.getId()).thenReturn(1L);
         when(session.getWorkspaceId()).thenReturn(2L);

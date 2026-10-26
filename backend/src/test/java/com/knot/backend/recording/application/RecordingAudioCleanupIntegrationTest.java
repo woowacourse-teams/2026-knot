@@ -5,7 +5,6 @@ import static org.assertj.core.api.Assertions.catchThrowable;
 import com.knot.backend.recording.application.dto.result.RecordingTranscriptionExecution;
 import com.knot.backend.recording.application.dto.result.AiTranscript;
 import com.knot.backend.recording.application.dto.result.AudioFinalizationClaim;
-import com.knot.backend.recording.domain.AudioFinalizationLeaseLostException;
 import com.knot.backend.recording.domain.model.StoredAudioChunk;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
@@ -280,7 +279,7 @@ class RecordingAudioCleanupIntegrationTest {
     }
 
     @Test
-    void departureClosesJobAndStreamInSameTransaction() {
+    void departureKeepsQueuedFinalizationRunning() {
         // given
         jdbc.sql("UPDATE workspace_members SET left_at=now()")
                 .update();
@@ -292,7 +291,46 @@ class RecordingAudioCleanupIntegrationTest {
                 )
         );
         // then
+        assertThat(scope()).isEqualTo("DORMANT");
+        assertThat(repository.findCandidates(20)).isEmpty();
+        assertThat(
+                column(
+                        "status",
+                        String.class,
+                        "recording_audio_finalizations"
+                )
+        ).isEqualTo("QUEUED");
+        assertThat(
+                column(
+                        "frozen",
+                        Boolean.class,
+                        "recording_audio_streams"
+                )
+        ).isFalse();
+        assertThat(finalization.claim(1)).isPresent();
+    }
+
+    @Test
+    void departureAfterFinalizationFailureClosesJobAndStreamInSameTransaction() {
+        // given
+        jdbc.sql("UPDATE recording_audio_finalizations SET status='FAILED',retryable=TRUE")
+                .update();
+        jdbc.sql("UPDATE workspace_members SET left_at=now()")
+                .update();
+        // when
+        new TransactionTemplate(transactions).executeWithoutResult(
+                status -> state.afterDeparture(
+                        1,
+                        1
+                )
+        );
+        // then
         assertThat(scope()).isEqualTo("ALL");
+        assertThat(
+                state.claim(1)
+                        .orElseThrow()
+                        .storagePrefix()
+        ).isEqualTo("recordings/1/");
         assertThat(
                 column(
                         "status",
@@ -307,6 +345,81 @@ class RecordingAudioCleanupIntegrationTest {
                         "recording_audio_streams"
                 )
         ).isTrue();
+    }
+
+    @Test
+    void departureKeepsSavedFinalAudioAndCleansOnlyRawChunks() {
+        // given
+        ready();
+        completedUpload(NOW);
+        jdbc.sql("UPDATE workspace_members SET left_at=now()")
+                .update();
+        // when
+        new TransactionTemplate(transactions).executeWithoutResult(
+                status -> state.afterDeparture(
+                        1,
+                        1
+                )
+        );
+        // then
+        assertThat(scope()).isEqualTo("RAW");
+        assertThat(
+                state.claim(1)
+                        .orElseThrow()
+                        .storagePrefix()
+        ).isEqualTo("recordings/1/chunks/");
+        assertThat(
+                column(
+                        "revoked_at",
+                        Instant.class,
+                        "recording_audio_uploads"
+                )
+        ).isNull();
+        assertThat(
+                column(
+                        "status",
+                        String.class,
+                        "recording_audio_finalizations"
+                )
+        ).isEqualTo("READY");
+    }
+
+    @Test
+    void finalizationFailureAfterDepartureBecomesFinalSaveFailure() {
+        // given
+        jdbc.sql("UPDATE workspace_members SET left_at=now()")
+                .update();
+        new TransactionTemplate(transactions).executeWithoutResult(
+                status -> state.afterDeparture(
+                        1,
+                        1
+                )
+        );
+        AudioFinalizationClaim claim = finalization.claim(1)
+                .orElseThrow();
+        finalization.fail(
+                claim,
+                "AUDIO_STORAGE_UNAVAILABLE",
+                false
+        );
+        // when
+        List<Long> candidates = repository.findCandidates(20);
+        state.schedule(1);
+        // then
+        assertThat(candidates).containsExactly(1L);
+        assertThat(scope()).isEqualTo("ALL");
+        assertThat(
+                column(
+                        "status",
+                        String.class,
+                        "recording_audio_finalizations"
+                )
+        ).isEqualTo("DISCARDED");
+        assertThat(
+                jdbc.sql("SELECT count(*) FROM recording_audio_uploads")
+                        .query(Integer.class)
+                        .single()
+        ).isZero();
     }
 
     @Test
@@ -338,7 +451,7 @@ class RecordingAudioCleanupIntegrationTest {
     @Test
     void deleteFailureRemainsPendingAndLatePutIsSweptAgain() {
         // given
-        jdbc.sql("UPDATE workspace_members SET left_at=now()")
+        jdbc.sql("UPDATE recording_sessions SET status='DISCARDED',end_reason=NULL")
                 .update();
         state.schedule(1);
         doThrow(new IllegalStateException("저장소 장애")).doNothing()
@@ -422,7 +535,7 @@ class RecordingAudioCleanupIntegrationTest {
     }
 
     @Test
-    void departureCommitRejectsFinalizerWaitingOnWorkspaceLock() throws Exception {
+    void departureCommitLetsWaitingFinalizerAdoptWav() throws Exception {
         // given
         AudioFinalizationClaim claim = finalization.claim(1)
                 .orElseThrow();
@@ -502,25 +615,27 @@ class RecordingAudioCleanupIntegrationTest {
                                 10,
                                 TimeUnit.SECONDS
                         )
-                ).isInstanceOf(AudioFinalizationLeaseLostException.class);
-                assertThat(scope()).isEqualTo("ALL");
+                ).isNull();
+                assertThat(scope()).isEqualTo("DORMANT");
                 assertThat(
                         column(
                                 "status",
                                 String.class,
                                 "recording_audio_finalizations"
                         )
-                ).isEqualTo("DISCARDED");
+                ).isEqualTo("READY");
                 assertThat(
                         jdbc.sql("SELECT count(*) FROM recording_audio_uploads")
                                 .query(Integer.class)
                                 .single()
-                ).isZero();
+                ).isOne();
                 assertThat(
                         jdbc.sql("SELECT count(*) FROM recording_transcriptions")
                                 .query(Integer.class)
                                 .single()
-                ).isZero();
+                ).isOne();
+                state.schedule(1);
+                assertThat(scope()).isEqualTo("RAW");
             } finally {
                 releaseCleanup.countDown();
             }
@@ -637,8 +752,8 @@ class RecordingAudioCleanupIntegrationTest {
     @org.junit.jupiter.params.ParameterizedTest
     @org.junit.jupiter.params.provider.ValueSource(strings = {
             "UPDATE recording_sessions SET status='DISCARDED',end_reason=NULL",
-            "UPDATE workspace_members SET left_at=now()", "UPDATE workspaces SET deleted_at=now()"})
-    void discardDepartureAndWorkspaceDeletionStillScheduleAll(String cleanupReason) {
+            "UPDATE workspaces SET deleted_at=now()"})
+    void discardAndWorkspaceDeletionStillScheduleAll(String cleanupReason) {
         // given
         ready();
         completedUpload(NOW);
@@ -663,11 +778,11 @@ class RecordingAudioCleanupIntegrationTest {
     }
 
     @Test
-    void leavingAndRejoiningCannotAdoptLateAiResult() {
+    void departedStarterRecordingStillAdoptsLateAiResult() {
         // given
         RecordingTranscriptionExecution execution = queuedExecution();
         assertThat(transcriptionState.prepare(execution)).isPresent();
-        departAndRejoin();
+        depart();
         AiTranscript result = new AiTranscript(
                 1,
                 "{}",
@@ -691,24 +806,19 @@ class RecordingAudioCleanupIntegrationTest {
                 jdbc.sql("SELECT count(*) FROM transcripts")
                         .query(Integer.class)
                         .single()
-        ).isZero();
-        assertThat(
-                jdbc.sql("SELECT count(*) FROM document_generation_batches")
-                        .query(Integer.class)
-                        .single()
-        ).isZero();
+        ).isOne();
         assertThat(
                 jdbc.sql("SELECT status FROM recording_transcriptions")
                         .query(String.class)
                         .single()
-        ).isEqualTo("FAILED");
+        ).isEqualTo("SUCCEEDED");
         assertThat(
                 column(
                         "revoked_at",
                         Instant.class,
                         "recording_audio_uploads"
                 )
-        ).isEqualTo(NOW);
+        ).isNull();
         assertThat(
                 column(
                         "deleted_at",
@@ -726,54 +836,52 @@ class RecordingAudioCleanupIntegrationTest {
     }
 
     @Test
-    void leavingAndRejoiningPermanentlyRejectsTranscriptionRetry() {
+    void currentMemberRetriesTranscriptionAfterStarterLeaves() {
         // given
+        long teammateId = joinTeammate();
         RecordingTranscriptionExecution execution = queuedExecution();
         transcriptionState.fail(
                 execution,
                 "INFERENCE_FAILED"
         );
-        departAndRejoin();
+        depart();
         // when
-        Throwable failure = catchThrowable(
-                () -> transcriptionState.retry(
-                        1,
-                        1,
-                        1
-                )
+        transcriptionState.retry(
+                1,
+                teammateId,
+                1
         );
         // then
-        assertThat(failure).isInstanceOf(com.knot.backend.recording.domain.RecordingException.class);
         assertThat(
                 jdbc.sql("SELECT status FROM recording_transcriptions")
                         .query(String.class)
                         .single()
-        ).isEqualTo("FAILED");
+        ).isEqualTo("QUEUED");
     }
 
     @Test
-    void leavingAndRejoiningPermanentlyRejectsPreparedRemotePost() {
+    void departedStarterRecordingStillPreparesRemotePost() {
         // given
         RecordingTranscriptionExecution execution = queuedExecution();
-        departAndRejoin();
+        depart();
         // when
         Optional<RecordingTranscriptionExecution> prepared = transcriptionState.prepare(execution);
         // then
-        assertThat(prepared).isEmpty();
+        assertThat(prepared).isPresent();
         assertThat(
                 column(
                         "revoked_at",
                         Instant.class,
                         "recording_audio_uploads"
                 )
-        ).isEqualTo(NOW);
+        ).isNull();
     }
 
     @Test
-    void leavingAndRejoiningRejectsUncertainRetryBeforeRemoteLookup() {
+    void departedStarterCannotRequestUncertainRetry() {
         // given
         queuedExecution();
-        departAndRejoin();
+        depart();
         // when
         Throwable failure = catchThrowable(
                 () -> transcriptionState.findUncertainRetry(
@@ -783,7 +891,7 @@ class RecordingAudioCleanupIntegrationTest {
                 )
         );
         // then
-        assertThat(failure).isInstanceOf(com.knot.backend.recording.domain.RecordingException.class);
+        assertThat(failure).isInstanceOf(com.knot.backend.workspace.domain.WorkspaceException.class);
     }
 
     private void awaitBarrier(CountDownLatch barrier) {
@@ -833,8 +941,8 @@ class RecordingAudioCleanupIntegrationTest {
                 .orElseThrow();
     }
 
-    private void departAndRejoin() {
-        jdbc.sql("UPDATE workspace_members SET left_at=now()")
+    private void depart() {
+        jdbc.sql("UPDATE workspace_members SET left_at=now() WHERE member_id=1")
                 .update();
         new TransactionTemplate(transactions).executeWithoutResult(
                 status -> state.afterDeparture(
@@ -842,8 +950,22 @@ class RecordingAudioCleanupIntegrationTest {
                         1
                 )
         );
-        jdbc.sql("UPDATE workspace_members SET left_at=NULL")
+    }
+
+    private long joinTeammate() {
+        long teammateId = jdbc.sql("INSERT INTO members (nickname) VALUES ('남은 멤버') RETURNING id")
+                .query(Long.class)
+                .single();
+        jdbc.sql("""
+                INSERT INTO workspace_members(workspace_id,member_id,role,joined_at,last_viewed)
+                VALUES (1,:memberId,'MEMBER',now(),FALSE)
+                """)
+                .param(
+                        "memberId",
+                        teammateId
+                )
                 .update();
+        return teammateId;
     }
 
     private String scope() {

@@ -22,7 +22,6 @@ import com.knot.backend.recording.domain.repository.RecordingAudioChunkRepositor
 import com.knot.backend.recording.domain.repository.RecordingAudioFinalizationRepository;
 import com.knot.backend.recording.domain.repository.RecordingAudioUploadRepository;
 import com.knot.backend.workspace.domain.repository.WorkspaceRepository;
-import com.knot.backend.workspace.domain.repository.WorkspaceMemberRepository;
 import java.time.Clock;
 import java.time.Duration;
 import java.security.MessageDigest;
@@ -49,7 +48,6 @@ public class RecordingAudioFinalizationTransaction {
     private final RecordingAudioFinalizationRepository jobs;
     private final RecordingAudioUploadRepository uploads;
     private final WorkspaceRepository workspaces;
-    private final WorkspaceMemberRepository members;
     private final RecordingAccess access;
     private final RecordingTranscriptionStateService transcriptions;
     private final RecordingTranscriptionService dispatcher;
@@ -331,15 +329,12 @@ public class RecordingAudioFinalizationTransaction {
                 .orElseThrow(() -> new RecordingException(RecordingErrorCode.RECORDING_NOT_FOUND));
     }
 
+    // 시작한 Member가 나가도 받은 구간으로 최종화를 마친다. 멈추는 사유는 폐기와 Workspace 삭제뿐이다.
     private boolean available(RecordingSession session) {
         return session.getAudioMode() == RecordingAudioMode.PCM16_CHUNKS_V1
                 && session.getStatus() == RecordingStatus.ENDED && session.getEndedAt() != null
                 && workspaces.findById(session.getWorkspaceId())
-                        .isPresent()
-                && members.existsByWorkspaceIdAndMemberId(
-                        session.getWorkspaceId(),
-                        session.getMemberId()
-                );
+                        .isPresent();
     }
 
     @Transactional

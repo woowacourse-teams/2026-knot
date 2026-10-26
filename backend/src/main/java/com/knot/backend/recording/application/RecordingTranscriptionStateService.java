@@ -26,7 +26,6 @@ import com.knot.backend.recording.domain.model.TranscriptSegment;
 import com.knot.backend.recording.domain.repository.TranscriptSegmentRepository;
 import com.knot.backend.recording.domain.model.TranscriptUtterance;
 import com.knot.backend.workspace.domain.repository.WorkspaceRepository;
-import com.knot.backend.workspace.domain.repository.WorkspaceMemberRepository;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -43,7 +42,6 @@ import org.springframework.transaction.annotation.Transactional;
 public class RecordingTranscriptionStateService {
     private final RecordingAccess recordingAccess;
     private final WorkspaceRepository workspaceRepository;
-    private final WorkspaceMemberRepository workspaceMemberRepository;
     private final RecordingSessionRepository recordingSessionRepository;
     private final RecordingAudioUploadRepository recordingAudioUploadRepository;
     private final RecordingTranscriptionRepository recordingTranscriptionRepository;
@@ -226,12 +224,6 @@ public class RecordingTranscriptionStateService {
                     .isPresent();
             boolean recordingAvailable = recordingSessionRepository.findByIdForUpdate(executionContext.recordingId())
                     .filter(value -> value.isTranscribableIn(executionContext.workspaceId()))
-                    .filter(
-                            value -> workspaceMemberRepository.existsByWorkspaceIdAndMemberId(
-                                    executionContext.workspaceId(),
-                                    value.getMemberId()
-                            )
-                    )
                     .isPresent();
             Optional<RecordingTranscription> processingAttempt = recordingTranscriptionRepository
                     .findByRecordingSessionIdForUpdate(executionContext.recordingId())
@@ -399,12 +391,7 @@ public class RecordingTranscriptionStateService {
         RecordingSession session = recordingSessionRepository.findByIdForUpdate(recordingId)
                 .orElseThrow(() -> new RecordingException(RecordingErrorCode.RECORDING_NOT_FOUND));
         if ((session.getIncrementalPipelineVersion() == null && transcriptionInputs.findByRecordingId(recordingId)
-                .isEmpty())
-                || !session.isTranscribableIn(workspaceId)
-                || !workspaceMemberRepository.existsByWorkspaceIdAndMemberId(
-                        workspaceId,
-                        session.getMemberId()
-                )) {
+                .isEmpty()) || !session.isTranscribableIn(workspaceId)) {
             throw new RecordingException(RecordingErrorCode.RECORDING_NOT_FOUND);
         }
         return session;
@@ -498,12 +485,6 @@ public class RecordingTranscriptionStateService {
                 .isPresent();
         boolean recordingAvailable = recordingSessionRepository.findByIdForUpdate(execution.recordingId())
                 .filter(row -> row.isTranscribableIn(execution.workspaceId()))
-                .filter(
-                        row -> workspaceMemberRepository.existsByWorkspaceIdAndMemberId(
-                                execution.workspaceId(),
-                                row.getMemberId()
-                        )
-                )
                 .isPresent();
         Optional<RecordingTranscription> value = owned(execution);
         if (value.isEmpty()) {
