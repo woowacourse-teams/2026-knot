@@ -32,7 +32,7 @@ def proposal_result():
         "status": "needs_user_input",
         "changed": [],
         "next": [],
-        "question": "기능 제안: 탐색 답변 복사 버튼. 1차 컨펌이 필요하다.",
+        "question": "제안 페이지 https://app.notion.com/p/proposal 에서 1차 컨펌을 받아야 한다.",
         "side_effects": [],
     }
 
@@ -45,7 +45,7 @@ def pending_state():
         "done_condition": "development",
         "remote_write_authorized": True,
         "implementer": "vlmbuyd",
-        "plan_confirmation": {"required": True, "status": "pending"},
+        "plan_confirmation": {"required": True, "status": "pending", "proposal_url": "https://app.notion.com/p/proposal"},
         "answers": [],
         "steps": [
             {"agent": "기능 요구사항", "message": "기존과 대조해 제안해라", "result": proposal_result()},
@@ -66,8 +66,9 @@ def valid_state():
         "plan_confirmation": {
             "required": True,
             "status": "confirmed",
-            "confirmed_by": ["vlmbuyd"],
-            "evidence": "2026-10-26 디스코드 기능 제안 스레드",
+            "proposal_url": "https://app.notion.com/p/proposal",
+            "confirmed_by": ["유월"],
+            "evidence": "컨펌 날짜 2026-10-26, 바뀐 점 없음",
         },
         "answers": [{"to": "이슈", "question": "게시할까요?", "answer": "허용"}],
         "steps": [
@@ -169,9 +170,27 @@ class PlanConfirmationTest(unittest.TestCase):
         state["issues"] = [{"area": "frontend", "number": 12, "url": "https://github.com/o/r/issues/12"}]
         self.assertTrue(any("이슈와 PR을 만들지 않는다" in e for e in fp.validate_state(state)))
 
+    def test_rejected_proposal_leaves_nothing_to_roll_back(self):
+        state = pending_state()
+        state["plan_confirmation"]["status"] = "rejected"
+        self.assertEqual(fp.validate_state(state), [])
+        state["issues"] = [{"area": "frontend", "number": 12, "url": "https://github.com/o/r/issues/12"}]
+        self.assertTrue(any("rejected" in e and "이슈와 PR" in e for e in fp.validate_state(state)))
+
+    def test_required_confirmation_needs_proposal_page(self):
+        state = pending_state()
+        del state["plan_confirmation"]["proposal_url"]
+        self.assertTrue(any("proposal_url" in e for e in fp.validate_state(state)))
+
     def test_confirmed_needs_who_and_evidence(self):
         state = valid_state()
-        state["plan_confirmation"] = {"required": True, "status": "confirmed", "confirmed_by": [], "evidence": " "}
+        state["plan_confirmation"] = {
+            "required": True,
+            "status": "confirmed",
+            "proposal_url": "https://app.notion.com/p/proposal",
+            "confirmed_by": [],
+            "evidence": " ",
+        }
         errors = fp.validate_state(state)
         self.assertTrue(any("confirmed_by" in e for e in errors))
         self.assertTrue(any("evidence" in e for e in errors))
@@ -180,7 +199,7 @@ class PlanConfirmationTest(unittest.TestCase):
         state = valid_state()
         state["plan_confirmation"] = {"required": False, "status": "not_needed"}
         self.assertEqual(fp.validate_state(state), [])
-        state["plan_confirmation"] = {"required": True, "status": "not_needed"}
+        state["plan_confirmation"] = {"required": True, "status": "not_needed", "proposal_url": "https://app.notion.com/p/proposal"}
         self.assertTrue(any("cannot be not_needed" in e for e in fp.validate_state(state)))
         state["plan_confirmation"] = {"required": False, "status": "pending"}
         self.assertTrue(any("must be not_needed" in e for e in fp.validate_state(state)))

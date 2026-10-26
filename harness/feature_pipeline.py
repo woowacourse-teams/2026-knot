@@ -38,7 +38,8 @@ MESSAGES = (
 )
 AREAS = ("frontend", "backend", "both")
 DONE_CONDITIONS = ("issue", "development")
-PLAN_CONFIRMATION_STATUSES = ("pending", "confirmed", "not_needed")
+PLAN_CONFIRMATION_STATUSES = ("pending", "confirmed", "rejected", "not_needed")
+UNCONFIRMED_STATUSES = ("pending", "rejected")
 NOTION_CHANGES_TITLE = "노션 변경 사항"
 
 
@@ -178,7 +179,10 @@ def validate_state(state: Any) -> list[str]:
 
 
 def validate_plan_confirmation(state: dict[str, Any]) -> list[str]:
-    """기능 추가, 수정, 삭제는 1차 컨펌 전에 노션, Figma, 이슈, PR을 바꾸지 않는다."""
+    """기능 추가, 수정, 삭제는 1차 컨펌 전에 노션, Figma, 이슈, PR을 바꾸지 않는다.
+
+    확정 전 제안은 노션 「기능 요구사항 검토」 DB의 제안 페이지(`proposal_url`)에만 있다.
+    """
     confirmation = state.get("plan_confirmation")
     if confirmation is None:
         return []
@@ -195,8 +199,10 @@ def validate_plan_confirmation(state: dict[str, Any]) -> list[str]:
         )
     if required is True and status == "not_needed":
         errors.append("plan_confirmation.status cannot be not_needed when required is true")
-    if required is False and status in ("pending", "confirmed"):
+    if required is False and status in ("pending", "confirmed", "rejected"):
         errors.append("plan_confirmation.status must be not_needed when required is false")
+    if required is True and not _is_url(confirmation.get("proposal_url")):
+        errors.append("plan_confirmation.proposal_url must be the 기능 요구사항 검토 page URL")
     if status == "confirmed":
         confirmed_by = confirmation.get("confirmed_by")
         if not isinstance(confirmed_by, list) or not confirmed_by:
@@ -205,15 +211,15 @@ def validate_plan_confirmation(state: dict[str, Any]) -> list[str]:
             _string_list(confirmed_by, "plan_confirmation.confirmed_by", errors)
         if not _is_nonblank_string(confirmation.get("evidence")):
             errors.append("plan_confirmation.evidence is required when confirmed")
-    if status == "pending":
+    if status in UNCONFIRMED_STATUSES:
         if collect_changed(state):
-            errors.append("plan_confirmation is pending: 1차 컨펌 전에는 노션과 Figma를 바꾸지 않는다")
+            errors.append(f"plan_confirmation is {status}: 1차 컨펌 전에는 노션과 Figma를 바꾸지 않는다")
         if state.get("issues") or state.get("prs"):
-            errors.append("plan_confirmation is pending: 1차 컨펌 전에는 이슈와 PR을 만들지 않는다")
+            errors.append(f"plan_confirmation is {status}: 1차 컨펌 전에는 이슈와 PR을 만들지 않는다")
         for index, step in enumerate(state.get("steps", [])):
             if isinstance(step, dict) and step.get("message") not in (None, PROPOSE_MESSAGE):
                 errors.append(
-                    f"steps[{index}] runs before 1차 컨펌: pending 동안에는 「{PROPOSE_MESSAGE}」만 실행한다"
+                    f"steps[{index}] runs before 1차 컨펌: {status} 동안에는 「{PROPOSE_MESSAGE}」만 실행한다"
                 )
     return errors
 

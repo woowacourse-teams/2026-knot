@@ -30,8 +30,8 @@
 - 인터뷰, Grill처럼 사용자에게 물을 것은 `needs_user_input`으로 한 질문씩 돌려준다. 입구가 답을
   붙여 다시 부르면 상태 파일의 답을 읽고 이어서 진행한다.
 - 상태 파일 `plan_confirmation.status`가 `pending`이면 이슈를 만들지 않고 `blocked`로 돌아온다.
-  1차 컨펌을 받았으면(`confirmed`) `메모`에 「1차 컨펌: <confirmed_by 이름>, <evidence>」를 한 줄
-  적는다. 컨펌에서 디자인을 기획 컨펌 담당에게 맡겼고 아직 링크가 없으면 「디자인 대기」도 적는다.
+  1차 컨펌을 받았으면(`confirmed`) `메모`에 「1차 컨펌: <confirmed_by>, <evidence>, 제안 <proposal_url>」을
+  한 줄 적는다. 컨펌에서 디자인을 기획 컨펌 담당에게 맡겼고 아직 링크가 없으면 「디자인 대기」도 적는다.
 - 담당자(assignee)와 이름 라벨은 상태 파일 `implementer`다. 이 값이 Issue 계약의 「현재 요청에서
   지정한 실제 개발자」이므로 묻지 않는다. 이름 라벨은 `python3 harness/team_roles.py member
   <implementer>`의 `label`이다. 이슈를 쓴 사람이나 그 도메인의 평소 담당자로 정하지 않는다(#979).
