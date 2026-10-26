@@ -5,14 +5,14 @@ import { useState } from "react";
 import type { MeetingSourceState } from "../types/meetingSource";
 import MeetingAudioConnectDialog from "../ui/MeetingAudioConnectDialog";
 
-/** 휴대폰, 태블릿인지. 공유 창으로 회의 소리를 받을 수 없어 「모바일은 지원 안 함」으로 알려요 */
+/** 휴대폰, 태블릿인지. 공유 창으로 회의 소리를 받을 수 없어 컴퓨터에서만 된다고 알려요 */
 const isMobileDevice = () =>
   /Android|iPhone|iPad|iPod|Mobi/i.test(navigator.userAgent);
 
 /**
- * 녹음 화면의 「녹음하는 소리」 패널을 다룹니다.
+ * 녹음 화면의 「화상 회의 상대방 목소리」 줄을 다룹니다.
  *
- * 「함께 녹음하기」나 「다시 연결하기」를 누르면 연결 안내 모달을 먼저 띄우고, 모달의 「공유 창 열기」를 누른 그 자리에서
+ * 「함께 녹음하기」나 「다시 연결하기」를 누르면 연결 안내 모달을 먼저 띄우고, 모달의 「공유할 화면 고르기」를 누른 그 자리에서
  * 공유 창을 열어요. 공유 창은 사용자의 누름 안에서만 열리기 때문이에요. 공유 창에서 고르는 동안은 `connecting`이에요.
  * 녹음을 끝내는 동안에는 버튼을 숨겨요.
  */
@@ -51,7 +51,6 @@ export const useMeetingAudioOption = () => {
           : meetingAudioStatus;
 
   return {
-    isPaused: status === "paused",
     meetingState,
     isEnding,
     handleConnectClick,

@@ -1,10 +1,12 @@
+import { MEDIA_QUERY } from "@constants/breakpoint";
 import type { Theme } from "@emotion/react";
 import styled from "@emotion/styled";
 import type { ReactNode } from "react";
 
 /** 소리 이름 옆의 상태 표시. 녹음 중은 빨강, 확인이 필요한 알림은 주의색, 나머지는 회색이에요 */
 export interface SoundSourceStatus {
-  label: string;
+  /** 없으면 이름 옆 표시 없이 줄의 색만 바꿔요 */
+  label?: string;
   tone: "recording" | "paused" | "caution" | "disabled";
 }
 
@@ -16,14 +18,13 @@ interface SoundSourceCardProps {
   description: string;
   /** 오른쪽 끝에 둘 버튼 */
   action?: ReactNode;
-  /** 상태와 설명이 바뀌면 화면 낭독기가 읽게 해요 */
-  isLiveRegion?: boolean;
 }
 
 /**
- * 녹음하는 소리 하나(마이크, 온라인 회의)를 보여 주는 줄. Figma `Recorder/SoundSource`의 `Source`예요.
+ * 녹음하는 소리 하나를 보여 주는 줄. Figma `Recorder/SoundSource`의 `Source`예요.
  *
  * 상태가 `caution`이면 테두리를 주의색으로, `disabled`면 줄 전체를 흐리게 그려요.
+ * 상태와 설명이 바뀌면 화면 낭독기가 읽어요.
  */
 export default function SoundSourceCard({
   icon,
@@ -31,7 +32,6 @@ export default function SoundSourceCard({
   status,
   description,
   action,
-  isLiveRegion = false,
 }: SoundSourceCardProps) {
   const tone = status?.tone;
 
@@ -40,10 +40,10 @@ export default function SoundSourceCard({
       <IconWrap aria-hidden $tone={tone}>
         {icon}
       </IconWrap>
-      <Text role={isLiveRegion ? "status" : undefined}>
+      <Text role="status">
         <TitleRow>
           <Title $tone={tone}>{title}</Title>
-          {status && (
+          {status?.label && (
             <Status $tone={status.tone}>
               <Dot aria-hidden $tone={status.tone} />
               {status.label}
@@ -61,18 +61,20 @@ type Tone = SoundSourceStatus["tone"] | undefined;
 
 const Container = styled.div<{ $tone: Tone }>`
   display: flex;
-  flex: 1;
   align-items: center;
   gap: 0.75rem; /* 12px */
   min-width: 0;
-  padding: 1rem; /* 16px */
+  padding: 0.75rem 1rem; /* 12px 16px */
+  border: 1px solid
+    ${({ theme, $tone }) =>
+      $tone === "caution" ? theme.sub.caution[700] : theme.neutral[200]};
   border-radius: 0.875rem; /* 14px */
   background-color: ${({ theme, $tone }) =>
     $tone === "disabled" ? theme.neutral[100] : theme.neutral[50]};
-  /* 피그마 테두리는 안쪽 선이라 여백을 밀지 않게 그림자로 그려요 */
-  box-shadow: inset 0 0 0 1px
-    ${({ theme, $tone }) =>
-      $tone === "caution" ? theme.sub.caution[700] : theme.neutral[200]};
+
+  ${MEDIA_QUERY.mobile} {
+    padding: 1rem; /* 16px */
+  }
 
   & > button {
     flex-shrink: 0;
@@ -145,6 +147,5 @@ const Description = styled.p<{ $tone: Tone }>`
   ${({ theme }) => theme.text.caption02};
   color: ${({ theme, $tone }) =>
     $tone === "disabled" ? theme.neutral[500] : theme.neutral[600]};
-  white-space: pre-line;
   overflow-wrap: break-word;
 `;
