@@ -26,8 +26,11 @@ AGENTS = (
     "FE 구현 하네스",
     "BE 구현 하네스",
 )
+PROPOSE_MESSAGE = "기존과 대조해 제안해라"
+UPDATE_MESSAGE = "기존과 대조해 업데이트해라"
 MESSAGES = (
-    "기존과 대조해 업데이트해라",
+    PROPOSE_MESSAGE,
+    UPDATE_MESSAGE,
     "업데이트해라",
     "시나리오 뽑아 업데이트해라",
     "이슈 생성해",
@@ -35,6 +38,7 @@ MESSAGES = (
 )
 AREAS = ("frontend", "backend", "both")
 DONE_CONDITIONS = ("issue", "development")
+PLAN_CONFIRMATION_STATUSES = ("pending", "confirmed", "not_needed")
 NOTION_CHANGES_TITLE = "노션 변경 사항"
 
 
@@ -164,6 +168,53 @@ def validate_state(state: Any) -> list[str]:
                 number = item.get("number")
                 if not isinstance(number, int) or isinstance(number, bool) or number <= 0:
                     errors.append(f"{prefix}.number must be a positive integer")
+    implementer = state.get("implementer")
+    if implementer is not None and not _is_nonblank_string(implementer):
+        errors.append("implementer must be null or a GitHub login")
+    if (state.get("issues") or state.get("prs")) and not _is_nonblank_string(implementer):
+        errors.append("implementer is required before issues or prs are created")
+    errors.extend(validate_plan_confirmation(state))
+    return errors
+
+
+def validate_plan_confirmation(state: dict[str, Any]) -> list[str]:
+    """기능 추가, 수정, 삭제는 1차 컨펌 전에 노션, Figma, 이슈, PR을 바꾸지 않는다."""
+    confirmation = state.get("plan_confirmation")
+    if confirmation is None:
+        return []
+    if not isinstance(confirmation, dict):
+        return ["plan_confirmation must be an object"]
+    errors: list[str] = []
+    required = confirmation.get("required")
+    status = confirmation.get("status")
+    if not isinstance(required, bool):
+        errors.append("plan_confirmation.required must be a boolean")
+    if status not in PLAN_CONFIRMATION_STATUSES:
+        errors.append(
+            f"plan_confirmation.status must be one of {', '.join(PLAN_CONFIRMATION_STATUSES)}"
+        )
+    if required is True and status == "not_needed":
+        errors.append("plan_confirmation.status cannot be not_needed when required is true")
+    if required is False and status in ("pending", "confirmed"):
+        errors.append("plan_confirmation.status must be not_needed when required is false")
+    if status == "confirmed":
+        confirmed_by = confirmation.get("confirmed_by")
+        if not isinstance(confirmed_by, list) or not confirmed_by:
+            errors.append("plan_confirmation.confirmed_by must be a non-empty list when confirmed")
+        else:
+            _string_list(confirmed_by, "plan_confirmation.confirmed_by", errors)
+        if not _is_nonblank_string(confirmation.get("evidence")):
+            errors.append("plan_confirmation.evidence is required when confirmed")
+    if status == "pending":
+        if collect_changed(state):
+            errors.append("plan_confirmation is pending: 1차 컨펌 전에는 노션과 Figma를 바꾸지 않는다")
+        if state.get("issues") or state.get("prs"):
+            errors.append("plan_confirmation is pending: 1차 컨펌 전에는 이슈와 PR을 만들지 않는다")
+        for index, step in enumerate(state.get("steps", [])):
+            if isinstance(step, dict) and step.get("message") not in (None, PROPOSE_MESSAGE):
+                errors.append(
+                    f"steps[{index}] runs before 1차 컨펌: pending 동안에는 「{PROPOSE_MESSAGE}」만 실행한다"
+                )
     return errors
 
 

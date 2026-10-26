@@ -27,6 +27,34 @@ def valid_result():
     }
 
 
+def proposal_result():
+    return {
+        "status": "needs_user_input",
+        "changed": [],
+        "next": [],
+        "question": "기능 제안: 탐색 답변 복사 버튼. 1차 컨펌이 필요하다.",
+        "side_effects": [],
+    }
+
+
+def pending_state():
+    return {
+        "request": "탐색 답변에 복사 버튼 만들어 줘",
+        "existing_issue_url": None,
+        "area": "frontend",
+        "done_condition": "development",
+        "remote_write_authorized": True,
+        "implementer": "vlmbuyd",
+        "plan_confirmation": {"required": True, "status": "pending"},
+        "answers": [],
+        "steps": [
+            {"agent": "기능 요구사항", "message": "기존과 대조해 제안해라", "result": proposal_result()},
+        ],
+        "issues": [],
+        "prs": [],
+    }
+
+
 def valid_state():
     return {
         "request": "탐색 답변에 복사 버튼 만들어 줘",
@@ -34,8 +62,16 @@ def valid_state():
         "area": "frontend",
         "done_condition": "development",
         "remote_write_authorized": False,
+        "implementer": "vlmbuyd",
+        "plan_confirmation": {
+            "required": True,
+            "status": "confirmed",
+            "confirmed_by": ["vlmbuyd"],
+            "evidence": "2026-10-26 디스코드 기능 제안 스레드",
+        },
         "answers": [{"to": "이슈", "question": "게시할까요?", "answer": "허용"}],
         "steps": [
+            {"agent": "기능 요구사항", "message": "기존과 대조해 제안해라", "result": proposal_result()},
             {"agent": "기능 요구사항", "message": "기존과 대조해 업데이트해라", "result": valid_result()},
         ],
         "issues": [{"area": "frontend", "number": 12, "url": "https://github.com/o/r/issues/12"}],
@@ -101,6 +137,12 @@ class StateFileTest(unittest.TestCase):
         state["issues"][0]["number"] = "12"
         self.assertTrue(any("issues[0].number" in e for e in fp.validate_state(state)))
 
+    def test_implementer_is_required_once_issue_exists(self):
+        # #979: 이슈 담당자가 실제 구현한 사람과 달랐다. 이슈를 만들기 전에 구현할 사람을 적는다.
+        state = valid_state()
+        del state["implementer"]
+        self.assertIn("implementer is required before issues or prs are created", fp.validate_state(state))
+
     def test_collect_changed_keeps_step_order(self):
         state = valid_state()
         second = valid_result()
@@ -108,6 +150,45 @@ class StateFileTest(unittest.TestCase):
         state["steps"].append({"agent": "이슈", "message": "이슈 생성해", "result": second})
         kinds = [item["kind"] for item in fp.collect_changed(state)]
         self.assertEqual(kinds, ["notion", "figma", "issue"])
+
+
+class PlanConfirmationTest(unittest.TestCase):
+    def test_pending_proposal_passes(self):
+        self.assertEqual(fp.validate_state(pending_state()), [])
+
+    def test_pending_blocks_notion_update(self):
+        # #982: 1차 컨펌 전에 노션 정본과 이슈를 다 만든 뒤 컨펌을 요청했다.
+        state = pending_state()
+        state["steps"].append({"agent": "기능 요구사항", "message": "기존과 대조해 업데이트해라", "result": valid_result()})
+        errors = fp.validate_state(state)
+        self.assertTrue(any("노션과 Figma를 바꾸지 않는다" in e for e in errors))
+        self.assertTrue(any("steps[1] runs before 1차 컨펌" in e for e in errors))
+
+    def test_pending_blocks_issue(self):
+        state = pending_state()
+        state["issues"] = [{"area": "frontend", "number": 12, "url": "https://github.com/o/r/issues/12"}]
+        self.assertTrue(any("이슈와 PR을 만들지 않는다" in e for e in fp.validate_state(state)))
+
+    def test_confirmed_needs_who_and_evidence(self):
+        state = valid_state()
+        state["plan_confirmation"] = {"required": True, "status": "confirmed", "confirmed_by": [], "evidence": " "}
+        errors = fp.validate_state(state)
+        self.assertTrue(any("confirmed_by" in e for e in errors))
+        self.assertTrue(any("evidence" in e for e in errors))
+
+    def test_not_needed_matches_required_false(self):
+        state = valid_state()
+        state["plan_confirmation"] = {"required": False, "status": "not_needed"}
+        self.assertEqual(fp.validate_state(state), [])
+        state["plan_confirmation"] = {"required": True, "status": "not_needed"}
+        self.assertTrue(any("cannot be not_needed" in e for e in fp.validate_state(state)))
+        state["plan_confirmation"] = {"required": False, "status": "pending"}
+        self.assertTrue(any("must be not_needed" in e for e in fp.validate_state(state)))
+
+    def test_propose_message_is_known(self):
+        result = valid_result()
+        result["next"] = [{"agent": "기능 요구사항", "message": "기존과 대조해 제안해라"}]
+        self.assertEqual(fp.validate_result(result), [])
 
 
 class RenderTest(unittest.TestCase):
