@@ -8,6 +8,7 @@ import SearchEvidenceToggle from "@features/search/SearchEvidenceToggle";
 import useKeyDown from "@hooks/common/useKeyDown";
 import useMediaQuery from "@hooks/common/useMediaQuery";
 import useTranscriptPanel from "@hooks/domain/document/useTranscriptPanel";
+import useRecordingDocumentStatus from "@hooks/domain/recording/useRecordingDocumentStatus";
 import useRecordingLeaveWarning from "@hooks/domain/recording/useRecordingLeaveWarning";
 import useAbortSearchAnswerOnLeave from "@hooks/domain/search/useAbortSearchAnswerOnLeave";
 import useOpenedEvidenceMessage from "@hooks/domain/search/useOpenedEvidenceMessage";
@@ -22,6 +23,7 @@ import useScrollRestoration from "@hooks/common/useScrollRestoration";
 import LoadingIndicator from "@primitives/ui/LoadingIndicator";
 import PageErrorNotice from "@primitives/ui/PageErrorNotice";
 import { ToastViewport } from "@provider/context/toastContext";
+import { PATH_ROUTE } from "@routes/PATH_ROUTE";
 import ChatListDrawer from "@widgets/chat/ChatListDrawer";
 import TranscriptPanel from "@widgets/document/TranscriptPanel";
 import SearchEvidenceList from "@widgets/search/SearchEvidenceList";
@@ -29,7 +31,7 @@ import WorkspaceDock from "@widgets/workspace/WorkspaceDock";
 import WorkspaceGnb from "@widgets/workspace/WorkspaceGnb";
 import WorkspaceSidebar from "@widgets/workspace/WorkspaceSidebar";
 import { useState, type MouseEvent } from "react";
-import { Outlet, useLocation, useParams } from "react-router";
+import { Outlet, useLocation, useMatch, useParams } from "react-router";
 
 import ChatListIcon from "@/assets/icons/chatList.svg";
 import SidebarIcon from "@/assets/icons/sidebar.svg";
@@ -56,6 +58,7 @@ import type { DockedPanelName } from "./types/dockedPanel";
  *
  * 문서 하나를 보는 화면에서는 원문 패널이 같은 오른쪽 자리를 쓴다. GNB 오른쪽의 원문 버튼으로 여닫고,
  * 회원이 마지막에 둔 상태를 다음 문서에도 그대로 적용한다(DOC-R3 · DOC-R4).
+ * 녹음 문서 화면도 같은 자리에 그 녹음의 전사를 둔다. 열 때마다 열려 있고, 전사가 없는 처리 상태(정리 중 · 전사 실패 · 주제 분류 실패 · 정리할 내용 없음)에서는 버튼과 패널이 없다(STT-R39).
  *
  * 1024 미만(태블릿, 모바일)에서는 자리가 모자라 구조는 그대로 두고 패널만 본문 위에 띄운다(RESP-R2 · RESP-R3).
  * 왼쪽 패널은 고정하지 않고 덮개로만 열고, 오른쪽 패널은 태블릿에서 오른쪽 덮개(폭 400), 모바일에서 아래 시트로 연다.
@@ -78,12 +81,20 @@ import type { DockedPanelName } from "./types/dockedPanel";
  * @see https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=1788-4849 에러/서버 오류 (500)
  */
 export default function WorkspaceLayout() {
-  const { workspaceId, documentId } = useParams();
+  const { workspaceId, documentId, recordingId } = useParams();
+  const isRecordingDocumentScreen =
+    useMatch(PATH_ROUTE.RECORDING_DOCUMENT) !== null;
   const { isReady, entryError } = useWorkspaceEntry({
     workspaceId: Number(workspaceId),
   });
   const { isChatActive, activeTabIndex } = useWorkspaceNav();
   const { isTranscriptPanelOpen, toggleTranscriptPanel } = useTranscriptPanel();
+  // 녹음 문서 섹션과 같은 쿼리 키라 요청이 더 나가지 않아요
+  const { isTranscriptAvailable } = useRecordingDocumentStatus({
+    workspaceId: Number(workspaceId),
+    recordingId: Number(recordingId),
+    isEnabled: isRecordingDocumentScreen,
+  });
   const { openedMessageId, closeEvidenceMessage } = useOpenedEvidenceMessage();
   const { pathname } = useLocation();
   const { isMatched: isBelowDesktop } = useMediaQuery(
@@ -107,13 +118,15 @@ export default function WorkspaceLayout() {
     (panel: Exclude<DockedPanelName, null>) => (isDocked: boolean) =>
       setPickedPanel(isDocked ? panel : null);
 
-  // 원문 패널은 주소의 documentId로 원문을 불러오므로, documentId가 있는 화면(문서 하나를 보는 화면)에만 버튼과 자리를 둬요
-  const isDocumentActive = documentId !== undefined;
+  // 원문 패널은 주소의 id로 전사를 불러와요. 문서 하나를 보는 화면과, 전사를 보여 주는 처리 상태의 녹음 문서 화면에만 버튼과 자리를 둬요
+  const isTranscriptActive =
+    documentId !== undefined ||
+    (isRecordingDocumentScreen && isTranscriptAvailable);
 
   const isEvidenceOverlayOpen =
     isBelowDesktop && isChatActive && openedMessageId !== null;
   const isTranscriptOverlayOpen =
-    isBelowDesktop && isDocumentActive && isTranscriptPanelOpen;
+    isBelowDesktop && isTranscriptActive && isTranscriptPanelOpen;
 
   const closeRightOverlay = () => {
     if (isEvidenceOverlayOpen) closeEvidenceMessage();
@@ -176,7 +189,7 @@ export default function WorkspaceLayout() {
           right={
             <>
               {isChatActive && <SearchEvidenceToggle />}
-              {isDocumentActive && <TranscriptToggle />}
+              {isTranscriptActive && <TranscriptToggle />}
               {/* 워크스페이스에 들어간 뒤에만 그려요. 들어가지 못하고 나가는 사이에 저절로 열려 읽음으로 남지 않게요 */}
               {isReady && (
                 <NewsPopover
@@ -217,7 +230,7 @@ export default function WorkspaceLayout() {
           </EvidenceRail>
         )}
 
-        {isDocumentActive && (
+        {isTranscriptActive && (
           <TranscriptRail onClick={handleRailClick}>
             {/* 본문처럼, 들어갈 수 있는 워크스페이스인지 알기 전에는 원문을 불러오지 않아요 */}
             {isReady && isTranscriptPanelOpen && <TranscriptPanel />}

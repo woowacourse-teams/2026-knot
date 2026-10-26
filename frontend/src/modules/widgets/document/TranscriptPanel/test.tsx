@@ -3,9 +3,17 @@ import {
   GetDocumentTranscriptResponseDto,
 } from "@api/dto/document";
 import {
+  GetRecordingDocumentResponseDto,
+  GetRecordingTranscriptResponseDto,
+} from "@api/dto/recordingDocument";
+import {
   documentDetailsResponse,
   documentTranscriptsResponse,
 } from "@api/mock/responses/document";
+import {
+  recordingDocumentResponse,
+  recordingTranscriptResponse,
+} from "@api/mock/responses/recordingDocument";
 import { mockServer } from "@api/mock/server";
 import type { DocumentTranscriptResponse } from "@api/mock/types/document";
 import { ThemeProvider } from "@emotion/react";
@@ -455,5 +463,147 @@ describe("TranscriptPanel", () => {
     });
 
     expect(panel.getByRole("button", { name: "복사" })).toBeInTheDocument();
+  });
+});
+
+describe("TranscriptPanel · 녹음 문서 화면 (STT-R39)", () => {
+  const expectedRecordingDocument = new GetRecordingDocumentResponseDto(
+    recordingDocumentResponse,
+  );
+  const expectedRecordingTranscript = new GetRecordingTranscriptResponseDto(
+    recordingTranscriptResponse,
+  );
+  const RECORDING_TRANSCRIPT_REQUEST =
+    "*/api/v1/workspaces/:workspaceId/recordings/:recordingId/transcript";
+
+  const renderRecordingTranscriptPanel = () => {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const router = createMemoryRouter(
+      [
+        {
+          element: (
+            <ToastProvider>
+              <Outlet />
+            </ToastProvider>
+          ),
+          children: [
+            {
+              path: PATH_ROUTE.RECORDING_DOCUMENT,
+              element: <TranscriptPanel />,
+            },
+          ],
+        },
+      ],
+      {
+        initialEntries: [
+          getRouterPath({
+            routeKey: "RECORDING_DOCUMENT",
+            params: {
+              workspaceId: WORKSPACE_ID,
+              recordingId: String(expectedRecordingDocument.recordingId),
+            },
+          }),
+        ],
+      },
+    );
+
+    render(
+      <ThemeProvider theme={theme}>
+        <QueryClientProvider client={queryClient}>
+          <RouterProvider router={router} />
+        </QueryClientProvider>
+      </ThemeProvider>,
+    );
+  };
+
+  afterEach(() => {
+    vi.useRealTimers();
+    Reflect.deleteProperty(navigator, "clipboard");
+  });
+
+  it("녹음의 전사를 발화 줄로 보여 주고, 녹음을 시작한 날과 녹음 길이를 둔다", async () => {
+    renderRecordingTranscriptPanel();
+
+    const panel = within(await findLoadedPanel());
+
+    expect(await findLines()).toHaveLength(
+      expectedRecordingTranscript.segments.length,
+    );
+    expect(
+      await panel.findByText(formatDate(expectedRecordingDocument.startedAt)),
+    ).toBeInTheDocument();
+    expect(
+      panel.getByText(
+        formatDurationFromSeconds(
+          expectedRecordingDocument.recordingDurationSeconds,
+        ),
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("발화 아래에 녹음의 전사 전체라는 안내를 둔다", async () => {
+    renderRecordingTranscriptPanel();
+
+    const panel = within(await findLoadedPanel());
+
+    expect(panel.getByText("이 녹음의 전사 전체예요.")).toBeInTheDocument();
+  });
+
+  it("문서 원문은 요청하지 않고 녹음 전사만 요청한다", async () => {
+    let documentTranscriptRequestCount = 0;
+    mockServer.use(
+      http.get(TRANSCRIPT_REQUEST, () => {
+        documentTranscriptRequestCount += 1;
+        return HttpResponse.json(transcriptResponse);
+      }),
+    );
+    renderRecordingTranscriptPanel();
+
+    await findLoadedPanel();
+
+    expect(documentTranscriptRequestCount).toBe(0);
+  });
+
+  it("전사를 불러오지 못하면 그 자리에서 알리고, 「다시 시도」로 다시 조회해 발화 줄을 보여 준다", async () => {
+    mockServer.use(
+      http.get(
+        RECORDING_TRANSCRIPT_REQUEST,
+        () => new HttpResponse(null, { status: 500 }),
+        { once: true },
+      ),
+    );
+    renderRecordingTranscriptPanel();
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      LOAD_FAILED_NOTICE,
+    );
+
+    await clickRetry();
+
+    expect(await findLines()).toHaveLength(
+      expectedRecordingTranscript.segments.length,
+    );
+  });
+
+  it("머리의 복사를 누르면 녹음 전사의 발화 줄을 한 줄씩 복사한다", async () => {
+    const writeText = vi
+      .fn<(text: string) => Promise<void>>()
+      .mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      value: { writeText },
+      configurable: true,
+    });
+    renderRecordingTranscriptPanel();
+    const panel = within(await findLoadedPanel());
+
+    await act(async () => {
+      fireEvent.click(panel.getByRole("button", { name: "복사" }));
+    });
+
+    expect(writeText).toHaveBeenCalledWith(
+      formatTranscriptText(expectedRecordingTranscript.segments),
+    );
   });
 });
