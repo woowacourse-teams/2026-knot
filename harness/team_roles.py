@@ -194,7 +194,7 @@ def main(argv: list[str] | None = None) -> int:
     review_parser.add_argument("--area", required=True, choices=AREAS)
     review_parser.add_argument("--author", required=True, help="PR을 여는 사람의 GitHub 계정")
     review_parser.add_argument(
-        "--plan-changed", action="store_true", help="기능 추가, 수정, 삭제이거나 구현 중 기획을 바꿨다"
+        "--plan-changed", action="store_true", help="1차 컨펌을 받은 기획 변경이다"
     )
     review_parser.add_argument(
         "--design-changed", action="store_true", help="Figma 디자인이 새로 생기거나 바뀌었다"
