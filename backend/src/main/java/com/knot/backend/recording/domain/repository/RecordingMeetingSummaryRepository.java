@@ -21,6 +21,8 @@ public interface RecordingMeetingSummaryRepository {
 
     Optional<RecordingMeetingSummary> findByRecordingIdForUpdate(long recordingId);
 
+    Optional<RecordingMeetingSummary> findByRecordingId(long recordingId);
+
     Optional<Long> findWorkspaceId(long recordingId);
 
     boolean isReadable(long recordingId);

@@ -96,6 +96,11 @@ public class RecordingMeetingSummaryRepositoryAdapter implements RecordingMeetin
     }
 
     @Override
+    public Optional<RecordingMeetingSummary> findByRecordingId(long recordingId) {
+        return repository.findByRecordingId(recordingId);
+    }
+
+    @Override
     public Optional<Long> findWorkspaceId(long recordingId) {
         return jdbc.sql("SELECT workspace_id FROM recording_sessions WHERE id=:id")
                 .param(
