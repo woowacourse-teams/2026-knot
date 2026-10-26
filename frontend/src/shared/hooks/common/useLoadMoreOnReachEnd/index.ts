@@ -13,7 +13,7 @@ interface UseLoadMoreOnReachEndParams {
  * 화면 안에 들어왔는지는 IntersectionObserver로 봐요. 창이 아니라 레이아웃 본문 안에서 스크롤돼도, 요소가 창에 보이는지로 판단하므로 그대로 동작해요.
  * 받는 중이거나 실패한 동안에는 꺼 두어, 같은 페이지를 거듭 요청하거나 실패한 요청을 저절로 되풀이하지 않아요. 실패 뒤에는 사람이 「다시 시도」를 눌러요.
  */
-export const useLoadMoreOnReachEnd = ({
+const useLoadMoreOnReachEnd = ({
   isEnabled,
   onReachEnd,
 }: UseLoadMoreOnReachEndParams) => {
@@ -41,3 +41,5 @@ export const useLoadMoreOnReachEnd = ({
 
   return { sentinelRef };
 };
+
+export default useLoadMoreOnReachEnd;
