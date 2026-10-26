@@ -161,8 +161,7 @@ describe("녹음 중 회의 소리 함께 녹음", () => {
     shareScreen(shared);
     await startRecording({ isPcm: true });
 
-    await getState().connectMeetingAudio();
-
+    expect(await getState().connectMeetingAudio()).toBe(true);
     expect(sourceOf).toHaveBeenCalledWith(shared.stream);
     expect(FakePcmCollector.instances[0].addedStreams).toEqual([shared.stream]);
     expect(getState()).toMatchObject({
@@ -194,8 +193,7 @@ describe("녹음 중 회의 소리 함께 녹음", () => {
     shareScreen(shared);
     await startRecording({ isPcm: true });
 
-    await getState().connectMeetingAudio();
-
+    expect(await getState().connectMeetingAudio()).toBe(false);
     expect(shared.video.readyState).toBe("ended");
     expect(FakePcmCollector.instances[0].addedStreams).toEqual([]);
     expect(getState()).toMatchObject({
@@ -210,8 +208,7 @@ describe("녹음 중 회의 소리 함께 녹음", () => {
     );
     await startRecording();
 
-    await getState().connectMeetingAudio();
-
+    expect(await getState().connectMeetingAudio()).toBe(false);
     expect(getState()).toMatchObject({
       status: "recording",
       meetingAudioStatus: "off",

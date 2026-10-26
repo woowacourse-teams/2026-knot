@@ -112,9 +112,9 @@ interface RecordingActions {
   clearMicrophoneLost: () => void;
   /**
    * 브라우저 공유 창을 열어 받은 회의 소리를 마이크와 섞어 진행 중인 같은 녹음에 이어 담아요. 사용자의 누름 안에서 불러야 해요.
-   * 공유 창을 닫으면 마이크만 녹음하고, 소리 없이 공유하면 공유를 끄고 `noAudio`로 알려요
+   * 공유 창을 닫으면 마이크만 녹음하고, 소리 없이 공유하면 공유를 끄고 `noAudio`로 알려요. 회의 소리를 섞기 시작했으면 `true`를 돌려줘요
    */
-  connectMeetingAudio: () => Promise<void>;
+  connectMeetingAudio: () => Promise<boolean>;
 }
 
 const IDLE_STATE: RecordingState = {
@@ -371,17 +371,17 @@ export const useRecordingStore = create<RecordingState & RecordingActions>()((
     clearMicrophoneLost: () => set({ isMicrophoneLost: false }),
 
     connectMeetingAudio: async () => {
-      if (get().status === "idle" || meetingAudio) return;
+      if (get().status === "idle" || meetingAudio) return false;
 
       const shared = await captureMeetingAudio();
       if (shared === "cancelled" || shared === "noAudio") {
         set({ meetingAudioStatus: shared === "noAudio" ? "noAudio" : "off" });
-        return;
+        return false;
       }
       // 공유 창을 연 사이 녹음이 끝났으면 받은 공유를 바로 꺼요
       if (get().status === "idle") {
         stopTracks(shared);
-        return;
+        return false;
       }
 
       meetingAudio = shared;
@@ -394,6 +394,7 @@ export const useRecordingStore = create<RecordingState & RecordingActions>()((
         set({ meetingAudioStatus: "stopped" });
       });
       set({ meetingAudioStatus: "on" });
+      return true;
     },
   };
 });
