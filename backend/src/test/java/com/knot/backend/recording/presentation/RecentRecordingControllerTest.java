@@ -91,7 +91,11 @@ class RecentRecordingControllerTest {
                                         Instant.parse("2026-10-22T01:30:00Z"),
                                         1980,
                                         RecordingDocumentProcessingStatus.DOCUMENT_FAILED,
-                                        true
+                                        true,
+                                        List.of(
+                                                88L,
+                                                91L
+                                        )
                                 )
                         ),
                         "next"
@@ -114,7 +118,9 @@ class RecentRecordingControllerTest {
                 .andExpect(jsonPath("$.items[0].recordingDurationSeconds").value(1980))
                 .andExpect(jsonPath("$.items[0].processingStatus").value("DOCUMENT_FAILED"))
                 .andExpect(jsonPath("$.items[0].retryable").value(true))
-                .andExpect(jsonPath("$.items[0].length()").value(6))
+                .andExpect(jsonPath("$.items[0].retryableJobIds[0]").value(88))
+                .andExpect(jsonPath("$.items[0].retryableJobIds[1]").value(91))
+                .andExpect(jsonPath("$.items[0].length()").value(7))
                 .andExpect(jsonPath("$.nextCursor").value("next"));
     }
 

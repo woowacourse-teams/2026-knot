@@ -336,19 +336,21 @@ public class RecordingHistoryFixture {
                 .single();
     }
 
-    public void failedJob(long batchId) {
-        jdbcClient.sql("""
+    public long failedJob(long batchId) {
+        return jdbcClient.sql("""
                 INSERT INTO document_generation_jobs (transcript_id, batch_id, stage, status, created_at, updated_at,
                     last_failed_at, expires_at, failure_cause)
                 SELECT transcript_id, id, 'CLASSIFICATION', 'FAILED', accepted_at, accepted_at, accepted_at,
                     accepted_at + INTERVAL '168 hours', 'INTERNAL'
                 FROM document_generation_batches WHERE id=:batchId
+                RETURNING id
                 """)
                 .param(
                         "batchId",
                         batchId
                 )
-                .update();
+                .query(Long.class)
+                .single();
     }
 
     public void activateTitles(Instant activatedAt) {

@@ -116,10 +116,12 @@ class RecentRecordingAcceptanceTest {
                 .andExpect(jsonPath("$.items[0].recordingDurationSeconds").value(61))
                 .andExpect(jsonPath("$.items[0].processingStatus").value("PROCESSING"))
                 .andExpect(jsonPath("$.items[0].retryable").value(false))
+                .andExpect(jsonPath("$.items[0].retryableJobIds").isEmpty())
                 .andExpect(jsonPath("$.items[1].recordingId").value(titled))
                 .andExpect(jsonPath("$.items[1].title").value("회원 탈퇴 정책 논의"))
                 .andExpect(jsonPath("$.items[1].processingStatus").value("COMPLETED"))
                 .andExpect(jsonPath("$.items[1].retryable").value(false))
+                .andExpect(jsonPath("$.items[1].retryableJobIds").isEmpty())
                 .andExpect(jsonPath("$.nextCursor").doesNotExist());
     }
 
