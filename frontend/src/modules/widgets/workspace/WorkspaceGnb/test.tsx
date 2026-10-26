@@ -5,7 +5,9 @@ import {
   GetWorkspacesResponseDto,
 } from "@api/dto/workspace";
 import { meResponse } from "@api/mock/responses/auth";
+import { GetRecordingDocumentResponseDto } from "@api/dto/recordingDocument";
 import { documentDetailsResponse } from "@api/mock/responses/document";
+import { recordingDocumentResponse } from "@api/mock/responses/recordingDocument";
 import {
   workspaceDetailResponse,
   workspacesResponse,
@@ -71,6 +73,17 @@ const DOCUMENT_PATH = getRouterPath({
     documentId: String(expectedDocument.id),
   },
 });
+const expectedRecordingDocument = new GetRecordingDocumentResponseDto(
+  recordingDocumentResponse,
+);
+// 녹음 문서 화면. 위치 표시가 녹음 제목을 보여 주도록 mock에 있는 녹음을 열어요
+const RECORDING_DOCUMENT_PATH = getRouterPath({
+  routeKey: "RECORDING_DOCUMENT",
+  params: {
+    workspaceId: WORKSPACE_ID,
+    recordingId: String(expectedRecordingDocument.recordingId),
+  },
+});
 const RECORDING_PATH = getRouterPath({
   routeKey: "RECORDING",
   params: { workspaceId: WORKSPACE_ID },
@@ -134,6 +147,7 @@ const renderGnb = (initialPath = HOME_PATH) => {
         PATH_ROUTE.DOCUMENT,
         PATH_ROUTE.RECORDING,
         PATH_ROUTE.RECORDING_DOCUMENTS,
+        PATH_ROUTE.RECORDING_DOCUMENT,
       ].map((path) => ({ path, element: null })),
     },
   ]);
@@ -235,6 +249,18 @@ describe("WorkspaceGnb", () => {
 
   it("문서 하나를 보는 화면에서도 문서를 현재 화면으로 표시하고, 문서를 누르면 문서 목록으로 간다", async () => {
     const { router, documentsButton } = renderGnb(DOCUMENT_PATH);
+
+    expect(documentsButton).toHaveAttribute("aria-current", "page");
+
+    await act(async () => {
+      fireEvent.click(documentsButton);
+    });
+
+    expect(router.state.location.pathname).toBe(DOCUMENTS_PATH);
+  });
+
+  it("녹음 문서 화면에서도 문서를 현재 화면으로 표시하고, 문서를 누르면 문서 목록으로 간다 (STT-R40)", async () => {
+    const { router, documentsButton } = renderGnb(RECORDING_DOCUMENT_PATH);
 
     expect(documentsButton).toHaveAttribute("aria-current", "page");
 
@@ -438,6 +464,16 @@ describe("WorkspaceGnb 위치 표시", () => {
 
     expect(location).toHaveTextContent(
       `${expectedWorkspace.name}문서${expectedDocument.title}`,
+    );
+  });
+
+  it("녹음 문서 화면에서는 워크스페이스 이름 › 문서 › 녹음 제목을 보여준다", async () => {
+    renderGnb(RECORDING_DOCUMENT_PATH);
+
+    const location = await findLocation(expectedRecordingDocument.title);
+
+    expect(location).toHaveTextContent(
+      `${expectedWorkspace.name}문서${expectedRecordingDocument.title}`,
     );
   });
 

@@ -5,6 +5,8 @@ import { useQuery } from "@tanstack/react-query";
 interface UseDocumentTranscriptQueryParams {
   workspaceId: number;
   documentId: number;
+  /** `false`면 조회하지 않아요. 원문 패널이 녹음 문서의 전사를 보여 줄 때 꺼 둬요. 기본값은 `true` */
+  isEnabled?: boolean;
 }
 
 /**
@@ -15,10 +17,12 @@ interface UseDocumentTranscriptQueryParams {
 const useDocumentTranscriptQuery = ({
   workspaceId,
   documentId,
+  isEnabled = true,
 }: UseDocumentTranscriptQueryParams) => {
   return useQuery({
     queryKey: documentKeys.transcript({ workspaceId, documentId }),
     queryFn: () => getDocumentTranscriptApi({ workspaceId, documentId }),
+    enabled: isEnabled,
   });
 };
 

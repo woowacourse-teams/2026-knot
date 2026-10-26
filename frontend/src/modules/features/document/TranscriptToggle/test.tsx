@@ -13,6 +13,7 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
+import { MemoryRouter } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import TranscriptToggle from ".";
@@ -23,7 +24,22 @@ const OPEN_LABEL = "원문 보기";
 /** 원문이 열려 있을 때의 버튼 이름 */
 const CLOSE_LABEL = "원문 닫기";
 
-const renderToggle = () => {
+/** 문서 보기 화면의 주소 */
+const DOCUMENT_PATH = "/workspace/1/documents/101";
+/** 녹음 문서 화면의 주소 */
+const RECORDING_DOCUMENT_PATH = "/workspace/1/recordings/42/document";
+
+interface RenderToggleParams {
+  /** 버튼을 놓을 화면의 주소. 기본은 문서 보기예요 */
+  pathname?: string;
+  /** 화면에 들어올 때마다 바뀌는 방문 기록의 키. 같은 키면 같은 방문으로 봐요 */
+  visitKey?: string;
+}
+
+const renderToggle = ({
+  pathname = DOCUMENT_PATH,
+  visitKey = "first-visit",
+}: RenderToggleParams = {}) => {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
@@ -31,7 +47,9 @@ const renderToggle = () => {
   render(
     <ThemeProvider theme={theme}>
       <QueryClientProvider client={queryClient}>
-        <TranscriptToggle />
+        <MemoryRouter initialEntries={[{ pathname, key: visitKey }]}>
+          <TranscriptToggle />
+        </MemoryRouter>
       </QueryClientProvider>
     </ThemeProvider>,
   );
@@ -49,7 +67,10 @@ const renderToggle = () => {
 /** 새로고침하고 다시 들어온 것처럼 화면과 이번 방문에서 정한 값을 지워요. 브라우저에 남긴 값은 그대로 둬요 */
 const startNewVisit = () => {
   cleanup();
-  useTranscriptPanelStore.setState({ isOpenThisVisit: null });
+  useTranscriptPanelStore.setState({
+    isOpenThisVisit: null,
+    recordingDocumentChoice: null,
+  });
 };
 
 describe("TranscriptToggle", () => {
@@ -60,7 +81,10 @@ describe("TranscriptToggle", () => {
 
   afterEach(() => {
     // 전역 저장소라 이번 방문에서 정한 값이 테스트끼리 새지 않도록 처음 상태로 되돌려요
-    useTranscriptPanelStore.setState({ isOpenThisVisit: null });
+    useTranscriptPanelStore.setState({
+      isOpenThisVisit: null,
+      recordingDocumentChoice: null,
+    });
   });
 
   it("원문을 여닫은 적이 없는 회원에게는 열린 상태의 '원문 닫기' 버튼을 둔다 (DOC-R3)", async () => {
@@ -174,5 +198,69 @@ describe("TranscriptToggle", () => {
       "aria-expanded",
       "false",
     );
+  });
+
+  describe("녹음 문서 화면 (STT-R39)", () => {
+    it("문서 보기에서 원문을 닫아 둔 회원에게도 열린 상태로 시작한다", async () => {
+      renderToggle();
+      fireEvent.click(await screen.findByRole("button", { name: CLOSE_LABEL }));
+
+      startNewVisit();
+      const { waitForMember } = renderToggle({
+        pathname: RECORDING_DOCUMENT_PATH,
+      });
+      await waitForMember();
+
+      expect(screen.getByRole("button", { name: CLOSE_LABEL })).toHaveAttribute(
+        "aria-expanded",
+        "true",
+      );
+    });
+
+    it("녹음 문서에서 닫아도 문서 보기의 다음번 상태는 바뀌지 않는다", async () => {
+      renderToggle({ pathname: RECORDING_DOCUMENT_PATH });
+      fireEvent.click(screen.getByRole("button", { name: CLOSE_LABEL }));
+
+      expect(screen.getByRole("button", { name: OPEN_LABEL })).toHaveAttribute(
+        "aria-expanded",
+        "false",
+      );
+
+      startNewVisit();
+      renderToggle();
+
+      expect(
+        await screen.findByRole("button", { name: CLOSE_LABEL }),
+      ).toBeInTheDocument();
+    });
+
+    it("녹음 문서에 다시 들어오면 닫아 둔 원문이 다시 열려 있다", () => {
+      renderToggle({ pathname: RECORDING_DOCUMENT_PATH });
+      fireEvent.click(screen.getByRole("button", { name: CLOSE_LABEL }));
+
+      cleanup();
+      renderToggle({
+        pathname: RECORDING_DOCUMENT_PATH,
+        visitKey: "second-visit",
+      });
+
+      expect(screen.getByRole("button", { name: CLOSE_LABEL })).toHaveAttribute(
+        "aria-expanded",
+        "true",
+      );
+    });
+
+    it("같은 방문 안에서는 닫아 둔 상태가 이어진다", () => {
+      renderToggle({ pathname: RECORDING_DOCUMENT_PATH });
+      fireEvent.click(screen.getByRole("button", { name: CLOSE_LABEL }));
+
+      cleanup();
+      renderToggle({ pathname: RECORDING_DOCUMENT_PATH });
+
+      expect(screen.getByRole("button", { name: OPEN_LABEL })).toHaveAttribute(
+        "aria-expanded",
+        "false",
+      );
+    });
   });
 });
