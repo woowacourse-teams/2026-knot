@@ -28,7 +28,7 @@ public interface RecentRecordingApi {
                     + "시작 시각 내림차순, 동률이면 녹음 ID 내림차순이며 nextCursor로 이어 받는다. "
                     + "title은 서버가 만든다. 공개할 AI 녹음 제목이 없으면(정리 중·전사 실패·NO_CONTENT·제목 생성 실패) "
                     + "`{녹음을 시작한 Member 닉네임} 님의 녹음`이다. "
-                    + "행마다 녹음 문서 조회와 같은 규칙의 processingStatus·retryable을 담고, 재시도 대상 Job ID·녹음한 Member·참여자 수는 담지 않는다. "
+                    + "행마다 녹음 문서 조회와 같은 규칙의 processingStatus·retryable·retryableJobIds를 담고, 녹음한 Member·참여자 수는 담지 않는다. "
                     + "조회는 녹음·전사·제목·요약·문서 확인 상태를 바꾸지 않는다"
     )
     @ApiResponses({

@@ -391,7 +391,7 @@ class RecentRecordingListServiceIntegrationTest {
     }
 
     @Test
-    @DisplayName("행마다 녹음 문서와 같은 규칙으로 처리 상태와 재시도 가능 여부를 한 번에 계산한다")
+    @DisplayName("행마다 녹음 문서와 같은 규칙으로 처리 상태, 재시도 가능 여부, 재시도할 Job ID를 한 번에 계산한다")
     void find_success_processingStatusPerRow() {
         // given
         long beforeTranscription = saved(
@@ -422,7 +422,7 @@ class RecentRecordingListServiceIntegrationTest {
                 memberId,
                 4
         );
-        fixture.failedJob(
+        long documentJob = fixture.failedJob(
                 fixture.batch(
                         documentRetryable,
                         "TOPICS_REGISTERED",
@@ -433,7 +433,7 @@ class RecentRecordingListServiceIntegrationTest {
                 teammateId,
                 5
         );
-        fixture.failedJob(
+        long classificationJob = fixture.failedJob(
                 fixture.batch(
                         classificationFailed,
                         "WAITING_CLASSIFICATION",
@@ -475,53 +475,63 @@ class RecentRecordingListServiceIntegrationTest {
         assertThat(rows).extracting(
                 RecentRecordingRowResult::recordingId,
                 RecentRecordingRowResult::processingStatus,
-                RecentRecordingRowResult::retryable
+                RecentRecordingRowResult::retryable,
+                RecentRecordingRowResult::retryableJobIds
         )
                 .containsExactly(
                         tuple(
                                 completed,
                                 RecordingDocumentProcessingStatus.COMPLETED,
-                                false
+                                false,
+                                List.of()
                         ),
                         tuple(
                                 noContent,
                                 RecordingDocumentProcessingStatus.NO_CONTENT,
-                                false
+                                false,
+                                List.of()
                         ),
                         tuple(
                                 documentWithoutRetryableJob,
                                 RecordingDocumentProcessingStatus.DOCUMENT_FAILED,
-                                false
+                                false,
+                                List.of()
                         ),
                         tuple(
                                 classificationFailed,
                                 RecordingDocumentProcessingStatus.DOCUMENT_FAILED,
-                                true
+                                true,
+                                List.of(classificationJob)
                         ),
                         tuple(
                                 documentRetryable,
                                 RecordingDocumentProcessingStatus.DOCUMENT_FAILED,
-                                true
+                                true,
+                                List.of(documentJob)
                         ),
                         tuple(
                                 transcriptionAudioDeleted,
                                 RecordingDocumentProcessingStatus.TRANSCRIPTION_FAILED,
-                                false
+                                false,
+                                List.of()
                         ),
                         tuple(
                                 transcriptionRetryable,
                                 RecordingDocumentProcessingStatus.TRANSCRIPTION_FAILED,
-                                true
+                                true,
+                                List.of()
                         ),
                         tuple(
                                 documentRunning,
                                 RecordingDocumentProcessingStatus.PROCESSING,
-                                false
+                                false,
+                                List.of()
                         ),
                         tuple(
                                 beforeTranscription,
                                 RecordingDocumentProcessingStatus.PROCESSING,
-                                false
+                                false,
+                                List.of()
                         )
                 );
         assertThat(rows).allSatisfy(row -> assertSameAsDocument(row));
@@ -646,6 +656,7 @@ class RecentRecordingListServiceIntegrationTest {
         );
         assertThat(row.processingStatus()).isEqualTo(document.processingStatus());
         assertThat(row.retryable()).isEqualTo(document.retryable());
+        assertThat(row.retryableJobIds()).isEqualTo(document.retryableJobIds());
     }
 
     private List<Long> recordingIds(RecentRecordingListResult result) {
