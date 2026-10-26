@@ -4,7 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.when;
 
 import com.knot.backend.recording.application.dto.query.RecentRecordingListParameters;
-import com.knot.backend.recording.application.dto.result.RecentRecordingItemResult;
+import com.knot.backend.recording.application.dto.result.RecentRecordingRowResult;
 import com.knot.backend.testsupport.RecordingHistoryFixture;
 import com.knot.backend.testsupport.TestApplicationProperties;
 import com.knot.backend.testsupport.TestcontainersConfiguration;
@@ -171,8 +171,8 @@ class RecordingTitleActivationIntegrationTest {
                 )
                         .items()
         ).extracting(
-                RecentRecordingItemResult::recordingId,
-                RecentRecordingItemResult::title
+                RecentRecordingRowResult::recordingId,
+                RecentRecordingRowResult::title
         )
                 .containsExactly(
                         org.assertj.core.groups.Tuple.tuple(

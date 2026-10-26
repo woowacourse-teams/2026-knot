@@ -78,7 +78,7 @@ class RecentRecordingAcceptanceTest {
     }
 
     @Test
-    @DisplayName("팀원이 시작한 녹음을 AI 제목 또는 대체 이름과 함께 최신순으로 받는다")
+    @DisplayName("팀원이 시작한 녹음을 AI 제목 또는 대체 이름, 처리 상태와 함께 최신순으로 받는다")
     void find_success() throws Exception {
         // given
         long titled = fixture.savedRecording(
@@ -114,8 +114,12 @@ class RecentRecordingAcceptanceTest {
                 .andExpect(jsonPath("$.items[0].title").value("흑곰 님의 녹음"))
                 .andExpect(jsonPath("$.items[0].startedAt").value("2026-10-22T01:31:00Z"))
                 .andExpect(jsonPath("$.items[0].recordingDurationSeconds").value(61))
+                .andExpect(jsonPath("$.items[0].processingStatus").value("PROCESSING"))
+                .andExpect(jsonPath("$.items[0].retryable").value(false))
                 .andExpect(jsonPath("$.items[1].recordingId").value(titled))
                 .andExpect(jsonPath("$.items[1].title").value("회원 탈퇴 정책 논의"))
+                .andExpect(jsonPath("$.items[1].processingStatus").value("COMPLETED"))
+                .andExpect(jsonPath("$.items[1].retryable").value(false))
                 .andExpect(jsonPath("$.nextCursor").doesNotExist());
     }
 

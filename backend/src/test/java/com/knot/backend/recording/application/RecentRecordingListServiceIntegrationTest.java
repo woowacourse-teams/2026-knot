@@ -2,10 +2,13 @@ package com.knot.backend.recording.application;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.tuple;
 
 import com.knot.backend.recording.application.dto.query.RecentRecordingListParameters;
-import com.knot.backend.recording.application.dto.result.RecentRecordingItemResult;
 import com.knot.backend.recording.application.dto.result.RecentRecordingListResult;
+import com.knot.backend.recording.application.dto.result.RecentRecordingRowResult;
+import com.knot.backend.recording.application.dto.result.RecordingDocumentProcessingStatus;
+import com.knot.backend.recording.application.dto.result.RecordingDocumentResult;
 import com.knot.backend.testsupport.RecordingHistoryFixture;
 import com.knot.backend.testsupport.TestApplicationProperties;
 import com.knot.backend.testsupport.TestcontainersConfiguration;
@@ -27,12 +30,13 @@ import org.springframework.test.context.TestConstructor.AutowireMode;
 @Tag("integration")
 @Import(TestcontainersConfiguration.class)
 @TestApplicationProperties
-@SpringBootTest
+@SpringBootTest(properties = {"knot.transcription.enabled=true", "knot.transcription.token=test-token"})
 @TestConstructor(autowireMode = AutowireMode.ALL)
 class RecentRecordingListServiceIntegrationTest {
     private static final Instant STARTED_AT = Instant.parse("2026-10-24T09:00:00.123456Z");
 
     private final RecentRecordingListService recentRecordingListService;
+    private final RecordingDocumentService recordingDocumentService;
     private final JdbcClient jdbcClient;
     private final RecordingHistoryFixture fixture;
     private long workspaceId;
@@ -41,9 +45,11 @@ class RecentRecordingListServiceIntegrationTest {
 
     RecentRecordingListServiceIntegrationTest(
             RecentRecordingListService recentRecordingListService,
+            RecordingDocumentService recordingDocumentService,
             JdbcClient jdbcClient
     ) {
         this.recentRecordingListService = recentRecordingListService;
+        this.recordingDocumentService = recordingDocumentService;
         this.jdbcClient = jdbcClient;
         this.fixture = new RecordingHistoryFixture(jdbcClient);
     }
@@ -365,10 +371,10 @@ class RecentRecordingListServiceIntegrationTest {
         );
 
         // when
-        List<RecentRecordingItemResult> items = firstPage(20).items();
+        List<RecentRecordingRowResult> items = firstPage(20).items();
 
         // then
-        assertThat(items).extracting(RecentRecordingItemResult::title)
+        assertThat(items).extracting(RecentRecordingRowResult::title)
                 .containsExactly(
                         "루덴스 님의 녹음",
                         "흑곰 님의 녹음",
@@ -382,6 +388,198 @@ class RecentRecordingListServiceIntegrationTest {
                 items.getFirst()
                         .recordingDurationSeconds()
         ).isEqualTo(61);
+    }
+
+    @Test
+    @DisplayName("행마다 녹음 문서와 같은 규칙으로 처리 상태와 재시도 가능 여부를 한 번에 계산한다")
+    void find_success_processingStatusPerRow() {
+        // given
+        long beforeTranscription = saved(
+                memberId,
+                0
+        );
+        long documentRunning = saved(
+                teammateId,
+                1
+        );
+        fixture.batch(
+                documentRunning,
+                "TOPICS_REGISTERED",
+                "RUNNING"
+        );
+        long transcriptionRetryable = saved(
+                memberId,
+                2
+        );
+        fixture.transcriptionFailed(transcriptionRetryable);
+        long transcriptionAudioDeleted = saved(
+                teammateId,
+                3
+        );
+        fixture.transcriptionFailed(transcriptionAudioDeleted);
+        fixture.deleteAudio(transcriptionAudioDeleted);
+        long documentRetryable = saved(
+                memberId,
+                4
+        );
+        fixture.failedJob(
+                fixture.batch(
+                        documentRetryable,
+                        "TOPICS_REGISTERED",
+                        "FAILED"
+                )
+        );
+        long classificationFailed = saved(
+                teammateId,
+                5
+        );
+        fixture.failedJob(
+                fixture.batch(
+                        classificationFailed,
+                        "WAITING_CLASSIFICATION",
+                        "FAILED"
+                )
+        );
+        long documentWithoutRetryableJob = saved(
+                memberId,
+                6
+        );
+        fixture.batch(
+                documentWithoutRetryableJob,
+                "TOPICS_REGISTERED",
+                "FAILED"
+        );
+        long noContent = saved(
+                teammateId,
+                7
+        );
+        fixture.batch(
+                noContent,
+                "NO_CONTENT",
+                "NO_CONTENT"
+        );
+        long completed = saved(
+                memberId,
+                8
+        );
+        fixture.batch(
+                completed,
+                "TOPICS_REGISTERED",
+                "SUCCEEDED"
+        );
+
+        // when
+        List<RecentRecordingRowResult> rows = firstPage(20).items();
+
+        // then
+        assertThat(rows).extracting(
+                RecentRecordingRowResult::recordingId,
+                RecentRecordingRowResult::processingStatus,
+                RecentRecordingRowResult::retryable
+        )
+                .containsExactly(
+                        tuple(
+                                completed,
+                                RecordingDocumentProcessingStatus.COMPLETED,
+                                false
+                        ),
+                        tuple(
+                                noContent,
+                                RecordingDocumentProcessingStatus.NO_CONTENT,
+                                false
+                        ),
+                        tuple(
+                                documentWithoutRetryableJob,
+                                RecordingDocumentProcessingStatus.DOCUMENT_FAILED,
+                                false
+                        ),
+                        tuple(
+                                classificationFailed,
+                                RecordingDocumentProcessingStatus.DOCUMENT_FAILED,
+                                true
+                        ),
+                        tuple(
+                                documentRetryable,
+                                RecordingDocumentProcessingStatus.DOCUMENT_FAILED,
+                                true
+                        ),
+                        tuple(
+                                transcriptionAudioDeleted,
+                                RecordingDocumentProcessingStatus.TRANSCRIPTION_FAILED,
+                                false
+                        ),
+                        tuple(
+                                transcriptionRetryable,
+                                RecordingDocumentProcessingStatus.TRANSCRIPTION_FAILED,
+                                true
+                        ),
+                        tuple(
+                                documentRunning,
+                                RecordingDocumentProcessingStatus.PROCESSING,
+                                false
+                        ),
+                        tuple(
+                                beforeTranscription,
+                                RecordingDocumentProcessingStatus.PROCESSING,
+                                false
+                        )
+                );
+        assertThat(rows).allSatisfy(row -> assertSameAsDocument(row));
+    }
+
+    @Test
+    @DisplayName("다음 커서로 이어 받은 행도 같은 규칙으로 처리 상태를 준다")
+    void find_success_processingStatusOnNextPage() {
+        // given
+        long failed = saved(
+                memberId,
+                0
+        );
+        fixture.transcriptionFailed(failed);
+        long completed = saved(
+                memberId,
+                1
+        );
+        fixture.batch(
+                completed,
+                "TOPICS_REGISTERED",
+                "SUCCEEDED"
+        );
+        RecentRecordingListResult first = firstPage(1);
+
+        // when
+        RecentRecordingListResult next = recentRecordingListService.find(
+                workspaceId,
+                memberId,
+                RecentRecordingListParameters.of(
+                        first.nextCursor(),
+                        1
+                )
+        );
+
+        // then
+        assertThat(first.items()).extracting(
+                RecentRecordingRowResult::recordingId,
+                RecentRecordingRowResult::processingStatus
+        )
+                .containsExactly(
+                        tuple(
+                                completed,
+                                RecordingDocumentProcessingStatus.COMPLETED
+                        )
+                );
+        assertThat(next.items()).extracting(
+                RecentRecordingRowResult::recordingId,
+                RecentRecordingRowResult::processingStatus,
+                RecentRecordingRowResult::retryable
+        )
+                .containsExactly(
+                        tuple(
+                                failed,
+                                RecordingDocumentProcessingStatus.TRANSCRIPTION_FAILED,
+                                true
+                        )
+                );
     }
 
     @Test
@@ -440,10 +638,20 @@ class RecentRecordingListServiceIntegrationTest {
         );
     }
 
+    private void assertSameAsDocument(RecentRecordingRowResult row) {
+        RecordingDocumentResult document = recordingDocumentService.find(
+                workspaceId,
+                memberId,
+                row.recordingId()
+        );
+        assertThat(row.processingStatus()).isEqualTo(document.processingStatus());
+        assertThat(row.retryable()).isEqualTo(document.retryable());
+    }
+
     private List<Long> recordingIds(RecentRecordingListResult result) {
         return result.items()
                 .stream()
-                .map(RecentRecordingItemResult::recordingId)
+                .map(RecentRecordingRowResult::recordingId)
                 .toList();
     }
 }
