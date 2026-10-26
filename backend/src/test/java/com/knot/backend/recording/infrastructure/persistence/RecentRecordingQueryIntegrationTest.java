@@ -94,7 +94,7 @@ class RecentRecordingQueryIntegrationTest {
                 "RECORDING"
         );
         long paused = saved(
-                memberId,
+                teammateId,
                 6
         );
         fixture.changeStatus(
