@@ -27,7 +27,7 @@ import {
 } from "react-router";
 import { describe, expect, it } from "vitest";
 
-import DocumentList from ".";
+import TopicDocumentList from ".";
 
 const expected = new GetDocumentsResponseDto(documentsResponse);
 const WORKSPACE_ID = "1";
@@ -62,7 +62,10 @@ const renderDocumentList = (workspaceId = WORKSPACE_ID) => {
           </ToastProvider>
         ),
         children: [
-          { path: PATH_ROUTE.DOCUMENTS, element: <DocumentList /> },
+          {
+            path: PATH_ROUTE.DOCUMENTS_BY_TOPIC,
+            element: <TopicDocumentList />,
+          },
           { path: PATH_ROUTE.DOCUMENT, element: <DocumentViewStub /> },
           { path: PATH_ROUTE.LOGIN, element: <p>로그인 화면</p> },
           {
@@ -74,7 +77,10 @@ const renderDocumentList = (workspaceId = WORKSPACE_ID) => {
     ],
     {
       initialEntries: [
-        getRouterPath({ routeKey: "DOCUMENTS", params: { workspaceId } }),
+        getRouterPath({
+          routeKey: "DOCUMENTS_BY_TOPIC",
+          params: { workspaceId },
+        }),
       ],
     },
   );
@@ -106,18 +112,7 @@ const documentsOf = (topic: string) =>
 const clickRetry = async () =>
   fireEvent.click(await screen.findByRole("button", { name: "다시 시도" }));
 
-describe("DocumentList", () => {
-  it("문서 화면의 제목과 설명을 보여 준다", async () => {
-    renderDocumentList();
-
-    expect(
-      await screen.findByRole("heading", { level: 2, name: "문서" }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText("녹음하고 정리한 내용을 폴더별로 모아둬요"),
-    ).toBeInTheDocument();
-  });
-
+describe("TopicDocumentList", () => {
   it("서버가 주제를 어떤 순서로 줘도 폴더를 이름순으로 놓는다", async () => {
     // 기본 응답의 주제는 이름순이라, 순서를 바꿔서 줘요
     const [first, second, third] = documentsResponse.topics;
@@ -295,7 +290,7 @@ describe("DocumentList", () => {
     expect(requestCount).toBe(MAX_REQUEST_COUNT);
   });
 
-  it("불러오는 동안에는 제목과 설명을 그대로 두고 불러오는 중이라고 알리고, 문서를 받으면 폴더로 바꾼다", async () => {
+  it("불러오는 동안에는 불러오는 중이라고 알리고, 문서를 받으면 폴더로 바꾼다", async () => {
     mockServer.use(
       http.get(DOCUMENTS_REQUEST, async () => {
         await delay(50);
@@ -309,12 +304,6 @@ describe("DocumentList", () => {
     expect(
       screen.getByRole("status", { name: LOADING_LABEL }),
     ).toBeInTheDocument();
-    expect(
-      screen.getByRole("heading", { level: 2, name: "문서" }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText("녹음하고 정리한 내용을 폴더별로 모아둬요"),
-    ).toBeInTheDocument();
 
     await findFolder(expected.topics[0].topic);
 
@@ -323,7 +312,7 @@ describe("DocumentList", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("문서가 하나도 없으면 아직 문서가 없다고 알리고, 제목과 설명은 그대로 둔다", async () => {
+  it("문서가 하나도 없으면 아직 문서가 없다고 알린다", async () => {
     respondWith({ topics: [], items: [], nextCursor: null });
 
     renderDocumentList();
@@ -334,9 +323,6 @@ describe("DocumentList", () => {
         "독의 마이크로 회의를 녹음하면 주제별로 정리된 문서가 폴더에 모여요",
       ),
     ).toBeInTheDocument();
-    expect(
-      screen.getByRole("heading", { level: 2, name: "문서" }),
-    ).toBeInTheDocument();
   });
 
   it.each([
@@ -344,7 +330,7 @@ describe("DocumentList", () => {
     ["서버 오류(500)", () => new HttpResponse(null, { status: 500 })],
     ["네트워크 오류", () => HttpResponse.error()],
   ])(
-    "%s로 불러오지 못하면 목록 자리에 안내와 「다시 시도」를 보여 주고, 제목과 설명은 그대로 둔다",
+    "%s로 불러오지 못하면 목록 자리에 안내와 「다시 시도」를 보여 준다",
     async (_, respond) => {
       mockServer.use(http.get(DOCUMENTS_REQUEST, respond));
 
@@ -355,9 +341,6 @@ describe("DocumentList", () => {
       );
       expect(
         screen.getByRole("button", { name: "다시 시도" }),
-      ).toBeInTheDocument();
-      expect(
-        screen.getByRole("heading", { level: 2, name: "문서" }),
       ).toBeInTheDocument();
     },
   );
