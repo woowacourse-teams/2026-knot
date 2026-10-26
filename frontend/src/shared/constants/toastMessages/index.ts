@@ -24,6 +24,14 @@ export const TOAST_MESSAGES = {
     message: "워크스페이스를 옮겼어요",
   },
   /**
+   * 녹음 중 화상 회의 소리를 함께 녹음하기 시작한 순간(STT-R45). 누른 직후엔 안내 모달과 공유 창이 화면을 덮어 연결된 뒤에 띄워요.
+   * 아이콘은 헤드폰이라 띄우는 쪽에서 `icon`을 붙여요(E2E가 이 파일을 Node에서 읽어 SVG를 import하지 않아요). Figma 5466:64810
+   */
+  MEETING_AUDIO_CONNECTED: {
+    variant: "success",
+    message: "이어폰을 끼면 더 깨끗하게 녹음돼요",
+  },
+  /**
    * 연결 끊김으로 종료된 녹음의 업로드 완료·문서 처리 시작을 확인한 뒤 사용해요.
    * 탭이 열려 있는 동안 생존 신호가 ENDED, CONNECTION_EXPIRED로 답한 경우만 알려요. Figma 1783:13225
    */
