@@ -21,8 +21,14 @@ export const PATH_ROUTE = {
   RECORDING: "/workspace/:workspaceId/recording",
   // 녹음을 끝낸 뒤 문서가 만들어질 때까지 보여 주는 정리 화면
   RECORDING_DOCUMENTS: "/workspace/:workspaceId/recordings/:recordingId",
+  // 녹음 문서(AI 녹음 제목 · 회의 전체 요약 · 전사, STT-R36). 화면은 아직 없고 문서 탭 「녹음별」 탭의 녹음 행이 이 주소로 보내요
+  RECORDING_DOCUMENT:
+    "/workspace/:workspaceId/recordings/:recordingId/document",
 
+  // 문서 탭. 탭마다 주소가 있고, 탭 없는 주소는 「녹음별」 탭으로 보내요(DOC-R9 · R20)
   DOCUMENTS: "/workspace/:workspaceId/documents",
+  DOCUMENTS_BY_RECORDING: "/workspace/:workspaceId/documents/recordings",
+  DOCUMENTS_BY_TOPIC: "/workspace/:workspaceId/documents/topics",
   DOCUMENT: "/workspace/:workspaceId/documents/:documentId",
 
   INVITE: "/invite/:token",

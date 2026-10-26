@@ -7,7 +7,7 @@ import ChevronRightIcon from "@/assets/icons/chevronRight.svg";
 import { useWorkspaceId } from "../model/useWorkspaceId";
 
 /**
- * 카드 머리 오른쪽의 「전체 보기」. 누르면 문서 목록으로 가요.
+ * 카드 머리 오른쪽의 「전체 보기」. 누르면 문서 탭의 「녹음별」 탭으로 가요. 문서 탭은 늘 「녹음별」 탭으로 열려요(DOC-R9).
  *
  * 문서 목록은 따로 조회하므로, 카드가 문서를 받지 못한 동안에도 그대로 둬요.
  */
@@ -17,7 +17,7 @@ export default function ViewAllLink() {
   return (
     <Root
       href={getRouterPath({
-        routeKey: "DOCUMENTS",
+        routeKey: "DOCUMENTS_BY_RECORDING",
         params: { workspaceId: String(workspaceId) },
       })}
     >

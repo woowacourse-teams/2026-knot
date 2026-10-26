@@ -52,8 +52,9 @@ const LAST_CONVERSATION_PATH = getRouterPath({
     sessionId: String(LAST_CONVERSATION_ID),
   },
 });
+// 문서 탭은 늘 「녹음별」 탭으로 열려요(DOC-R9)
 const DOCUMENTS_PATH = getRouterPath({
-  routeKey: "DOCUMENTS",
+  routeKey: "DOCUMENTS_BY_RECORDING",
   params: { workspaceId: WORKSPACE_ID },
 });
 const expectedMe = new GetMeResponseDto(meResponse);
@@ -128,7 +129,8 @@ const renderGnb = (initialPath = HOME_PATH) => {
         PATH_ROUTE.WORKSPACE_HOME,
         PATH_ROUTE.CHAT,
         PATH_ROUTE.CHAT_SESSION,
-        PATH_ROUTE.DOCUMENTS,
+        PATH_ROUTE.DOCUMENTS_BY_RECORDING,
+        PATH_ROUTE.DOCUMENTS_BY_TOPIC,
         PATH_ROUTE.DOCUMENT,
         PATH_ROUTE.RECORDING,
         PATH_ROUTE.RECORDING_DOCUMENTS,
