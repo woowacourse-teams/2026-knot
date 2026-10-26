@@ -47,6 +47,11 @@ const RECORDING_PATH = getRouterPath({
   routeKey: "RECORDING",
   params: { workspaceId: WORKSPACE_ID },
 });
+// 문서 탭 「녹음별」 탭의 녹음 행으로 여는 녹음 문서 화면. 위치 표시가 녹음 제목을 보여 주도록 mock에 있는 녹음을 열어요
+const RECORDING_DOCUMENT_PATH = getRouterPath({
+  routeKey: "RECORDING_DOCUMENT",
+  params: { workspaceId: WORKSPACE_ID, recordingId: "42" },
+});
 const WORKSPACE_REQUEST = `*${WORKSPACE_API_PATH(Number(WORKSPACE_ID))}`;
 const DOCUMENT_REQUEST = `*${DOCUMENT_API_PATH(Number(WORKSPACE_ID), documentResponse.id)}`;
 const DOCK_RAIL_ID = "story-dock-rail";
@@ -149,11 +154,12 @@ const meta = {
           <ToastProvider>
             <Routes>
               {/* 찾은 기록 버튼이 대화 ID를 읽도록 대화 경로를 따로 둬요 */}
-              {/* 위치 표시가 문서 ID를 읽도록 문서 경로도 따로 둬요 */}
+              {/* 위치 표시가 문서 ID · 녹음 ID를 읽도록 문서 경로와 녹음 문서 경로도 따로 둬요 */}
               {[
                 `${PATH_ROUTE.WORKSPACE_HOME}/*`,
                 PATH_ROUTE.CHAT_SESSION,
                 PATH_ROUTE.DOCUMENT,
+                PATH_ROUTE.RECORDING_DOCUMENT,
               ].map((path) => (
                 <Route
                   key={path}
@@ -236,6 +242,20 @@ export const OnDocumentScreen: Story = {
     design: {
       type: "figma",
       url: "https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=2017-36058",
+    },
+  },
+};
+
+/**
+ * 녹음 문서 화면에서 보이는 모양이에요. 문서 탭 「녹음별」 탭에서 여는 화면이라 내비 필의 문서가 채워져 있고,
+ * 위치 표시가 `워크스페이스 이름 › 문서 › 녹음 제목`으로 어느 녹음인지 알려 줘요. 예: 「회원 탈퇴 정책 논의」 녹음을 열었을 때
+ */
+export const OnRecordingDocumentViewerScreen: Story = {
+  parameters: {
+    initialPath: RECORDING_DOCUMENT_PATH,
+    design: {
+      type: "figma",
+      url: "https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=5373-3187",
     },
   },
 };
