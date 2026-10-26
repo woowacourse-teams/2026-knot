@@ -6,8 +6,13 @@ import AlertIcon from "@/assets/icons/alert.svg";
 interface InlineErrorProps {
   /** 무엇이 안 됐는지 알리는 문구 */
   message: string;
-  /** `다시 시도`를 눌렀을 때 실행할 동작 */
-  onRetry: () => void;
+  /** `다시 시도`를 눌렀을 때 실행할 동작. 다시 시도할 수 없는 실패면 넘기지 않고, 그때는 `다시 시도`를 그리지 않아요 */
+  onRetry?: () => void;
+  /**
+   * 다시 시도 요청의 응답을 기다리는 중인지. 그동안 「다시 시도」를 누를 수 없고, 기본 크기에서는 버튼에 로딩을 그려요.
+   * @default false
+   */
+  isRetrying?: boolean;
   /**
    * 문구와 `다시 시도`의 가로 정렬. 그 자리의 빈 상태 안내와 같은 정렬을 골라요.
    * 영역 전체를 대신할 때는 `center`(예: 홈 카드), 글 흐름 안에 들어갈 때는 `start`(예: 탐색 답변)예요.
@@ -51,6 +56,7 @@ const SIZE = {
 export default function InlineError({
   message,
   onRetry,
+  isRetrying = false,
   align = "start",
   size = "md",
 }: InlineErrorProps) {
@@ -60,15 +66,25 @@ export default function InlineError({
         <Icon aria-hidden size={SIZE[size].iconSize} />
         <Message $size={size}>{message}</Message>
       </MessageRow>
-      {size === "sm" ? (
-        <SmallRetryButton type="button" onClick={onRetry}>
-          다시 시도
-        </SmallRetryButton>
-      ) : (
-        <Button size="sm" variant="outline" onClick={onRetry}>
-          다시 시도
-        </Button>
-      )}
+      {onRetry !== undefined &&
+        (size === "sm" ? (
+          <SmallRetryButton
+            type="button"
+            disabled={isRetrying}
+            onClick={onRetry}
+          >
+            다시 시도
+          </SmallRetryButton>
+        ) : (
+          <Button
+            size="sm"
+            variant="outline"
+            isLoading={isRetrying}
+            onClick={onRetry}
+          >
+            다시 시도
+          </Button>
+        ))}
     </Container>
   );
 }

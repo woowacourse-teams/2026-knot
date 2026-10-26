@@ -12,6 +12,7 @@ import InlineError from ".";
  *   - `center` : 영역 전체를 대신할 때. 예: 홈 카드 네 종, 문서 목록
  *   - `start`(기본값) : 글 흐름 안에 들어갈 때. 예: 탐색 답변, 원문 패널
  * - 크기는 `size`로 골라요. 폭이 좁은 자리에는 `sm`을 쓰고 문구도 짧게 줄여요. 예: 사이드바의 문서 목록
+ * - 다시 시도할 수 없는 실패면 `onRetry`를 넘기지 않아요. 그때는 「다시 시도」 없이 문구만 남아요. 예: 녹음 문서에서 다시 만들 수 없는 회의 전체 요약
  * - 같은 실패를 토스트로 또 알리지 않아요.
  * - 화면 전체가 막히는 실패(로그인 확인·첫 화면 준비)에는 `RetryNotice`를 써요. `InlineError`는 `center`로 두어도 화면 안 한 영역의 실패에만 써요.
  * - 나타나자마자 스크린리더가 문구를 읽어요.
@@ -71,6 +72,21 @@ export const Small: Story = {
     design: {
       type: "figma",
       url: "https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=3997-990",
+    },
+  },
+};
+
+/** 다시 시도할 수 없는 실패예요. 「다시 시도」 없이 문구만 남아요. 예: 녹음 문서에서 회의 전체 요약을 다시 만들 수 없을 때 */
+export const WithoutRetry: Story = {
+  args: {
+    align: "center",
+    message: "요약을 만들지 못했어요",
+    onRetry: undefined,
+  },
+  parameters: {
+    design: {
+      type: "figma",
+      url: "https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=5371-1807",
     },
   },
 };
