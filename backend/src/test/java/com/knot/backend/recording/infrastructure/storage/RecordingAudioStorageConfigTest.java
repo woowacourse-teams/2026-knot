@@ -5,12 +5,17 @@ import static org.assertj.core.api.Assertions.catchThrowable;
 import com.knot.backend.recording.application.RecordingAudioStorage;
 import com.knot.backend.recording.domain.RecordingErrorCode;
 import com.knot.backend.recording.domain.RecordingException;
+import java.io.IOException;
 import java.time.Duration;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.NullAndEmptySource;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.springframework.boot.context.properties.bind.Binder;
+import org.springframework.core.env.StandardEnvironment;
+import org.springframework.core.io.ClassPathResource;
+import org.springframework.core.io.support.ResourcePropertySource;
 
 class RecordingAudioStorageConfigTest {
 
@@ -79,6 +84,27 @@ class RecordingAudioStorageConfigTest {
         assertThat(recordingAudioStorage).isInstanceOf(S3RecordingAudioStorage.class);
     }
 
+    @Test
+    @DisplayName("재생 URL 유효 시간은 기본 1시간이고 업로드 URL 유효 시간과 따로 바인딩한다")
+    void properties_success_playbackTtlSeparateFromUpload() throws IOException {
+        // given
+        StandardEnvironment environment = new StandardEnvironment();
+        environment.getPropertySources()
+                .addLast(new ResourcePropertySource(new ClassPathResource("application.properties")));
+
+        // when
+        RecordingAudioStorageProperties properties = Binder.get(environment)
+                .bind(
+                        "recording.audio-storage",
+                        RecordingAudioStorageProperties.class
+                )
+                .get();
+
+        // then
+        assertThat(properties.uploadUrlTtl()).isEqualTo(Duration.ofMinutes(15));
+        assertThat(properties.playbackUrlTtl()).isEqualTo(Duration.ofHours(1));
+    }
+
     private RecordingAudioStorageProperties properties(
             String region,
             String bucket
@@ -87,7 +113,8 @@ class RecordingAudioStorageConfigTest {
                 region,
                 bucket,
                 "",
-                Duration.ofMinutes(15)
+                Duration.ofMinutes(15),
+                Duration.ofHours(1)
         );
     }
 }

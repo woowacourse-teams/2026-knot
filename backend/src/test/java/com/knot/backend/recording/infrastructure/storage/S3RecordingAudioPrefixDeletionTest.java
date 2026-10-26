@@ -38,7 +38,8 @@ class S3RecordingAudioPrefixDeletionTest {
                 client,
                 "bucket",
                 "dev/",
-                Duration.ofMinutes(15)
+                Duration.ofMinutes(15),
+                Duration.ofHours(1)
         );
         when(client.getBucketVersioning(any(GetBucketVersioningRequest.class))).thenReturn(
                 GetBucketVersioningResponse.builder()

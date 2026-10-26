@@ -39,7 +39,8 @@ public class RecordingAudioStorageConfig {
                 client(properties),
                 properties.bucket(),
                 properties.keyPrefix(),
-                properties.uploadUrlTtl()
+                properties.uploadUrlTtl(),
+                properties.playbackUrlTtl()
         );
     }
 

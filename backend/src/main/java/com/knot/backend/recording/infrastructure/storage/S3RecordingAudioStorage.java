@@ -1,6 +1,7 @@
 package com.knot.backend.recording.infrastructure.storage;
 
 import com.knot.backend.recording.application.RecordingAudioStorage;
+import com.knot.backend.recording.application.dto.result.PresignedAudioPlayback;
 import com.knot.backend.recording.application.dto.result.PresignedAudioUpload;
 import com.knot.backend.recording.domain.RecordingErrorCode;
 import com.knot.backend.recording.domain.RecordingException;
@@ -26,6 +27,7 @@ import software.amazon.awssdk.services.s3.presigner.S3Presigner;
 import software.amazon.awssdk.services.s3.presigner.model.PresignedPutObjectRequest;
 import software.amazon.awssdk.services.s3.presigner.model.PutObjectPresignRequest;
 import software.amazon.awssdk.services.s3.presigner.model.GetObjectPresignRequest;
+import software.amazon.awssdk.services.s3.presigner.model.PresignedGetObjectRequest;
 
 public class S3RecordingAudioStorage implements RecordingAudioStorage {
     private static final int NOT_FOUND_STATUS = 404;
@@ -37,13 +39,15 @@ public class S3RecordingAudioStorage implements RecordingAudioStorage {
     private final String bucket;
     private final String keyPrefix;
     private final Duration uploadUrlTtl;
+    private final Duration playbackUrlTtl;
 
     public S3RecordingAudioStorage(
             S3Presigner s3Presigner,
             S3Client s3Client,
             String bucket,
             String keyPrefix,
-            Duration uploadUrlTtl
+            Duration uploadUrlTtl,
+            Duration playbackUrlTtl
     ) {
         this.s3Presigner = s3Presigner;
         this.s3Client = s3Client;
@@ -53,6 +57,7 @@ public class S3RecordingAudioStorage implements RecordingAudioStorage {
                 ""
         );
         this.uploadUrlTtl = uploadUrlTtl;
+        this.playbackUrlTtl = playbackUrlTtl;
     }
 
     @Override
@@ -61,6 +66,45 @@ public class S3RecordingAudioStorage implements RecordingAudioStorage {
             String versionId,
             String contentType,
             long contentLength
+    ) {
+        return presignVerifiedGet(
+                storageKey,
+                versionId,
+                contentType,
+                contentLength,
+                uploadUrlTtl
+        ).url()
+                .toString();
+    }
+
+    // 재생은 위치 이동마다 같은 URL로 구간 요청을 보내므로 업로드 URL보다 길게 유효해야 한다.
+    @Override
+    public PresignedAudioPlayback presignPlayback(
+            String storageKey,
+            String versionId,
+            String contentType,
+            long contentLength
+    ) {
+        PresignedGetObjectRequest presigned = presignVerifiedGet(
+                storageKey,
+                versionId,
+                contentType,
+                contentLength,
+                playbackUrlTtl
+        );
+        return new PresignedAudioPlayback(
+                presigned.url()
+                        .toString(),
+                presigned.expiration()
+        );
+    }
+
+    private PresignedGetObjectRequest presignVerifiedGet(
+            String storageKey,
+            String versionId,
+            String contentType,
+            long contentLength,
+            Duration signatureDuration
     ) {
         if (versionId == null || versionId.isBlank() || "null".equals(versionId)) {
             throw new RecordingException(RecordingErrorCode.AUDIO_STORAGE_UNAVAILABLE);
@@ -80,7 +124,7 @@ public class S3RecordingAudioStorage implements RecordingAudioStorage {
             }
             return s3Presigner.presignGetObject(
                     GetObjectPresignRequest.builder()
-                            .signatureDuration(uploadUrlTtl)
+                            .signatureDuration(signatureDuration)
                             .getObjectRequest(
                                     GetObjectRequest.builder()
                                             .bucket(bucket)
@@ -89,9 +133,7 @@ public class S3RecordingAudioStorage implements RecordingAudioStorage {
                                             .build()
                             )
                             .build()
-            )
-                    .url()
-                    .toString();
+            );
         } catch (SdkException exception) {
             throw new RecordingException(
                     RecordingErrorCode.AUDIO_STORAGE_UNAVAILABLE,

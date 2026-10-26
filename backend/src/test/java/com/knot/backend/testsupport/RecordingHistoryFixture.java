@@ -393,6 +393,61 @@ public class RecordingHistoryFixture {
                 .update();
     }
 
+    public void revokeAudio(long recordingId) {
+        jdbcClient.sql("UPDATE recording_audio_uploads SET revoked_at=completed_at WHERE recording_id=:recordingId")
+                .param(
+                        "recordingId",
+                        recordingId
+                )
+                .update();
+    }
+
+    public void pinAudioVersion(
+            long recordingId,
+            String versionId
+    ) {
+        jdbcClient
+                .sql("UPDATE recording_audio_uploads SET storage_version_id=:versionId WHERE recording_id=:recordingId")
+                .param(
+                        "versionId",
+                        versionId
+                )
+                .param(
+                        "recordingId",
+                        recordingId
+                )
+                .update();
+    }
+
+    // 구간 업로드 녹음의 최종화가 끝나 서버가 만든 WAV를 업로드 기록으로 채택한 상태다.
+    public void finalizedWav(long recordingId) {
+        finalization(
+                recordingId,
+                "READY"
+        );
+        jdbcClient
+                .sql(
+                        """
+                                INSERT INTO recording_audio_uploads (recording_id, storage_key, content_type, content_length, status,
+                                    reserved_at, completed_at, storage_version_id)
+                                VALUES (:recordingId, :storageKey, 'audio/wav', 1984044, 'COMPLETED', :createdAt, :createdAt, 'wav-version')
+                                """
+                )
+                .param(
+                        "recordingId",
+                        recordingId
+                )
+                .param(
+                        "storageKey",
+                        "recordings/" + recordingId + "/final.wav"
+                )
+                .param(
+                        "createdAt",
+                        Timestamp.from(CREATED_AT)
+                )
+                .update();
+    }
+
     public void meetingSummary(
             long recordingId,
             long transcriptId,
