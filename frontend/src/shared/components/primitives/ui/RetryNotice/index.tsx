@@ -1,5 +1,4 @@
-import styled from "@emotion/styled";
-import Button from "@primitives/ui/Button";
+import InlineError from "@primitives/ui/InlineError";
 
 interface RetryNoticeProps {
   /** 무엇이 안 됐는지 알리는 문구 */
@@ -11,30 +10,10 @@ interface RetryNoticeProps {
 /**
  * 잠깐의 실패를 알리고 다시 시도하게 하는 안내.
  *
- * 낭독기가 바로 읽도록 `role="alert"`를 붙였어요.
+ * 화면 안 한 영역이 아니라 화면이나 상태 하나를 통째로 대신할 때 써요.
+ * 모양은 `InlineError`의 가운데 정렬 · 기본 크기와 같아서 그대로 그려요.
+ * 낭독기가 바로 읽도록 `role="alert"`가 붙어 있어요.
  */
 export default function RetryNotice({ message, onRetry }: RetryNoticeProps) {
-  return (
-    <Container role="alert">
-      <Message>{message}</Message>
-      <Button size="md" variant="outline" onClick={onRetry}>
-        다시 시도
-      </Button>
-    </Container>
-  );
+  return <InlineError align="center" message={message} onRetry={onRetry} />;
 }
-
-const Container = styled.div`
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 1rem; /* 16px */
-  width: 100%;
-`;
-
-const Message = styled.p`
-  ${({ theme }) => theme.text.body02};
-  color: ${({ theme }) => theme.neutral[700]};
-  text-align: center;
-  overflow-wrap: break-word;
-`;
