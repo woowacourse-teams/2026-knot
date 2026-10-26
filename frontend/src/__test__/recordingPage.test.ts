@@ -104,17 +104,29 @@ const recorderBar = (page: Page) =>
 const meetingAudioOption = (page: Page) =>
   page.getByRole("button", { name: MEETING_AUDIO_COPY.OPTION });
 
-const meetingAudioNotice = (page: Page) =>
-  page.getByRole("dialog", { name: MEETING_AUDIO_COPY.NOTICE_TITLE });
+const meetingAudioReconnect = (page: Page) =>
+  page.getByRole("button", { name: MEETING_AUDIO_COPY.RECONNECT });
+
+const meetingAudioDialog = (page: Page) =>
+  page.getByRole("dialog", { name: MEETING_AUDIO_COPY.DIALOG.TITLE });
+
+/** 「온라인 회의」 줄의 상태와 설명 */
+const meetingSource = (page: Page) =>
+  page
+    .getByRole("region", { name: MEETING_AUDIO_COPY.PANEL_TITLE })
+    .getByRole("status");
+
+/** 문구의 줄바꿈은 화면에서 띄어쓰기로 읽혀요 */
+const oneLine = (text: string) => text.replace(/\n/g, " ");
 
 const displayMediaCalls = (page: Page) =>
   page.evaluate(() => (window as unknown as ShareWindow).__displayMediaCalls);
 
-/** 선택지를 눌러 고지를 확인하고 공유 창을 열어요 */
+/** 「함께 녹음하기」를 눌러 연결 안내를 확인하고 공유 창을 열어요 */
 async function shareMeetingAudio(page: Page) {
   await meetingAudioOption(page).click();
-  await meetingAudioNotice(page)
-    .getByRole("button", { name: MEETING_AUDIO_COPY.NOTICE_CONFIRM })
+  await meetingAudioDialog(page)
+    .getByRole("button", { name: MEETING_AUDIO_COPY.DIALOG.CONFIRM })
     .click();
 }
 
@@ -138,23 +150,26 @@ test.describe("녹음 중 회의 소리 함께 녹음", () => {
     await expect(meetingAudioOption(page)).toBeVisible();
   });
 
-  test("[STT-R44, STT-R45] 선택지를 누르면 공유 창보다 먼저 녹음 고지와 이어폰 권장이 나온다", async ({
+  test("[STT-R44, STT-R45] 함께 녹음하기를 누르면 공유 창보다 먼저 연결 안내와 녹음 고지, 이어폰 안내가 나온다", async ({
     page,
   }) => {
     await startRecordingFromDock(page);
 
     await meetingAudioOption(page).click();
 
-    await expect(meetingAudioNotice(page)).toContainText(
-      MEETING_AUDIO_COPY.NOTICE_DESCRIPTION.split("\n")[1],
-    );
+    for (const notice of MEETING_AUDIO_COPY.DIALOG.NOTICES) {
+      await expect(meetingAudioDialog(page)).toContainText(oneLine(notice));
+    }
     expect(await displayMediaCalls(page)).toBe(0);
 
-    await meetingAudioNotice(page)
-      .getByRole("button", { name: MEETING_AUDIO_COPY.NOTICE_CONFIRM })
+    await meetingAudioDialog(page)
+      .getByRole("button", { name: MEETING_AUDIO_COPY.DIALOG.CONFIRM })
       .click();
 
     await expect.poll(() => displayMediaCalls(page)).toBe(1);
+    await expect(meetingSource(page)).toContainText(
+      oneLine(MEETING_AUDIO_COPY.MEETING_DESCRIPTION.on),
+    );
     await expect(meetingAudioOption(page)).toBeHidden();
     await expectRecordingContinues(page);
   });
@@ -167,9 +182,10 @@ test.describe("녹음 중 회의 소리 함께 녹음", () => {
     await shareMeetingAudio(page);
 
     await expect.poll(() => displayMediaCalls(page)).toBe(1);
-    await expect(meetingAudioOption(page)).toBeVisible();
-    await expect(page.getByText(MEETING_AUDIO_COPY.NO_AUDIO)).toHaveCount(0);
-    await expect(page.getByText(MEETING_AUDIO_COPY.STOPPED)).toHaveCount(0);
+    await expect(meetingAudioOption(page)).toBeEnabled();
+    await expect(meetingSource(page)).toContainText(
+      oneLine(MEETING_AUDIO_COPY.MEETING_DESCRIPTION.off),
+    );
     await expectRecordingContinues(page);
   });
 
@@ -180,7 +196,10 @@ test.describe("녹음 중 회의 소리 함께 녹음", () => {
 
     await shareMeetingAudio(page);
 
-    await expect(page.getByText(MEETING_AUDIO_COPY.NO_AUDIO)).toBeVisible();
+    await expect(meetingSource(page)).toContainText(
+      oneLine(MEETING_AUDIO_COPY.MEETING_DESCRIPTION.noAudio),
+    );
+    await expect(meetingAudioReconnect(page)).toBeVisible();
     await expectRecordingContinues(page);
   });
 
@@ -197,8 +216,10 @@ test.describe("녹음 중 회의 소리 함께 녹음", () => {
       track.dispatchEvent(new Event("ended"));
     });
 
-    await expect(page.getByText(MEETING_AUDIO_COPY.STOPPED)).toBeVisible();
-    await expect(meetingAudioOption(page)).toBeVisible();
+    await expect(meetingSource(page)).toContainText(
+      oneLine(MEETING_AUDIO_COPY.MEETING_DESCRIPTION.stopped),
+    );
+    await expect(meetingAudioReconnect(page)).toBeVisible();
     await expectRecordingContinues(page);
   });
 });
@@ -206,12 +227,14 @@ test.describe("녹음 중 회의 소리 함께 녹음", () => {
 test.describe("회의 소리를 받을 수 없는 브라우저", () => {
   test.use({ userAgent: SAFARI_UA });
 
-  test("[STT-R49, STT-R29] Safari에서는 Chrome 계열 안내만 보이고 미지원 다이얼로그 없이 마이크 녹음은 그대로다", async ({
+  test("[STT-R49, STT-R29] Safari에서는 지원 안 함만 보이고 미지원 다이얼로그 없이 마이크 녹음은 그대로다", async ({
     page,
   }) => {
     await startRecordingFromDock(page);
 
-    await expect(page.getByText(MEETING_AUDIO_COPY.UNSUPPORTED)).toBeVisible();
+    await expect(meetingSource(page)).toContainText(
+      MEETING_AUDIO_COPY.STATUS.UNSUPPORTED,
+    );
     await expect(meetingAudioOption(page)).toHaveCount(0);
     await expect(page.getByRole("alertdialog")).toHaveCount(0);
     expect(await displayMediaCalls(page)).toBe(0);
