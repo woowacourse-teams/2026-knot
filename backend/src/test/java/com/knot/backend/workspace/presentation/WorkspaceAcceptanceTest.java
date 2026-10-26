@@ -15,6 +15,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
@@ -107,8 +109,8 @@ class WorkspaceAcceptanceTest {
     }
 
     @Test
-    @DisplayName("워크스페이스 이름 규칙을 위반하면 INVALID_WORKSPACE_NAME 400 응답을 반환한다")
-    void create_failure_invalidWorkspaceName() throws Exception {
+    @DisplayName("숫자가 든 이름으로 워크스페이스를 생성한다")
+    void create_success_nameContainingDigits() throws Exception {
         // given
         long memberId = saveMember("octocat");
         Cookie accessTokenCookie = accessTokenCookie(memberId);
@@ -126,8 +128,45 @@ class WorkspaceAcceptanceTest {
                         )
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"name":"Knot!"}
+                                {"name":"우테코 8기"}
                                 """)
+        );
+
+        // then
+        result.andExpect(status().isCreated());
+        long workspaceId = objectMapper.readTree(
+                result.andReturn()
+                        .getResponse()
+                        .getContentAsString()
+        )
+                .get("id")
+                .asLong();
+        assertThat(singleWorkspaceName(workspaceId)).isEqualTo("우테코 8기");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"Knot!", "２０２６"})
+    @DisplayName("워크스페이스 이름 규칙을 위반하면 INVALID_WORKSPACE_NAME 400 응답을 반환한다")
+    void create_failure_invalidWorkspaceName(String invalidName) throws Exception {
+        // given
+        long memberId = saveMember("octocat");
+        Cookie accessTokenCookie = accessTokenCookie(memberId);
+        CsrfCredentials csrfCredentials = csrfCredentials();
+
+        // when
+        ResultActions result = mockMvc.perform(
+                post("/api/v1/workspaces").cookie(
+                        accessTokenCookie,
+                        csrfCredentials.cookie()
+                )
+                        .header(
+                                "X-XSRF-TOKEN",
+                                csrfCredentials.token()
+                        )
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"name":"%s"}
+                                """.formatted(invalidName))
         );
 
         // then
