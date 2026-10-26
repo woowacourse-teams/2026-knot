@@ -184,6 +184,122 @@ class RecentRecordingQueryIntegrationTest {
         assertThat(missing).isFalse();
     }
 
+    @Test
+    @DisplayName("녹음 한 건 조회는 최근 녹음 목록과 같은 표시 제목·시작 시각·길이를 준다")
+    void findItem_success_sameAsRecentRecordings() {
+        // given
+        long titled = saved(
+                teammateId,
+                0
+        );
+        fixture.batch(
+                titled,
+                "TOPICS_REGISTERED",
+                "SUCCEEDED"
+        );
+        fixture.title(
+                titled,
+                "회원 탈퇴 정책 논의"
+        );
+        long processing = saved(
+                teammateId,
+                1
+        );
+        long noContent = saved(
+                memberId,
+                2
+        );
+        fixture.batch(
+                noContent,
+                "NO_CONTENT",
+                "NO_CONTENT"
+        );
+        fixture.title(
+                noContent,
+                "공개하면 안 되는 제목"
+        );
+
+        // when
+        List<RecentRecordingItemResult> items = List.of(
+                titled,
+                processing,
+                noContent
+        )
+                .stream()
+                .map(
+                        recordingId -> recentRecordingQuery.findItem(
+                                workspaceId,
+                                recordingId
+                        )
+                                .orElseThrow()
+                )
+                .toList();
+
+        // then
+        assertThat(items).containsExactlyInAnyOrderElementsOf(
+                recentRecordingQuery.findPage(
+                        workspaceId,
+                        null,
+                        100
+                )
+        );
+        assertThat(items).extracting(RecentRecordingItemResult::title)
+                .containsExactly(
+                        "회원 탈퇴 정책 논의",
+                        "흑곰 님의 녹음",
+                        "루덴스 님의 녹음"
+                );
+    }
+
+    @Test
+    @DisplayName("녹음 문서를 열 수 없는 녹음·다른 Workspace의 녹음·없는 녹음은 한 건 조회 결과가 없다")
+    void findItem_fail_notOpenable() {
+        // given
+        long otherWorkspaceId = fixture.workspace("다른 팀");
+        fixture.join(
+                otherWorkspaceId,
+                memberId
+        );
+        long otherWorkspace = fixture.savedRecording(
+                otherWorkspaceId,
+                memberId,
+                STARTED_AT
+        );
+        long discarded = saved(
+                memberId,
+                1
+        );
+        fixture.changeStatus(
+                discarded,
+                "DISCARDED"
+        );
+        long saveFailed = pcm(2);
+        fixture.finalization(
+                saveFailed,
+                "FAILED"
+        );
+
+        // when
+        List<Long> found = List.of(
+                otherWorkspace,
+                discarded,
+                saveFailed,
+                Long.MAX_VALUE
+        )
+                .stream()
+                .filter(
+                        recordingId -> recentRecordingQuery.findItem(
+                                workspaceId,
+                                recordingId
+                        )
+                                .isPresent()
+                )
+                .toList();
+
+        // then
+        assertThat(found).isEmpty();
+    }
+
     private long saved(
             long starterId,
             int secondsAfterStart
