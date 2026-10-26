@@ -13,18 +13,20 @@ import org.springframework.stereotype.Repository;
 @Repository
 @RequiredArgsConstructor
 public class RecentRecordingQueryAdapter implements RecentRecordingQuery {
-    // 녹음 문서를 열 수 있는 녹음: Workspace의 ENDED 녹음 중 음성 저장이 끝난 녹음이다. 업로드 COMPLETED이거나
-    // PCM 녹음의 최종화 대기(작업 전)·QUEUED·PROCESSING·READY다. 최근 녹음 목록과 녹음 문서 조회가 함께 쓴다.
-    private static final String OPENABLE_RECORDINGS = """
+    // 음성 저장이 끝난 녹음: ENDED 녹음 중 업로드 COMPLETED이거나
+    // PCM 녹음의 최종화 대기(작업 전)·QUEUED·PROCESSING·READY다.
+    // 최근 녹음 목록·녹음 문서 조회와 회의 전체 요약의 접수·재시도가 함께 쓴다.
+    static final String OPENABLE_RECORDINGS = """
             FROM recording_sessions s
             LEFT JOIN recording_audio_uploads u ON u.recording_id = s.id
             LEFT JOIN recording_audio_finalizations f ON f.recording_id = s.id
             """;
-    private static final String OPENABLE_CONDITION = """
-            s.workspace_id = :workspaceId AND s.status = 'ENDED'
-                AND (u.status = 'COMPLETED' OR (s.audio_mode = 'PCM16_CHUNKS_V1'
-                    AND (f.id IS NULL OR f.status IN ('QUEUED', 'PROCESSING', 'READY'))))
+    static final String AUDIO_SAVED = """
+            s.status = 'ENDED' AND (u.status = 'COMPLETED' OR (s.audio_mode = 'PCM16_CHUNKS_V1'
+                AND (f.id IS NULL OR f.status IN ('QUEUED', 'PROCESSING', 'READY'))))
             """;
+    // 녹음 문서를 열 수 있는 녹음: Workspace의 음성 저장이 끝난 녹음이다.
+    private static final String OPENABLE_CONDITION = "s.workspace_id = :workspaceId AND " + AUDIO_SAVED;
     // AI 제목은 주제가 등록돼 NO_CONTENT가 아님이 정해진 녹음에만 공개한다.
     private static final String PAGE_SQL = "SELECT s.id, s.started_at, s.accumulated_recording_millis, m.nickname, g.title "
             + OPENABLE_RECORDINGS + """
