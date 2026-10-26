@@ -20,14 +20,13 @@ import org.springframework.transaction.annotation.Transactional;
 @Repository
 @RequiredArgsConstructor
 public class RecordingAudioCleanupRepositoryAdapter implements RecordingAudioCleanupRepository {
+    // 폐기·탈퇴·Workspace 삭제만 전체 삭제 사유다. 내용 없음 결과는 오디오를 지우지 않는다.
+    // 예약된 정리도 실행 전 이 정책을 다시 계산하므로 과거 NO_CONTENT 예약은 실행되지 않는다.
     private static final String POLICY_SQL = """
             SELECT t.recording_id,
                 CASE WHEN r.id IS NULL OR r.status = 'DISCARDED' OR w.id IS NULL OR w.deleted_at IS NOT NULL
                     OR NOT EXISTS (SELECT 1 FROM workspace_members m WHERE m.workspace_id = r.workspace_id
                         AND m.member_id = r.member_id AND m.left_at IS NULL)
-                    OR EXISTS (SELECT 1 FROM document_generation_batches b WHERE b.recording_session_id = r.id
-                        AND b.processing_status = 'NO_CONTENT')
-                    OR j.failure_code = 'AUDIO_NO_CONTENT'
                 THEN 'ALL' WHEN j.status = 'READY' THEN 'RAW' ELSE 'DORMANT' END AS desired_scope,
                 (SELECT MAX(c.upload_url_expires_at) FROM recording_audio_chunks c
                     WHERE c.recording_id = t.recording_id)

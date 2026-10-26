@@ -379,8 +379,7 @@ class RecordingDetailServiceTest {
         when(
                 documentGenerationProgressService.findSummary(
                         WORKSPACE_ID,
-                        RECORDING_ID,
-                        NOW
+                        RECORDING_ID
                 )
         ).thenReturn(Optional.of(summary));
 

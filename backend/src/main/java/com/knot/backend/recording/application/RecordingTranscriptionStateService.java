@@ -132,7 +132,7 @@ public class RecordingTranscriptionStateService {
                 null
         );
         return trace.call(() -> {
-            RecordingSession session = recordingAccess.loadOwnedForUpdate(
+            RecordingSession session = recordingAccess.loadWorkspaceRecordingForUpdate(
                     workspaceId,
                     memberId,
                     recordingId
@@ -619,12 +619,9 @@ public class RecordingTranscriptionStateService {
                 workspaceId,
                 memberId
         );
-        RecordingSession session = recordingSessionRepository.findById(recordingId)
-                .orElseThrow(() -> new RecordingException(RecordingErrorCode.RECORDING_NOT_FOUND));
-        session.validateControlledBy(
-                workspaceId,
-                memberId
-        );
+        recordingSessionRepository.findById(recordingId)
+                .orElseThrow(() -> new RecordingException(RecordingErrorCode.RECORDING_NOT_FOUND))
+                .validateBelongsTo(workspaceId);
         RecordingAudioUpload upload = recordingAudioUploadRepository.findByRecordingId(recordingId)
                 .orElseThrow(() -> new RecordingException(RecordingErrorCode.AUDIO_UPLOAD_NOT_FOUND));
         validateAvailableUpload(upload);
@@ -648,7 +645,7 @@ public class RecordingTranscriptionStateService {
                 previous.attemptId()
         );
         return trace.call(() -> {
-            recordingAccess.loadOwnedForUpdate(
+            recordingAccess.loadWorkspaceRecordingForUpdate(
                     workspaceId,
                     memberId,
                     previous.recordingId()
@@ -703,7 +700,7 @@ public class RecordingTranscriptionStateService {
                 previous.attemptId()
         );
         return trace.call(() -> {
-            recordingAccess.loadOwnedForUpdate(
+            recordingAccess.loadWorkspaceRecordingForUpdate(
                     workspaceId,
                     memberId,
                     previous.recordingId()

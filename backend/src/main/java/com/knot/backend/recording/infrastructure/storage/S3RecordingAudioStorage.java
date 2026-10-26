@@ -151,40 +151,6 @@ public class S3RecordingAudioStorage implements RecordingAudioStorage {
     }
 
     @Override
-    public void deleteStoredObject(String storageKey) {
-        try {
-            long deadline = System.nanoTime() + DELETION_TIMEOUT.toNanos();
-            String key = keyPrefix + storageKey;
-            GetBucketVersioningResponse versioning = s3Client.getBucketVersioning(
-                    GetBucketVersioningRequest.builder()
-                            .bucket(bucket)
-                            .build()
-            );
-            if (versioning.status() == BucketVersioningStatus.UNKNOWN_TO_SDK_VERSION) {
-                throw new RecordingException(RecordingErrorCode.AUDIO_STORAGE_UNAVAILABLE);
-            }
-            if (versioning.status() == BucketVersioningStatus.ENABLED
-                    || versioning.status() == BucketVersioningStatus.SUSPENDED) {
-                deleteVersions(
-                        key,
-                        deadline
-                );
-                return;
-            }
-            validateDeletionDeadline(deadline);
-            deleteObject(
-                    key,
-                    null
-            );
-        } catch (SdkException exception) {
-            throw new RecordingException(
-                    RecordingErrorCode.AUDIO_STORAGE_UNAVAILABLE,
-                    exception
-            );
-        }
-    }
-
-    @Override
     public void deleteRecordingPrefix(String storagePrefix) {
         if (storagePrefix == null || !storagePrefix.matches("recordings/[1-9][0-9]*/(chunks/)?")) {
             throw new RecordingException(RecordingErrorCode.INVALID_RECORDING_DATA);
@@ -263,51 +229,6 @@ public class S3RecordingAudioStorage implements RecordingAudioStorage {
             throw new RecordingException(RecordingErrorCode.AUDIO_STORAGE_UNAVAILABLE);
         }
         validateVersionId(version);
-    }
-
-    private void deleteVersions(
-            String key,
-            long deadline
-    ) {
-        String keyMarker = null;
-        String versionMarker = null;
-        for (int page = 0; page < MAX_VERSION_PAGES; page++) {
-            validateDeletionDeadline(deadline);
-            ListObjectVersionsResponse versions = s3Client.listObjectVersions(
-                    ListObjectVersionsRequest.builder()
-                            .bucket(bucket)
-                            .prefix(key)
-                            .keyMarker(keyMarker)
-                            .versionIdMarker(versionMarker)
-                            .build()
-            );
-            for (ObjectVersion version : versions.versions()) {
-                if (key.equals(version.key())) {
-                    validateDeletionDeadline(deadline);
-                    validateVersionId(version.versionId());
-                    deleteObject(
-                            key,
-                            version.versionId()
-                    );
-                }
-            }
-            for (DeleteMarkerEntry marker : versions.deleteMarkers()) {
-                if (key.equals(marker.key())) {
-                    validateDeletionDeadline(deadline);
-                    validateVersionId(marker.versionId());
-                    deleteObject(
-                            key,
-                            marker.versionId()
-                    );
-                }
-            }
-            if (!Boolean.TRUE.equals(versions.isTruncated())) {
-                return;
-            }
-            keyMarker = versions.nextKeyMarker();
-            versionMarker = versions.nextVersionIdMarker();
-        }
-        throw new RecordingException(RecordingErrorCode.AUDIO_STORAGE_UNAVAILABLE);
     }
 
     private void validateDeletionDeadline(long deadline) {

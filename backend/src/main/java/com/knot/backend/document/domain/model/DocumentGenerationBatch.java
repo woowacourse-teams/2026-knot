@@ -37,6 +37,7 @@ public class DocumentGenerationBatch {
     @Column(name = "transcript_id")
     private Long transcriptId;
 
+    // 이전 보존 정책이 입력을 해제한 기록이다. 현재 정책은 입력을 새로 해제하지 않는다.
     @Column(name = "released_transcript_id")
     private Long releasedTranscriptId;
 
@@ -124,35 +125,6 @@ public class DocumentGenerationBatch {
         }
         if (transcriptId == null || transcriptId != inputTranscriptId) {
             throw new DocumentException(DocumentErrorCode.GENERATION_REGISTRATION_CONFLICT);
-        }
-    }
-
-    public void releaseInput(
-            long expectedTranscriptId,
-            Instant releasedAt
-    ) {
-        validateIdentifier(expectedTranscriptId);
-        validateTime(releasedAt);
-        validateInput(expectedTranscriptId);
-        if (inputReleasedAt != null) {
-            return;
-        }
-        validateReleasableInput(releasedAt);
-        releasedTranscriptId = transcriptId;
-        transcriptId = null;
-        inputReleasedAt = releasedAt;
-    }
-
-    private void validateReleasableInput(Instant releasedAt) {
-        if (processingStatus != DocumentGenerationProcessingStatus.FAILED
-                && processingStatus != DocumentGenerationProcessingStatus.NO_CONTENT) {
-            throw new DocumentException(DocumentErrorCode.GENERATION_REGISTRATION_CONFLICT);
-        }
-        if (queuedCount != 0 || runningCount != 0 || succeededCount != 0) {
-            throw new DocumentException(DocumentErrorCode.GENERATION_REGISTRATION_CONFLICT);
-        }
-        if (finishedAt == null || releasedAt.isBefore(finishedAt)) {
-            throw new DocumentException(DocumentErrorCode.INVALID_DOCUMENT_DATA);
         }
     }
 

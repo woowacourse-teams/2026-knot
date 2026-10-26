@@ -31,12 +31,12 @@ class DocumentGenerationHomeProgressTest {
     );
 
     @Test
-    void homeProgress_onlyEligibleFailedJobsAndReadInputOnce() {
+    void homeProgress_retryableIgnoresUserRetryCountAndReadInputOnce() {
         prepareBatch();
         DocumentGenerationJob eligible = failedJob(8L);
-        DocumentGenerationJob exhausted = failedJob(9L);
+        DocumentGenerationJob retriedManyTimes = failedJob(9L);
         ReflectionTestUtils.setField(
-                exhausted,
+                retriedManyTimes,
                 "userRetryCount",
                 3
         );
@@ -55,7 +55,7 @@ class DocumentGenerationHomeProgressTest {
         when(jobs.findAllByBatchId(1L)).thenReturn(
                 List.of(
                         eligible,
-                        exhausted,
+                        retriedManyTimes,
                         expired,
                         succeeded,
                         eligible
@@ -84,7 +84,10 @@ class DocumentGenerationHomeProgressTest {
                 .orElseThrow();
 
         assertThat(result.hasVisibleFailure()).isTrue();
-        assertThat(result.retryableJobIds()).containsExactly(8L);
+        assertThat(result.retryableJobIds()).containsExactly(
+                8L,
+                9L
+        );
         assertThat(eligible.getUserRetryCount()).isZero();
         verify(
                 inputs,
