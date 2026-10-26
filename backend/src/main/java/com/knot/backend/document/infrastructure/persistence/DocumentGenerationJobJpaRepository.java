@@ -2,6 +2,7 @@ package com.knot.backend.document.infrastructure.persistence;
 
 import com.knot.backend.document.domain.model.DocumentGenerationJob;
 import jakarta.persistence.LockModeType;
+import java.util.Collection;
 import java.util.Optional;
 import java.util.List;
 import java.time.Instant;
@@ -43,6 +44,8 @@ interface DocumentGenerationJobJpaRepository extends JpaRepository<DocumentGener
     );
 
     List<DocumentGenerationJob> findAllByBatchIdOrderById(long batchId);
+
+    List<DocumentGenerationJob> findAllByBatchIdInOrderById(Collection<Long> batchIds);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("""

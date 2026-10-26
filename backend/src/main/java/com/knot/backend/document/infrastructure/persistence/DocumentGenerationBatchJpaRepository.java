@@ -2,6 +2,8 @@ package com.knot.backend.document.infrastructure.persistence;
 
 import com.knot.backend.document.domain.model.DocumentGenerationBatch;
 import jakarta.persistence.LockModeType;
+import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
@@ -25,5 +27,16 @@ interface DocumentGenerationBatchJpaRepository extends JpaRepository<DocumentGen
     Optional<DocumentGenerationBatch> findByWorkspaceIdAndRecordingSessionId(
             long workspaceId,
             long recordingSessionId
+    );
+
+    @Query("""
+            SELECT b FROM DocumentGenerationBatch b
+            WHERE b.recordingSessionId IN :recordingSessionIds AND EXISTS (
+                SELECT r.id FROM RecordingSession r WHERE r.id = b.recordingSessionId AND r.workspaceId = :workspaceId
+            )
+            """)
+    List<DocumentGenerationBatch> findAllByWorkspaceIdAndRecordingSessionIdIn(
+            long workspaceId,
+            Collection<Long> recordingSessionIds
     );
 }
