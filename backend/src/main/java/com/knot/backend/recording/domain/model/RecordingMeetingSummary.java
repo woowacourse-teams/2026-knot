@@ -128,6 +128,21 @@ public class RecordingMeetingSummary {
         return true;
     }
 
+    public boolean renew(
+            UUID token,
+            Instant now,
+            Duration lease
+    ) {
+        if (!owns(
+                token,
+                now
+        )) {
+            return false;
+        }
+        leaseUntil = now.plus(lease);
+        return true;
+    }
+
     public boolean fail(
             UUID token,
             String code,

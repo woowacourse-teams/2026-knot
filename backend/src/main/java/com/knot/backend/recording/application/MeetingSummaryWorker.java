@@ -9,6 +9,9 @@ import com.knot.backend.recording.application.dto.result.MeetingSummaryTask;
 import jakarta.annotation.PreDestroy;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -23,10 +26,18 @@ import org.springframework.stereotype.Component;
 @EnableScheduling
 @ConditionalOnProperty(prefix = "knot.meeting-summary.worker", name = "enabled", havingValue = "true")
 public class MeetingSummaryWorker {
+    private static final long LEASE_RENEW_SECONDS = 30;
+    private static final long MAX_EXECUTION_SECONDS = 900;
 
     private final MeetingSummaryGenerationService service;
     private final MeetingSummaryGenerator generator;
     private final AtomicBoolean running = new AtomicBoolean();
+    private final ScheduledExecutorService renewals = Executors.newSingleThreadScheduledExecutor(
+            Thread.ofPlatform()
+                    .daemon()
+                    .name("meeting-summary-lease")
+                    .factory()
+    );
     private final ExecutorService executor = new ThreadPoolExecutor(
             1,
             1,
@@ -79,11 +90,46 @@ public class MeetingSummaryWorker {
     }
 
     public void process(MeetingSummaryTask task) {
+        Thread worker = Thread.currentThread();
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(MAX_EXECUTION_SECONDS);
+        Object guard = new Object();
+        AtomicBoolean active = new AtomicBoolean(true);
+        ScheduledFuture<?> renewal = renewals.scheduleAtFixedRate(() -> {
+            synchronized (guard) {
+                if (!active.get()) {
+                    return;
+                }
+                try {
+                    if (System.nanoTime() >= deadline) {
+                        service.fail(
+                                task,
+                                "EXECUTION_TIMEOUT",
+                                false
+                        );
+                        worker.interrupt();
+                        return;
+                    }
+                    if (!service.renew(task)) {
+                        worker.interrupt();
+                    }
+                } catch (RuntimeException exception) {
+                    worker.interrupt();
+                }
+            }
+        },
+                LEASE_RENEW_SECONDS,
+                LEASE_RENEW_SECONDS,
+                TimeUnit.SECONDS
+        );
         try {
-            service.succeed(
-                    task,
-                    generator.generate(task.transcript())
-            );
+            String content = generator.generate(task.transcript());
+            if (!Thread.currentThread()
+                    .isInterrupted()) {
+                service.succeed(
+                        task,
+                        content
+                );
+            }
         } catch (RuntimeException exception) {
             ServerErrorLogger.recordTaskFailure(
                     log,
@@ -97,12 +143,18 @@ public class MeetingSummaryWorker {
                     task,
                     exception
             );
+        } finally {
+            synchronized (guard) {
+                active.set(false);
+            }
+            renewal.cancel(false);
         }
     }
 
     @PreDestroy
     public void shutdown() {
         executor.shutdownNow();
+        renewals.shutdownNow();
     }
 
     private void claimAndProcess(long id) {
