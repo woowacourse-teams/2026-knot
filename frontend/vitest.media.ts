@@ -4,6 +4,7 @@ import { vi } from "vitest";
  * jsdom에 없는 마이크·녹음·소리 분석 API를 흉내 내요.
  *
  * - `getUserMedia`는 늘 가짜 마이크를 돌려줘요. 권한 거부는 테스트에서 `vi.spyOn`으로 덮어요
+ * - `getDisplayMedia`는 늘 소리 트랙 하나만 있는 공유를 돌려줘요. 공유 창 닫기나 소리 없는 공유는 테스트에서 덮어요
  * - 마이크 끊김은 테스트가 받은 마이크의 트랙을 `stop()`하고 `ended` 이벤트를 보내 재현해요
  * - 분석기는 늘 같은 크기의 소리를 돌려줘요
  */
@@ -65,6 +66,8 @@ const FAKE_AMPLITUDE = 0.5;
 class FakeAnalyserNode {
   fftSize = 2048;
 
+  connect() {}
+
   getFloatTimeDomainData(array: Float32Array) {
     array.fill(FAKE_AMPLITUDE);
   }
@@ -81,6 +84,10 @@ class FakeAudioContext {
     return new FakeAnalyserNode();
   }
 
+  createMediaStreamDestination() {
+    return { stream: new FakeMediaStream(), channelCount: 2 };
+  }
+
   close() {
     this.state = "closed";
 
@@ -93,6 +100,8 @@ export const installFakeMedia = () => {
     configurable: true,
     value: {
       getUserMedia: async () => new FakeMediaStream() as unknown as MediaStream,
+      getDisplayMedia: async () =>
+        new FakeMediaStream() as unknown as MediaStream,
     },
   });
   vi.stubGlobal("MediaRecorder", FakeMediaRecorder);
