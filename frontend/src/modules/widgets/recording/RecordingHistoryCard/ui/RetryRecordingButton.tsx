@@ -28,6 +28,7 @@ export default function RetryRecordingButton({
   describedBy,
 }: RetryRecordingButtonProps) {
   const { handleRetry, isRetrying } = useRetryFailedRecording({
+    surface: "recording_history",
     workspaceId,
     recordingId,
     failedStatus:

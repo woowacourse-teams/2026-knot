@@ -55,6 +55,7 @@ export default function RecordingDocumentViewer() {
         ? "documentFailed"
         : null;
   const { handleRetry, isRetrying } = useRetryFailedRecording({
+    surface: "recording_document",
     workspaceId,
     recordingId,
     failedStatus,

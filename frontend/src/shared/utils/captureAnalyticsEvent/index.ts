@@ -105,6 +105,16 @@ interface AnalyticsEventMap {
     /** 돌아왔을 때 답변이 끝나 있었는지 */
     is_answer_ready: boolean;
   };
+  /** 녹음 문서 · 홈 녹음 기록 카드의 다시 시도에 서버가 응답했어요. 거절은 409 · 404, 오류는 5xx · 네트워크 문제예요. 정리 화면의 다시 시도는 `recording_documents_retry`로 보내요 */
+  recording_retry_result: {
+    /** 다시 시도를 누른 곳. 녹음 문서(`recording_document`) 또는 홈 녹음 기록 카드(`recording_history`)예요 */
+    surface: "recording_document" | "recording_history";
+    /** 무엇을 다시 시도했는지. 주제 분류 실패의 다시 시도는 문서 만들기 작업을 다시 접수해서 `document_generation`이에요 */
+    stage: "transcription" | "document_generation" | "meeting_summary";
+    result: "accepted" | "rejected" | "error";
+    recording_id: number;
+    workspace_id: number;
+  };
 }
 
 type AnalyticsEvent = keyof AnalyticsEventMap;

@@ -34,6 +34,7 @@ import {
   waitFor,
   within,
 } from "@testing-library/react";
+import { captureAnalyticsEvent } from "@utils/captureAnalyticsEvent";
 import { formatDate } from "@utils/formatDate";
 import { formatDurationFromSeconds } from "@utils/formatDurationFromSeconds";
 import { formatRecordingTime } from "@utils/formatRecordingTime";
@@ -47,6 +48,10 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import RecordingDocumentViewer from ".";
+
+vi.mock("@utils/captureAnalyticsEvent", () => ({
+  captureAnalyticsEvent: vi.fn(),
+}));
 
 const WORKSPACE_ID = "1";
 const expectedRecording = new GetRecordingDocumentResponseDto(
@@ -940,6 +945,113 @@ describe("RecordingDocumentViewer", () => {
       renderViewer();
 
       expect(await screen.findByText("로그인 화면")).toBeInTheDocument();
+    });
+  });
+});
+
+describe("RecordingDocumentViewer의 사용 기록", () => {
+  const RECORDING_ID = expectedRecording.recordingId;
+
+  /** 보낸 사용 기록 가운데 그 이벤트의 속성만 보낸 순서대로 모아요 */
+  const getTrackedProperties = (event: string) =>
+    vi
+      .mocked(captureAnalyticsEvent)
+      .mock.calls.filter(([call]) => call.event === event)
+      .map(([call]) => call.properties);
+
+  // 앞 describe의 테스트에서도 사용 기록이 남으므로, 테스트마다 기록을 비우고 시작해요
+  beforeEach(() => {
+    vi.mocked(captureAnalyticsEvent).mockClear();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    Reflect.deleteProperty(navigator, "clipboard");
+  });
+
+  describe("다시 시도 결과", () => {
+    it("전사 다시 시도가 접수되면 녹음 문서의 전사 다시 시도 접수를 보낸다", async () => {
+      respondWithRecordingDocument({
+        processingStatus: "TRANSCRIPTION_FAILED",
+        retryable: true,
+        meetingSummary: null,
+      });
+      mockServer.use(
+        http.post(TRANSCRIPTION_RETRY_REQUEST, () =>
+          HttpResponse.json(recordingTranscriptionRetryResponse, {
+            status: 202,
+          }),
+        ),
+      );
+      renderViewer();
+
+      fireEvent.click(await screen.findByRole("button", { name: "다시 시도" }));
+
+      await waitFor(() =>
+        expect(getTrackedProperties("recording_retry_result")).toEqual([
+          {
+            surface: "recording_document",
+            stage: "transcription",
+            result: "accepted",
+            recording_id: RECORDING_ID,
+            workspace_id: Number(WORKSPACE_ID),
+          },
+        ]),
+      );
+    });
+
+    it("실패 카드의 다시 시도가 모두 거절되면 문서 만들기 다시 시도 거절을 보낸다", async () => {
+      respondWithRecordingDocument({
+        processingStatus: "DOCUMENT_FAILED",
+        retryable: true,
+        retryableJobIds: [RETRY_EXHAUSTED_JOB_ID],
+      });
+      renderViewer();
+
+      await expectCardTitles(recordingDocuments);
+      fireEvent.click(
+        within(getRelatedSection()).getByRole("button", { name: "다시 시도" }),
+      );
+
+      await waitFor(() =>
+        expect(getTrackedProperties("recording_retry_result")).toEqual([
+          expect.objectContaining({
+            surface: "recording_document",
+            stage: "document_generation",
+            result: "rejected",
+          }),
+        ]),
+      );
+    });
+
+    it("요약 다시 시도가 서버 오류로 실패하면 회의 전체 요약 다시 시도 오류를 보낸다", async () => {
+      respondWithRecordingDocument({
+        meetingSummary: { status: "FAILED", content: null, retryable: true },
+      });
+      mockServer.use(
+        http.post(
+          MEETING_SUMMARY_RETRY_REQUEST,
+          () => new HttpResponse(null, { status: 500 }),
+        ),
+      );
+      renderViewer();
+
+      const failedNotice = await screen.findByRole("alert");
+      fireEvent.click(
+        within(failedNotice).getByRole("button", { name: "다시 시도" }),
+      );
+
+      await waitFor(() =>
+        expect(getTrackedProperties("recording_retry_result")).toEqual([
+          {
+            surface: "recording_document",
+            stage: "meeting_summary",
+            result: "error",
+            recording_id: RECORDING_ID,
+            workspace_id: Number(WORKSPACE_ID),
+          },
+        ]),
+      );
     });
   });
 });

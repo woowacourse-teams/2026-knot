@@ -4,6 +4,7 @@ import useRedirectToLoginOnUnauthorized from "@hooks/domain/auth/useRedirectToLo
 import { useToast } from "@provider/context/toastContext";
 import { isRetryRejectedError } from "@utils/isRetryRejectedError";
 import { isUnauthorizedError } from "@utils/isUnauthorizedError";
+import { trackRecordingRetryResult } from "@utils/trackRecordingRetryResult";
 
 interface UseMeetingSummaryRetryParams {
   workspaceId: number;
@@ -16,6 +17,7 @@ interface UseMeetingSummaryRetryParams {
  * 접수되든 거절되든 녹음 문서를 다시 받아, 서버가 알려 준 요약 상태(만드는 중 · 실패 · 다시 시도 가능 여부)를 그대로 보여 줘요.
  * 다시 받을 때까지 다시 시도 중(`isMeetingSummaryRetrying`)이라 같은 요청이 두 번 가지 않아요.
  * 거절(409 · 404)은 다시 받은 상태가 알려 주므로 따로 알리지 않고, 네트워크 · 서버 문제는 오류 토스트로 알려요. 로그인이 풀렸으면(401) 로그인 화면으로 보내요.
+ * 서버가 응답하면 결과를 사용 기록(`recording_retry_result`)으로 보내요.
  */
 export const useMeetingSummaryRetry = ({
   workspaceId,
@@ -29,13 +31,25 @@ export const useMeetingSummaryRetry = ({
   const { show } = useToast();
   useRedirectToLoginOnUnauthorized({ error: retryError });
 
+  const trackRetryResult = (error: unknown) => {
+    trackRecordingRetryResult({
+      surface: "recording_document",
+      stage: "meeting_summary",
+      errors: [error],
+      workspaceId,
+      recordingId,
+    });
+  };
+
   const retryMeetingSummary = () => {
     if (isMeetingSummaryRetrying) return;
 
     requestRetry(
       { workspaceId, recordingId },
       {
+        onSuccess: () => trackRetryResult(null),
         onError: (error) => {
+          trackRetryResult(error);
           if (isRetryRejectedError(error) || isUnauthorizedError(error)) return;
 
           show(TOAST_MESSAGES.RETRY_REQUEST_FAILED);
