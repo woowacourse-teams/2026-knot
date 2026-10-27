@@ -31,9 +31,9 @@ const meta = {
   parameters: {
     design: [
       {
-        name: "문서/확인한 사람 보기 · 이 문서가 나온 녹음",
+        name: "문서/확인한 사람 보기",
         type: "figma",
-        url: "https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=5581-39486",
+        url: "https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=1535-2817",
       },
       {
         name: "Card/RelatedDoc 녹음 · 불러오는 중 · 제목 못 불러옴",
