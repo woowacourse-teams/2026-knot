@@ -19,6 +19,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import tools.jackson.databind.ObjectMapper;
@@ -109,11 +110,12 @@ class LlmDocumentTopicClassifierTest {
                 .hasMessage(DocumentErrorCode.INVALID_TOPIC_CLASSIFICATION_RESPONSE.getMessage());
     }
 
-    @Test
+    @ParameterizedTest
+    @EnumSource(value = LlmErrorCode.class, names = {"LLM_TIMEOUT", "LLM_INPUT_LIMIT_EXCEEDED"})
     @DisplayName("공급자 실패를 빈 배열로 바꾸지 않고 호출자에게 전달한다")
-    void classify_failure_providerError() {
+    void classify_failure_providerError(LlmErrorCode errorCode) {
         // given
-        LlmException failure = new LlmException(LlmErrorCode.LLM_TIMEOUT);
+        LlmException failure = new LlmException(errorCode);
         when(client.complete(any())).thenThrow(failure);
 
         // when & then
