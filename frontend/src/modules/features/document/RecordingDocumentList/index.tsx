@@ -1,6 +1,7 @@
 import useDocumentRecordingsInfiniteQuery from "@api/queries/useDocumentRecordingsInfiniteQuery";
 import { documentKeys } from "@api/queryKey/document";
 import styled from "@emotion/styled";
+import useLoadMoreOnReachEnd from "@hooks/common/useLoadMoreOnReachEnd";
 import useWorkspaceAccessGuard from "@hooks/domain/workspace/useWorkspaceAccessGuard";
 import InlineError from "@primitives/ui/InlineError";
 import LoadingIndicator from "@primitives/ui/LoadingIndicator";
@@ -8,7 +9,6 @@ import { getRouterPath } from "@routes/PATH_ROUTE";
 import { useQueryClient } from "@tanstack/react-query";
 import { isBadRequestError } from "@utils/isBadRequestError";
 
-import { useLoadMoreOnReachEnd } from "./model/useLoadMoreOnReachEnd";
 import { useWorkspaceId } from "./model/useWorkspaceId";
 import RecordingDocumentListEmpty from "./ui/RecordingDocumentListEmpty";
 import RecordingDocumentListLoadFailed from "./ui/RecordingDocumentListLoadFailed";

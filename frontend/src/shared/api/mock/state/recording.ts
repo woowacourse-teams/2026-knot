@@ -4,17 +4,20 @@ import {
 } from "@api/mock/responses/documentGenerationJob";
 import {
   recordingDetailsResponse,
+  recordingsResponse,
   recordingTranscriptionRetryResponse,
 } from "@api/mock/responses/recording";
 import type { DocumentGenerationJobRetryResponse } from "@api/mock/types/documentGenerationJob";
 import type {
   RecordingDetailEntry,
   RecordingDetailResponse,
+  RecordingHistoryItem,
   RecordingTranscriptionRetryResponse,
 } from "@api/mock/types/recording";
 
 // 기본 응답은 녹음마다 값이 그대로 타입이 되어 있어요(예: 빈 배열). 여기서는 응답 타입으로 넓혀 읽어요
 const recordingDetails: RecordingDetailEntry[] = recordingDetailsResponse;
+const recordingHistoryItems: RecordingHistoryItem[] = recordingsResponse.items;
 
 // 다시 시도를 접수한 문서 생성 작업의 ID.
 // 기본 응답(responses)은 테스트의 기대값으로도 쓰여서 바꾸지 않고, 바뀐 것만 여기에 적어요
@@ -71,6 +74,26 @@ export const findRecordingDetail = (recordingId: number) => {
     },
   } satisfies RecordingDetailResponse;
 };
+
+/**
+ * 녹음 기록 목록 전체. 전사나 문서 생성 작업을 다시 접수한 녹음은 서버처럼 문서 정리 중으로 돌려줘요.
+ * 작업 일부만 다시 접수해도 대기 중인 작업이 실패보다 먼저라 정리 중이에요
+ */
+export const findRecordingHistoryItems = () =>
+  recordingHistoryItems.map((item) => {
+    const isRetried =
+      transcriptionRetriedRecordingIds.has(item.recordingId) ||
+      item.retryableJobIds.some((jobId) => retriedJobIds.has(jobId));
+
+    if (!isRetried) return item;
+
+    return {
+      ...item,
+      processingStatus: "PROCESSING",
+      retryable: false,
+      retryableJobIds: [],
+    } satisfies RecordingHistoryItem;
+  });
 
 /**
  * 문서 생성 작업의 다시 시도를 기록해요.

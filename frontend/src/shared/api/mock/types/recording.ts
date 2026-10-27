@@ -22,6 +22,33 @@ export interface CurrentRecordingResponse {
   retryableJobIds?: number[];
 }
 
+/** 끝난 녹음의 처리 상태. 녹음 문서 조회와 같은 값이에요 */
+export type RecordingProcessingStatus =
+  | "PROCESSING"
+  | "TRANSCRIPTION_FAILED"
+  | "DOCUMENT_FAILED"
+  | "NO_CONTENT"
+  | "COMPLETED";
+
+/** 녹음 기록 목록의 한 행 */
+export interface RecordingHistoryItem {
+  recordingId: number;
+  /** AI 녹음 제목이 없으면 「OO 님의 녹음」 */
+  title: string;
+  /** ISO 8601 */
+  startedAt: string;
+  recordingDurationSeconds: number;
+  processingStatus: RecordingProcessingStatus;
+  retryable: boolean;
+  /** 문서 생성 실패에서 지금 접수할 수 있는 작업 ID. 나머지 상태는 빈 배열 */
+  retryableJobIds: number[];
+}
+
+export interface RecordingsResponse {
+  items: RecordingHistoryItem[];
+  nextCursor: string | null;
+}
+
 export interface RecordingStartResponse {
   recordingId: number;
   status: RecordingSessionStatus;

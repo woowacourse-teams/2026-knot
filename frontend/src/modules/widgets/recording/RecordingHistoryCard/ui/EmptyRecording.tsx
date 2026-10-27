@@ -1,17 +1,18 @@
 import styled from "@emotion/styled";
 
-/** 진행 중인 녹음이 없을 때 칸 대신 보여 주는 안내. */
+/** 맨 위 줄과 녹음 목록이 모두 없을 때 목록 자리에 보여 주는 안내(STT-R35). */
 export default function EmptyRecording() {
   return (
     <Container>
-      <Message>진행 중인 녹음이 없어요</Message>
+      <Message>아직 녹음이 없어요</Message>
       <Description>
-        독의 마이크로 녹음을 시작하면 여기에서 진행 상황을 볼 수 있어요
+        독의 마이크로 녹음을 시작하면 여기에서 녹음과 정리 상태를 볼 수 있어요
       </Description>
     </Container>
   );
 }
 
+/** 피그마 Empty: 안쪽 12px 24px, 두 줄 사이 2px, 가운데 정렬 */
 const Container = styled.div`
   display: flex;
   flex: 1;
@@ -21,8 +22,7 @@ const Container = styled.div`
   gap: 0.125rem; /* 2px */
   width: 100%;
   min-height: 0;
-  padding: 0.75rem; /* 12px */
-  border-radius: 1rem; /* 16px */
+  padding: 0.75rem 1.5rem; /* 12px 24px */
   text-align: center;
 `;
 

@@ -90,7 +90,7 @@ for (const viewport of VIEWPORTS) {
 test.describe("모바일 390 홈", () => {
   test.use({ viewport: { width: 390, height: 844 } });
 
-  test("홈 카드 네 개가 좌우 16px 여백 안에서 한 열로 쌓인다", async ({
+  test("홈 카드 세 개가 좌우 16px 여백 안에서 한 열로 쌓인다", async ({
     page,
   }) => {
     await page.goto(HOME_PATH);
@@ -98,7 +98,7 @@ test.describe("모바일 390 홈", () => {
 
     // 인사말 바로 다음 묶음이 카드 묶음이에요
     const cards = page.locator("main h1 + div > *");
-    await expect(cards).toHaveCount(4);
+    await expect(cards).toHaveCount(3);
 
     for (const card of await cards.all()) {
       const box = await card.boundingBox();
