@@ -12,8 +12,6 @@ interface RecordingGroupProps {
   startedAt: string;
   /** 녹음 길이(초) */
   recordingDurationSeconds: number;
-  /** 이 녹음에서 나온 문서 수. 서버가 준 값이에요 */
-  documentCount: number;
   /** 묶음에 담을 문서 행(`RecordingDocumentRow`) */
   children: ReactNode;
 }
@@ -28,7 +26,6 @@ export default function RecordingGroup({
   title,
   startedAt,
   recordingDurationSeconds,
-  documentCount,
   children,
 }: RecordingGroupProps) {
   const titleId = useId();
@@ -41,7 +38,6 @@ export default function RecordingGroup({
         title={title}
         startedAt={startedAt}
         recordingDurationSeconds={recordingDurationSeconds}
-        documentCount={documentCount}
       />
       <Documents>{children}</Documents>
     </Card>

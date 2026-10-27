@@ -444,7 +444,7 @@ export class DocumentRecordingDto {
   startedAt: string;
   /** 일시정지를 뺀 서버 누적 녹음 길이(초). 소수 초는 버린 정수예요 */
   recordingDurationSeconds: number;
-  /** 이 녹음의 문서 수. 항상 `documents` 길이와 같고 1 이상이에요 */
+  /** 이 녹음의 문서 수. 항상 `documents` 길이와 같고 1 이상이에요. 녹음 행에는 문서 수를 보여 주지 않아요(DOC-R22) */
   documentCount: number;
   /** 이 녹음에서 나온 문서 전부. 생성 시각 오름차순(같으면 ID 오름차순)이고 페이지로 나뉘지 않아요 */
   documents: DocumentRecordingDocumentDto[];

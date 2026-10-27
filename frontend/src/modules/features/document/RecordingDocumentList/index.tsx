@@ -98,7 +98,6 @@ export default function RecordingDocumentList() {
             title,
             startedAt,
             recordingDurationSeconds,
-            documentCount,
             documents,
           }) => (
             <RecordingGroup
@@ -113,7 +112,6 @@ export default function RecordingDocumentList() {
               title={title}
               startedAt={startedAt}
               recordingDurationSeconds={recordingDurationSeconds}
-              documentCount={documentCount}
             >
               {documents.map(({ id, title: documentTitle, summary }) => (
                 <RecordingDocumentRow

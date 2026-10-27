@@ -190,7 +190,7 @@ describe("RecordingDocumentList", () => {
     vi.unstubAllGlobals();
   });
 
-  it("녹음마다 묶음을 두고, 머리 행에 표시 제목 · 녹음 시작 날짜 · 녹음 길이 · 문서 수를 보여 준다", async () => {
+  it("녹음마다 묶음을 두고, 머리 행에 표시 제목 · 녹음 시작 날짜 · 녹음 길이만 보여 주고 문서 수는 보여 주지 않는다", async () => {
     renderRecordingDocumentList();
 
     for (const recording of expected.items) {
@@ -204,9 +204,8 @@ describe("RecordingDocumentList", () => {
           formatDurationFromSeconds(recording.recordingDurationSeconds),
         ),
       ).toBeInTheDocument();
-      expect(
-        group.getByText(`문서 ${recording.documentCount}`),
-      ).toBeInTheDocument();
+      // 그 녹음의 문서는 머리 행 아래 문서 항목으로 보여요(DOC-R22)
+      expect(group.queryByText(/^문서 \d+$/)).not.toBeInTheDocument();
     }
   });
 
