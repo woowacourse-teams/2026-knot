@@ -5,11 +5,16 @@ import { ToastProvider } from "@provider/context/toastContext";
 import { theme } from "@provider/themeProvider";
 import { useRecordingStore } from "@store/recordingStore";
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
+import { captureAnalyticsEvent } from "@utils/captureAnalyticsEvent";
 import { MemoryRouter } from "react-router";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import MeetingAudioOption from ".";
 import { MEETING_AUDIO_COPY } from "./constants/meetingAudioCopy";
+
+vi.mock("@utils/captureAnalyticsEvent", () => ({
+  captureAnalyticsEvent: vi.fn(),
+}));
 
 const CHROME_UA =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0.0.0 Safari/537.36";
@@ -312,5 +317,128 @@ describe("MeetingAudioOption", () => {
     expect(meetingSource()).toHaveTextContent(
       MEETING_AUDIO_COPY.MEETING_DESCRIPTION.paused,
     );
+  });
+});
+
+describe("MeetingAudioOption의 사용 기록", () => {
+  /** `renderDuringRecording`이 시작해 둔 녹음 */
+  const RECORDING = { recording_id: 10, workspace_id: 1 };
+
+  const getTrackedProperties = (event: string) =>
+    vi
+      .mocked(captureAnalyticsEvent)
+      .mock.calls.filter(([call]) => call.event === event)
+      .map(([call]) => call.properties);
+
+  beforeEach(() => {
+    vi.mocked(captureAnalyticsEvent).mockClear();
+    useBrowser(CHROME_UA);
+  });
+
+  afterEach(() => {
+    useRecordingStore.getState().discardRecording();
+  });
+
+  it("함께 녹음하기로 연결되면 연결됨과 고른 회의 장소(기본은 브라우저)를 보낸다", async () => {
+    vi.spyOn(navigator.mediaDevices, "getDisplayMedia").mockResolvedValue(
+      createSharedTab().stream,
+    );
+    await renderDuringRecording();
+
+    await confirmDialog(openDialog());
+
+    expect(getTrackedProperties("meeting_audio_connect_result")).toEqual([
+      {
+        result: "connected",
+        location: "browser_tab",
+        is_reconnect: false,
+        ...RECORDING,
+      },
+    ]);
+  });
+
+  it("설치한 앱에서를 고른 뒤 공유 창을 닫으면 공유 창 닫음과 설치한 앱을 보낸다", async () => {
+    vi.spyOn(navigator.mediaDevices, "getDisplayMedia").mockRejectedValue(
+      new DOMException("Permission denied", "NotAllowedError"),
+    );
+    await renderDuringRecording();
+
+    const dialog = openDialog();
+    fireEvent.click(
+      within(dialog).getByRole("radio", {
+        name: new RegExp(MEETING_AUDIO_COPY.LOCATIONS.meetingApp.LABEL),
+      }),
+    );
+    await confirmDialog(dialog);
+
+    expect(getTrackedProperties("meeting_audio_connect_result")).toEqual([
+      {
+        result: "share_cancelled",
+        location: "meeting_app",
+        is_reconnect: false,
+        ...RECORDING,
+      },
+    ]);
+  });
+
+  it("소리 없이 공유하면 소리 없음을, 다시 연결하기로 연결되면 다시 연결한 연결됨을 보낸다", async () => {
+    const getDisplayMedia = vi
+      .spyOn(navigator.mediaDevices, "getDisplayMedia")
+      .mockResolvedValue(createSharedTab({ hasAudio: false }).stream);
+    await renderDuringRecording();
+
+    await confirmDialog(openDialog());
+    getDisplayMedia.mockResolvedValue(createSharedTab().stream);
+    await confirmDialog(openDialog(MEETING_AUDIO_COPY.RECONNECT));
+
+    expect(getTrackedProperties("meeting_audio_connect_result")).toEqual([
+      expect.objectContaining({ result: "no_audio", is_reconnect: false }),
+      expect.objectContaining({ result: "connected", is_reconnect: true }),
+    ]);
+  });
+
+  it.each([
+    {
+      label: "취소를 누르면",
+      close: (dialog: HTMLElement) =>
+        fireEvent.click(
+          within(dialog).getByRole("button", {
+            name: MEETING_AUDIO_COPY.DIALOG.CANCEL,
+          }),
+        ),
+    },
+    {
+      label: "ESC를 누르면",
+      close: () => fireEvent.keyDown(document, { key: "Escape" }),
+    },
+  ])("연결 안내에서 $label 안내에서 취소함을 보낸다", async ({ close }) => {
+    await renderDuringRecording();
+
+    close(openDialog());
+
+    expect(getTrackedProperties("meeting_audio_connect_result")).toEqual([
+      {
+        result: "dialog_cancelled",
+        location: "browser_tab",
+        is_reconnect: false,
+        ...RECORDING,
+      },
+    ]);
+  });
+
+  it("함께 녹음하다 공유가 멈추면 공유 멈춤을 보낸다", async () => {
+    const shared = createSharedTab();
+    vi.spyOn(navigator.mediaDevices, "getDisplayMedia").mockResolvedValue(
+      shared.stream,
+    );
+    await renderDuringRecording();
+    await confirmDialog(openDialog());
+
+    act(() => {
+      shared.audio.stop();
+      shared.audio.dispatchEvent(new Event("ended"));
+    });
+
+    expect(getTrackedProperties("meeting_audio_stopped")).toEqual([RECORDING]);
   });
 });

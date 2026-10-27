@@ -1,3 +1,5 @@
+import type { MEETING_AUDIO_COPY } from "../constants/meetingAudioCopy";
+
 /**
  * 「화상 회의 상대방 목소리」 줄이 보여 주는 상태.
  *
@@ -16,3 +18,6 @@ export type MeetingSourceState =
   | "stopped"
   | "unsupported"
   | "mobile";
+
+/** 연결 안내에서 고르는 회의를 연 곳. 브라우저(`browserTab`) 또는 설치한 앱(`meetingApp`)이에요 */
+export type MeetingLocation = keyof typeof MEETING_AUDIO_COPY.LOCATIONS;

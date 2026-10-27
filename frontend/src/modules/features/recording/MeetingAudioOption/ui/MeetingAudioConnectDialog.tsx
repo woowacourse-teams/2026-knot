@@ -9,17 +9,18 @@ import { useId, useState } from "react";
 import CheckIcon from "@/assets/icons/check18.svg";
 
 import { MEETING_AUDIO_COPY } from "../constants/meetingAudioCopy";
+import type { MeetingLocation } from "../types/meetingSource";
 import SharePickerExample from "./SharePickerExample";
-
-type MeetingLocation = keyof typeof MEETING_AUDIO_COPY.LOCATIONS;
 
 const LOCATIONS = Object.keys(
   MEETING_AUDIO_COPY.LOCATIONS,
 ) as MeetingLocation[];
 
 interface MeetingAudioConnectDialogProps {
-  onClose: () => void;
-  onConfirm: () => void;
+  /** 취소 · 바깥 누름 · ESC로 닫을 때. 그때 골라 둔 회의를 연 곳을 받아요 */
+  onClose: (location: MeetingLocation) => void;
+  /** 「공유할 화면 고르기」를 눌렀을 때. 고른 회의를 연 곳을 받아요 */
+  onConfirm: (location: MeetingLocation) => void;
 }
 
 /**
@@ -28,6 +29,7 @@ interface MeetingAudioConnectDialogProps {
  *
  * 회의를 연 곳은 브라우저가 기본이고, 고른 곳에 따라 공유 창에서 고를 것과 예시 그림이 바뀌어요.
  * 바깥을 누르거나 ESC를 눌러도 [취소]와 같이 모달만 닫혀요.
+ * 고른 곳은 공유 창 설정 안내에만 쓰고, 닫거나 고를 때 사용 기록에 남기도록 쓰는 쪽에 넘겨요.
  */
 export default function MeetingAudioConnectDialog({
   onClose,
@@ -37,10 +39,12 @@ export default function MeetingAudioConnectDialog({
   const [location, setLocation] = useState<MeetingLocation>("browserTab");
   const guide = MEETING_AUDIO_COPY.LOCATIONS[location];
 
-  useKeyDown({ key: "Escape", isEnabled: true, onKeyDown: onClose });
+  const handleClose = () => onClose(location);
+
+  useKeyDown({ key: "Escape", isEnabled: true, onKeyDown: handleClose });
 
   return (
-    <Dim onClick={onClose}>
+    <Dim onClick={handleClose}>
       <Container
         role="dialog"
         aria-modal="true"
@@ -106,10 +110,10 @@ export default function MeetingAudioConnectDialog({
         </Notice>
 
         <Actions>
-          <Button size="md" variant="outline" isFullWidth onClick={onClose}>
+          <Button size="md" variant="outline" isFullWidth onClick={handleClose}>
             {MEETING_AUDIO_COPY.DIALOG.CANCEL}
           </Button>
-          <Button size="md" isFullWidth onClick={onConfirm}>
+          <Button size="md" isFullWidth onClick={() => onConfirm(location)}>
             {MEETING_AUDIO_COPY.DIALOG.CONFIRM}
           </Button>
         </Actions>

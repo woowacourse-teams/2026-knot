@@ -38,6 +38,7 @@ import SidebarIcon from "@/assets/icons/sidebar.svg";
 
 import { WORKSPACE_DOCK_RAIL_ID } from "./constants/dockRail";
 import { useTabScreenMotion } from "./model/useTabScreenMotion";
+import { useTranscriptScrollAnalytics } from "./model/useTranscriptScrollAnalytics";
 import type { DockedPanelName } from "./types/dockedPanel";
 
 /**
@@ -59,6 +60,7 @@ import type { DockedPanelName } from "./types/dockedPanel";
  * 문서 하나를 보는 화면에서는 원문 패널이 같은 오른쪽 자리를 쓴다. GNB 오른쪽의 원문 버튼으로 여닫고,
  * 회원이 마지막에 둔 상태를 다음 문서에도 그대로 적용한다(DOC-R3 · DOC-R4).
  * 녹음 문서 화면도 같은 자리에 그 녹음의 전사를 둔다. 열 때마다 열려 있고, 전사가 없는 처리 상태(정리 중 · 전사 실패 · 주제 분류 실패 · 정리할 내용 없음)에서는 버튼과 패널이 없다(STT-R39).
+ * 원문을 스크롤하면 화면에 들어올 때마다 처음 한 번 사용 기록으로 보낸다(`useTranscriptScrollAnalytics`).
  *
  * 1024 미만(태블릿, 모바일)에서는 자리가 모자라 구조는 그대로 두고 패널만 본문 위에 띄운다(RESP-R2 · RESP-R3).
  * 왼쪽 패널은 고정하지 않고 덮개로만 열고, 오른쪽 패널은 태블릿에서 오른쪽 덮개(폭 400), 모바일에서 아래 시트로 연다.
@@ -89,6 +91,7 @@ export default function WorkspaceLayout() {
   });
   const { isChatActive, activeTabIndex } = useWorkspaceNav();
   const { isTranscriptPanelOpen, toggleTranscriptPanel } = useTranscriptPanel();
+  const { handleTranscriptScroll } = useTranscriptScrollAnalytics();
   // 녹음 문서 섹션과 같은 쿼리 키라 요청이 더 나가지 않아요
   const { isTranscriptAvailable } = useRecordingDocumentStatus({
     workspaceId: Number(workspaceId),
@@ -231,7 +234,10 @@ export default function WorkspaceLayout() {
         )}
 
         {isTranscriptActive && (
-          <TranscriptRail onClick={handleRailClick}>
+          <TranscriptRail
+            onClick={handleRailClick}
+            onScrollCapture={handleTranscriptScroll}
+          >
             {/* 본문처럼, 들어갈 수 있는 워크스페이스인지 알기 전에는 원문을 불러오지 않아요 */}
             {isReady && isTranscriptPanelOpen && <TranscriptPanel />}
           </TranscriptRail>

@@ -378,6 +378,8 @@ describe("RecorderBar", () => {
           properties: {
             result: "uploaded",
             audio_mode: "FINAL_WEBM_V1",
+            // jsdom은 Chrome 계열이 아니라 회의 소리를 받을 수 없는 브라우저예요
+            meeting_audio: "unsupported",
             recording_id: RECORDING_ID,
             workspace_id: Number(WORKSPACE_ID),
           },

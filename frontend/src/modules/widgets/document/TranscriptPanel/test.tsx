@@ -29,6 +29,7 @@ import {
   waitFor,
   within,
 } from "@testing-library/react";
+import { captureAnalyticsEvent } from "@utils/captureAnalyticsEvent";
 import { formatDate } from "@utils/formatDate";
 import { formatDurationFromSeconds } from "@utils/formatDurationFromSeconds";
 import { formatRecordingTime } from "@utils/formatRecordingTime";
@@ -38,6 +39,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import TranscriptPanel from ".";
 import { formatTranscriptText } from "./utils/formatTranscriptText";
+
+vi.mock("@utils/captureAnalyticsEvent", () => ({
+  captureAnalyticsEvent: vi.fn(),
+}));
 
 const [transcriptResponse] = documentTranscriptsResponse;
 const expectedTranscript = new GetDocumentTranscriptResponseDto(
@@ -464,6 +469,30 @@ describe("TranscriptPanel", () => {
 
     expect(panel.getByRole("button", { name: "복사" })).toBeInTheDocument();
   });
+
+  it("원문을 복사하면 문서 보기의 원문 복사를 사용 기록으로 보낸다", async () => {
+    vi.mocked(captureAnalyticsEvent).mockClear();
+    Object.defineProperty(navigator, "clipboard", {
+      value: { writeText: vi.fn().mockResolvedValue(undefined) },
+      configurable: true,
+    });
+    renderTranscriptPanel();
+    const panel = within(await findLoadedPanel());
+
+    await act(async () => {
+      fireEvent.click(panel.getByRole("button", { name: "복사" }));
+    });
+
+    expect(captureAnalyticsEvent).toHaveBeenCalledWith({
+      event: "content_copied",
+      properties: {
+        content: "transcript",
+        screen: "document",
+        document_id: Number(DOCUMENT_ID),
+        workspace_id: Number(WORKSPACE_ID),
+      },
+    });
+  });
 });
 
 describe("TranscriptPanel · 녹음 문서 화면 (STT-R39)", () => {
@@ -605,5 +634,29 @@ describe("TranscriptPanel · 녹음 문서 화면 (STT-R39)", () => {
     expect(writeText).toHaveBeenCalledWith(
       formatTranscriptText(expectedRecordingTranscript.segments),
     );
+  });
+
+  it("원문을 복사하면 녹음 문서의 원문 복사를 사용 기록으로 보낸다", async () => {
+    vi.mocked(captureAnalyticsEvent).mockClear();
+    Object.defineProperty(navigator, "clipboard", {
+      value: { writeText: vi.fn().mockResolvedValue(undefined) },
+      configurable: true,
+    });
+    renderRecordingTranscriptPanel();
+    const panel = within(await findLoadedPanel());
+
+    await act(async () => {
+      fireEvent.click(panel.getByRole("button", { name: "복사" }));
+    });
+
+    expect(captureAnalyticsEvent).toHaveBeenCalledWith({
+      event: "content_copied",
+      properties: {
+        content: "transcript",
+        screen: "recording_document",
+        recording_id: expectedRecordingDocument.recordingId,
+        workspace_id: Number(WORKSPACE_ID),
+      },
+    });
   });
 });

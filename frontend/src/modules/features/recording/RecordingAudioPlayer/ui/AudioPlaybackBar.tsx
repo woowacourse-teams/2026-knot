@@ -6,7 +6,9 @@ import type { ChangeEvent } from "react";
 import PauseIcon from "@/assets/icons/pause.svg";
 import PlayIcon from "@/assets/icons/play.svg";
 
+import { useAudioListeningAnalytics } from "../model/useAudioListeningAnalytics";
 import { useAudioPlayback } from "../model/useAudioPlayback";
+import { useAudioUnavailableAnalytics } from "../model/useAudioUnavailableAnalytics";
 
 /** 위치 막대를 키보드로 옮길 때 한 번에 움직이는 길이(ms) */
 const SEEK_STEP_MS = 1000;
@@ -44,6 +46,10 @@ export default function AudioPlaybackBar({
     seek,
     retryLoad,
   } = useAudioPlayback({ playbackUrl, expiresAt, refreshPlaybackUrl });
+  useAudioListeningAnalytics({ audioRef, durationMillis });
+  useAudioUnavailableAnalytics({
+    reason: hasLoadError ? "media_error" : null,
+  });
 
   const positionMillis = Math.min(currentMillis, durationMillis);
   const progressPercent =

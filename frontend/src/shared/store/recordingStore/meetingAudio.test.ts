@@ -161,7 +161,7 @@ describe("녹음 중 회의 소리 함께 녹음", () => {
     shareScreen(shared);
     await startRecording({ isPcm: true });
 
-    expect(await getState().connectMeetingAudio()).toBe(true);
+    expect(await getState().connectMeetingAudio()).toBe("connected");
     expect(sourceOf).toHaveBeenCalledWith(shared.stream);
     expect(FakePcmCollector.instances[0].addedStreams).toEqual([shared.stream]);
     expect(getState()).toMatchObject({
@@ -193,7 +193,7 @@ describe("녹음 중 회의 소리 함께 녹음", () => {
     shareScreen(shared);
     await startRecording({ isPcm: true });
 
-    expect(await getState().connectMeetingAudio()).toBe(false);
+    expect(await getState().connectMeetingAudio()).toBe("noAudio");
     expect(shared.video.readyState).toBe("ended");
     expect(FakePcmCollector.instances[0].addedStreams).toEqual([]);
     expect(getState()).toMatchObject({
@@ -208,7 +208,7 @@ describe("녹음 중 회의 소리 함께 녹음", () => {
     );
     await startRecording();
 
-    expect(await getState().connectMeetingAudio()).toBe(false);
+    expect(await getState().connectMeetingAudio()).toBe("cancelled");
     expect(getState()).toMatchObject({
       status: "recording",
       meetingAudioStatus: "off",
@@ -256,7 +256,7 @@ describe("녹음 중 회의 소리 함께 녹음", () => {
 
     getState().discardRecording();
     pickScreen();
-    await connecting;
+    expect(await connecting).toBe("notConnected");
 
     expect(shared.audio.readyState).toBe("ended");
     expect(getState().meetingAudioStatus).toBe("off");

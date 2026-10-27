@@ -51,6 +51,7 @@ export default function MeetingDocumentList() {
     recordingDocument?.processingStatus === "DOCUMENT_FAILED";
   const isRetryable = recordingDocument?.isRetryable ?? false;
   const { handleRetry, isRetrying } = useRetryFailedRecording({
+    surface: "recording_document",
     workspaceId,
     recordingId,
     failedStatus: isDocumentFailed ? "documentFailed" : null,

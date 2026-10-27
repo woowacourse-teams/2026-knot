@@ -21,6 +21,7 @@ describe("captureAnalyticsEvent", () => {
       properties: {
         result: "uploaded",
         audio_mode: "PCM16_CHUNKS_V1",
+        meeting_audio: "off",
         recording_id: 7,
         workspace_id: 3,
       },
@@ -30,6 +31,7 @@ describe("captureAnalyticsEvent", () => {
     expect(posthog.capture).toHaveBeenCalledWith("recording_ended", {
       result: "uploaded",
       audio_mode: "PCM16_CHUNKS_V1",
+      meeting_audio: "off",
       recording_id: 7,
       workspace_id: 3,
     });

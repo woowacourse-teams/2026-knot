@@ -7,6 +7,7 @@ import styled from "@emotion/styled";
 import useConfirmDocument from "@hooks/domain/document/useConfirmDocument";
 import Chip from "@primitives/ui/Chip";
 import DocumentBody from "@primitives/ui/DocumentBody";
+import { captureAnalyticsEvent } from "@utils/captureAnalyticsEvent";
 import { formatDate } from "@utils/formatDate";
 import { formatDurationFromSeconds } from "@utils/formatDurationFromSeconds";
 import { useId } from "react";
@@ -35,6 +36,7 @@ import DocumentSkeleton from "./ui/DocumentSkeleton";
  * 확인 버튼은 확인 대상에게만 보여요. 확인한 뒤에는 누를 수 없는 「확인했어요」로 바뀌고, 확인 대상이 아니면 그리지 않아요.
  * 같은 녹음의 내 문서를 모두 확인하면 성공 토스트를, 확인 요청이 실패하면 오류 토스트를 띄워요(`useConfirmDocument`).
  * 결정이 없는 회의 문서는 본문의 결정 없음 문장을 흐리게 그려요(STT-R23).
+ * 복사에 성공하면 문서 본문 복사를 사용 기록(`content_copied`)으로 보내요.
  */
 export default function DocumentViewer() {
   const titleId = useId();
@@ -53,6 +55,18 @@ export default function DocumentViewer() {
     documentId,
     recordingSessionId: documentDetail?.recordingSessionId,
   });
+
+  const handleDocumentCopied = () => {
+    captureAnalyticsEvent({
+      event: "content_copied",
+      properties: {
+        content: "document",
+        screen: "document",
+        document_id: documentId,
+        workspace_id: workspaceId,
+      },
+    });
+  };
 
   if (status === "loading") {
     return (
@@ -75,6 +89,7 @@ export default function DocumentViewer() {
           <DocumentCopyButton
             title={documentDetail.title}
             content={documentDetail.content}
+            onCopied={handleDocumentCopied}
           />
         </TitleRow>
         <MetaRow>

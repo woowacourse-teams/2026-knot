@@ -27,6 +27,7 @@ import {
   waitFor,
   within,
 } from "@testing-library/react";
+import { captureAnalyticsEvent } from "@utils/captureAnalyticsEvent";
 import { formatDate } from "@utils/formatDate";
 import { formatDurationFromSeconds } from "@utils/formatDurationFromSeconds";
 import { formatRecordingTime } from "@utils/formatRecordingTime";
@@ -40,6 +41,10 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import RecordingHistoryCard from ".";
+
+vi.mock("@utils/captureAnalyticsEvent", () => ({
+  captureAnalyticsEvent: vi.fn(),
+}));
 
 const WORKSPACE_ID = 1;
 const HOME_PATH = getRouterPath({
@@ -438,6 +443,43 @@ describe("RecordingHistoryCard", () => {
       expect(getRetryCount()).toBe(1);
       expect(screen.queryByText(RETRY_FAILED_TOAST)).not.toBeInTheDocument();
     });
+
+    it.each([
+      {
+        label: "전사 실패 행의 다시 시도가 접수되면",
+        item: TRANSCRIPTION_FAILED_ITEM,
+        stage: "transcription",
+        result: "accepted",
+      },
+      {
+        label: "문서 생성 실패 행의 다시 시도가 접수되면",
+        item: MULTI_JOB_FAILED_ITEM,
+        stage: "document_generation",
+        result: "accepted",
+      },
+    ])(
+      "$label 홈 녹음 기록 카드의 다시 시도 결과를 사용 기록으로 보낸다",
+      async ({ item, stage, result }) => {
+        vi.mocked(captureAnalyticsEvent).mockClear();
+        renderCard();
+
+        const row = await findRow(item.recordingId);
+        fireEvent.click(within(row).getByRole("button", { name: RETRY }));
+
+        await waitFor(() =>
+          expect(captureAnalyticsEvent).toHaveBeenCalledWith({
+            event: "recording_retry_result",
+            properties: {
+              surface: "recording_history",
+              stage,
+              result,
+              recording_id: item.recordingId,
+              workspace_id: WORKSPACE_ID,
+            },
+          }),
+        );
+      },
+    );
   });
 
   describe("목록 (STT-R31 · R33)", () => {

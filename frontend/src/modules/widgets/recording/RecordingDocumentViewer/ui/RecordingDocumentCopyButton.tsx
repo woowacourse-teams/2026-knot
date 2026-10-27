@@ -10,6 +10,8 @@ interface RecordingDocumentCopyButtonProps {
   title: string;
   /** 회의 전체 요약의 마크다운 본문 */
   content: string;
+  /** 복사에 성공했을 때. 사용 기록을 보내요 */
+  onCopied: () => void;
 }
 
 /**
@@ -22,6 +24,7 @@ interface RecordingDocumentCopyButtonProps {
 export default function RecordingDocumentCopyButton({
   title,
   content,
+  onCopied,
 }: RecordingDocumentCopyButtonProps) {
   const { copy } = useClipboard();
   const { start: startCopiedTimeout, isTimedOut: isCopied } = useTimeout({
@@ -31,7 +34,10 @@ export default function RecordingDocumentCopyButton({
   const handleCopy = () => {
     copy({
       text: `# ${title}\n\n${content}`,
-      onCopySuccess: startCopiedTimeout,
+      onCopySuccess: () => {
+        startCopiedTimeout();
+        onCopied();
+      },
     });
   };
 

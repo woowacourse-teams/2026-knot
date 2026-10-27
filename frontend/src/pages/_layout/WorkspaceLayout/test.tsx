@@ -28,6 +28,7 @@ import { useTranscriptPanelStore } from "@store/transcriptPanelStore";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ANALYTICS_SCROLL_ROOT_ATTRIBUTE } from "@constants/analytics";
 import { TOAST_MESSAGES } from "@constants/toastMessages";
+import { captureAnalyticsEvent } from "@utils/captureAnalyticsEvent";
 import { saveLastConversationId } from "@utils/lastConversation";
 import {
   act,
@@ -41,12 +42,16 @@ import {
 } from "@testing-library/react";
 import { delay, http, HttpResponse } from "msw";
 import { createMemoryRouter, Outlet, RouterProvider } from "react-router";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import SearchConversation from "@widgets/search/SearchConversation";
 import type { ReactNode } from "react";
 
 import WorkspaceLayout from ".";
 import { WORKSPACE_DOCK_RAIL_ID } from "./constants/dockRail";
+
+vi.mock("@utils/captureAnalyticsEvent", () => ({
+  captureAnalyticsEvent: vi.fn(),
+}));
 
 const WORKSPACE_ID = 1;
 const HOME_PATH = getRouterPath({
@@ -1272,6 +1277,83 @@ describe("WorkspaceLayout의 원문 패널", () => {
       screen.queryByRole("button", { name: /^원문/ }),
     ).not.toBeInTheDocument();
     expect(queryTranscriptPanel()).not.toBeInTheDocument();
+  });
+
+  describe("원문 패널 스크롤 기록", () => {
+    beforeEach(() => {
+      vi.mocked(captureAnalyticsEvent).mockClear();
+    });
+
+    const getScrolledProperties = () =>
+      vi
+        .mocked(captureAnalyticsEvent)
+        .mock.calls.filter(
+          ([call]) => call.event === "transcript_panel_scrolled",
+        )
+        .map(([call]) => call.properties);
+
+    /**
+     * 원문 패널의 발화 목록을 스크롤해요. 패널 전체가 아니라 이 목록만 스크롤돼요(DOC-R4).
+     * 불러오는 중 화면도 같은 이름의 자리라, 원문을 받아 목록이 나올 때까지 패널을 다시 찾아요
+     */
+    const scrollTranscript = async () => {
+      const list = await waitFor(() =>
+        within(
+          screen.getByRole("region", { name: TRANSCRIPT_PANEL_TITLE }),
+        ).getByRole("list"),
+      );
+      fireEvent.scroll(list);
+    };
+
+    it("문서 보기에서 원문을 스크롤하면 처음 한 번만 보내고, 원문을 닫았다 다시 열어 스크롤해도 다시 보내지 않는다", async () => {
+      renderLayoutAsFirstVisit();
+      expect(await screen.findByText(DOCUMENT_TEXT)).toBeInTheDocument();
+
+      await scrollTranscript();
+      await scrollTranscript();
+      fireEvent.click(await findToggle(CLOSE_LABEL));
+      fireEvent.click(await findToggle(OPEN_LABEL));
+      await scrollTranscript();
+
+      expect(getScrolledProperties()).toEqual([
+        {
+          screen: "document",
+          document_id: firstDocument.id,
+          workspace_id: WORKSPACE_ID,
+        },
+      ]);
+    });
+
+    it("다른 문서로 옮겨 스크롤하면 새로 들어온 화면이라 다시 보낸다", async () => {
+      const { router } = renderLayoutAsFirstVisit();
+      expect(await screen.findByText(DOCUMENT_TEXT)).toBeInTheDocument();
+      await scrollTranscript();
+
+      await act(() => router.navigate(OTHER_DOCUMENT_PATH));
+      await scrollTranscript();
+
+      expect(getScrolledProperties()).toEqual([
+        expect.objectContaining({ document_id: firstDocument.id }),
+        expect.objectContaining({ document_id: secondDocument.id }),
+      ]);
+    });
+
+    it("녹음 문서에서 원문을 스크롤하면 녹음 문서 화면과 녹음 id로 보낸다", async () => {
+      renderLayoutAsFirstVisit(RECORDING_DOCUMENT_PATH);
+      expect(
+        await screen.findByText(RECORDING_DOCUMENT_TEXT),
+      ).toBeInTheDocument();
+
+      await scrollTranscript();
+
+      expect(getScrolledProperties()).toEqual([
+        {
+          screen: "recording_document",
+          recording_id: recordingDocumentResponse.recordingId,
+          workspace_id: WORKSPACE_ID,
+        },
+      ]);
+    });
   });
 });
 

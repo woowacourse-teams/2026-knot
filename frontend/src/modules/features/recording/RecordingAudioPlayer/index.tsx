@@ -5,6 +5,7 @@ import InlineError from "@primitives/ui/InlineError";
 import Skeleton from "@primitives/ui/Skeleton";
 import { useParams } from "react-router";
 
+import { useAudioUnavailableAnalytics } from "./model/useAudioUnavailableAnalytics";
 import AudioPlaybackBar from "./ui/AudioPlaybackBar";
 
 /**
@@ -15,6 +16,8 @@ import AudioPlaybackBar from "./ui/AudioPlaybackBar";
  * - 음성 없음(`NO_AUDIO`): 지난 정리 정책으로 음성 파일이 지워진 녹음이에요. 실패가 아니라 다시 시도 없이 회색 안내만 둬요
  * - 준비 중(`PREPARING`): 조각 녹음의 음성을 아직 합치는 중이에요. 시안이 없어 음성 없음과 같은 회색 안내에 문구만 바꿨어요
  * - 불러오기 실패: 이 자리에만 안내와 「다시 시도」를 두고, 제목 · 요약 · 전사는 그대로 읽을 수 있어요
+ *
+ * 들을 수 없는 까닭(음성 없음 · 준비 중 · 불러오기 실패)과 재생 · 들은 시간은 사용 기록으로도 보내요.
  *
  * 어느 처리 상태에서 플레이어를 둘지(완료 · 문서 생성 실패 · 정리할 내용 없음)는 이 플레이어를 놓는 쪽이 정해요.
  * 듣기는 녹음 · 전사 · 요약 · 처리 상태와 문서 확인 기록을 바꾸지 않아요.
@@ -30,13 +33,27 @@ export default function RecordingAudioPlayer() {
     refetch,
   } = useRecordingAudioPlaybackQuery({ workspaceId, recordingId });
   const { isUnauthorized } = useRedirectToLoginOnUnauthorized({ error });
+  const isLoadFailed =
+    audioPlayback === undefined && isError && !isUnauthorized;
+  const isPlayable =
+    audioPlayback?.audioStatus === "AVAILABLE" &&
+    audioPlayback.playbackUrl !== null;
+  useAudioUnavailableAnalytics({
+    reason: isLoadFailed
+      ? "load_failed"
+      : audioPlayback === undefined || isPlayable
+        ? null
+        : audioPlayback.audioStatus === "PREPARING"
+          ? "preparing"
+          : "no_audio",
+  });
 
   const handleRetry = () => {
     refetch();
   };
 
   if (audioPlayback === undefined) {
-    if (isError && !isUnauthorized) {
+    if (isLoadFailed) {
       return (
         <Root role="group" aria-label="녹음 음성">
           <InlineError

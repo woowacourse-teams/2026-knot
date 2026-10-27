@@ -5,8 +5,10 @@ import {
 } from "@api/httpClient/error";
 import styled from "@emotion/styled";
 import useRedirectToLoginOnUnauthorized from "@hooks/domain/auth/useRedirectToLoginOnUnauthorized";
+import useAnalyticsScreenTarget from "@hooks/domain/document/useAnalyticsScreenTarget";
 import Chip from "@primitives/ui/Chip";
 import Divider from "@primitives/ui/Divider";
+import { captureAnalyticsEvent } from "@utils/captureAnalyticsEvent";
 import { formatDate } from "@utils/formatDate";
 import { formatDurationFromSeconds } from "@utils/formatDurationFromSeconds";
 
@@ -36,7 +38,8 @@ const isUnavailableError = (error: unknown) =>
  *
  * 화면의 오른쪽에 놓여요. 패널을 여닫는 버튼은 GNB에 있어서, 패널 안에는 닫기 버튼을 두지 않아요(DOC-R3).
  * 발화가 많으면 패널 전체가 아니라 발화 목록만 세로로 스크롤해요(DOC-R4).
- * 머리의 「원문」 오른쪽 끝에는 보이는 발화 줄을 그대로 복사하는 버튼을 둬요.
+ * 머리의 「원문」 오른쪽 끝에는 보이는 발화 줄을 그대로 복사하는 버튼을 둬요. 복사에 성공하면 원문 복사를 사용 기록(`content_copied`)으로 보내요.
+ * 스크롤 기록은 패널을 닫았다 열어도 한 번만 세도록 패널을 놓는 레이아웃이 보내요.
  *
  * 원문을 받지 못한 동안에는 상태 화면이 패널 전체를 대신 그려요.
  * - 불러오는 중: `TranscriptSkeleton`. 로그인이 풀려(401) 로그인 화면으로 보내는 동안에도 이 화면이에요.
@@ -60,10 +63,18 @@ export default function TranscriptPanel() {
     refetch,
   } = useTranscriptSource();
   const { isUnauthorized } = useRedirectToLoginOnUnauthorized({ error });
+  const { analyticsScreenTarget } = useAnalyticsScreenTarget();
 
   // 화면을 새로고침하지 않고 원문만 다시 조회해요. 새로고침하면 브라우저 안에만 있는 진행 중인 녹음이 사라져요
   const handleRetry = () => {
     refetch();
+  };
+
+  const handleTranscriptCopied = () => {
+    captureAnalyticsEvent({
+      event: "content_copied",
+      properties: { content: "transcript", ...analyticsScreenTarget },
+    });
   };
 
   // 400 · 403 · 404는 받은 원문이 있어도 실패 안내를 보여줘요. 그 밖의 실패는 받은 원문이 없을 때만 보여주고,
@@ -84,7 +95,10 @@ export default function TranscriptPanel() {
     <Container aria-labelledby={titleId}>
       <Header>
         <Title id={titleId}>원문</Title>
-        <TranscriptCopyButton text={formatTranscriptText(segments)} />
+        <TranscriptCopyButton
+          text={formatTranscriptText(segments)}
+          onCopied={handleTranscriptCopied}
+        />
       </Header>
       <Meta>
         {date !== undefined && (
