@@ -1,5 +1,8 @@
 import { RELEASE_NOTES_RELAY_PATH } from "@api/fetch/relay/n";
-import { releaseNotesResponse } from "@api/mock/responses/releaseNote";
+import {
+  imageReleaseNoteItems,
+  releaseNotesResponse,
+} from "@api/mock/responses/releaseNote";
 import styled from "@emotion/styled";
 import FeedbackPanel from "@features/feedback/FeedbackPanel";
 import { ToastProvider } from "@provider/context/toastContext";
@@ -47,6 +50,25 @@ const selectMenuItem = async (
   );
 };
 
+/** 사진 칸 항목 하나만 있는 노트를 돌려줘요. 사진은 기본 msw 응답이 주소에 적힌 크기로 그려 줘요 */
+const respondNoteWithImage = (
+  item: (typeof imageReleaseNoteItems)[keyof typeof imageReleaseNoteItems],
+) => ({
+  handlers: {
+    releaseNotes: http.get(`*${RELEASE_NOTES_RELAY_PATH}`, () =>
+      HttpResponse.json([
+        { id: "pr-1051", releasedAt: "2026-10-27", items: [item] },
+      ]),
+    ),
+  },
+});
+
+/** 사진 칸 경우별 모양(보통, 아주 납작함, 세로로 긺, 사진 없음) */
+const IMAGE_CASES_DESIGN = {
+  type: "figma",
+  url: "https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=5674-70369",
+} as const;
+
 /** 맨 위 노트 하나만 아직 보지 않은 사용자로 둬요 */
 const leaveLatestNoteUnread = () => {
   localStorage.setItem(LAST_SEEN_NOTE_ID_KEY, releaseNotesResponse[1].id);
@@ -74,7 +96,10 @@ const leaveLatestNoteUnread = () => {
  * **패널 내용**
  * - 노트는 main 머지마다 GitHub Actions의 Claude가 Notion 새 소식 DB에 쓰고, 프론트 Worker(`/relay/n`)가 그 DB에서 읽어 와요. 받지 못하면 빈 상태를 보여 줘요.
  * - 노트를 배포 날짜별(「10월 20일」)로 묶고 최신 날짜를 맨 위에 둬요. 같은 날 두 번 릴리즈하면 한 묶음에 모아요.
- * - 항목은 제목과 설명을 보여 주고, 이미지와 「바로 가보기」는 노트에 있을 때만 보여 줘요. 「바로 가보기」는 지금 보고 있는 워크스페이스의 그 화면으로 옮겨요.
+ * - 항목은 제목과 설명을 보여 주고, 사진과 「바로 가보기」는 노트에 있을 때만 보여 줘요. 「바로 가보기」는 지금 보고 있는 워크스페이스의 그 화면으로 옮겨요.
+ * - 사진은 Actions의 Claude가 머지 PR 본문에서 고른 GitHub 첨부 사진(`https://github.com/user-attachments/assets/…`)만 그려요. 다른 주소면 사진 칸 없이 글만 보여요.
+ * - 사진은 항목 폭에 맞춰 원래 비율로 보여 주고 자르지 않아요. 맞춘 높이가 240px을 넘으면 비율을 지킨 채 높이 240px로 줄이고 가운데에 둬요. 남는 양옆은 사진 칸 배경색이에요.
+ * - 사진을 다 불러오기 전과 불러오지 못했을 때는 사진 칸을 그리지 않아요.
  * - 사용자가 알려 준 문제를 고친 항목에는 「피드백 덕분에 바뀌었어요」 칩을 붙여요.
  * - 화면 높이를 넘으면 머리는 그대로 두고 목록만 패널 안에서 스크롤해요.
  */
@@ -97,6 +122,11 @@ const meta = {
         name: "새 소식 컴포넌트와 상태",
         type: "figma",
         url: "https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=4696-29495",
+      },
+      {
+        name: "Item/새 소식",
+        type: "figma",
+        url: "https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=4892-1831",
       },
     ],
     // 열린 패널은 body에 그려져서, 문서 페이지에서 스토리마다 따로 그려야 서로 겹치지 않아요
@@ -204,6 +234,53 @@ export const NoteList: Story = {
       type: "figma",
       url: "https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=4892-55099",
     },
+  },
+  play: async ({ canvasElement }) => {
+    await selectMenuItem(canvasElement, "새 소식");
+  },
+};
+
+/** 화면이 바뀐 항목에 보통 비율 사진이 붙은 모습이에요. 1596×1386 사진은 폭에 맞추면 240px보다 높아 높이 240px로 줄이고 가운데에 둬요 */
+export const NoteImage: Story = {
+  parameters: {
+    msw: respondNoteWithImage(imageReleaseNoteItems.normal),
+    design: {
+      type: "figma",
+      url: "https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=4697-18589",
+    },
+  },
+  play: async ({ canvasElement }) => {
+    await selectMenuItem(canvasElement, "새 소식");
+  },
+};
+
+/** 아주 납작한 사진(2560×420)이에요. 폭에 맞춘 높이 그대로 보여 주고 자르지 않아요 */
+export const WideNoteImage: Story = {
+  parameters: {
+    msw: respondNoteWithImage(imageReleaseNoteItems.wide),
+    design: IMAGE_CASES_DESIGN,
+  },
+  play: async ({ canvasElement }) => {
+    await selectMenuItem(canvasElement, "새 소식");
+  },
+};
+
+/** 세로로 긴 사진(750×1624)이에요. 높이 240px로 줄이고 남는 양옆은 사진 칸 배경색이에요 */
+export const TallNoteImage: Story = {
+  parameters: {
+    msw: respondNoteWithImage(imageReleaseNoteItems.tall),
+    design: IMAGE_CASES_DESIGN,
+  },
+  play: async ({ canvasElement }) => {
+    await selectMenuItem(canvasElement, "새 소식");
+  },
+};
+
+/** 사진을 불러오지 못한 항목이에요. 사진 칸 없이 글만 보여요. 허용하지 않는 주소도 같은 모습이에요 */
+export const BrokenNoteImage: Story = {
+  parameters: {
+    msw: respondNoteWithImage(imageReleaseNoteItems.broken),
+    design: IMAGE_CASES_DESIGN,
   },
   play: async ({ canvasElement }) => {
     await selectMenuItem(canvasElement, "새 소식");
