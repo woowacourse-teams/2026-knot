@@ -30,6 +30,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -54,6 +55,154 @@ class MeetingSummaryGenerationServiceIntegrationTest {
     private long workspace;
     private long member;
     private long teammate;
+
+    @Test
+    void renew_keepsClaimBeyondOriginalLeaseAndRejectsOldOwnerAfterRestart() {
+        long recording = registered();
+        MeetingSummaryTask old = service.claim(recording)
+                .orElseThrow();
+        when(clock.instant()).thenReturn(NOW.plusSeconds(120));
+        assertThat(service.renew(old)).isTrue();
+        when(clock.instant()).thenReturn(NOW.plusSeconds(181));
+        assertThat(service.claim(recording)).isEmpty();
+        assertThat(service.renew(old)).isTrue();
+        when(clock.instant()).thenReturn(NOW.plusSeconds(361));
+        MeetingSummaryTask next = service.claim(recording)
+                .orElseThrow();
+        assertThat(service.renew(old)).isFalse();
+        service.succeed(
+                old,
+                CONTENT
+        );
+        assertThat(row(recording).get("status")).isEqualTo("RUNNING");
+        service.succeed(
+                next,
+                CONTENT
+        );
+        assertThat(row(recording).get("status")).isEqualTo("SUCCEEDED");
+    }
+
+    @Test
+    void workerRenewsWhileGenerationIsBlocked() throws Exception {
+        long recording = registered();
+        MeetingSummaryTask task = service.claim(recording)
+                .orElseThrow();
+        MeetingSummaryGenerator generator = mock(MeetingSummaryGenerator.class);
+        CountDownLatch started = new CountDownLatch(1);
+        CountDownLatch finish = new CountDownLatch(1);
+        when(generator.generate(anyString())).thenAnswer(invocation -> {
+            started.countDown();
+            if (!finish.await(
+                    45,
+                    TimeUnit.SECONDS
+            )) {
+                throw new IllegalStateException("test timeout");
+            }
+            return CONTENT;
+        });
+        MeetingSummaryWorker worker = new MeetingSummaryWorker(
+                service,
+                generator
+        );
+        try (ExecutorService executor = Executors.newSingleThreadExecutor()) {
+            Future<?> execution = executor.submit(() -> worker.process(task));
+            assertThat(
+                    started.await(
+                            5,
+                            TimeUnit.SECONDS
+                    )
+            ).isTrue();
+            when(clock.instant()).thenReturn(NOW.plusSeconds(120));
+            Thread.sleep(32_000);
+            when(clock.instant()).thenReturn(NOW.plusSeconds(181));
+            assertThat(service.claim(recording)).isEmpty();
+            finish.countDown();
+            execution.get(
+                    10,
+                    TimeUnit.SECONDS
+            );
+            assertThat(row(recording).get("status")).isEqualTo("SUCCEEDED");
+        } finally {
+            finish.countDown();
+            worker.shutdown();
+        }
+    }
+
+    @Test
+    @EnabledIfEnvironmentVariable(named = "KNOT_LONG_LEASE_TEST", matches = "true")
+    void workerKeepsLeaseForMoreThan180WallClockSeconds() throws Exception {
+        long recording = registered();
+        long startNanos = System.nanoTime();
+        when(clock.instant()).thenAnswer(invocation -> NOW.plusNanos(System.nanoTime() - startNanos));
+        MeetingSummaryTask task = service.claim(recording)
+                .orElseThrow();
+        MeetingSummaryGenerator generator = mock(MeetingSummaryGenerator.class);
+        when(generator.generate(anyString())).thenAnswer(invocation -> {
+            Thread.sleep(TimeUnit.SECONDS.toMillis(185));
+            return CONTENT;
+        });
+        MeetingSummaryWorker worker = new MeetingSummaryWorker(
+                service,
+                generator
+        );
+        try (ExecutorService executor = Executors.newSingleThreadExecutor()) {
+            Future<?> execution = executor.submit(() -> worker.process(task));
+            execution.get(
+                    205,
+                    TimeUnit.SECONDS
+            );
+            assertThat(row(recording).get("status")).isEqualTo("SUCCEEDED");
+            assertThat(row(recording).get("attempt_no")).isEqualTo(1L);
+        } finally {
+            worker.shutdown();
+        }
+    }
+
+    @Test
+    void workerShutdownAllowsNewWorkerToRecoverExpiredClaim() throws Exception {
+        long recording = registered();
+        CountDownLatch started = new CountDownLatch(1);
+        MeetingSummaryGenerator generator = mock(MeetingSummaryGenerator.class);
+        when(generator.generate(anyString())).thenAnswer(invocation -> {
+            started.countDown();
+            try {
+                new CountDownLatch(1).await();
+            } catch (InterruptedException exception) {
+                Thread.currentThread()
+                        .interrupt();
+                throw new LlmException(
+                        LlmErrorCode.LLM_CALL_INTERRUPTED,
+                        exception
+                );
+            }
+            return CONTENT;
+        });
+        MeetingSummaryWorker oldWorker = new MeetingSummaryWorker(
+                service,
+                generator
+        );
+        try {
+            oldWorker.poll();
+            assertThat(
+                    started.await(
+                            5,
+                            TimeUnit.SECONDS
+                    )
+            ).isTrue();
+            assertThat(row(recording).get("status")).isEqualTo("RUNNING");
+        } finally {
+            oldWorker.shutdown();
+        }
+        when(clock.instant()).thenReturn(NOW.plusSeconds(180));
+        MeetingSummaryTask next = service.claim(recording)
+                .orElseThrow();
+        service.succeed(
+                next,
+                CONTENT
+        );
+        assertThat(row(recording).get("status")).isEqualTo("SUCCEEDED");
+        assertThat(row(recording).get("attempt_no")).isEqualTo(2L);
+    }
 
     MeetingSummaryGenerationServiceIntegrationTest(
             MeetingSummaryGenerationService service,
