@@ -274,6 +274,32 @@ test.describe("녹음 다시 듣기", () => {
     await expect(player.getByRole("button", { name: "재생" })).toBeVisible();
   });
 
+  test("[STT-R50] 재생하는 동안 위치 막대의 점은 1초 단위로 앞서 가지 않고 지금 재생 위치에 있다", async ({
+    page,
+  }) => {
+    await page.goto(RECORDING_DOCUMENT_PATH);
+    const player = getPlayer(page);
+    const slider = player.getByRole("slider", { name: "재생 위치" });
+
+    await player.getByRole("button", { name: "재생" }).click();
+    await expect(
+      player.getByText(formatRecordingTime(1), { exact: true }),
+    ).toBeVisible({ timeout: 5000 });
+
+    // 막대 값과 실제 재생 위치를 같은 순간에 여러 번 읽어요. 1초 단위로 반올림되면 최대 0.5초 어긋나요
+    for (let sample = 0; sample < 5; sample += 1) {
+      const { sliderMillis, audioMillis } = await slider.evaluate(
+        (element) => ({
+          sliderMillis: Number((element as HTMLInputElement).value),
+          audioMillis:
+            (document.querySelector("audio")?.currentTime ?? 0) * 1000,
+        }),
+      );
+      expect(Math.abs(sliderMillis - audioMillis)).toBeLessThan(100);
+      await page.waitForTimeout(150);
+    }
+  });
+
   test("[STT-R50] 위치 막대를 옮기면 지금 위치가 바뀐다", async ({ page }) => {
     await page.goto(RECORDING_DOCUMENT_PATH);
     const slider = getPlayer(page).getByRole("slider", { name: "재생 위치" });

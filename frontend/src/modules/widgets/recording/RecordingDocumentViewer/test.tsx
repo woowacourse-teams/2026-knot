@@ -783,6 +783,44 @@ describe("RecordingDocumentViewer", () => {
       );
     });
 
+    it("재생하는 동안 위치 막대의 점은 1초 단위로 앞서 가지 않고 지금 재생 위치에 있다", async () => {
+      renderViewer();
+      const player = within(await findPlayer());
+      const slider = await player.findByRole("slider", { name: "재생 위치" });
+      const audio = document.querySelector("audio");
+      if (audio === null) throw new Error("audio 요소가 없어요");
+      vi.spyOn(
+        HTMLMediaElement.prototype,
+        "currentTime",
+        "get",
+      ).mockReturnValue(2.6);
+
+      act(() => {
+        audio.dispatchEvent(new Event("timeupdate"));
+      });
+
+      expect(slider).toHaveValue("2600");
+      // 막대 단위(step)에 맞지 않는 값이면 브라우저가 가까운 단위로 반올림해 점만 앞서 가요
+      expect(slider).toBeValid();
+    });
+
+    it("방향키를 누르면 위치를 1초씩 옮긴다", async () => {
+      renderViewer();
+      const player = within(await findPlayer());
+      const slider = await player.findByRole("slider", { name: "재생 위치" });
+
+      fireEvent.keyDown(slider, { key: "ArrowRight" });
+      fireEvent.keyDown(slider, { key: "ArrowRight" });
+      expect(player.getByText(formatRecordingTime(2))).toBeInTheDocument();
+
+      fireEvent.keyDown(slider, { key: "ArrowLeft" });
+      expect(player.getByText(formatRecordingTime(1))).toBeInTheDocument();
+
+      fireEvent.keyDown(slider, { key: "ArrowLeft" });
+      fireEvent.keyDown(slider, { key: "ArrowLeft" });
+      expect(player.getByText(formatRecordingTime(0))).toBeInTheDocument();
+    });
+
     it("재생 주소가 만료됐으면 재생할 때 새 주소를 먼저 받는다", async () => {
       let requestCount = 0;
       mockServer.use(

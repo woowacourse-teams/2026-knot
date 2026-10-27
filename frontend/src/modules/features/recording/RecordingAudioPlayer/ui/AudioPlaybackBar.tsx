@@ -1,7 +1,7 @@
 import styled from "@emotion/styled";
 import InlineError from "@primitives/ui/InlineError";
 import { formatRecordingTime } from "@utils/formatRecordingTime";
-import type { ChangeEvent } from "react";
+import type { ChangeEvent, CSSProperties, KeyboardEvent } from "react";
 
 import PauseIcon from "@/assets/icons/pause.svg";
 import PlayIcon from "@/assets/icons/play.svg";
@@ -12,6 +12,14 @@ import { useAudioUnavailableAnalytics } from "../model/useAudioUnavailableAnalyt
 
 /** 위치 막대를 키보드로 옮길 때 한 번에 움직이는 길이(ms) */
 const SEEK_STEP_MS = 1000;
+
+/** 위치 막대를 옮기는 방향키. 앞으로는 1, 뒤로는 -1이에요 */
+const SEEK_KEY_DIRECTIONS: Partial<Record<string, 1 | -1>> = {
+  ArrowRight: 1,
+  ArrowUp: 1,
+  ArrowLeft: -1,
+  ArrowDown: -1,
+};
 
 interface AudioPlaybackBarProps {
   /** 재생할 음성의 서명 URL */
@@ -29,6 +37,7 @@ interface AudioPlaybackBarProps {
  *
  * 전체 길이는 음성 파일이 아니라 서버가 준 녹음 길이를 써요. MediaRecorder로 만든 WebM은 파일에 길이가 없어 브라우저가 알 수 없을 때가 있어서예요.
  * 위치 막대는 브라우저의 범위 입력이라 끌거나 누르거나 키보드 방향키로 옮길 수 있고, 낭독기에는 「지금 위치 / 전체 길이」로 읽혀요.
+ * 막대에는 단위(step)를 두지 않아요. 단위가 있으면 브라우저가 값을 가까운 단위로 반올림해 점이 진한 구간보다 앞서 가서예요. 방향키는 1초씩 직접 옮겨요.
  * 음성을 불러오지 못하면 막대 대신 그 자리에 안내와 「다시 시도」를 둬요. `<audio>`는 남겨 두어 다시 불러올 때 써요.
  */
 export default function AudioPlaybackBar({
@@ -61,6 +70,20 @@ export default function AudioPlaybackBar({
     seek(Number(e.target.value));
   };
 
+  // 단위가 없는 막대에서 브라우저는 방향키 한 번에 전체 길이의 1%를 옮겨요. 녹음 길이와 상관없이 1초씩 옮기려고 직접 받아요
+  const handleSeekKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+    const direction = SEEK_KEY_DIRECTIONS[e.key];
+    if (direction === undefined) return;
+
+    e.preventDefault();
+    seek(
+      Math.min(
+        Math.max(positionMillis + direction * SEEK_STEP_MS, 0),
+        durationMillis,
+      ),
+    );
+  };
+
   return (
     <>
       {/* 화면에 보이지 않는 재생기예요. 버튼과 막대가 이 요소를 움직여요 */}
@@ -90,10 +113,13 @@ export default function AudioPlaybackBar({
             aria-valuetext={`${currentTime} / ${totalTime}`}
             min={0}
             max={durationMillis}
-            step={SEEK_STEP_MS}
+            step="any"
             value={positionMillis}
             onChange={handleSeek}
-            $progressPercent={progressPercent}
+            onKeyDown={handleSeekKeyDown}
+            style={
+              { "--playback-progress": `${progressPercent}%` } as CSSProperties
+            }
           />
           <Time aria-hidden>{totalTime}</Time>
         </Controls>
@@ -137,9 +163,10 @@ const Time = styled.span`
 
 /**
  * 피그마 위치 막대: 높이 4px 연한 선 위에 지나온 구간만 진하게, 지금 위치에 지름 10px 진한 점.
- * 지나온 구간은 배경 그라데이션의 경계로 그려요
+ * 지나온 구간은 배경 그라데이션의 경계로 그려요. 경계는 재생하는 동안 화면을 그릴 때마다 바뀌어서,
+ * 값마다 스타일 클래스를 새로 만들지 않게 CSS 변수 `--playback-progress`로 받아요
  */
-const PositionSlider = styled.input<{ $progressPercent: number }>`
+const PositionSlider = styled.input`
   flex: 1;
   min-width: 0;
   height: 1rem; /* 16px, 누르기 쉬운 높이 */
@@ -151,15 +178,15 @@ const PositionSlider = styled.input<{ $progressPercent: number }>`
   &::-webkit-slider-runnable-track {
     height: 0.25rem; /* 4px */
     border-radius: 62.4375rem; /* 999px */
-    background: ${({ theme, $progressPercent }) =>
-      `linear-gradient(to right, ${theme.neutral[800]} ${$progressPercent}%, ${theme.neutral[200]} ${$progressPercent}%)`};
+    background: ${({ theme }) =>
+      `linear-gradient(to right, ${theme.neutral[800]} var(--playback-progress), ${theme.neutral[200]} var(--playback-progress))`};
   }
 
   &::-moz-range-track {
     height: 0.25rem; /* 4px */
     border-radius: 62.4375rem; /* 999px */
-    background: ${({ theme, $progressPercent }) =>
-      `linear-gradient(to right, ${theme.neutral[800]} ${$progressPercent}%, ${theme.neutral[200]} ${$progressPercent}%)`};
+    background: ${({ theme }) =>
+      `linear-gradient(to right, ${theme.neutral[800]} var(--playback-progress), ${theme.neutral[200]} var(--playback-progress))`};
   }
 
   &::-webkit-slider-thumb {
