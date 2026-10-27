@@ -1,4 +1,4 @@
-package com.knot.backend.auth.infrastructure.github;
+package com.knot.backend.auth.infrastructure.oauth;
 
 import com.knot.backend.auth.domain.AuthException;
 import com.knot.backend.auth.domain.model.OAuthProvider;
@@ -13,14 +13,14 @@ import org.springframework.security.oauth2.core.user.OAuth2User;
 import org.springframework.stereotype.Service;
 
 @Service
-public class GithubOAuth2UserService implements OAuth2UserService<OAuth2UserRequest, OAuth2User> {
+public class OAuthLoginUserService implements OAuth2UserService<OAuth2UserRequest, OAuth2User> {
     private final OAuth2UserService<OAuth2UserRequest, OAuth2User> delegate;
 
-    public GithubOAuth2UserService() {
+    public OAuthLoginUserService() {
         this(new DefaultOAuth2UserService());
     }
 
-    GithubOAuth2UserService(OAuth2UserService<OAuth2UserRequest, OAuth2User> delegate) {
+    OAuthLoginUserService(OAuth2UserService<OAuth2UserRequest, OAuth2User> delegate) {
         this.delegate = delegate;
     }
 
@@ -39,7 +39,7 @@ public class GithubOAuth2UserService implements OAuth2UserService<OAuth2UserRequ
         try {
             OAuth2User user = delegate.loadUser(userRequest);
             OAuthUser oauthUser = toOAuthUser(user.getAttributes());
-            return GithubOAuth2User.of(
+            return OAuthLoginUser.of(
                     oauthUser,
                     user
             );

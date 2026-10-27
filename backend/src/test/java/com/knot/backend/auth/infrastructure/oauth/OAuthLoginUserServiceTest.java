@@ -1,4 +1,4 @@
-package com.knot.backend.auth.infrastructure.github;
+package com.knot.backend.auth.infrastructure.oauth;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowable;
@@ -19,14 +19,14 @@ import org.springframework.security.oauth2.core.OAuth2AuthenticationException;
 import org.springframework.security.oauth2.core.user.OAuth2User;
 
 @SuppressWarnings("unchecked")
-class GithubOAuth2UserServiceTest {
+class OAuthLoginUserServiceTest {
 
     @Test
     @DisplayName("GitHub OAuth 사용자 응답을 인증 사용자로 변환한다")
     void loadUser_success() {
         // given
         OAuth2UserService<OAuth2UserRequest, OAuth2User> delegate = mock(OAuth2UserService.class);
-        GithubOAuth2UserService service = new GithubOAuth2UserService(delegate);
+        OAuthLoginUserService service = new OAuthLoginUserService(delegate);
         OAuth2UserRequest request = request("github");
         OAuth2User user = mock(OAuth2User.class);
         when(user.getAttributes()).thenReturn(
@@ -45,10 +45,10 @@ class GithubOAuth2UserServiceTest {
         OAuth2User result = service.loadUser(request);
 
         // then
-        assertThat(result).isExactlyInstanceOf(GithubOAuth2User.class);
-        GithubOAuth2User githubUser = GithubOAuth2User.class.cast(result);
+        assertThat(result).isExactlyInstanceOf(OAuthLoginUser.class);
+        OAuthLoginUser loginUser = OAuthLoginUser.class.cast(result);
         assertThat(
-                githubUser.getOAuthUser()
+                loginUser.getOAuthUser()
                         .getExternalId()
         ).isEqualTo("42");
     }
@@ -58,7 +58,7 @@ class GithubOAuth2UserServiceTest {
     void loadUser_failure_unsupportedProvider() {
         // given
         OAuth2UserService<OAuth2UserRequest, OAuth2User> delegate = mock(OAuth2UserService.class);
-        GithubOAuth2UserService service = new GithubOAuth2UserService(delegate);
+        OAuthLoginUserService service = new OAuthLoginUserService(delegate);
 
         // when
         Throwable thrown = catchThrowable(() -> service.loadUser(request("google")));
@@ -72,7 +72,7 @@ class GithubOAuth2UserServiceTest {
     void loadUser_failure_invalidUserInfo() {
         // given
         OAuth2UserService<OAuth2UserRequest, OAuth2User> delegate = mock(OAuth2UserService.class);
-        GithubOAuth2UserService service = new GithubOAuth2UserService(delegate);
+        OAuthLoginUserService service = new OAuthLoginUserService(delegate);
         OAuth2User user = mock(OAuth2User.class);
         OAuth2UserRequest request = request("github");
         when(user.getAttributes()).thenReturn(
@@ -98,7 +98,7 @@ class GithubOAuth2UserServiceTest {
     void loadUser_failure_externalService() {
         // given
         OAuth2UserService<OAuth2UserRequest, OAuth2User> delegate = mock(OAuth2UserService.class);
-        GithubOAuth2UserService service = new GithubOAuth2UserService(delegate);
+        OAuthLoginUserService service = new OAuthLoginUserService(delegate);
         OAuth2UserRequest request = request("github");
         when(delegate.loadUser(request)).thenThrow(new IllegalStateException());
 

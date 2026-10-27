@@ -15,7 +15,7 @@ import com.knot.backend.auth.domain.AuthErrorCode;
 import com.knot.backend.auth.domain.AuthException;
 import com.knot.backend.auth.domain.model.OAuthProvider;
 import com.knot.backend.auth.domain.model.OAuthUser;
-import com.knot.backend.auth.infrastructure.github.GithubOAuth2User;
+import com.knot.backend.auth.infrastructure.oauth.OAuthLoginUser;
 import com.knot.backend.auth.presentation.AuthCookieManager;
 import com.knot.backend.global.config.JwtProperties;
 import com.knot.backend.global.config.OAuth2LoginProperties;
@@ -73,12 +73,12 @@ class OAuth2AuthenticationSuccessHandlerTest {
                         42L
                 )
         );
-        GithubOAuth2User githubUser = GithubOAuth2User.of(
+        OAuthLoginUser loginUser = OAuthLoginUser.of(
                 oauthUser,
                 delegate
         );
         Authentication authentication = mock(Authentication.class);
-        when(authentication.getPrincipal()).thenReturn(githubUser);
+        when(authentication.getPrincipal()).thenReturn(loginUser);
         when(authService.login(oauthUser)).thenReturn(
                 AuthLoginResult.authenticated(
                         "jwt-token",
@@ -159,12 +159,12 @@ class OAuth2AuthenticationSuccessHandlerTest {
                         42L
                 )
         );
-        GithubOAuth2User githubUser = GithubOAuth2User.of(
+        OAuthLoginUser loginUser = OAuthLoginUser.of(
                 oauthUser,
                 delegate
         );
         Authentication authentication = mock(Authentication.class);
-        when(authentication.getPrincipal()).thenReturn(githubUser);
+        when(authentication.getPrincipal()).thenReturn(loginUser);
         when(authService.login(oauthUser)).thenReturn(AuthLoginResult.nicknameSetupRequired("nickname-token"));
         MockHttpServletResponse response = new MockHttpServletResponse();
 
@@ -198,7 +198,7 @@ class OAuth2AuthenticationSuccessHandlerTest {
     }
 
     @Test
-    @DisplayName("OAuth 인증 주체가 GitHub 사용자가 아니면 커스텀 인증 예외를 발생시킨다")
+    @DisplayName("OAuth 인증 주체가 로그인 사용자가 아니면 커스텀 인증 예외를 발생시킨다")
     void onAuthenticationSuccess_failure_invalidPrincipal() throws Exception {
         // given
         AuthService authService = mock(AuthService.class);
@@ -256,12 +256,12 @@ class OAuth2AuthenticationSuccessHandlerTest {
                         42L
                 )
         );
-        GithubOAuth2User githubUser = GithubOAuth2User.of(
+        OAuthLoginUser loginUser = OAuthLoginUser.of(
                 oauthUser,
                 delegate
         );
         Authentication authentication = mock(Authentication.class);
-        when(authentication.getPrincipal()).thenReturn(githubUser);
+        when(authentication.getPrincipal()).thenReturn(loginUser);
         when(authService.login(oauthUser)).thenThrow(new AuthException(AuthErrorCode.OAUTH_AUTHENTICATION_FAILED));
         MockHttpServletResponse response = new MockHttpServletResponse();
 
@@ -360,12 +360,12 @@ class OAuth2AuthenticationSuccessHandlerTest {
                 null
         );
         OAuth2User delegate = mock(OAuth2User.class);
-        GithubOAuth2User githubUser = GithubOAuth2User.of(
+        OAuthLoginUser loginUser = OAuthLoginUser.of(
                 user,
                 delegate
         );
         Authentication authentication = mock(Authentication.class);
-        when(authentication.getPrincipal()).thenReturn(githubUser);
+        when(authentication.getPrincipal()).thenReturn(loginUser);
         when(authService.login(user)).thenThrow(new RuntimeException("private-refresh-secret"));
         OAuth2AuthenticationSuccessHandler handler = new OAuth2AuthenticationSuccessHandler(
                 authService,

@@ -3,7 +3,7 @@ package com.knot.backend.global.config;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 
-import com.knot.backend.auth.infrastructure.github.GithubOAuth2UserService;
+import com.knot.backend.auth.infrastructure.oauth.OAuthLoginUserService;
 import com.knot.backend.auth.infrastructure.jwt.JwtAuthenticationFilter;
 import com.knot.backend.auth.presentation.handler.AuthAccessDeniedHandler;
 import com.knot.backend.auth.presentation.handler.AuthAuthenticationEntryPoint;
@@ -88,7 +88,7 @@ class SecurityConfigTest {
 
     private SecurityConfig securityConfig() {
         return new SecurityConfig(
-                mock(GithubOAuth2UserService.class),
+                mock(OAuthLoginUserService.class),
                 mock(JwtAuthenticationFilter.class),
                 mock(OAuth2AuthenticationSuccessHandler.class),
                 mock(OAuth2AuthenticationFailureHandler.class),
