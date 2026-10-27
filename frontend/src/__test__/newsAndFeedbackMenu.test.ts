@@ -1,6 +1,9 @@
 import { GetReleaseNotesResponseDto } from "@api/dto/releaseNote";
 import { GetWorkspacesResponseDto } from "@api/dto/workspace";
-import { releaseNotesResponse } from "@api/mock/responses/releaseNote";
+import {
+  imageReleaseNoteItems,
+  releaseNotesResponse,
+} from "@api/mock/responses/releaseNote";
 import { workspacesResponse } from "@api/mock/responses/workspace";
 import { TOAST_MESSAGES } from "@constants/toastMessages";
 import { expect, test, type Page } from "@playwright/test";
@@ -12,6 +15,7 @@ import { expect, test, type Page } from "@playwright/test";
  * 피드백 패널에서 유형을 골라 보내는 플로우를 확인해요. 휴대폰에서는 사이드바 맨 아래 「피드백」으로 시트를 열어요.
  * 피드백 저장(`/relay/f`)은 dev 서버의 msw mock이 받은 것처럼만 응답해요(`API_MOCKING`).
  * 새 소식 노트(`/relay/n`)도 msw mock이 주고, 읽음은 이 기기 localStorage에만 남아요.
+ * 노트의 github.com 사진은 msw mock이 주소에 적힌 크기(`news-1596x1386`)의 사진으로 돌려주고, 크기가 없는 주소는 404예요.
  * 기본은 이미 다 본 사용자(`playwright.config.ts`의 storageState)라, 안 읽은 소식은 테스트에서 따로 만들어요.
  */
 
@@ -43,6 +47,38 @@ const visitHomeWithLatestNoteUnread = async (page: Page) => {
     [LAST_SEEN_NOTE_ID_KEY, NOTES[1].id],
   );
   await page.reload();
+};
+
+/** 홈에서 메뉴로 새 소식 패널을 열어요 */
+const openNewsPanel = async (page: Page) => {
+  await page.goto(HOME_PATH);
+  await getMenuButton(page).click();
+  await getNewsMenuItem(page).click();
+  await expect(page.getByText(PANEL_DESCRIPTION)).toBeVisible();
+};
+
+/** 새 소식 패널에서 제목으로 항목을 찾아요 */
+const getNewsItem = (page: Page, title: string) =>
+  page.getByRole("listitem").filter({ hasText: title });
+
+/** 항목 사진이 보일 때까지 기다렸다가, 항목 폭과 사진 칸 크기, 맞춤 방식을 돌려줘요 */
+const measureNewsImage = async (page: Page, title: string) => {
+  const item = getNewsItem(page, title);
+  const image = item.locator("img");
+  await image.scrollIntoViewIfNeeded();
+  await expect(image).toBeVisible();
+
+  const itemBox = (await item.boundingBox())!;
+  const imageBox = (await image.boundingBox())!;
+
+  return {
+    itemWidth: itemBox.width,
+    width: imageBox.width,
+    height: imageBox.height,
+    objectFit: await image.evaluate(
+      (element) => getComputedStyle(element).objectFit,
+    ),
+  };
 };
 
 const getFeedbackPanel = (page: Page) =>
@@ -147,6 +183,70 @@ test.describe("소식과 피드백", () => {
 
     await expect(page.getByText(PANEL_DESCRIPTION)).toBeVisible();
     await expect(page.getByText("NEW", { exact: true })).toHaveCount(0);
+  });
+
+  test("[NEWS-R13] 항목 사진을 자르지 않고 원래 비율로, 항목 폭에 맞춰 보여 준다", async ({
+    page,
+  }) => {
+    await openNewsPanel(page);
+
+    const wide = await measureNewsImage(page, imageReleaseNoteItems.wide.title);
+
+    expect(wide.width).toBeCloseTo(wide.itemWidth, 0);
+    // 2560×420 사진을 폭에 맞춘 높이 그대로예요
+    expect(wide.height).toBeCloseTo((wide.itemWidth * 420) / 2560, 0);
+    expect(wide.objectFit).toBe("contain");
+  });
+
+  test("[NEWS-R13] 최대 높이를 넘는 사진은 비율을 지킨 채 높이 240으로 줄이고 가운데에 둔다", async ({
+    page,
+  }) => {
+    await openNewsPanel(page);
+
+    for (const { title } of [
+      imageReleaseNoteItems.normal,
+      imageReleaseNoteItems.tall,
+    ]) {
+      const image = await measureNewsImage(page, title);
+
+      expect(image.width).toBeCloseTo(image.itemWidth, 0);
+      expect(image.height).toBeCloseTo(240, 0);
+      // 칸 안에서 비율을 지켜 줄이고 남는 양옆을 비워요(object-position 기본값이 가운데)
+      expect(image.objectFit).toBe("contain");
+    }
+  });
+
+  test("[NEWS-R14] 허용하지 않는 사진 주소는 사진 칸을 그리지 않고 글만 보여 준다", async ({
+    page,
+  }) => {
+    await openNewsPanel(page);
+
+    const item = getNewsItem(page, imageReleaseNoteItems.disallowed.title);
+    await item.scrollIntoViewIfNeeded();
+
+    await expect(
+      item.getByText(imageReleaseNoteItems.disallowed.description),
+    ).toBeVisible();
+    await expect(item.locator("img")).toHaveCount(0);
+  });
+
+  test("[NEWS-R14] 열리지 않는 사진은 사진 칸만 숨기고 제목과 설명은 그대로 보여 준다", async ({
+    page,
+  }) => {
+    const brokenImage = page.waitForResponse(
+      imageReleaseNoteItems.broken.image,
+    );
+    await openNewsPanel(page);
+
+    expect((await brokenImage).status()).toBe(404);
+
+    const item = getNewsItem(page, imageReleaseNoteItems.broken.title);
+    await item.scrollIntoViewIfNeeded();
+
+    await expect(
+      item.getByText(imageReleaseNoteItems.broken.description),
+    ).toBeVisible();
+    await expect(item.locator("img")).toBeHidden();
   });
 
   test("[FEEDBACK-R5, R8] 유형만 골라도 보낼 수 있고, 보내면 패널이 닫히며 완료 토스트가 뜬다", async ({
