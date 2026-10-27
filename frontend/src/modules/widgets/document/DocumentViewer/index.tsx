@@ -4,6 +4,7 @@ import {
   NO_DECISION_SENTENCE,
 } from "@constants/document";
 import styled from "@emotion/styled";
+import SourceRecording from "@features/document/SourceRecording";
 import useConfirmDocument from "@hooks/domain/document/useConfirmDocument";
 import Chip from "@primitives/ui/Chip";
 import DocumentBody from "@primitives/ui/DocumentBody";
@@ -31,7 +32,8 @@ import DocumentSkeleton from "./ui/DocumentSkeleton";
  * 받은 문서 값을 그리기만 하면 되는 것(제목 · 날짜 · 녹음 길이 · 본문)은 여기서 직접 그려요.
  * 복사 버튼 · 확인 수 · 스테퍼 · 확인 버튼은 이 위젯의 부품(`ui/`)이고, 필요한 값과 동작을 여기서 넘겨줘요. 문서는 여기서 한 번만 조회해요.
  * 복사 버튼은 제목과 같은 줄의 오른쪽 끝에 놓아요.
- * 본문 아래 줄에는 왼쪽에 같은 녹음의 문서를 넘기는 스테퍼를, 오른쪽에 확인 버튼을 놓아요.
+ * 본문 아래에는 이 문서를 만든 녹음을 카드로 두고, 누르면 그 녹음의 녹음 문서로 가요(DOC-R25). 어느 입구로 열었든 같아요.
+ * 그 아래 줄에는 왼쪽에 같은 녹음의 문서를 넘기는 스테퍼를, 오른쪽에 확인 버튼을 놓아요.
  * 스테퍼는 녹음 직후 정리 화면에서 넘어와 주소에 `?from=recording`이 있을 때만 그려요(DOC-R2). 문서 탭 · 홈 · 탐색에서 연 저장 문서에는 확인 버튼만 남아요.
  * 확인 버튼은 확인 대상에게만 보여요. 확인한 뒤에는 누를 수 없는 「확인했어요」로 바뀌고, 확인 대상이 아니면 그리지 않아요.
  * 같은 녹음의 내 문서를 모두 확인하면 성공 토스트를, 확인 요청이 실패하면 오류 토스트를 띄워요(`useConfirmDocument`).
@@ -113,6 +115,10 @@ export default function DocumentViewer() {
       <DocumentBody
         content={documentDetail.content}
         mutedLines={[NO_DECISION_SENTENCE]}
+      />
+      <SourceRecording
+        workspaceId={workspaceId}
+        recordingId={documentDetail.recordingSessionId}
       />
       <ConfirmBar>
         {isFromRecording && (
