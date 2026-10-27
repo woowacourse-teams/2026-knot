@@ -323,6 +323,7 @@ interface NotionProperty {
   date?: { start: string } | null;
   checkbox?: boolean;
   number?: number | null;
+  url?: string | null;
 }
 
 /** 새 소식 DB 한 줄. 칸 이름은 `scripts/release-note.mjs`가 쓰는 이름과 같아요 */
@@ -333,6 +334,7 @@ interface ReleaseNoteRow {
   item: {
     title: string;
     description: string;
+    image?: string;
     link?: string;
     isFromFeedback: boolean;
     isHighlight: boolean;
@@ -347,7 +349,7 @@ const readText = (property?: NotionProperty) =>
 
 /**
  * 새 소식 DB 한 줄을 노트 항목으로 읽어요. 노트 id, 배포 날짜, 제목, 설명이 없으면 null이에요.
- * 바로 가보기는 화면 이름을 확인하지 않고 그대로 넘겨요. 앱에 없는 화면이면 앱이 버튼만 숨겨요
+ * 사진과 바로 가보기는 확인하지 않고 그대로 넘겨요. 앱이 받지 않는 사진 주소나 앱에 없는 화면이면 앱이 그 부분만 숨겨요
  */
 const readReleaseNoteRow = (
   properties: Record<string, NotionProperty | undefined>,
@@ -356,6 +358,7 @@ const readReleaseNoteRow = (
   const releasedAt = properties["배포 날짜"]?.date?.start.slice(0, 10) ?? "";
   const title = readText(properties.제목);
   const description = readText(properties.설명);
+  const image = properties.사진?.url?.trim();
   const link = readText(properties["바로 가보기"]);
 
   if (
@@ -374,6 +377,7 @@ const readReleaseNoteRow = (
     item: {
       title,
       description,
+      image: image || undefined,
       link: link || undefined,
       isFromFeedback: properties["피드백 덕분"]?.checkbox === true,
       isHighlight: properties["큰 변화"]?.checkbox === true,
