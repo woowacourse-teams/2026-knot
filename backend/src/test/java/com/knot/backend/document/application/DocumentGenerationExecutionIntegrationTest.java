@@ -165,6 +165,95 @@ class DocumentGenerationExecutionIntegrationTest {
         }
     }
 
+    @Test
+    void classificationWorkerRenewsWhileClassifierIsWaiting() {
+        Duration previous = workerProperties.getExecutionLease();
+        workerProperties.setExecutionLease(Duration.ofMillis(900));
+        when(clock.instant()).thenAnswer(invocation -> Instant.now());
+        when(classifier.classify(anyString())).thenAnswer(invocation -> {
+            Thread.sleep(2200);
+            return DocumentTopicClassificationResult.fromNames(
+                    List.of(
+                            "A",
+                            "B",
+                            "C"
+                    )
+            );
+        });
+        try {
+            worker.execute(
+                    workspaceId,
+                    classifierId
+            );
+            assertThat(status(classifierId)).isEqualTo("SUCCEEDED");
+            assertThat(generationIds()).hasSize(3);
+        } finally {
+            workerProperties.setExecutionLease(previous);
+        }
+    }
+
+    @Test
+    void classificationRecoveryRejectsOldResultAndRegistersTopicsOnlyOnce() {
+        claims.claim(
+                workspaceId,
+                classifierId
+        )
+                .orElseThrow();
+        when(clock.instant()).thenReturn(NOW.plusSeconds(150));
+        recovery.recoverExpired(
+                workspaceId,
+                classifierId,
+                1
+        );
+        assertThat(status(classifierId)).isEqualTo("QUEUED");
+        assertThatThrownBy(
+                () -> classificationResults.completeClassification(
+                        workspaceId,
+                        classifierId,
+                        1,
+                        DocumentTopicClassificationResult.fromNames(
+                                List.of(
+                                        "A",
+                                        "B",
+                                        "C"
+                                )
+                        )
+                )
+        ).isInstanceOf(DocumentException.class);
+        assertThat(generationIds()).isEmpty();
+        when(clock.instant()).thenReturn(NOW.plusSeconds(155));
+        worker.execute(
+                workspaceId,
+                classifierId
+        );
+        assertThat(status(classifierId)).isEqualTo("SUCCEEDED");
+        assertThat(generationIds()).hasSize(3);
+        classificationResults.completeClassification(
+                workspaceId,
+                classifierId,
+                2,
+                DocumentTopicClassificationResult.fromNames(
+                        List.of(
+                                "A",
+                                "B",
+                                "C"
+                        )
+                )
+        );
+        assertThat(generationIds()).hasSize(3);
+    }
+
+    @Test
+    void classificationFailureDoesNotRegisterPartialGenerationJobs() {
+        when(classifier.classify(anyString())).thenThrow(new LlmException(LlmErrorCode.LLM_INPUT_LIMIT_EXCEEDED));
+        worker.execute(
+                workspaceId,
+                classifierId
+        );
+        assertThat(status(classifierId)).isEqualTo("FAILED");
+        assertThat(generationIds()).isEmpty();
+    }
+
     @BeforeEach
     void setUp() {
         when(clock.instant()).thenReturn(NOW);

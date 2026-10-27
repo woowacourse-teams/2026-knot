@@ -18,6 +18,7 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Supplier;
 import jakarta.annotation.PreDestroy;
 import com.knot.backend.global.config.DocumentGenerationWorkerProperties;
 import lombok.RequiredArgsConstructor;
@@ -101,7 +102,10 @@ public class DocumentGenerationWorker {
                     execution.workspaceId(),
                     execution.jobId(),
                     execution.attemptCount(),
-                    classifier.classify(execution.transcriptContent())
+                    runWithLease(
+                            execution,
+                            () -> classifier.classify(execution.transcriptContent())
+                    )
             );
             return;
         }
@@ -121,7 +125,13 @@ public class DocumentGenerationWorker {
             );
             return;
         }
-        DocumentGenerationResult result = generateWithLease(execution);
+        DocumentGenerationResult result = runWithLease(
+                execution,
+                () -> generator.generate(
+                        execution.transcriptContent(),
+                        execution.topic()
+                )
+        );
         if (categoryProperties.isEnabled()) {
             checkpoints.prepare(
                     execution,
@@ -137,7 +147,10 @@ public class DocumentGenerationWorker {
         );
     }
 
-    private DocumentGenerationResult generateWithLease(DocumentGenerationExecution execution) {
+    private <T> T runWithLease(
+            DocumentGenerationExecution execution,
+            Supplier<T> operation
+    ) {
         Thread worker = Thread.currentThread();
         AtomicBoolean lost = new AtomicBoolean(false);
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(MAX_GENERATION_SECONDS);
@@ -169,10 +182,7 @@ public class DocumentGenerationWorker {
                 TimeUnit.MILLISECONDS
         );
         try {
-            DocumentGenerationResult result = generator.generate(
-                    execution.transcriptContent(),
-                    execution.topic()
-            );
+            T result = operation.get();
             synchronized (guard) {
                 if (lost.get() || System.nanoTime() >= deadline) {
                     throw new LlmException(LlmErrorCode.LLM_TIMEOUT);
