@@ -11,6 +11,7 @@ import {
 } from "./release-note.mjs";
 
 const LINK_KEYS = ["WORKSPACE_HOME", "CHAT"];
+const IMAGE = "https://github.com/user-attachments/assets/76f059d4";
 
 const item = (overrides = {}) => ({
   title: "탐색 기록이 남아요",
@@ -70,12 +71,13 @@ describe("parseLinkScreens", () => {
 });
 
 describe("validateNote", () => {
-  it("제목과 설명을 다듬고 바로 가보기 · 피드백 덕분 · 큰 변화를 그대로 둔다", () => {
+  it("제목과 설명을 다듬고 사진 · 바로 가보기 · 피드백 덕분 · 큰 변화를 그대로 둔다", () => {
     const { items, errors } = validateNote({
       note: {
         items: [
           item({
             title: "  탐색 기록이 남아요 ",
+            image: IMAGE,
             link: "CHAT",
             isFromFeedback: true,
             isHighlight: true,
@@ -90,6 +92,7 @@ describe("validateNote", () => {
       {
         title: "탐색 기록이 남아요",
         description: "다시 열면 보던 대화가 그대로예요.",
+        image: IMAGE,
         link: "CHAT",
         isFromFeedback: true,
         isHighlight: true,
@@ -136,6 +139,25 @@ describe("validateNote", () => {
     });
 
     assert.equal(errors.length, 2);
+  });
+
+  it("사진이 GitHub 첨부 사진 주소가 아니면 고칠 것으로 알린다", () => {
+    const { errors } = validateNote({
+      note: {
+        items: [
+          item({
+            image:
+              "https://github-production-user-asset-6210df.s3.amazonaws.com/1/a.png",
+          }),
+          item({ image: "https://knoted.kr/a.png" }),
+          item({ image: "http://github.com/user-attachments/assets/a" }),
+          item({ image: 1 }),
+        ],
+      },
+      linkKeys: LINK_KEYS,
+    });
+
+    assert.equal(errors.length, 4);
   });
 
   it("큰 변화가 둘 이상이면 고칠 것으로 알린다", () => {
@@ -216,6 +238,23 @@ describe("replaceNote", () => {
     });
     assert.deepEqual(calls[2].body.properties.순서, { number: 2 });
     assert.deepEqual(calls[3].body, { archived: true });
+  });
+
+  it("사진이 있는 항목만 「사진」 칸을 넣는다", async () => {
+    const { notion, calls } = fakeNotion(({ path }) =>
+      path.endsWith("/query") ? { results: [], has_more: false } : {},
+    );
+
+    await replaceNote({
+      notion,
+      databaseId: "db",
+      noteId: "pr-1051",
+      releasedAt: "2026-10-27",
+      items: [item({ image: IMAGE }), item()],
+    });
+
+    assert.deepEqual(calls[1].body.properties.사진, { url: IMAGE });
+    assert.equal("사진" in calls[2].body.properties, false);
   });
 
   it("같은 id 줄이 없으면 새 줄만 넣는다", async () => {
