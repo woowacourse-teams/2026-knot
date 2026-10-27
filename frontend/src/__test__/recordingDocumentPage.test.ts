@@ -286,17 +286,25 @@ test.describe("녹음 다시 듣기", () => {
       player.getByText(formatRecordingTime(1), { exact: true }),
     ).toBeVisible({ timeout: 5000 });
 
-    // 막대 값과 실제 재생 위치를 같은 순간에 여러 번 읽어요. 1초 단위로 반올림되면 최대 0.5초 어긋나요
-    for (let sample = 0; sample < 5; sample += 1) {
-      const { sliderMillis, audioMillis } = await slider.evaluate(
-        (element) => ({
+    // 막대 값과 실제 재생 위치를 같은 순간에 여러 번 읽어요.
+    // 1초 단위로 반올림되면 차이가 100ms 안에 드는 때는 정각 앞뒤 0.1초씩, 1초에 0.2초뿐이에요.
+    // 0.15초 넘게 띄워 5번 읽으면 그 안에 다 들어갈 수 없어서 적어도 한 번은 100ms를 넘어요.
+    // 100ms는 화면을 한 번 그리는 사이(약 16ms)의 차이는 받아 주고, 시간 이벤트 간격(약 0.25초)보다는 작은 값이에요
+    const sampleCount = 5;
+    const sampleIntervalMs = 150;
+    const allowedGapMs = 100;
+
+    for (let sample = 0; sample < sampleCount; sample += 1) {
+      const { sliderMillis, audioMillis } = await slider.evaluate((element) => {
+        const audio = document.querySelector("audio");
+        if (audio === null) throw new Error("audio 요소가 없어요");
+        return {
           sliderMillis: Number((element as HTMLInputElement).value),
-          audioMillis:
-            (document.querySelector("audio")?.currentTime ?? 0) * 1000,
-        }),
-      );
-      expect(Math.abs(sliderMillis - audioMillis)).toBeLessThan(100);
-      await page.waitForTimeout(150);
+          audioMillis: audio.currentTime * 1000,
+        };
+      });
+      expect(Math.abs(sliderMillis - audioMillis)).toBeLessThan(allowedGapMs);
+      await page.waitForTimeout(sampleIntervalMs);
     }
   });
 

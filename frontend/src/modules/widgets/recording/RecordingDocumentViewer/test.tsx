@@ -789,17 +789,19 @@ describe("RecordingDocumentViewer", () => {
       const slider = await player.findByRole("slider", { name: "재생 위치" });
       const audio = document.querySelector("audio");
       if (audio === null) throw new Error("audio 요소가 없어요");
+      // 1초 단위가 아니라, 단위로 반올림하면 3초로 올라가 점이 앞서 가는 위치예요
+      const playedSeconds = 2.6;
       vi.spyOn(
         HTMLMediaElement.prototype,
         "currentTime",
         "get",
-      ).mockReturnValue(2.6);
+      ).mockReturnValue(playedSeconds);
 
       act(() => {
         audio.dispatchEvent(new Event("timeupdate"));
       });
 
-      expect(slider).toHaveValue("2600");
+      expect(slider).toHaveValue(String(playedSeconds * 1000));
       // 막대 단위(step)에 맞지 않는 값이면 브라우저가 가까운 단위로 반올림해 점만 앞서 가요
       expect(slider).toBeValid();
     });

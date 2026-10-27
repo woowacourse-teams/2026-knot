@@ -65,6 +65,10 @@ export default function AudioPlaybackBar({
     durationMillis > 0 ? (positionMillis / durationMillis) * 100 : 0;
   const currentTime = formatRecordingTime(positionMillis / 1000);
   const totalTime = formatRecordingTime(durationMillis / 1000);
+  // CSSProperties에는 CSS 변수 이름이 없어 단언하지 않고 넓혀요. 단언하면 함께 쓴 다른 속성의 오타도 통과해요
+  const sliderStyle: CSSProperties & Record<`--${string}`, string> = {
+    "--playback-progress": `${progressPercent}%`,
+  };
 
   const handleSeek = (e: ChangeEvent<HTMLInputElement>) => {
     seek(Number(e.target.value));
@@ -117,9 +121,7 @@ export default function AudioPlaybackBar({
             value={positionMillis}
             onChange={handleSeek}
             onKeyDown={handleSeekKeyDown}
-            style={
-              { "--playback-progress": `${progressPercent}%` } as CSSProperties
-            }
+            style={sliderStyle}
           />
           <Time aria-hidden>{totalTime}</Time>
         </Controls>
