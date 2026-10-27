@@ -1,6 +1,7 @@
 import { GetMeResponseDto } from "@api/dto/auth";
 import {
   GetDocumentConfirmationsResponseDto,
+  GetDocumentRecordingsResponseDto,
   GetDocumentResponseDto,
   GetDocumentsResponseDto,
 } from "@api/dto/document";
@@ -9,6 +10,7 @@ import { meResponse } from "@api/mock/responses/auth";
 import {
   documentConfirmationsResponse,
   documentDetailsResponse,
+  documentRecordingsResponse,
   documentsResponse,
 } from "@api/mock/responses/document";
 import { mockServer } from "@api/mock/server";
@@ -52,6 +54,8 @@ const DOCUMENT_REQUEST =
 const DOCUMENTS_REQUEST = "*/api/v1/workspaces/:workspaceId/documents";
 const CONFIRMATIONS_REQUEST = `${DOCUMENT_REQUEST}/confirmations`;
 const MY_CONFIRMATION_REQUEST = `${CONFIRMATIONS_REQUEST}/me`;
+const RECORDING_DOCUMENT_REQUEST =
+  "*/api/v1/workspaces/:workspaceId/recordings/:recordingId/document";
 
 const expectedConfirmations = new GetDocumentConfirmationsResponseDto(
   documentConfirmationsResponse[0],
@@ -83,6 +87,17 @@ const COPIED_DURATION_MS = 3000;
 const CONFIRM_BUTTON_NAME = "문서를 확인했어요";
 const CONFIRMED_BUTTON_NAME = "확인했어요";
 const STEPPER_NAME = "같은 녹음의 문서";
+const SOURCE_RECORDING_NAME = "이 문서가 나온 녹음";
+const RECORDING_DOCUMENT_SCREEN = "녹음 문서 화면";
+
+// 여는 문서를 만든 녹음. 녹음 문서 조회 mock이 「녹음별」 mock의 제목으로 답해요
+const expectedSourceRecording = new GetDocumentRecordingsResponseDto(
+  documentRecordingsResponse,
+).items.find(({ recordingId }) => recordingId === expected.recordingSessionId);
+
+if (expectedSourceRecording === undefined) {
+  throw new Error("여는 문서의 녹음이 「녹음별」 mock에 없어요");
+}
 
 // 여는 문서와 같은 녹음에서 나온 문서들. 스테퍼는 서버가 준 이 순서대로 넘겨요
 const recordingDocuments = new GetDocumentsResponseDto(
@@ -133,6 +148,10 @@ const renderViewerAt = (initialEntry: string) => {
         ),
         children: [
           { path: PATH_ROUTE.DOCUMENT, element: <DocumentViewer /> },
+          {
+            path: PATH_ROUTE.RECORDING_DOCUMENT,
+            element: <p>{RECORDING_DOCUMENT_SCREEN}</p>,
+          },
           { path: PATH_ROUTE.LOGIN, element: <p>로그인 화면</p> },
         ],
       },
@@ -1136,6 +1155,101 @@ describe("DocumentViewer", () => {
     expect(requestedRecordingIds).toEqual(
       recordingDocuments.map(() => String(expected.recordingSessionId)),
     );
+  });
+
+  describe("이 문서가 나온 녹음 (DOC-R25)", () => {
+    const findSourceRecording = () =>
+      screen.findByRole("region", { name: SOURCE_RECORDING_NAME });
+
+    it("본문 아래에 이 문서를 만든 녹음을 카드로 보여주고, 누르면 그 녹음의 녹음 문서로 간다", async () => {
+      const { router } = renderViewer(String(expected.id));
+
+      const sourceRecording = await findSourceRecording();
+      const card = await within(sourceRecording).findByRole("link", {
+        name: new RegExp(expectedSourceRecording.title),
+      });
+
+      expect(card).toHaveTextContent(
+        "회의 전체 요약, 원문, 녹음 음성을 볼 수 있어요.",
+      );
+
+      fireEvent.click(card);
+
+      expect(
+        await screen.findByText(RECORDING_DOCUMENT_SCREEN),
+      ).toBeInTheDocument();
+      expect(router.state.location.pathname).toBe(
+        getRouterPath({
+          routeKey: "RECORDING_DOCUMENT",
+          params: {
+            workspaceId: WORKSPACE_ID,
+            recordingId: String(expected.recordingSessionId),
+          },
+        }),
+      );
+    });
+
+    it("녹음 제목을 받는 동안에는 제목 자리만 비워 두고, 카드는 이미 녹음 문서로 이어진다", async () => {
+      mockServer.use(
+        http.get(RECORDING_DOCUMENT_REQUEST, async () => {
+          await delay("infinite");
+          return new HttpResponse(null, { status: 500 });
+        }),
+      );
+      renderViewer(String(expected.id));
+
+      const sourceRecording = await findSourceRecording();
+      const card = within(sourceRecording).getByRole("link");
+
+      expect(card).not.toHaveTextContent(expectedSourceRecording.title);
+      expect(card).toHaveAttribute(
+        "href",
+        getRouterPath({
+          routeKey: "RECORDING_DOCUMENT",
+          params: {
+            workspaceId: WORKSPACE_ID,
+            recordingId: String(expected.recordingSessionId),
+          },
+        }),
+      );
+    });
+
+    it("녹음 제목을 받지 못하면 「녹음 보기」로 보여주고, 본문은 그대로 읽히며 누르면 녹음 문서로 간다", async () => {
+      mockServer.use(
+        http.get(
+          RECORDING_DOCUMENT_REQUEST,
+          () => new HttpResponse(null, { status: 500 }),
+        ),
+      );
+      renderViewer(String(expected.id));
+
+      const sourceRecording = await findSourceRecording();
+      const card = await within(sourceRecording).findByRole("link", {
+        name: /녹음 보기/,
+      });
+
+      expect(
+        screen.getByRole("heading", { level: 2, name: expected.title }),
+      ).toBeInTheDocument();
+
+      fireEvent.click(card);
+
+      expect(
+        await screen.findByText(RECORDING_DOCUMENT_SCREEN),
+      ).toBeInTheDocument();
+    });
+
+    it("녹음 직후 정리 화면에서 넘어온 문서에도 같은 카드를 보여준다", async () => {
+      renderViewerFromRecording(expected.id);
+
+      const sourceRecording = await findSourceRecording();
+
+      expect(
+        await within(sourceRecording).findByRole("link", {
+          name: new RegExp(expectedSourceRecording.title),
+        }),
+      ).toBeInTheDocument();
+    });
   });
 
   it("로그인이 풀렸으면(401) 로그인 화면으로 보낸다", async () => {
