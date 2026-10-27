@@ -25,7 +25,7 @@ const NOTION_API_URL = "https://api.notion.com/v1";
 // Worker(`src/worker/relay`)와 같은 판을 써요. 2022-06-28 판은 DB ID로 줄을 넣고 조회해요
 const NOTION_VERSION = "2022-06-28";
 const KST_OFFSET_MS = 9 * 60 * 60 * 1000;
-/** 사진으로 받는 주소의 앞부분. 앱 `NewsItem`의 `NEWS_IMAGE_URL_PREFIX`와 같다. 리디렉트된 S3 주소는 몇 분 뒤 만료돼 받지 않는다 */
+/** 사진으로 받는 주소의 앞부분. 앱 `NewsPopover/constants/newsImage.ts`의 `NEWS_IMAGE_URL_PREFIX`와 같다. 리디렉트된 S3 주소는 몇 분 뒤 만료돼 받지 않는다 */
 const IMAGE_URL_PREFIX = "https://github.com/user-attachments/assets/";
 
 /** 「바로 가보기」로 고를 화면을 읽는 앱 라우트 표. 화면 목록을 따로 적어 두지 않고 실행할 때마다 여기서 읽는다 */
