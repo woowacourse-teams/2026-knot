@@ -1,7 +1,10 @@
 import { GetReleaseNotesResponseDto } from "@api/dto/releaseNote";
 import { FEEDBACK_RELAY_PATH } from "@api/fetch/relay/f";
 import { RELEASE_NOTES_RELAY_PATH } from "@api/fetch/relay/n";
-import { releaseNotesResponse } from "@api/mock/responses/releaseNote";
+import {
+  imageReleaseNoteItems,
+  releaseNotesResponse,
+} from "@api/mock/responses/releaseNote";
 import { mockServer } from "@api/mock/server";
 import useSendFeedbackMutation from "@api/mutations/useSendFeedbackMutation";
 import { ThemeProvider } from "@emotion/react";
@@ -523,16 +526,16 @@ describe("NewsPopover", () => {
       );
     });
 
-    it("이미지와 「바로 가보기」는 있는 항목에만 보여 준다", async () => {
+    it("사진과 「바로 가보기」는 있는 항목에만 보여 준다", async () => {
       await renderOpenPanel([
         {
           id: "v1.0.0",
           releasedAt: "2026-11-02",
           items: [
             {
-              title: "이미지와 바로 가보기가 있는 항목",
+              title: "사진과 바로 가보기가 있는 항목",
               description: "설명",
-              image: "/news.png",
+              image: imageReleaseNoteItems.normal.image,
               link: "CHAT",
             },
             { title: "글만 있는 항목", description: "설명" },
@@ -544,6 +547,58 @@ describe("NewsPopover", () => {
       expect(screen.getAllByRole("link", { name: "바로 가보기" })).toHaveLength(
         1,
       );
+    });
+
+    it("GitHub 첨부 사진 주소의 사진만 그리고, 다른 주소면 사진 칸 없이 글만 보여 준다", async () => {
+      const { normal, disallowed } = imageReleaseNoteItems;
+      await renderOpenPanel([
+        {
+          id: "pr-1051",
+          releasedAt: "2026-11-02",
+          items: [normal, disallowed],
+        },
+      ]);
+
+      const images = document.querySelectorAll("img");
+      expect(images).toHaveLength(1);
+      expect(images[0]).toHaveAttribute("src", normal.image);
+      expect(screen.getByText(disallowed.title)).toBeVisible();
+    });
+
+    it("사진은 다 불러온 뒤에 사진 칸을 보여 준다", async () => {
+      await renderOpenPanel([
+        {
+          id: "pr-1051",
+          releasedAt: "2026-11-02",
+          items: [imageReleaseNoteItems.normal],
+        },
+      ]);
+      const image = document.querySelector("img")!;
+
+      expect(image).not.toBeVisible();
+
+      fireEvent.load(image);
+
+      expect(image).toBeVisible();
+    });
+
+    it("사진을 불러오지 못하면 사진 칸만 숨기고 칩, 제목, 설명, 「바로 가보기」는 그대로 둔다", async () => {
+      const { broken } = imageReleaseNoteItems;
+      await renderOpenPanel([
+        {
+          id: "pr-1051",
+          releasedAt: "2026-11-02",
+          items: [{ ...broken, link: "CHAT", isFromFeedback: true }],
+        },
+      ]);
+
+      fireEvent.error(document.querySelector("img")!);
+
+      expect(document.querySelector("img")).not.toBeVisible();
+      expect(screen.getByText("피드백 덕분에 바뀌었어요")).toBeVisible();
+      expect(screen.getByText(broken.title)).toBeVisible();
+      expect(screen.getByText(broken.description)).toBeVisible();
+      expect(screen.getByRole("link", { name: "바로 가보기" })).toBeVisible();
     });
 
     it("앱에 없는 화면이나 워크스페이스 ID만으로 갈 수 없는 화면이면 「바로 가보기」를 숨긴다", async () => {
