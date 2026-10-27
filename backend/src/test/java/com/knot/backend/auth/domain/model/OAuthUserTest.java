@@ -87,38 +87,53 @@ class OAuthUserTest {
     }
 
     @Test
-    @DisplayName("OAuth 프로필 이미지 URL이 비어 있으면 커스텀 예외를 발생시킨다")
-    void create_failure_blankProfileImageUrl() {
+    @DisplayName("OAuth 프로필 이미지 URL이 비어 있으면 사진 없이 만든다")
+    void create_success_blankProfileImageUrl() {
         // given
+        String blankProfileImageUrl = " ";
 
         // when
-        Throwable thrown = catchThrowable(
-                () -> OAuthUser.of(
-                        OAuthProvider.GITHUB,
-                        "42",
-                        " "
-                )
+        OAuthUser result = OAuthUser.of(
+                OAuthProvider.GITHUB,
+                "42",
+                blankProfileImageUrl
         );
 
         // then
-        assertThat(thrown).isInstanceOf(AuthException.class);
+        assertThat(result.getProfileImageUrl()).isNull();
     }
 
     @Test
-    @DisplayName("OAuth 프로필 이미지 URL이 길이 제한을 초과하면 커스텀 예외를 발생시킨다")
-    void create_failure_overlongProfileImageUrl() {
+    @DisplayName("OAuth 프로필 이미지 URL이 길이 제한을 초과하면 사진 없이 만든다")
+    void create_success_overlongProfileImageUrl() {
         // given
+        String overlongProfileImageUrl = "a".repeat(501);
 
         // when
-        Throwable thrown = catchThrowable(
-                () -> OAuthUser.of(
-                        OAuthProvider.GITHUB,
-                        "42",
-                        "a".repeat(501)
-                )
+        OAuthUser result = OAuthUser.of(
+                OAuthProvider.KAKAO,
+                "42",
+                overlongProfileImageUrl
         );
 
         // then
-        assertThat(thrown).isInstanceOf(AuthException.class);
+        assertThat(result.getProfileImageUrl()).isNull();
+    }
+
+    @Test
+    @DisplayName("OAuth 프로필 이미지 URL이 길이 제한 이내면 그대로 보관한다")
+    void create_success_maxLengthProfileImageUrl() {
+        // given
+        String maxLengthProfileImageUrl = "a".repeat(500);
+
+        // when
+        OAuthUser result = OAuthUser.of(
+                OAuthProvider.GOOGLE,
+                "42",
+                maxLengthProfileImageUrl
+        );
+
+        // then
+        assertThat(result.getProfileImageUrl()).isEqualTo(maxLengthProfileImageUrl);
     }
 }
