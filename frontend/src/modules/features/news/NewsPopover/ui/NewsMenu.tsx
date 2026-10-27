@@ -3,7 +3,11 @@ import styled from "@emotion/styled";
 import FeedbackIcon from "@/assets/icons/feedback.svg";
 import NewsIcon from "@/assets/icons/news.svg";
 
+import NewChip from "./NewChip";
+
 interface NewsMenuProps {
+  /** 안 읽은 새 소식이 있는지. 있으면 「새 소식」 끝에 NEW 칩을 붙여요(NEWS-R3) */
+  hasUnreadNews: boolean;
   /** 「새 소식」을 누르면 불러요 */
   onNewsSelect: () => void;
   /** 「피드백 보내기」를 누르면 불러요 */
@@ -16,6 +20,7 @@ interface NewsMenuProps {
  * 메뉴를 열면 첫 항목으로 포커스를 옮겨, 키보드로 연 사람이 바로 고를 수 있어요.
  */
 export default function NewsMenu({
+  hasUnreadNews,
   onNewsSelect,
   onFeedbackSelect,
 }: NewsMenuProps) {
@@ -23,7 +28,9 @@ export default function NewsMenu({
     <Container aria-label="새 소식과 피드백">
       {/* 메뉴를 열면 바로 고를 수 있게 첫 항목으로 포커스를 옮겨요 */}
       <MenuItem type="button" onClick={onNewsSelect} autoFocus>
-        <NewsIcon size={18} />새 소식
+        <NewsIcon size={18} />
+        <Label>새 소식</Label>
+        {hasUnreadNews && <NewChip />}
       </MenuItem>
       <MenuItem type="button" onClick={onFeedbackSelect}>
         <FeedbackIcon size={18} />
@@ -69,4 +76,9 @@ const MenuItem = styled.button`
     outline: 2px solid ${({ theme }) => theme.sub.accent[500]};
     outline-offset: -2px;
   }
+`;
+
+/** 남는 폭을 채워 NEW 칩을 항목 오른쪽 끝에 붙여요 */
+const Label = styled.span`
+  flex: 1;
 `;

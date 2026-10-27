@@ -62,6 +62,7 @@ export default function NewsPopover({ renderFeedbackPanel }: NewsPopoverProps) {
         <NewsPopoverContent
           initialView={initialView}
           notes={notes}
+          unreadNoteIds={unreadNoteIds}
           onNewsOpen={markAsSeen}
           feedbackPanel={renderFeedbackPanel({ onClose: close })}
         />

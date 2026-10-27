@@ -12,6 +12,8 @@ interface NewsPopoverContentProps {
   initialView: NewsPopoverView;
   /** 새 소식 패널에 보여 줄 노트 */
   notes: ReleaseNote[];
+  /** 안 읽은 노트의 id. 있으면 메뉴의 「새 소식」과 새 소식 패널의 그 노트에 NEW 칩을 붙여요 */
+  unreadNoteIds: string[];
   /** 메뉴에서 「새 소식」을 골라 새 소식 패널을 보여 줄 때 불러요 */
   onNewsOpen: () => void;
   /** 메뉴에서 「피드백 보내기」를 고르면 그 자리에 그릴 피드백 패널 */
@@ -26,6 +28,7 @@ interface NewsPopoverContentProps {
 export default function NewsPopoverContent({
   initialView,
   notes,
+  unreadNoteIds,
   onNewsOpen,
   feedbackPanel,
 }: NewsPopoverContentProps) {
@@ -36,6 +39,7 @@ export default function NewsPopoverContent({
 
   return (
     <NewsMenu
+      hasUnreadNews={unreadNoteIds.length > 0}
       onNewsSelect={() => {
         setView("news");
         onNewsOpen();
