@@ -6,6 +6,8 @@ import com.knot.backend.document.domain.DocumentErrorCode;
 import com.knot.backend.document.domain.DocumentException;
 import com.knot.backend.global.infrastructure.llm.LlmClient;
 import com.knot.backend.global.infrastructure.llm.LlmCompletionRequest;
+import com.knot.backend.global.exception.LlmErrorCode;
+import com.knot.backend.global.exception.LlmException;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -40,8 +42,19 @@ public class LlmDocumentTopicClassifier implements DocumentTopicClassifier {
     @Override
     public List<DocumentTopic> classify(String transcriptContent) {
         LlmCompletionRequest request = prompt.createRequest(transcriptContent);
-        String response = client.complete(request);
-        return parseTopics(response);
+        try {
+            return parseTopics(client.complete(request));
+        } catch (LlmException exception) {
+            if (exception.getErrorCode() != LlmErrorCode.LLM_INPUT_LIMIT_EXCEEDED) {
+                throw exception;
+            }
+            return new LongTranscriptTopicClassifier(
+                    client,
+                    prompt,
+                    mapper,
+                    this::parseTopics
+            ).classify(transcriptContent);
+        }
     }
 
     private List<DocumentTopic> parseTopics(String response) {
