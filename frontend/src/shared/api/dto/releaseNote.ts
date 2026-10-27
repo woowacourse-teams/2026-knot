@@ -20,7 +20,7 @@ export class ReleaseNoteItemDto {
   title: string;
   /** 짧은 설명 */
   description: string;
-  /** 변화를 보여 주는 이미지 주소. 새 소식 DB에 이미지 칸이 없어 지금 Worker는 보내지 않아요 */
+  /** 변화를 보여 주는 사진 주소. Actions의 Claude가 PR 본문에서 고른 GitHub 첨부 사진이에요. 새 소식 DB 「사진」 칸 그대로라, 앱이 주소를 확인해 그릴지 정해요 */
   image?: string;
   /** 「바로 가보기」로 옮길 화면 키(`CHAT` 등). 지금 보고 있는 워크스페이스의 화면으로 가요. Notion에 적힌 글자 그대로라 앱에 없는 화면일 수 있어요 */
   link?: string;
