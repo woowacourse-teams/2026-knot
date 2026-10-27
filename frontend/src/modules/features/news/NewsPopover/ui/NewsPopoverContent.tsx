@@ -24,6 +24,7 @@ interface NewsPopoverContentProps {
  * 「소식과 피드백」 팝오버의 내용. 메뉴, 새 소식 패널, 피드백 패널 중 하나를 그려요.
  *
  * 무엇을 보여 줄지는 팝오버가 열린 동안만 들고 있어요. 닫히면 내용이 사라지므로 다음에 열 때는 `initialView`부터 보여요.
+ * 패널의 NEW 칩도 같아요. 패널을 연 순간 모두 읽음이 되지만, 열려 있는 동안은 연 시점의 안 읽은 노트에 NEW를 붙여 둬요(NEWS-R4).
  */
 export default function NewsPopoverContent({
   initialView,
@@ -33,8 +34,10 @@ export default function NewsPopoverContent({
   feedbackPanel,
 }: NewsPopoverContentProps) {
   const [view, setView] = useState(initialView);
+  const [newNoteIds] = useState(unreadNoteIds);
 
-  if (view === "news") return <NewsPanel notes={notes} />;
+  if (view === "news")
+    return <NewsPanel notes={notes} newNoteIds={newNoteIds} />;
   if (view === "feedback") return feedbackPanel;
 
   return (

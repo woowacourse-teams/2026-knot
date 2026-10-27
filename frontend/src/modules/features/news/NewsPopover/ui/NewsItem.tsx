@@ -5,10 +5,17 @@ import { Link, useParams } from "react-router";
 import ChevronRightIcon from "@/assets/icons/chevronRight.svg";
 import type { ReleaseNoteItem } from "@/shared/types/releaseNote";
 
+import NewChip from "./NewChip";
+
+interface NewsItemProps extends ReleaseNoteItem {
+  /** 안 읽은 노트의 항목인지. 맞으면 맨 위에 NEW 칩을 붙여요 */
+  isNew: boolean;
+}
+
 /**
  * 새 소식 패널의 항목 하나. 제목과 설명 아래에 이미지와 「바로 가보기」는 있을 때만 보여 줘요(NEWS-R4).
  *
- * 피드백으로 고친 항목에는 맨 위에 「피드백 덕분에 바뀌었어요」 칩을 붙여요.
+ * 안 읽은 노트의 항목에는 맨 위에 NEW 칩을, 피드백으로 고친 항목에는 「피드백 덕분에 바뀌었어요」 칩을 붙여요.
  * 「바로 가보기」는 지금 보고 있는 워크스페이스의 화면으로 옮겨요. 앱에 없는 화면 이름이면 버튼을 숨겨요.
  */
 export default function NewsItem({
@@ -17,12 +24,18 @@ export default function NewsItem({
   image,
   link,
   isFromFeedback,
-}: ReleaseNoteItem) {
+  isNew,
+}: NewsItemProps) {
   const { workspaceId } = useParams();
 
   return (
     <Container>
-      {isFromFeedback && <Chip>피드백 덕분에 바뀌었어요</Chip>}
+      {(isNew || isFromFeedback) && (
+        <ChipContainer>
+          {isNew && <NewChip />}
+          {isFromFeedback && <Chip>피드백 덕분에 바뀌었어요</Chip>}
+        </ChipContainer>
+      )}
       <Title>{title}</Title>
       <Description>{description}</Description>
       {/* 무엇이 바뀌었는지는 제목과 설명이 말해 주므로 이미지는 꾸밈으로 둬요 */}
@@ -44,9 +57,13 @@ const Container = styled.li`
   gap: 0.375rem; /* 6px */
 `;
 
+const ChipContainer = styled.div`
+  display: flex;
+  gap: 0.375rem; /* 6px */
+`;
+
 /** 피그마 Chip/새 소식 · 종류=피드백 덕분에 */
 const Chip = styled.span`
-  align-self: flex-start;
   padding: 0.125rem 0.5rem; /* 2px 8px */
   border-radius: 62.4375rem; /* 999px */
   background-color: ${({ theme }) => theme.neutral[100]};
