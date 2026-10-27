@@ -29,8 +29,9 @@ const WORKSPACE_NAME = new GetWorkspaceResponseDto(workspaceDetailResponse)
   .name;
 const DOCUMENT = new GetDocumentResponseDto(documentDetailsResponse[0]);
 const HOME_PATH = `/workspace/${WORKSPACE_ID}`;
-const DOCUMENTS_PATH = `${HOME_PATH}/documents`;
-const DOCUMENT_PATH = `${DOCUMENTS_PATH}/${DOCUMENT.id}`;
+// 문서 탭은 늘 「녹음별」 탭으로 열려요(DOC-R9). 문서 하나의 주소는 탭 없이 문서 id가 붙어요
+const DOCUMENTS_PATH = `${HOME_PATH}/documents/recordings`;
+const DOCUMENT_PATH = `${HOME_PATH}/documents/${DOCUMENT.id}`;
 // 녹음 직후 문서 확인 화면. 녹음 뒤 정리 화면이 문서를 다 만들면 이 주소로 보내요
 const FROM_RECORDING_PATH = `${DOCUMENT_PATH}?${DOCUMENT_FROM_PARAM}=${DOCUMENT_FROM_RECORDING}`;
 const TAB_NAMES = ["홈", "탐색", "문서"];

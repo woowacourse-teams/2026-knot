@@ -1,21 +1,20 @@
 import { MEDIA_QUERY } from "@constants/breakpoint";
 import styled from "@emotion/styled";
-import DocumentList from "@widgets/document/DocumentList";
+import DocumentArchive from "@widgets/document/DocumentArchive";
 
 /**
- * 문서 목록 화면 (`/workspace/:workspaceId/documents`)
+ * 문서 탭 화면 (`/workspace/:workspaceId/documents/recordings`, `/workspace/:workspaceId/documents/topics`)
  *
- * 워크스페이스의 모든 문서를 폴더(주제)별로 모아 보여준다. 행을 누르면 문서 보기 화면으로 간다.
- * GNB·사이드바·하단 독은 `WorkspaceLayout`이 담당하고, 이 페이지는 문서 목록 섹션을 가운데에 놓기만 한다.
+ * 워크스페이스의 문서를 「녹음별」 · 「주제별」 두 탭으로 보여준다. 어느 탭인지는 주소가 정하고, 두 주소 모두 이 화면이다.
+ * GNB·사이드바·하단 독은 `WorkspaceLayout`이 담당하고, 이 페이지는 문서 탭 섹션을 가운데에 놓기만 한다.
  *
- * @see https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=2017-36054 문서 목록/기본
- * @see https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=2017-36187 문서 목록/빈 상태
- * @see https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=2115-8596 문서 목록/불러오기 실패
+ * @see https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=5327-2402 문서 탭/녹음별 · 기본
+ * @see https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=5327-2221 문서 탭/주제별
  */
 export default function DocumentsPage() {
   return (
     <Root>
-      <DocumentList />
+      <DocumentArchive />
     </Root>
   );
 }

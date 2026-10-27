@@ -26,7 +26,6 @@ import com.knot.backend.recording.domain.repository.RecordingTranscriptionWindow
 import com.knot.backend.recording.domain.repository.TranscriptRepository;
 import com.knot.backend.recording.domain.repository.TranscriptSegmentRepository;
 import com.knot.backend.workspace.domain.repository.WorkspaceRepository;
-import com.knot.backend.workspace.domain.repository.WorkspaceMemberRepository;
 import com.knot.backend.workspace.domain.model.Workspace;
 import com.knot.backend.recording.application.dto.result.AiTranscript;
 import com.knot.backend.recording.domain.RecordingErrorCode;
@@ -60,8 +59,6 @@ class IncrementalRecordingTranscriptionLoggingTest {
     private RecordingAccess access;
     @Mock
     private WorkspaceRepository workspaces;
-    @Mock
-    private WorkspaceMemberRepository members;
     @Mock
     private RecordingSessionRepository sessions;
     @Mock
@@ -203,7 +200,7 @@ class IncrementalRecordingTranscriptionLoggingTest {
 
     @ParameterizedTest
     @CsvSource({"true", "false"})
-    @DisplayName("권한이 사라진 구간 전사 완료와 실패 제출을 거절로 기록한다")
+    @DisplayName("전사할 수 없게 된 녹음의 구간 전사 완료와 실패 제출을 거절로 기록한다")
     void incrementalPersistence_recordsRejectionWithoutChangingState(boolean failedResult) {
         // given
         available(false);
@@ -239,19 +236,12 @@ class IncrementalRecordingTranscriptionLoggingTest {
         ).saveAndFlush(any());
     }
 
-    private void available(boolean authorized) {
+    private void available(boolean transcribable) {
         when(sessions.findWorkspaceIdById(2)).thenReturn(Optional.of(1L));
         when(workspaces.findByIdForUpdate(1L)).thenReturn(Optional.of(workspace));
         when(sessions.findByIdForUpdate(2)).thenReturn(Optional.of(session));
         when(session.getIncrementalPipelineVersion()).thenReturn("pcm16-window-v1");
-        when(session.isTranscribableIn(1)).thenReturn(true);
-        when(session.getMemberId()).thenReturn(7L);
-        when(
-                members.existsByWorkspaceIdAndMemberId(
-                        1L,
-                        7L
-                )
-        ).thenReturn(authorized);
+        when(session.isTranscribableIn(1)).thenReturn(transcribable);
     }
 
     private RecordingTranscription queuedParent() {

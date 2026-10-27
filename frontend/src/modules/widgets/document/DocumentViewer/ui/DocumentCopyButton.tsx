@@ -9,7 +9,8 @@ interface DocumentCopyButtonProps {
   /** 복사할 문서의 제목. `#` 제목으로 본문 앞에 붙여요 */
   title: string;
   /** 복사할 문서의 마크다운 본문 */
-  content: string;
+  content: string; /** 복사에 성공했을 때. 사용 기록을 보내요 */
+  onCopied: () => void;
 }
 
 /**
@@ -22,6 +23,7 @@ interface DocumentCopyButtonProps {
 export default function DocumentCopyButton({
   title,
   content,
+  onCopied,
 }: DocumentCopyButtonProps) {
   const { copy } = useClipboard();
   const { start: startCopiedTimeout, isTimedOut: isCopied } = useTimeout({
@@ -31,7 +33,10 @@ export default function DocumentCopyButton({
   const handleCopy = () => {
     copy({
       text: `# ${title}\n\n${content}`,
-      onCopySuccess: startCopiedTimeout,
+      onCopySuccess: () => {
+        startCopiedTimeout();
+        onCopied();
+      },
     });
   };
 

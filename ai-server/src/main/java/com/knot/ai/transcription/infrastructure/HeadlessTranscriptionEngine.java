@@ -2,6 +2,7 @@ package com.knot.ai.transcription.infrastructure;
 
 import com.knot.ai.global.AiServerProperties;
 import com.knot.ai.transcription.application.TranscriptionEngine;
+import com.knot.ai.transcription.application.TranscriptionLog;
 import com.knot.ai.transcription.application.TranscriptionMetrics;
 import com.knot.ai.transcription.application.command.CreateTranscriptionCommand;
 import com.knot.ai.transcription.domain.TranscriptionErrorCode;
@@ -186,7 +187,7 @@ public class HeadlessTranscriptionEngine implements TranscriptionEngine {
                     return null;
                 }
         );
-        return metrics.stage(
+        TranscriptResult result = metrics.stage(
                 TranscriptionMetrics.Stage.RESULT_CHECK,
                 request.attemptId(),
                 TranscriptionErrorCode.INVALID_RESULT,
@@ -196,6 +197,50 @@ public class HeadlessTranscriptionEngine implements TranscriptionEngine {
                         request
                 )
         );
+        logRunnerStages(
+                directory,
+                request
+        );
+        return result;
+    }
+
+    /** 단계 기록이 없거나 틀리면 로그만 생략한다. 전사 결과는 이미 확인을 마쳤다. */
+    private void logRunnerStages(
+            Path directory,
+            CreateTranscriptionCommand request
+    ) {
+        RunnerStages.read(
+                directory,
+                mapper
+        )
+                .map(
+                        stages -> withDecodePolicy(
+                                stages,
+                                request.window()
+                        )
+                )
+                .ifPresent(
+                        stages -> TranscriptionLog.measured(
+                                "recording.transcription.runner_stages",
+                                request.attemptId(),
+                                stages
+                        )
+                );
+    }
+
+    private Map<String, Object> withDecodePolicy(
+            Map<String, Object> stages,
+            WindowInput window
+    ) {
+        if (window == null) {
+            return stages;
+        }
+        stages.put(
+                "decodePolicy",
+                window.decodePolicy()
+                        .name()
+        );
+        return stages;
     }
 
     private TranscriptResult readResult(

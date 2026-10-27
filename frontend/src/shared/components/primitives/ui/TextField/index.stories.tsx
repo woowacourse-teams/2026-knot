@@ -78,7 +78,7 @@ export const Filled: Story = {
 export const WithError: Story = {
   args: {
     value: "knot!",
-    errorMessage: "한글, 영어와 공백만 사용할 수 있어요.",
+    errorMessage: "한글, 영어, 숫자와 공백만 사용할 수 있어요.",
   },
   parameters: {
     design: {

@@ -3,6 +3,7 @@ package com.knot.backend.recording.infrastructure.storage;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowable;
 
+import com.knot.backend.recording.application.dto.result.PresignedAudioPlayback;
 import com.knot.backend.recording.application.dto.result.PresignedAudioUpload;
 import com.knot.backend.recording.domain.RecordingErrorCode;
 import com.knot.backend.recording.domain.RecordingException;
@@ -94,7 +95,8 @@ class S3RecordingAudioStorageTest {
                 client(endpoint),
                 BUCKET,
                 "",
-                Duration.ofMinutes(15)
+                Duration.ofMinutes(15),
+                Duration.ofHours(1)
         );
     }
 
@@ -124,6 +126,75 @@ class S3RecordingAudioStorageTest {
                 .doesNotContain("overwritten-version")
                 .contains("X-Amz-Expires=900")
                 .contains("X-Amz-SignedHeaders=host");
+    }
+
+    @Test
+    @DisplayName("재생 URL은 저장한 버전을 확인해 서명하고 업로드 URL 설정과 따로 1시간 유효하다")
+    void presignPlayback_success_pinsVersionWithPlaybackTtl() {
+        // given
+        Instant before = Instant.now();
+
+        // when
+        PresignedAudioPlayback playback = storage.presignPlayback(
+                "recordings/7/key",
+                "version+one=",
+                "audio/webm",
+                1024
+        );
+
+        // then
+        assertThat(lastRequest.get()).isEqualTo("HEAD /knot-audio/recordings/7/key");
+        assertThat(lastQuery.get()).isEqualTo("versionId=version%2Bone%3D");
+        assertThat(playback.playbackUrl()).contains("versionId=version%2Bone%3D")
+                .contains("X-Amz-Expires=3600")
+                .contains("X-Amz-SignedHeaders=host");
+        assertThat(playback.expiresAt()).isBetween(
+                before.plus(Duration.ofHours(1))
+                        .minusSeconds(5),
+                Instant.now()
+                        .plus(Duration.ofHours(1))
+        );
+    }
+
+    @ParameterizedTest
+    @NullAndEmptySource
+    @ValueSource(strings = {"null", " "})
+    @DisplayName("저장한 버전이 없거나 null 버전이면 저장소를 조회하지 않고 재생 URL을 발급하지 않는다")
+    void presignPlayback_fail_mutableVersion(String value) {
+        // when
+        Throwable failure = catchThrowable(
+                () -> storage.presignPlayback(
+                        "recordings/7/key",
+                        value,
+                        "audio/webm",
+                        1024
+                )
+        );
+
+        // then
+        assertThat(failure).isInstanceOf(RecordingException.class)
+                .extracting("errorCode")
+                .isEqualTo(RecordingErrorCode.AUDIO_STORAGE_UNAVAILABLE);
+        assertThat(lastRequest.get()).isNull();
+    }
+
+    @Test
+    @DisplayName("저장한 버전의 크기가 기록과 다르면 재생 URL을 발급하지 않는다")
+    void presignPlayback_fail_wrongLength() {
+        // when
+        Throwable failure = catchThrowable(
+                () -> storage.presignPlayback(
+                        "recordings/7/key",
+                        "fixed-version",
+                        "audio/webm",
+                        2048
+                )
+        );
+
+        // then
+        assertThat(failure).isInstanceOf(RecordingException.class)
+                .extracting("errorCode")
+                .isEqualTo(RecordingErrorCode.AUDIO_STORAGE_UNAVAILABLE);
     }
 
     @ParameterizedTest
@@ -350,7 +421,8 @@ class S3RecordingAudioStorageTest {
                     awsClient,
                     BUCKET,
                     "knot/dev/",
-                    Duration.ofMinutes(15)
+                    Duration.ofMinutes(15),
+                    Duration.ofHours(1)
             );
 
             // when
@@ -379,7 +451,8 @@ class S3RecordingAudioStorageTest {
                 client(endpoint),
                 BUCKET,
                 keyPrefix,
-                Duration.ofMinutes(15)
+                Duration.ofMinutes(15),
+                Duration.ofHours(1)
         );
     }
 

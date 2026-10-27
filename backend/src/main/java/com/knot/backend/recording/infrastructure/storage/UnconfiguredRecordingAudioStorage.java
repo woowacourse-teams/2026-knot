@@ -1,6 +1,7 @@
 package com.knot.backend.recording.infrastructure.storage;
 
 import com.knot.backend.recording.application.RecordingAudioStorage;
+import com.knot.backend.recording.application.dto.result.PresignedAudioPlayback;
 import com.knot.backend.recording.application.dto.result.PresignedAudioUpload;
 import com.knot.backend.recording.domain.RecordingErrorCode;
 import com.knot.backend.recording.domain.RecordingException;
@@ -10,6 +11,16 @@ public class UnconfiguredRecordingAudioStorage implements RecordingAudioStorage 
 
     @Override
     public String presignDownload(
+            String storageKey,
+            String versionId,
+            String contentType,
+            long contentLength
+    ) {
+        throw new RecordingException(RecordingErrorCode.AUDIO_STORAGE_UNAVAILABLE);
+    }
+
+    @Override
+    public PresignedAudioPlayback presignPlayback(
             String storageKey,
             String versionId,
             String contentType,

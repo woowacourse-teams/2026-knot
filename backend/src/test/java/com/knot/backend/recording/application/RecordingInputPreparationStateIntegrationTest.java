@@ -220,7 +220,7 @@ class RecordingInputPreparationStateIntegrationTest {
     }
 
     @Test
-    void afterDeparture_cancelsLegacyPreparationAndFencesLateUpload() {
+    void afterDeparture_keepsLegacyPreparationOfSavedAudio() {
         // given
         register(1);
         RecordingInputPreparationState.Claim claim = state.claim(
@@ -230,6 +230,46 @@ class RecordingInputPreparationStateIntegrationTest {
                 .orElseThrow();
         transaction.executeWithoutResult(status -> {
             jdbc.sql("DELETE FROM workspace_members WHERE workspace_id=1 AND member_id=1")
+                    .update();
+            cleanup.afterDeparture(
+                    1,
+                    1
+            );
+        });
+
+        // when
+        boolean adopted = state.ready(
+                claim,
+                key(claim),
+                stored(),
+                10
+        );
+
+        // then
+        assertThat(adopted).isTrue();
+        assertThat(
+                inputs.findByRecordingId(1)
+                        .orElseThrow()
+                        .getStatus()
+        ).isEqualTo(InputPreparationStatus.READY);
+        assertThat(
+                jdbc.sql("SELECT scope FROM recording_audio_cleanup WHERE recording_id=1")
+                        .query(String.class)
+                        .single()
+        ).isEqualTo("DORMANT");
+    }
+
+    @Test
+    void discard_cancelsLegacyPreparationAndFencesLateUpload() {
+        // given
+        register(1);
+        RecordingInputPreparationState.Claim claim = state.claim(
+                1,
+                LEASE
+        )
+                .orElseThrow();
+        transaction.executeWithoutResult(status -> {
+            jdbc.sql("UPDATE recording_sessions SET status='DISCARDED',end_reason=NULL WHERE id=1")
                     .update();
             cleanup.afterDeparture(
                     1,

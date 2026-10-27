@@ -1,0 +1,38 @@
+name: Feedback Report
+
+# 매일 09:00(KST)에 Claude가 최근 7일 피드백을 분석해 노션 「사용자 피드백 접수함」 설명란 맨 위에 요약을 써요(ADR 993).
+# 지난 갱신 뒤 새 접수가 없으면 Claude를 부르지 않고 그대로 둬요. 예약 실행은 기본 브랜치(develop)에 있는 이 파일로만 돌아요.
+# 저장소가 공개라 로그와 step summary에는 건수와 검사 결과만 남겨요. 요약 내용은 로컬에서 DRY_RUN=1로 확인해요.
+# 필요한 값: secrets.CLAUDE_CODE_OAUTH_TOKEN(claude setup-token), secrets.NOTION_REPORT_TOKEN(접수함에 연결한 읽기, 업데이트 연동)
+on:
+  schedule:
+    - cron: "0 0 * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 노션에 쓰지 않고 집계와 요약 검사만 해요
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  feedback-report:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Install Claude Code
+        run: npm install -g @anthropic-ai/claude-code
+
+      # 노션 토큰은 스크립트만 쓰고, 도구를 끈 claude에는 넘기지 않아요
+      - name: Write feedback report
+        env:
+          NOTION_TOKEN: ${{ secrets.NOTION_REPORT_TOKEN }}
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          DRY_RUN: ${{ inputs.dry_run && '1' || '' }}
+        run: python3 .github/scripts/feedback_report.py

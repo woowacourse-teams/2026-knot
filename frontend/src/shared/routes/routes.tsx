@@ -16,6 +16,7 @@ import WorkspaceInvitePage from "@pages/workspace/[workspaceId]/invite";
 import WorkspaceJoinPage from "@pages/workspace/[workspaceId]/join";
 import RecordingPage from "@pages/workspace/[workspaceId]/recording";
 import RecordingDocumentsPage from "@pages/workspace/[workspaceId]/recordings/[recordingId]";
+import RecordingDocumentPage from "@pages/workspace/[workspaceId]/recordings/[recordingId]/document";
 import WorkspaceCodePage from "@pages/workspace/code";
 import WorkspaceCreatePage from "@pages/workspace/create";
 import RecordingHeartbeat from "@widgets/recording/RecordingHeartbeat";
@@ -23,6 +24,7 @@ import WorkspaceAnalytics from "@/shared/components/domain/WorkspaceAnalytics";
 import type { RouteObject } from "react-router";
 
 import AuthGuard from "./AuthGuard";
+import DocumentsRedirect from "./DocumentsRedirect";
 import EntryRedirect from "./EntryRedirect";
 import GuestGuard from "./GuestGuard";
 import LandingGuard from "./LandingGuard";
@@ -157,7 +159,20 @@ export const routes: RouteObject[] = [
         element: <RecordingDocumentsPage />,
       },
       {
+        path: PATH_ROUTE.RECORDING_DOCUMENT,
+        element: <RecordingDocumentPage />,
+      },
+      // 탭이 없는 문서 탭 주소는 「녹음별」 탭으로 보내요. 탭 주소는 글자가 고정이라 `:documentId`보다 먼저 맞아요
+      {
         path: PATH_ROUTE.DOCUMENTS,
+        element: <DocumentsRedirect />,
+      },
+      {
+        path: PATH_ROUTE.DOCUMENTS_BY_RECORDING,
+        element: <DocumentsPage />,
+      },
+      {
+        path: PATH_ROUTE.DOCUMENTS_BY_TOPIC,
         element: <DocumentsPage />,
       },
       {

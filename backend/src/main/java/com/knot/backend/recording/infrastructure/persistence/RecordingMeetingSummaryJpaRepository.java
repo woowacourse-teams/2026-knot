@@ -10,4 +10,6 @@ interface RecordingMeetingSummaryJpaRepository extends JpaRepository<RecordingMe
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     Optional<RecordingMeetingSummary> findWithLockByRecordingId(long recordingId);
+
+    Optional<RecordingMeetingSummary> findByRecordingId(long recordingId);
 }

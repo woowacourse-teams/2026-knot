@@ -11,6 +11,7 @@ import {
  * - GET /api/v1/workspaces/{workspaceId}/documents/{documentId}/confirmations
  * - PUT /api/v1/workspaces/{workspaceId}/documents/{documentId}/confirmations/me
  * - GET /api/v1/workspaces/{workspaceId}/documents/{documentId}/transcript
+ * - GET /api/v1/workspaces/{workspaceId}/document-recordings
  */
 
 /** 문서 상태. 확인 대상이 모두 확인하거나 제외되면 ARCHIVED로 바뀌어요 */
@@ -392,5 +393,94 @@ export class GetDocumentTranscriptResponseDto {
     this.segments = raw.segments.map(
       (segment) => new DocumentTranscriptSegmentDto(segment),
     );
+  }
+}
+
+// GET /api/v1/workspaces/{workspaceId}/document-recordings
+
+/** 녹음별 문서 목록의 문서 항목 서버 응답 모양 */
+export interface DocumentRecordingDocumentRaw {
+  id: number;
+  title: string;
+  summary: string | null;
+}
+
+/** 녹음별 문서 목록에서 녹음 하나에 묶인 문서 항목. 문서 목록 조회의 문서 카드와 같은 문서예요 */
+export class DocumentRecordingDocumentDto {
+  /** 문서 ID. 문서 항목을 누르면 이 ID로 문서 보기를 열어요 */
+  id: number;
+  /** 읽기 전용 문서 제목. 문서 목록 조회의 `title`과 같은 값 */
+  title: string;
+  /** 한 줄 요약. 문서 목록 조회의 `summary`와 같은 값이며 없으면 null */
+  summary: string | null;
+
+  constructor(raw: DocumentRecordingDocumentRaw) {
+    this.id = raw.id;
+    this.title = raw.title;
+    this.summary = raw.summary;
+  }
+}
+
+/** 녹음별 문서 목록의 녹음 묶음 서버 응답 모양 */
+export interface DocumentRecordingRaw {
+  recordingId: number;
+  title: string;
+  startedAt: string;
+  recordingDurationSeconds: number;
+  documentCount: number;
+  documents: DocumentRecordingDocumentRaw[];
+}
+
+/** 녹음별 문서 목록의 녹음 묶음 하나. 문서가 1개 이상 나온 녹음만 와요 */
+export class DocumentRecordingDto {
+  /** 녹음 세션 ID. 녹음 행을 누르면 이 ID로 녹음 문서를 열어요 */
+  recordingId: number;
+  /**
+   * 표시 제목. 서버가 만들어요. 저장된 AI 녹음 제목이 있으면 그 제목, 없거나 만들지 못했으면
+   * `{녹음을 시작한 멤버 닉네임} 님의 녹음`이라 화면에서 대체 이름을 따로 만들지 않아요
+   */
+  title: string;
+  /** 녹음 시작 시각(ISO 8601, UTC). 연도를 포함한 날짜 표시는 화면이 맡아요 */
+  startedAt: string;
+  /** 일시정지를 뺀 서버 누적 녹음 길이(초). 소수 초는 버린 정수예요 */
+  recordingDurationSeconds: number;
+  /** 이 녹음의 문서 수. 항상 `documents` 길이와 같고 1 이상이에요. 녹음 행에는 문서 수를 보여 주지 않아요(DOC-R22) */
+  documentCount: number;
+  /** 이 녹음에서 나온 문서 전부. 생성 시각 오름차순(같으면 ID 오름차순)이고 페이지로 나뉘지 않아요 */
+  documents: DocumentRecordingDocumentDto[];
+
+  constructor(raw: DocumentRecordingRaw) {
+    this.recordingId = raw.recordingId;
+    this.title = raw.title;
+    this.startedAt = raw.startedAt;
+    this.recordingDurationSeconds = raw.recordingDurationSeconds;
+    this.documentCount = raw.documentCount;
+    this.documents = raw.documents.map(
+      (document) => new DocumentRecordingDocumentDto(document),
+    );
+  }
+}
+
+/** 녹음별 문서 목록 조회의 서버 응답 모양 */
+export interface GetDocumentRecordingsResponseRaw {
+  items: DocumentRecordingRaw[];
+  nextCursor: string | null;
+}
+
+/**
+ * 녹음별 문서 목록 조회 응답. 문서 탭 「녹음별」 탭이 써요.
+ *
+ * 녹음 묶음이 녹음 시작 시각 내림차순(같으면 녹음 ID 내림차순)으로 최대 20개 와요.
+ * 한 페이지의 녹음 수는 서버가 20개로 고정해 `size`를 받지 않아요.
+ */
+export class GetDocumentRecordingsResponseDto {
+  /** 녹음 묶음 한 페이지. 문서가 나온 녹음이 없으면 빈 배열 */
+  items: DocumentRecordingDto[];
+  /** 다음 페이지 커서. 그대로 다음 요청의 `cursor`로 보내고 해석하거나 만들지 않아요. 마지막 페이지면 null */
+  nextCursor: string | null;
+
+  constructor(raw: GetDocumentRecordingsResponseRaw) {
+    this.items = raw.items.map((item) => new DocumentRecordingDto(item));
+    this.nextCursor = raw.nextCursor;
   }
 }

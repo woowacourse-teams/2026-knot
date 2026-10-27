@@ -27,7 +27,9 @@ export interface MicrophoneConnectionParams {
  *
  * 녹음기는 `start()`를 불러야 모으기 시작해요. 마이크 권한을 받은 뒤 서버에 녹음을 연 다음에
  * 시작하기 위해서예요.
- * 마이크가 빠지면 `onLost`로 알리고, 닫은 뒤의 알림과 조각은 무시해요.
+ * 녹음기는 마이크를 바로 녹음하지 않고 분석기를 거쳐 섞은 소리를 녹음해요. 녹음 중에 `addAudio()`로
+ * 회의 소리를 더해도 같은 파일에 이어 담기 위해서예요.
+ * 마이크가 빠지면 `onLost`로 알리고, 닫은 뒤의 알림과 조각은 무시해요. 더한 소리가 끝나는 것은 알리지 않아요.
  */
 export default class MicrophoneConnection {
   readonly analyser: AnalyserNode;
@@ -41,17 +43,21 @@ export default class MicrophoneConnection {
   constructor({ stream, onData, onLost }: MicrophoneConnectionParams) {
     this.stream = stream;
 
+    this.audioContext = new AudioContext();
+    this.analyser = this.audioContext.createAnalyser();
+    this.audioContext.createMediaStreamSource(stream).connect(this.analyser);
+    // 분석기는 받은 소리를 그대로 내보내요. 마이크처럼 mono로 녹음해요
+    const mixed = this.audioContext.createMediaStreamDestination();
+    mixed.channelCount = 1;
+    this.analyser.connect(mixed);
+
     // 지원하지 않는 브라우저는 마이크를 받기 전에 막는다. (우리 서비스는 webm형식만 지원하고, 지원하지 않는 브라우저 사용하는 경우는 나중에 고민해보기!)
-    this.recorder = new MediaRecorder(stream, {
+    this.recorder = new MediaRecorder(mixed.stream, {
       mimeType: RECORDING_AUDIO_TYPE,
     });
     this.recorder.addEventListener("dataavailable", (e: BlobEvent) => {
       if (!this.isClosed && e.data.size > 0) onData(e.data);
     });
-
-    this.audioContext = new AudioContext();
-    this.analyser = this.audioContext.createAnalyser();
-    this.audioContext.createMediaStreamSource(stream).connect(this.analyser);
 
     stream.getTracks().forEach((track) =>
       track.addEventListener("ended", () => {
@@ -62,6 +68,11 @@ export default class MicrophoneConnection {
 
   start() {
     if (this.recorder.state === "inactive") this.recorder.start();
+  }
+
+  /** 회의 소리 같은 다른 소리를 마이크와 섞어 녹음기와 파형에 더해요 */
+  addAudio(stream: MediaStream) {
+    this.audioContext.createMediaStreamSource(stream).connect(this.analyser);
   }
 
   isLive() {

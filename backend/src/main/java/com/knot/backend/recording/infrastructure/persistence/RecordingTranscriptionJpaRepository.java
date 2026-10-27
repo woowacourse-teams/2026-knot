@@ -3,6 +3,8 @@ package com.knot.backend.recording.infrastructure.persistence;
 import com.knot.backend.recording.domain.model.RecordingTranscription;
 import com.knot.backend.recording.domain.model.TranscriptionStatus;
 import jakarta.persistence.LockModeType;
+import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
@@ -10,6 +12,8 @@ import org.springframework.data.jpa.repository.Query;
 
 interface RecordingTranscriptionJpaRepository extends JpaRepository<RecordingTranscription, Long> {
     Optional<RecordingTranscription> findByRecordingSessionId(long recordingSessionId);
+
+    List<RecordingTranscription> findAllByRecordingSessionIdIn(Collection<Long> recordingSessionIds);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     Optional<RecordingTranscription> findWithLockByRecordingSessionId(long recordingSessionId);

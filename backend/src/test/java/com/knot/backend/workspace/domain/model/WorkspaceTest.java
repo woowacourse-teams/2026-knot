@@ -11,6 +11,8 @@ import java.time.Instant;
 import org.assertj.core.api.ThrowableAssert.ThrowingCallable;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 class WorkspaceTest {
     private static final Instant CREATED_AT = Instant.parse("2026-08-24T00:00:00Z");
@@ -46,6 +48,20 @@ class WorkspaceTest {
 
         // then
         assertThat(workspace.getName()).isEqualTo(maximumLengthName);
+    }
+
+    @DisplayName("워크스페이스 이름에 숫자를 쓸 수 있고 숫자만으로도 만들 수 있다")
+    @ParameterizedTest
+    @ValueSource(strings = {"우테코 8기", "2026", "12345678901234567890"})
+    void create_success_nameContainingDigits(String nameContainingDigits) {
+        // when
+        Workspace workspace = Workspace.create(
+                nameContainingDigits,
+                CREATED_AT
+        );
+
+        // then
+        assertThat(workspace.getName()).isEqualTo(nameContainingDigits);
     }
 
     @DisplayName("워크스페이스 이름이 비어 있으면 생성을 거부한다")
@@ -93,6 +109,22 @@ class WorkspaceTest {
         // when
         ThrowingCallable action = () -> Workspace.create(
                 nameContainingSpecialCharacter,
+                CREATED_AT
+        );
+
+        // then
+        assertThatThrownBy(action).isInstanceOf(WorkspaceException.class)
+                .extracting(exception -> ((WorkspaceException) exception).getErrorCode())
+                .isEqualTo(WorkspaceErrorCode.INVALID_WORKSPACE_NAME);
+    }
+
+    @DisplayName("워크스페이스 이름에 0~9가 아닌 숫자 문자가 있으면 생성을 거부한다")
+    @ParameterizedTest
+    @ValueSource(strings = {"２０２６", "①팀"})
+    void create_failure_nonAsciiDigit(String nameContainingNonAsciiDigit) {
+        // when
+        ThrowingCallable action = () -> Workspace.create(
+                nameContainingNonAsciiDigit,
                 CREATED_AT
         );
 

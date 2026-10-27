@@ -95,10 +95,12 @@ class RecordingCurrentServiceTest {
                 mock(com.knot.backend.recording.domain.repository.RecordingAudioChunkRepository.class),
                 finalizations,
                 mock(com.knot.backend.recording.domain.repository.RecordingAudioCleanupRepository.class),
-                transcriptions,
-                documentProgress,
-                uploads,
-                transcriptionProperties
+                new RecordingTranscriptionFailure(
+                        transcriptions,
+                        uploads,
+                        transcriptionProperties
+                ),
+                documentProgress
         );
     }
 
@@ -204,10 +206,12 @@ class RecordingCurrentServiceTest {
                 mock(com.knot.backend.recording.domain.repository.RecordingAudioChunkRepository.class),
                 finalizations,
                 mock(com.knot.backend.recording.domain.repository.RecordingAudioCleanupRepository.class),
-                transcriptions,
-                documentProgress,
-                uploads,
-                transcriptionProperties
+                new RecordingTranscriptionFailure(
+                        transcriptions,
+                        uploads,
+                        transcriptionProperties
+                ),
+                documentProgress
         );
 
         // when

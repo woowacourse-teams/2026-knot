@@ -342,7 +342,8 @@ class S3RecordingAudioChunkStorageTest {
                 "",
                 "",
                 "",
-                Duration.ofMinutes(15)
+                Duration.ofMinutes(15),
+                Duration.ofHours(1)
         );
         RecordingAudioChunkStorage unavailable = new RecordingAudioStorageConfig().recordingAudioChunkStorage(
                 properties,

@@ -111,30 +111,41 @@ const runWindow = async (run: DecodeRun) => {
     const calls = (await readFile(path.join(directory, 'calls.jsonl'), 'utf8')).trim().split('\n')
       .map((line) => JSON.parse(line) as string[])
       .map((args) => args.includes('--prompt') ? 'vocabulary' : args.includes('-mc') ? 'retry' : 'default')
+    const stages = JSON.parse(await readFile(path.join(job, 'stages.json'), 'utf8'))
     return { text: result.utterances.map((utterance: { text: string }) => utterance.text).join(' '), calls,
-      window: result.window }
+      window: result.window, stages }
   } finally {
     await rm(directory, { recursive: true, force: true })
   }
 }
 
 const repeated = ['오늘', ...Array(8).fill('Q.')]
+
+/** 단계 기록에서 시간 값을 빼고 디코딩 횟수와 재시도·용어 디코딩 여부만 남긴다. */
+const decodeFlags = (stages: Record<string, unknown>) =>
+  Object.fromEntries(Object.entries(stages).filter(([key]) => !key.endsWith('Ms')))
 const rest = ' 다음 안건은 일정 정리입니다'
 
 for (const scenario of [
   { name: 'a recording window fuses the vocabulary decode', run: { decodePolicy: 'WITH_VOCABULARY', default: ['오늘', '하내스', '설정을', '봐요'] },
-    text: '오늘 하네스 설정을 봐요', calls: ['default', 'vocabulary'] },
+    text: '오늘 하네스 설정을 봐요', calls: ['default', 'vocabulary'],
+    stages: { decodeCount: 2, retryRan: false, retryAdopted: false, vocabularyRan: true } },
   { name: 'the final window decodes once', run: { decodePolicy: 'DEFAULT_ONLY', default: ['오늘', '하내스', '설정을', '봐요'] },
-    text: '오늘 하내스 설정을 봐요', calls: ['default'] },
+    text: '오늘 하내스 설정을 봐요', calls: ['default'],
+    stages: { decodeCount: 1, retryRan: false, retryAdopted: false, vocabularyRan: false } },
   { name: 'a repeated default decode is replaced by one context-free retry', run: { decodePolicy: 'WITH_VOCABULARY', default: repeated },
-    text: '오늘 하네스 설정을 봐요' + rest, calls: ['default', 'retry', 'vocabulary'] },
+    text: '오늘 하네스 설정을 봐요' + rest, calls: ['default', 'retry', 'vocabulary'],
+    stages: { decodeCount: 3, retryRan: true, retryAdopted: true, vocabularyRan: true } },
   { name: 'the final window still retries a repeated decode', run: { decodePolicy: 'DEFAULT_ONLY', default: repeated },
-    text: '오늘 하내스 설정을 봐요' + rest, calls: ['default', 'retry'] },
+    text: '오늘 하내스 설정을 봐요' + rest, calls: ['default', 'retry'],
+    stages: { decodeCount: 2, retryRan: true, retryAdopted: true, vocabularyRan: false } },
   { name: 'a failed vocabulary decode keeps the default decode', run: { decodePolicy: 'WITH_VOCABULARY', default: ['오늘', '하내스', '설정을', '봐요'], fail: 'vocabulary' },
-    text: '오늘 하내스 설정을 봐요', calls: ['default', 'vocabulary'] },
+    text: '오늘 하내스 설정을 봐요', calls: ['default', 'vocabulary'],
+    stages: { decodeCount: 2, retryRan: false, retryAdopted: false, vocabularyRan: true } },
   { name: 'a failed retry keeps the repeated default decode', run: { decodePolicy: 'DEFAULT_ONLY', default: repeated, fail: 'retry' },
-    text: repeated.join(' '), calls: ['default', 'retry'] }
-] as { name: string; run: DecodeRun; text: string; calls: string[] }[]) {
+    text: repeated.join(' '), calls: ['default', 'retry'],
+    stages: { decodeCount: 2, retryRan: true, retryAdopted: false, vocabularyRan: false } }
+] as { name: string; run: DecodeRun; text: string; calls: string[]; stages: Record<string, unknown> }[]) {
   test(`window pipeline: ${scenario.name}`, async () => {
     // when
     const result = await runWindow(scenario.run)
@@ -143,5 +154,17 @@ for (const scenario of [
     assert.equal(result.text, scenario.text)
     assert.deepEqual(result.calls, scenario.calls)
     assert.equal('decodePolicy' in result.window, false)
+    assert.deepEqual(decodeFlags(result.stages), scenario.stages)
   })
 }
+
+test('window stages record only the elapsed time of decodes that ran', async () => {
+  // when
+  const { stages } = await runWindow({ decodePolicy: 'WITH_VOCABULARY', default: repeated })
+
+  // then
+  assert.deepEqual(Object.keys(stages).filter((key) => key.endsWith('Ms')).sort(),
+    ['defaultDecodeMs', 'diarizationMs', 'retryDecodeMs', 'vocabularyDecodeMs'])
+  for (const key of ['defaultDecodeMs', 'diarizationMs', 'retryDecodeMs', 'vocabularyDecodeMs'])
+    assert.ok(Number.isSafeInteger(stages[key]) && stages[key] >= 0, key)
+})

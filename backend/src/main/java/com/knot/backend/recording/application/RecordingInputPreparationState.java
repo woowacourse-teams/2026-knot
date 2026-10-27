@@ -9,7 +9,6 @@ import com.knot.backend.recording.domain.repository.RecordingTranscriptionInputR
 import com.knot.backend.recording.domain.repository.RecordingSessionRepository;
 import com.knot.backend.recording.domain.repository.RecordingAudioUploadRepository;
 import com.knot.backend.recording.domain.repository.RecordingAudioCleanupRepository;
-import com.knot.backend.workspace.domain.repository.WorkspaceMemberRepository;
 import com.knot.backend.workspace.domain.repository.WorkspaceRepository;
 import java.time.Clock;
 import java.time.Duration;
@@ -28,7 +27,6 @@ public class RecordingInputPreparationState {
     private final RecordingAudioUploadRepository uploads;
     private final RecordingAudioCleanupRepository cleanup;
     private final WorkspaceRepository workspaces;
-    private final WorkspaceMemberRepository members;
     private final RecordingTranscriptionStateService transcriptions;
     private final Clock clock;
 
@@ -152,12 +150,6 @@ public class RecordingInputPreparationState {
         }
         return sessions.findByIdForUpdate(id)
                 .filter(session -> session.isTranscribableIn(workspace.orElseThrow()))
-                .filter(
-                        session -> members.existsByWorkspaceIdAndMemberId(
-                                workspace.orElseThrow(),
-                                session.getMemberId()
-                        )
-                )
                 .filter(session -> session.getEndedAt() != null)
                 .isPresent()
                 && uploads.findByRecordingIdForUpdate(id)

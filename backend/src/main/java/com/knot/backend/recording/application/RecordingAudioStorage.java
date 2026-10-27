@@ -1,11 +1,19 @@
 package com.knot.backend.recording.application;
 
+import com.knot.backend.recording.application.dto.result.PresignedAudioPlayback;
 import com.knot.backend.recording.application.dto.result.PresignedAudioUpload;
 import com.knot.backend.recording.domain.model.StoredAudioObject;
 
 public interface RecordingAudioStorage {
 
     String presignDownload(
+            String storageKey,
+            String versionId,
+            String contentType,
+            long contentLength
+    );
+
+    PresignedAudioPlayback presignPlayback(
             String storageKey,
             String versionId,
             String contentType,

@@ -9,6 +9,7 @@ import { lastViewedWorkspaceHandlers } from "./api/v1/members/me/lastViewedWorks
 import { workspacesHandlers } from "./api/v1/workspaces";
 import { workspaceHandlers } from "./api/v1/workspaces/[workspaceId]";
 import { documentGenerationJobRetryHandlers } from "./api/v1/workspaces/[workspaceId]/documentGenerationJobs/[jobId]/retry";
+import { documentRecordingsHandlers } from "./api/v1/workspaces/[workspaceId]/documentRecordings";
 import { documentsHandlers } from "./api/v1/workspaces/[workspaceId]/documents";
 import { documentHandlers } from "./api/v1/workspaces/[workspaceId]/documents/[documentId]";
 import { documentConfirmationsHandlers } from "./api/v1/workspaces/[workspaceId]/documents/[documentId]/confirmations";
@@ -36,6 +37,10 @@ import { recordingAudioUploadUrlHandlers } from "./api/v1/workspaces/[workspaceI
 import { recordingEndHandlers } from "./api/v1/workspaces/[workspaceId]/recordings/[recordingId]/end";
 import { recordingHeartbeatHandlers } from "./api/v1/workspaces/[workspaceId]/recordings/[recordingId]/heartbeat";
 import { recordingTranscriptionRetryHandlers } from "./api/v1/workspaces/[workspaceId]/recordings/[recordingId]/transcription/retry";
+import { recordingAudioPlaybackHandlers } from "./api/v1/workspaces/[workspaceId]/recordings/[recordingId]/audioPlayback";
+import { recordingDocumentHandlers } from "./api/v1/workspaces/[workspaceId]/recordings/[recordingId]/document";
+import { meetingSummaryRetryHandlers } from "./api/v1/workspaces/[workspaceId]/recordings/[recordingId]/meetingSummary/retry";
+import { recordingTranscriptHandlers } from "./api/v1/workspaces/[workspaceId]/recordings/[recordingId]/transcript";
 import { recordingPauseHandlers } from "./api/v1/workspaces/[workspaceId]/recordings/[recordingId]/pause";
 import { recordingResumeHandlers } from "./api/v1/workspaces/[workspaceId]/recordings/[recordingId]/resume";
 import { currentRecordingHandlers } from "./api/v1/workspaces/[workspaceId]/recordings/current";
@@ -73,8 +78,13 @@ export const handlers = [
   ...recordingAudioSaveHandlers,
   ...recordingAudioSaveRetryHandlers,
   ...recordingTranscriptionRetryHandlers,
+  ...recordingDocumentHandlers,
+  ...recordingTranscriptHandlers,
+  ...recordingAudioPlaybackHandlers,
+  ...meetingSummaryRetryHandlers,
   ...documentGenerationJobRetryHandlers,
   ...documentsHandlers,
+  ...documentRecordingsHandlers,
   ...documentHandlers,
   ...documentConfirmationsHandlers,
   ...documentMyConfirmationHandlers,

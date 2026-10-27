@@ -47,6 +47,10 @@ export default class Microphone {
     this.connection?.start();
   }
 
+  addAudio(stream: MediaStream) {
+    this.connection?.addAudio(stream);
+  }
+
   isLive() {
     return this.connection?.isLive() ?? false;
   }

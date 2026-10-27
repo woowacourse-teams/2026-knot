@@ -27,6 +27,47 @@ def valid_result():
     }
 
 
+def proposal_result():
+    return {
+        "status": "needs_user_input",
+        "changed": [],
+        "next": [],
+        "question": "제안 페이지 https://app.notion.com/p/proposal 에서 1차 컨펌을 받아야 한다.",
+        "side_effects": [],
+    }
+
+
+def pending_state():
+    return {
+        "request": "탐색 답변에 복사 버튼 만들어 줘",
+        "existing_issue_url": None,
+        "area": "frontend",
+        "done_condition": "development",
+        "remote_write_authorized": True,
+        "implementer": "vlmbuyd",
+        "plan_confirmation": {"required": True, "status": "pending", "proposal_url": "https://app.notion.com/p/proposal", "proposer": "poketopa", "reviewers": ["vlmbuyd"]},
+        "answers": [],
+        "steps": [
+            {"agent": "기능 요구사항", "message": "기존과 대조해 제안해라", "result": proposal_result()},
+        ],
+        "issues": [],
+        "prs": [],
+    }
+
+
+def confirmed_plan(confirmed_by=None):
+    return {
+        "required": True,
+        "status": "confirmed",
+        "proposal_url": "https://app.notion.com/p/proposal",
+        "proposer": "poketopa",
+        "reviewers": ["vlmbuyd"],
+        "confirmed_by": confirmed_by or ["vlmbuyd"],
+        "confirmed_at": "2026-10-26",
+        "evidence": "확정 버튼, 컨펌 기록: 범위를 탐색 답변으로 좁힘",
+    }
+
+
 def valid_state():
     return {
         "request": "탐색 답변에 복사 버튼 만들어 줘",
@@ -34,8 +75,11 @@ def valid_state():
         "area": "frontend",
         "done_condition": "development",
         "remote_write_authorized": False,
+        "implementer": "vlmbuyd",
+        "plan_confirmation": confirmed_plan(),
         "answers": [{"to": "이슈", "question": "게시할까요?", "answer": "허용"}],
         "steps": [
+            {"agent": "기능 요구사항", "message": "기존과 대조해 제안해라", "result": proposal_result()},
             {"agent": "기능 요구사항", "message": "기존과 대조해 업데이트해라", "result": valid_result()},
         ],
         "issues": [{"area": "frontend", "number": 12, "url": "https://github.com/o/r/issues/12"}],
@@ -77,6 +121,23 @@ class ResultContractTest(unittest.TestCase):
         self.assertEqual(fp.validate_result(["done"]), ["result must be an object"])
 
 
+class DraftQuestionTest(unittest.TestCase):
+    def test_draft_question_before_proposal_is_valid(self):
+        # 초안 질문은 제안 페이지를 만들기 전이라 1차 컨펌 기록 없이 「제안해라」 단계만 있다.
+        question = {
+            "status": "needs_user_input",
+            "changed": [],
+            "next": [],
+            "question": "초안 질문\n1. 지금 무엇이 불편한가요?\n2. 이번에 하지 않을 것이 있나요?",
+            "side_effects": [],
+        }
+        self.assertEqual(fp.validate_result(question), [])
+        state = pending_state()
+        del state["plan_confirmation"]
+        state["steps"] = [{"agent": "기능 요구사항", "message": "기존과 대조해 제안해라", "result": question}]
+        self.assertEqual(fp.validate_state(state), [])
+
+
 class StateFileTest(unittest.TestCase):
     def test_valid_state_passes(self):
         self.assertEqual(fp.validate_state(valid_state()), [])
@@ -101,6 +162,12 @@ class StateFileTest(unittest.TestCase):
         state["issues"][0]["number"] = "12"
         self.assertTrue(any("issues[0].number" in e for e in fp.validate_state(state)))
 
+    def test_implementer_is_required_once_issue_exists(self):
+        # #979: 이슈 담당자가 실제 구현한 사람과 달랐다. 이슈를 만들기 전에 구현할 사람을 적는다.
+        state = valid_state()
+        del state["implementer"]
+        self.assertIn("implementer is required before issues or prs are created", fp.validate_state(state))
+
     def test_collect_changed_keeps_step_order(self):
         state = valid_state()
         second = valid_result()
@@ -108,6 +175,105 @@ class StateFileTest(unittest.TestCase):
         state["steps"].append({"agent": "이슈", "message": "이슈 생성해", "result": second})
         kinds = [item["kind"] for item in fp.collect_changed(state)]
         self.assertEqual(kinds, ["notion", "figma", "issue"])
+
+
+class PlanConfirmationTest(unittest.TestCase):
+    def test_pending_proposal_passes(self):
+        self.assertEqual(fp.validate_state(pending_state()), [])
+
+    def test_pending_blocks_notion_update(self):
+        # #982: 1차 컨펌 전에 노션 정본과 이슈를 다 만든 뒤 컨펌을 요청했다.
+        state = pending_state()
+        state["steps"].append({"agent": "기능 요구사항", "message": "기존과 대조해 업데이트해라", "result": valid_result()})
+        errors = fp.validate_state(state)
+        self.assertTrue(any("노션과 Figma를 바꾸지 않는다" in e for e in errors))
+        self.assertTrue(any("steps[1] runs before 1차 컨펌" in e for e in errors))
+
+    def test_pending_blocks_issue(self):
+        state = pending_state()
+        state["issues"] = [{"area": "frontend", "number": 12, "url": "https://github.com/o/r/issues/12"}]
+        self.assertTrue(any("이슈와 PR을 만들지 않는다" in e for e in fp.validate_state(state)))
+
+    def test_rejected_proposal_leaves_nothing_to_roll_back(self):
+        state = pending_state()
+        state["plan_confirmation"]["status"] = "rejected"
+        self.assertEqual(fp.validate_state(state), [])
+        state["issues"] = [{"area": "frontend", "number": 12, "url": "https://github.com/o/r/issues/12"}]
+        self.assertTrue(any("rejected" in e and "이슈와 PR" in e for e in fp.validate_state(state)))
+
+    def test_required_confirmation_needs_proposal_page(self):
+        state = pending_state()
+        del state["plan_confirmation"]["proposal_url"]
+        self.assertTrue(any("proposal_url" in e for e in fp.validate_state(state)))
+
+    def test_confirmed_needs_who_when_and_evidence(self):
+        state = valid_state()
+        state["plan_confirmation"] = {
+            "required": True,
+            "status": "confirmed",
+            "proposal_url": "https://app.notion.com/p/proposal",
+            "confirmed_by": [],
+            "evidence": " ",
+        }
+        errors = fp.validate_state(state)
+        self.assertTrue(any("confirmed_by" in e for e in errors))
+        self.assertTrue(any("confirmed_at" in e for e in errors))
+        self.assertTrue(any("evidence" in e for e in errors))
+
+    def test_confirmed_by_button_record_passes(self):
+        state = valid_state()
+        state["plan_confirmation"] = confirmed_plan()
+        self.assertEqual(fp.validate_state(state, ["vlmbuyd"]), [])
+
+    def test_confirmed_by_non_confirmer_fails(self):
+        # 기획 컨펌 담당이 아닌 팀원이 상태를 확정으로 바꾼 경우
+        state = valid_state()
+        state["plan_confirmation"] = confirmed_plan(confirmed_by=["Eastar-DS"])
+        errors = fp.validate_state(state, ["vlmbuyd"])
+        self.assertTrue(any("must include a plan confirmer" in e for e in errors))
+
+    def test_state_cli_checks_repository_confirmers(self):
+        state = valid_state()
+        state["plan_confirmation"] = confirmed_plan(confirmed_by=["jyt6640"])
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "state.json"
+            path.write_text(json.dumps(state, ensure_ascii=False), encoding="utf-8")
+            result = subprocess.run(
+                [sys.executable, str(ROOT / "harness" / "feature_pipeline.py"), "state", str(path)],
+                capture_output=True,
+                text=True,
+            )
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("must include a plan confirmer", result.stdout)
+
+    def test_required_proposal_needs_proposer_and_reviewer(self):
+        # 2026-10-26 첫 제안: 제안자가 비고 기획 컨펌 담당에게 알림이 가지 않았다.
+        state = pending_state()
+        del state["plan_confirmation"]["proposer"]
+        state["plan_confirmation"]["reviewers"] = []
+        errors = fp.validate_state(state)
+        self.assertTrue(any("proposer is required" in e for e in errors))
+        self.assertTrue(any("reviewers is required" in e for e in errors))
+
+    def test_reviewers_must_include_plan_confirmer(self):
+        state = pending_state()
+        state["plan_confirmation"]["reviewers"] = ["Eastar-DS"]
+        errors = fp.validate_state(state, ["vlmbuyd"])
+        self.assertTrue(any("reviewers must include a plan confirmer" in e for e in errors))
+
+    def test_not_needed_matches_required_false(self):
+        state = valid_state()
+        state["plan_confirmation"] = {"required": False, "status": "not_needed"}
+        self.assertEqual(fp.validate_state(state), [])
+        state["plan_confirmation"] = {"required": True, "status": "not_needed", "proposal_url": "https://app.notion.com/p/proposal"}
+        self.assertTrue(any("cannot be not_needed" in e for e in fp.validate_state(state)))
+        state["plan_confirmation"] = {"required": False, "status": "pending"}
+        self.assertTrue(any("must be not_needed" in e for e in fp.validate_state(state)))
+
+    def test_propose_message_is_known(self):
+        result = valid_result()
+        result["next"] = [{"agent": "기능 요구사항", "message": "기존과 대조해 제안해라"}]
+        self.assertEqual(fp.validate_result(result), [])
 
 
 class RenderTest(unittest.TestCase):

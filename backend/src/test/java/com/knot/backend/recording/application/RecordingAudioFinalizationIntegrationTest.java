@@ -406,6 +406,82 @@ class RecordingAudioFinalizationIntegrationTest {
     }
 
     @Test
+    void starterDepartureDoesNotStopQueuedFinalization() {
+        // given
+        jdbc.sql("UPDATE workspace_members SET left_at=now()")
+                .update();
+        AudioFinalizationClaim claim = transaction.claim(recordingId)
+                .orElseThrow();
+        transaction.reconcile(
+                claim,
+                Map.of(
+                        1,
+                        new StoredAudioChunk(
+                                true,
+                                2,
+                                "application/octet-stream",
+                                HASH,
+                                "v1"
+                        )
+                ),
+                clock.instant()
+        );
+
+        // when
+        transaction.adopt(
+                claim,
+                new StoredAudioChunk(
+                        true,
+                        46,
+                        "audio/wav",
+                        HASH,
+                        "final-v1"
+                )
+        );
+
+        // then
+        assertThat(
+                jobs.findByRecordingId(recordingId)
+                        .orElseThrow()
+                        .getStatus()
+                        .name()
+        ).isEqualTo("READY");
+        assertThat(
+                jdbc.sql("SELECT status FROM recording_transcriptions WHERE recording_session_id=:id")
+                        .param(
+                                "id",
+                                recordingId
+                        )
+                        .query(String.class)
+                        .single()
+        ).isEqualTo("QUEUED");
+    }
+
+    @Test
+    void starterDepartureDuringFinalizationLetsFailureBeRecorded() {
+        // given
+        AudioFinalizationClaim claim = transaction.claim(recordingId)
+                .orElseThrow();
+        jdbc.sql("UPDATE workspace_members SET left_at=now()")
+                .update();
+
+        // when
+        transaction.fail(
+                claim,
+                "AUDIO_STORAGE_UNAVAILABLE",
+                false
+        );
+
+        // then
+        assertThat(
+                jobs.findByRecordingId(recordingId)
+                        .orElseThrow()
+                        .getStatus()
+                        .name()
+        ).isEqualTo("FAILED");
+    }
+
+    @Test
     void adoptionCanCrossThirtyDaysWithLiveLease() {
         // given
         when(clock.instant()).thenReturn(

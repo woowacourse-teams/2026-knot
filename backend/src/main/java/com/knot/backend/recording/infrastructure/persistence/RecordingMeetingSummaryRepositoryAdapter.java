@@ -13,16 +13,10 @@ import org.springframework.stereotype.Repository;
 @Repository
 @RequiredArgsConstructor
 public class RecordingMeetingSummaryRepositoryAdapter implements RecordingMeetingSummaryRepository {
-    private static final String RECORDING_FROM = """
-            FROM recording_sessions s
+    private static final String RECORDING_FROM = RecentRecordingQueryAdapter.OPENABLE_RECORDINGS + """
             JOIN workspaces w ON w.id=s.workspace_id AND w.deleted_at IS NULL
-            LEFT JOIN recording_audio_uploads u ON u.recording_id=s.id
-            LEFT JOIN recording_audio_finalizations f ON f.recording_id=s.id
             """;
-    private static final String READABLE = """
-            s.status='ENDED' AND (u.status='COMPLETED' OR (s.audio_mode='PCM16_CHUNKS_V1'
-                AND (f.id IS NULL OR f.status IN ('QUEUED','PROCESSING','READY'))))
-            """;
+    private static final String READABLE = RecentRecordingQueryAdapter.AUDIO_SAVED;
 
     private final RecordingMeetingSummaryJpaRepository repository;
     private final JdbcClient jdbc;
@@ -99,6 +93,11 @@ public class RecordingMeetingSummaryRepositoryAdapter implements RecordingMeetin
     @Override
     public Optional<RecordingMeetingSummary> findByRecordingIdForUpdate(long recordingId) {
         return repository.findWithLockByRecordingId(recordingId);
+    }
+
+    @Override
+    public Optional<RecordingMeetingSummary> findByRecordingId(long recordingId) {
+        return repository.findByRecordingId(recordingId);
     }
 
     @Override

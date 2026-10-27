@@ -2,7 +2,8 @@ import { expect, test, type Page } from "@playwright/test";
 
 const HOME_PATH = "/workspace/1";
 const CHAT_PATH = HOME_PATH + "/chat";
-const DOCUMENTS_PATH = HOME_PATH + "/documents";
+// 문서 탭은 늘 「녹음별」 탭으로 열려요(DOC-R9)
+const DOCUMENTS_PATH = HOME_PATH + "/documents/recordings";
 
 /** 반응형 기준(RESP)의 시안 폭과 가장 좁게 지켜야 하는 폭 */
 const VIEWPORTS = [
@@ -33,7 +34,13 @@ async function expectNoHorizontalOverflow(page: Page) {
 
 async function openFirstDocument(page: Page) {
   await page.goto(DOCUMENTS_PATH);
-  await page.getByRole("main").getByRole("link").first().click();
+  // 「녹음별」 탭에서 문서 행은 목록 항목 안의 링크예요. 녹음 행(목록 밖)은 녹음 문서로 가요
+  await page
+    .getByRole("main")
+    .getByRole("listitem")
+    .first()
+    .getByRole("link")
+    .click();
   await expect(page.getByRole("button", { name: /원문/ })).toBeVisible();
 }
 
@@ -83,7 +90,7 @@ for (const viewport of VIEWPORTS) {
 test.describe("모바일 390 홈", () => {
   test.use({ viewport: { width: 390, height: 844 } });
 
-  test("홈 카드 네 개가 좌우 16px 여백 안에서 한 열로 쌓인다", async ({
+  test("홈 카드 세 개가 좌우 16px 여백 안에서 한 열로 쌓인다", async ({
     page,
   }) => {
     await page.goto(HOME_PATH);
@@ -91,7 +98,7 @@ test.describe("모바일 390 홈", () => {
 
     // 인사말 바로 다음 묶음이 카드 묶음이에요
     const cards = page.locator("main h1 + div > *");
-    await expect(cards).toHaveCount(4);
+    await expect(cards).toHaveCount(3);
 
     for (const card of await cards.all()) {
       const box = await card.boundingBox();

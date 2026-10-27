@@ -2,6 +2,8 @@ package com.knot.backend.document.infrastructure.persistence;
 
 import com.knot.backend.document.domain.model.DocumentGenerationBatch;
 import com.knot.backend.document.domain.repository.DocumentGenerationBatchRepository;
+import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Repository;
@@ -35,6 +37,17 @@ public class DocumentGenerationBatchRepositoryAdapter implements DocumentGenerat
         return repository.findByWorkspaceIdAndRecordingSessionId(
                 workspaceId,
                 recordingSessionId
+        );
+    }
+
+    @Override
+    public List<DocumentGenerationBatch> findAllByWorkspaceIdAndRecordingSessionIdIn(
+            long workspaceId,
+            Collection<Long> recordingSessionIds
+    ) {
+        return repository.findAllByWorkspaceIdAndRecordingSessionIdIn(
+                workspaceId,
+                recordingSessionIds
         );
     }
 }

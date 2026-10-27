@@ -4,12 +4,16 @@ import {
   useTranscriptPanelStore,
 } from "@store/transcriptPanelStore";
 import type { Meta, StoryObj } from "@storybook/react-webpack5";
+import { MemoryRouter } from "react-router";
 
 import TranscriptToggle from ".";
 
 /** 원문을 여닫은 적이 없는 처음 상태로 되돌려요. 열림 여부는 전역 저장소와 브라우저에 남아 스토리끼리 이어지기 때문이에요. */
 const resetTranscriptPanel = () => {
-  useTranscriptPanelStore.setState({ isOpenThisVisit: null });
+  useTranscriptPanelStore.setState({
+    isOpenThisVisit: null,
+    recordingDocumentChoice: null,
+  });
   localStorage.removeItem(getIsOpenLastTimeKey(meResponse.memberId));
 };
 
@@ -26,6 +30,7 @@ const resetTranscriptPanel = () => {
  * - 회원 정보를 받기 전에는 누가 둔 상태인지 알 수 없어 닫힌 모양이에요. 열린 모양으로 두면 닫아 둔 회원에게 패널이 잠깐 열렸다 닫히고, 원문 요청도 한 번 나가기 때문이에요.
  * - 회원 정보를 받지 못해도 닫힌 모양이에요. 이때나 받기 전에 누르면 열리지만, 누가 둔 상태인지 몰라 다음번까지 남기지는 않아요.
  * - 브라우저에 남길 수 없으면(예: 브라우저 설정에서 사이트 데이터 저장을 막아 둔 경우) 처음 보는 회원처럼 열린 채로 시작하고, 누른 상태는 이번 방문에만 적용해요.
+ * - 녹음 문서 화면에서는 열 때마다 원문을 열어 둬요(STT-R39). 녹음 문서에서 여닫은 상태는 그 화면에만 적용하고, 문서 보기의 다음번 상태로 남기지 않아요.
  * - 이름(「원문 보기」·「원문 닫기」)은 화면에 쓰지 않고, 열려 있는지와 함께 스크린리더에만 알려요. 툴팁은 두지 않아요.
  */
 const meta = {
@@ -38,6 +43,16 @@ const meta = {
     },
   },
   beforeEach: resetTranscriptPanel,
+  // 문서 보기와 녹음 문서가 여닫는 규칙이 달라 주소를 읽어요. 기본은 문서 보기 화면이에요
+  decorators: [
+    (Story, { parameters }) => (
+      <MemoryRouter
+        initialEntries={[parameters.pathname ?? "/workspace/1/documents/101"]}
+      >
+        <Story />
+      </MemoryRouter>
+    ),
+  ],
 } satisfies Meta<typeof TranscriptToggle>;
 
 export default meta;
@@ -58,6 +73,21 @@ export const Closed: Story = {
     docs: { story: { inline: false, iframeHeight: 80 } },
   },
   // 브라우저에 남긴 값은 따로 그린 화면끼리도 함께 써서, 이번 방문의 값으로 닫아요
+  beforeEach: () => {
+    useTranscriptPanelStore.setState({ isOpenThisVisit: false });
+  },
+};
+
+/** 녹음 문서를 열었을 때예요. 문서 보기에서 원문을 닫아 둔 회원에게도 원문이 열려 있어 채워진 모양이에요(STT-R39). 예: 문서 탭 「녹음별」 탭에서 녹음 행을 눌렀을 때 */
+export const RecordingDocument: Story = {
+  parameters: {
+    pathname: "/workspace/1/recordings/42/document",
+    design: {
+      type: "figma",
+      url: "https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=5373-3187",
+    },
+    docs: { story: { inline: false, iframeHeight: 80 } },
+  },
   beforeEach: () => {
     useTranscriptPanelStore.setState({ isOpenThisVisit: false });
   },

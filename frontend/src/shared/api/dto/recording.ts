@@ -241,6 +241,80 @@ export class GetCurrentRecordingResponseDto {
   }
 }
 
+// GET /api/v1/workspaces/{workspaceId}/recordings
+
+/**
+ * 끝난 녹음의 처리 상태. 녹음 문서 조회의 `processingStatus`와 같은 값과 규칙이에요(STT-R42 · R51).
+ * 주제 분류 실패는 따로 값이 없고 `DOCUMENT_FAILED`예요
+ */
+export type RecordingProcessingStatus =
+  | "PROCESSING"
+  | "TRANSCRIPTION_FAILED"
+  | "DOCUMENT_FAILED"
+  | "NO_CONTENT"
+  | "COMPLETED";
+
+/**
+ * 녹음 기록 한 행의 서버 응답 모양.
+ * `retryableJobIds`는 행 다시 시도와 함께 더해진 값이라, 그 전의 서버는 필드 자체를 주지 않아요
+ */
+export interface RecordingHistoryItemRaw {
+  recordingId: number;
+  title: string;
+  startedAt: string;
+  recordingDurationSeconds: number;
+  processingStatus: RecordingProcessingStatus;
+  retryable: boolean;
+  retryableJobIds?: number[];
+}
+
+/** 녹음 기록 한 행. 녹음 중 · 일시정지 · 폐기 · 음성 저장 실패 녹음은 오지 않아요 */
+export class RecordingHistoryItemDto {
+  /** 녹음 세션 ID */
+  recordingId: number;
+  /** 서버가 만든 표시 제목. AI 녹음 제목이 없으면 「OO 님의 녹음」이 와요 */
+  title: string;
+  /** 녹음 시작 시각(ISO 8601) */
+  startedAt: string;
+  /** 일시정지를 뺀 녹음 길이(초) */
+  recordingDurationSeconds: number;
+  /** 처리 상태 */
+  processingStatus: RecordingProcessingStatus;
+  /** 실패한 처리를 지금 다시 접수할 수 있으면 true. 서버 필드 `retryable`을 이름만 바꿨어요 */
+  isRetryable: boolean;
+  /** 문서 생성 실패 중 지금 접수할 수 있는 작업 ID. 다른 상태와 확장 전 응답은 빈 배열이에요 */
+  retryableJobIds: number[];
+
+  constructor(raw: RecordingHistoryItemRaw) {
+    this.recordingId = raw.recordingId;
+    this.title = raw.title;
+    this.startedAt = raw.startedAt;
+    this.recordingDurationSeconds = raw.recordingDurationSeconds;
+    this.processingStatus = raw.processingStatus;
+    this.isRetryable = raw.retryable;
+    this.retryableJobIds = raw.retryableJobIds ?? [];
+  }
+}
+
+/** 녹음 기록 목록의 서버 응답 모양 */
+export interface GetRecordingsResponseRaw {
+  items: RecordingHistoryItemRaw[];
+  nextCursor: string | null;
+}
+
+/** 녹음 기록 목록 한 페이지. 녹음 시작 시각 내림차순(같으면 녹음 ID 내림차순)이에요 */
+export class GetRecordingsResponseDto {
+  /** 녹음 한 페이지. 보여 줄 녹음이 없으면 빈 배열 */
+  items: RecordingHistoryItemDto[];
+  /** 다음 페이지 커서. 그대로 다음 요청의 `cursor`로 보내고 해석하거나 만들지 않아요. 마지막 페이지면 null */
+  nextCursor: string | null;
+
+  constructor(raw: GetRecordingsResponseRaw) {
+    this.items = raw.items.map((item) => new RecordingHistoryItemDto(item));
+    this.nextCursor = raw.nextCursor;
+  }
+}
+
 // POST /api/v1/workspaces/{workspaceId}/recordings
 
 /** 녹음 시작 시 앱이 넘기는 값. 모두 이 탭이 만들어 sessionStorage에 보관한 값 */

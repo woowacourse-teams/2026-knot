@@ -17,8 +17,10 @@ import type {
   RecordingDetailResponse,
   RecordingEndResponse,
   RecordingHeartbeatResponse,
+  RecordingHistoryItem,
   RecordingPauseResponse,
   RecordingResumeResponse,
+  RecordingsResponse,
   RecordingStartResponse,
   RecordingTranscriptionRetryResponse,
 } from "@api/mock/types/recording";
@@ -194,6 +196,109 @@ export const recordingDetailsResponse = [
     },
   },
 ] satisfies RecordingDetailEntry[];
+
+const DAY = 24 * 60 * MINUTE;
+
+// 처리 상태마다 한 행씩 두고, 녹음 상세 mock과 같은 ID를 써서 다시 시도가 같은 녹음 · 작업을 접수하게 해요.
+// 문서 정리 중 행(16)은 현재 녹음 mock(10, 녹음 중)과 겹치지 않게 상세가 없는 ID로 뒀어요
+const recordingHistoryHeadItems = [
+  {
+    recordingId: 16,
+    title: "노티드 님의 녹음",
+    startedAt: fromNow(-40 * MINUTE),
+    recordingDurationSeconds: 25 * 60,
+    processingStatus: "PROCESSING",
+    retryable: false,
+    retryableJobIds: [],
+  },
+  {
+    recordingId: 101,
+    title:
+      "알림 정책 정리 회의와 다음 분기 알림 채널 우선순위, 실패 알림 문구 개선안까지 함께 논의한 긴 회의",
+    startedAt: fromNow(-3 * 60 * MINUTE),
+    recordingDurationSeconds: 48 * 60 + 20,
+    processingStatus: "COMPLETED",
+    retryable: false,
+    retryableJobIds: [],
+  },
+  {
+    recordingId: 12,
+    title: "결제 화면 개편 회의",
+    startedAt: fromNow(-1 * DAY),
+    recordingDurationSeconds: 32 * 60,
+    processingStatus: "DOCUMENT_FAILED",
+    retryable: true,
+    retryableJobIds: [documentGenerationJobRetryResponse.jobId],
+  },
+  {
+    recordingId: TRANSCRIPTION_FAILED_RECORDING_ID,
+    title: "노티드 님의 녹음",
+    startedAt: fromNow(-2 * DAY),
+    recordingDurationSeconds: 32 * 60,
+    processingStatus: "TRANSCRIPTION_FAILED",
+    retryable: true,
+    retryableJobIds: [],
+  },
+  {
+    recordingId: 11,
+    title: "노티드 님의 녹음",
+    startedAt: fromNow(-3 * DAY),
+    recordingDurationSeconds: 45,
+    processingStatus: "NO_CONTENT",
+    retryable: false,
+    retryableJobIds: [],
+  },
+  {
+    recordingId: COMPLETED_RECORDING_ID,
+    title: "회원 탈퇴 정책 회의",
+    startedAt: fromNow(-4 * DAY),
+    recordingDurationSeconds: 62 * 60 + 5,
+    processingStatus: "COMPLETED",
+    retryable: false,
+    retryableJobIds: [],
+  },
+  {
+    recordingId: 14,
+    title: "온보딩 인터뷰 · 참가자 3",
+    startedAt: fromNow(-5 * DAY),
+    recordingDurationSeconds: 52 * 60,
+    processingStatus: "DOCUMENT_FAILED",
+    retryable: true,
+    retryableJobIds: [89, 90],
+  },
+  {
+    // 다시 시도할 수 있는 횟수를 다 써서 서버가 다시 시도할 수 없다고 알려 준 행이에요
+    recordingId: 15,
+    title: "비밀번호 재설정 정책 논의",
+    startedAt: fromNow(-6 * DAY),
+    recordingDurationSeconds: 35 * 60,
+    processingStatus: "DOCUMENT_FAILED",
+    retryable: false,
+    retryableJobIds: [],
+  },
+] satisfies RecordingHistoryItem[];
+
+// 다음 묶음을 볼 수 있게 한 페이지(20개)를 넘기는, 정리가 끝난 지난 녹음이에요
+const recordingHistoryPastItems = Array.from(
+  { length: 17 },
+  (_, index) =>
+    ({
+      recordingId: 100 - index,
+      title: `주간 회의 ${17 - index}회차`,
+      startedAt: fromNow(-(7 + index) * DAY),
+      recordingDurationSeconds: (20 + index) * 60,
+      processingStatus: "COMPLETED",
+      retryable: false,
+      retryableJobIds: [],
+    }) satisfies RecordingHistoryItem,
+);
+
+// 홈 「녹음 기록」 카드의 녹음 전체예요. 핸들러가 20개씩 잘라서 돌려줘요.
+// 순서는 서버 정렬(녹음 시작 시각 내림차순, 같으면 녹음 ID 내림차순)이에요
+export const recordingsResponse = {
+  items: [...recordingHistoryHeadItems, ...recordingHistoryPastItems],
+  nextCursor: null,
+} satisfies RecordingsResponse;
 
 // 전사에 실패한 녹음의 전사를 다시 접수했을 때의 응답이에요. 새 시도라 녹음 상세의 시도 ID와 달라요
 export const recordingTranscriptionRetryResponse = {

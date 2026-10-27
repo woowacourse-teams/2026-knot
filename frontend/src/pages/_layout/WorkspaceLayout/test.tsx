@@ -2,6 +2,8 @@ import { GetDocumentResponseDto } from "@api/dto/document";
 import { GetSearchMessagesResponseDto } from "@api/dto/search";
 import { LAST_VIEWED_WORKSPACE_API_PATH } from "@api/fetch/api/v1/members/me/lastViewedWorkspace";
 import { documentDetailsResponse } from "@api/mock/responses/document";
+import { recordingDocumentResponse } from "@api/mock/responses/recordingDocument";
+import type { RecordingDocumentResponse } from "@api/mock/types/recordingDocument";
 import { WORKSPACES_API_PATH } from "@api/fetch/api/v1/workspaces";
 import {
   workspaceDetailResponse,
@@ -26,6 +28,7 @@ import { useTranscriptPanelStore } from "@store/transcriptPanelStore";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ANALYTICS_SCROLL_ROOT_ATTRIBUTE } from "@constants/analytics";
 import { TOAST_MESSAGES } from "@constants/toastMessages";
+import { captureAnalyticsEvent } from "@utils/captureAnalyticsEvent";
 import { saveLastConversationId } from "@utils/lastConversation";
 import {
   act,
@@ -39,12 +42,16 @@ import {
 } from "@testing-library/react";
 import { delay, http, HttpResponse } from "msw";
 import { createMemoryRouter, Outlet, RouterProvider } from "react-router";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import SearchConversation from "@widgets/search/SearchConversation";
 import type { ReactNode } from "react";
 
 import WorkspaceLayout from ".";
 import { WORKSPACE_DOCK_RAIL_ID } from "./constants/dockRail";
+
+vi.mock("@utils/captureAnalyticsEvent", () => ({
+  captureAnalyticsEvent: vi.fn(),
+}));
 
 const WORKSPACE_ID = 1;
 const HOME_PATH = getRouterPath({
@@ -69,6 +76,14 @@ const OTHER_DOCUMENT_PATH = getRouterPath({
   },
 });
 const DOCUMENT_TEXT = "문서 본문";
+const RECORDING_DOCUMENT_PATH = getRouterPath({
+  routeKey: "RECORDING_DOCUMENT",
+  params: {
+    workspaceId: String(WORKSPACE_ID),
+    recordingId: String(recordingDocumentResponse.recordingId),
+  },
+});
+const RECORDING_DOCUMENT_TEXT = "녹음 문서 본문";
 const TRANSCRIPT_PANEL_TITLE = "원문";
 /** 원문이 닫혀 있을 때의 버튼 이름 */
 const OPEN_LABEL = "원문 보기";
@@ -155,6 +170,10 @@ const renderLayout = (
         { path: PATH_ROUTE.CHAT, element: chatElement },
         { path: PATH_ROUTE.CHAT_SESSION, element: chatElement },
         { path: PATH_ROUTE.DOCUMENT, element: <p>{DOCUMENT_TEXT}</p> },
+        {
+          path: PATH_ROUTE.RECORDING_DOCUMENT,
+          element: <p>{RECORDING_DOCUMENT_TEXT}</p>,
+        },
       ],
     },
     {
@@ -1033,7 +1052,10 @@ describe("WorkspaceLayout의 원문 패널", () => {
    */
   const renderLayoutAsFirstVisit = (initialPath = DOCUMENT_PATH) => {
     localStorage.clear();
-    useTranscriptPanelStore.setState({ isOpenThisVisit: null });
+    useTranscriptPanelStore.setState({
+      isOpenThisVisit: null,
+      recordingDocumentChoice: null,
+    });
 
     return renderLayout(initialPath);
   };
@@ -1041,8 +1063,21 @@ describe("WorkspaceLayout의 원문 패널", () => {
   /** 새로고침하고 다시 들어온 것처럼 화면과 이번 방문에서 정한 값을 지워요. 브라우저에 남긴 값은 그대로 둬요 */
   const startNewVisit = () => {
     cleanup();
-    useTranscriptPanelStore.setState({ isOpenThisVisit: null });
+    useTranscriptPanelStore.setState({
+      isOpenThisVisit: null,
+      recordingDocumentChoice: null,
+    });
   };
+
+  const respondWithRecordingDocument = (
+    overrides: Partial<RecordingDocumentResponse>,
+  ) =>
+    mockServer.use(
+      http.get(
+        "*/api/v1/workspaces/:workspaceId/recordings/:recordingId/document",
+        () => HttpResponse.json({ ...recordingDocumentResponse, ...overrides }),
+      ),
+    );
 
   const getTranscriptPanel = () =>
     screen.getByRole("region", { name: TRANSCRIPT_PANEL_TITLE });
@@ -1146,6 +1181,179 @@ describe("WorkspaceLayout의 원문 패널", () => {
       screen.queryByRole("button", { name: /^원문/ }),
     ).not.toBeInTheDocument();
     expect(queryTranscriptPanel()).not.toBeInTheDocument();
+  });
+
+  it("녹음 문서에서는 문서 보기에서 원문을 닫아 둔 회원에게도 원문 패널을 열어 두고 녹음의 전사를 보여 준다 (STT-R39)", async () => {
+    renderLayoutAsFirstVisit();
+    expect(await screen.findByText(DOCUMENT_TEXT)).toBeInTheDocument();
+    fireEvent.click(await findToggle(CLOSE_LABEL));
+
+    startNewVisit();
+    renderLayout(RECORDING_DOCUMENT_PATH);
+    expect(
+      await screen.findByText(RECORDING_DOCUMENT_TEXT),
+    ).toBeInTheDocument();
+
+    expect(await findToggle(CLOSE_LABEL)).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
+    const panel = await screen.findByRole("region", {
+      name: TRANSCRIPT_PANEL_TITLE,
+    });
+    expect(
+      within(panel).getByText("이 녹음의 전사 전체예요."),
+    ).toBeInTheDocument();
+  });
+
+  it("녹음 문서가 문서 생성 실패여도 전사가 있으면 원문 버튼과 패널을 둔다 (STT-R39)", async () => {
+    respondWithRecordingDocument({
+      processingStatus: "DOCUMENT_FAILED",
+      retryable: true,
+      retryableJobIds: [88],
+    });
+    renderLayoutAsFirstVisit(RECORDING_DOCUMENT_PATH);
+
+    expect(await findToggle(CLOSE_LABEL)).toBeInTheDocument();
+    expect(
+      await screen.findByRole("region", { name: TRANSCRIPT_PANEL_TITLE }),
+    ).toBeInTheDocument();
+  });
+
+  it.each([
+    { label: "문서 정리 중", processingStatus: "PROCESSING" },
+    { label: "전사 실패", processingStatus: "TRANSCRIPTION_FAILED" },
+    { label: "정리할 내용 없음", processingStatus: "NO_CONTENT" },
+  ] as const)(
+    "녹음 문서가 $label이면 원문 버튼과 패널을 두지 않는다 (STT-R39)",
+    async ({ processingStatus }) => {
+      respondWithRecordingDocument({ processingStatus, meetingSummary: null });
+      renderLayoutAsFirstVisit(RECORDING_DOCUMENT_PATH);
+
+      expect(
+        await screen.findByText(RECORDING_DOCUMENT_TEXT),
+      ).toBeInTheDocument();
+      await waitForMember();
+
+      expect(
+        screen.queryByRole("button", { name: /^원문/ }),
+      ).not.toBeInTheDocument();
+      expect(queryTranscriptPanel()).not.toBeInTheDocument();
+    },
+  );
+
+  it("녹음 문서가 주제 분류 실패면(전사 없음 · 요약 없음) 원문 버튼과 패널을 두지 않는다 (STT-R39)", async () => {
+    let transcriptRequestCount = 0;
+    respondWithRecordingDocument({
+      processingStatus: "DOCUMENT_FAILED",
+      retryable: true,
+      retryableJobIds: [88],
+      meetingSummary: null,
+    });
+    mockServer.use(
+      http.get(
+        "*/api/v1/workspaces/:workspaceId/recordings/:recordingId/transcript",
+        () => {
+          transcriptRequestCount += 1;
+          return HttpResponse.json(
+            {
+              code: "RECORDING_TRANSCRIPT_NOT_FOUND",
+              message: "녹음 전사를 찾을 수 없습니다.",
+            },
+            { status: 404 },
+          );
+        },
+      ),
+    );
+    renderLayoutAsFirstVisit(RECORDING_DOCUMENT_PATH);
+
+    expect(
+      await screen.findByText(RECORDING_DOCUMENT_TEXT),
+    ).toBeInTheDocument();
+    await waitFor(() => expect(transcriptRequestCount).toBe(1));
+    await waitForMember();
+
+    expect(
+      screen.queryByRole("button", { name: /^원문/ }),
+    ).not.toBeInTheDocument();
+    expect(queryTranscriptPanel()).not.toBeInTheDocument();
+  });
+
+  describe("원문 패널 스크롤 기록", () => {
+    beforeEach(() => {
+      vi.mocked(captureAnalyticsEvent).mockClear();
+    });
+
+    const getScrolledProperties = () =>
+      vi
+        .mocked(captureAnalyticsEvent)
+        .mock.calls.filter(
+          ([call]) => call.event === "transcript_panel_scrolled",
+        )
+        .map(([call]) => call.properties);
+
+    /**
+     * 원문 패널의 발화 목록을 스크롤해요. 패널 전체가 아니라 이 목록만 스크롤돼요(DOC-R4).
+     * 불러오는 중 화면도 같은 이름의 자리라, 원문을 받아 목록이 나올 때까지 패널을 다시 찾아요
+     */
+    const scrollTranscript = async () => {
+      const list = await waitFor(() =>
+        within(
+          screen.getByRole("region", { name: TRANSCRIPT_PANEL_TITLE }),
+        ).getByRole("list"),
+      );
+      fireEvent.scroll(list);
+    };
+
+    it("문서 보기에서 원문을 스크롤하면 처음 한 번만 보내고, 원문을 닫았다 다시 열어 스크롤해도 다시 보내지 않는다", async () => {
+      renderLayoutAsFirstVisit();
+      expect(await screen.findByText(DOCUMENT_TEXT)).toBeInTheDocument();
+
+      await scrollTranscript();
+      await scrollTranscript();
+      fireEvent.click(await findToggle(CLOSE_LABEL));
+      fireEvent.click(await findToggle(OPEN_LABEL));
+      await scrollTranscript();
+
+      expect(getScrolledProperties()).toEqual([
+        {
+          screen: "document",
+          document_id: firstDocument.id,
+          workspace_id: WORKSPACE_ID,
+        },
+      ]);
+    });
+
+    it("다른 문서로 옮겨 스크롤하면 새로 들어온 화면이라 다시 보낸다", async () => {
+      const { router } = renderLayoutAsFirstVisit();
+      expect(await screen.findByText(DOCUMENT_TEXT)).toBeInTheDocument();
+      await scrollTranscript();
+
+      await act(() => router.navigate(OTHER_DOCUMENT_PATH));
+      await scrollTranscript();
+
+      expect(getScrolledProperties()).toEqual([
+        expect.objectContaining({ document_id: firstDocument.id }),
+        expect.objectContaining({ document_id: secondDocument.id }),
+      ]);
+    });
+
+    it("녹음 문서에서 원문을 스크롤하면 녹음 문서 화면과 녹음 id로 보낸다", async () => {
+      renderLayoutAsFirstVisit(RECORDING_DOCUMENT_PATH);
+      expect(
+        await screen.findByText(RECORDING_DOCUMENT_TEXT),
+      ).toBeInTheDocument();
+
+      await scrollTranscript();
+
+      expect(getScrolledProperties()).toEqual([
+        {
+          screen: "recording_document",
+          recording_id: recordingDocumentResponse.recordingId,
+          workspace_id: WORKSPACE_ID,
+        },
+      ]);
+    });
   });
 });
 
@@ -1732,7 +1940,11 @@ describe("WorkspaceLayout의 탐색 질문 흐름", () => {
 
     const snapshotFrame = {
       event: "snapshot",
-      data: { answerId: answerMessageId, content: savedText, status: "STREAMING" },
+      data: {
+        answerId: answerMessageId,
+        content: savedText,
+        status: "STREAMING",
+      },
     };
     const restFrames = [
       { event: "delta", data: { answerId: answerMessageId, text: restText } },
@@ -1856,7 +2068,9 @@ describe("WorkspaceLayout의 탐색 질문 흐름", () => {
       renderLayout(CONVERSATION_PATH, <SearchConversation />);
 
       await waitFor(() =>
-        expect(within(getLastTurn()).getByText(FAILED_TEXT)).toBeInTheDocument(),
+        expect(
+          within(getLastTurn()).getByText(FAILED_TEXT),
+        ).toBeInTheDocument(),
       );
       expect(
         within(getLastTurn()).getByRole("button", { name: "다시 시도" }),
@@ -1878,7 +2092,9 @@ describe("WorkspaceLayout의 탐색 질문 흐름", () => {
       await waitFor(() => expect(queryClient.isFetching()).toBe(0));
 
       expect(reconnects.count).toBe(3);
-      expect(within(getLastTurn()).getByText(savedText.trim())).toBeInTheDocument();
+      expect(
+        within(getLastTurn()).getByText(savedText.trim()),
+      ).toBeInTheDocument();
       expect(
         within(getConversation()).queryByText(FAILED_TEXT),
       ).not.toBeInTheDocument();

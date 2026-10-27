@@ -7,7 +7,8 @@ const COPIED_DURATION_MS = 3000;
 
 interface TranscriptCopyButtonProps {
   /** 복사할 원문. 패널에 보이는 발화 줄을 한 줄씩 이은 글이에요 */
-  text: string;
+  text: string; /** 복사에 성공했을 때. 사용 기록을 보내요 */
+  onCopied: () => void;
 }
 
 /**
@@ -17,6 +18,7 @@ interface TranscriptCopyButtonProps {
  */
 export default function TranscriptCopyButton({
   text,
+  onCopied,
 }: TranscriptCopyButtonProps) {
   const { copy } = useClipboard();
   const { start: startCopiedTimeout, isTimedOut: isCopied } = useTimeout({
@@ -24,7 +26,13 @@ export default function TranscriptCopyButton({
   });
 
   const handleCopy = () => {
-    copy({ text, onCopySuccess: startCopiedTimeout });
+    copy({
+      text,
+      onCopySuccess: () => {
+        startCopiedTimeout();
+        onCopied();
+      },
+    });
   };
 
   return (

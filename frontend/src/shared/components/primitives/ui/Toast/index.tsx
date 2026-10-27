@@ -16,17 +16,22 @@ import CheckIcon from "@/assets/icons/check18.svg";
  */
 export type ToastVariant = "success" | "caution" | "error";
 
+/** 토스트 아이콘. `src/assets/icons`의 SVG 컴포넌트를 그대로 넘겨요 */
+export type ToastIcon = typeof CheckIcon;
+
 interface ToastProps {
   variant: ToastVariant;
   /** 알릴 문구. 놓인 자리의 폭을 넘으면 줄을 바꿔요. */
   message: string;
+  /** 종류의 기본 아이콘 대신 그릴 아이콘. 예: 화상 회의를 연결한 뒤 이어폰 안내의 헤드폰 */
+  icon?: ToastIcon;
 }
 
 const TOAST_ICON = {
   success: CheckIcon,
   caution: CautionIcon,
   error: AlertIcon,
-} as const satisfies Record<ToastVariant, typeof CheckIcon>;
+} as const satisfies Record<ToastVariant, ToastIcon>;
 
 const toastBackground = (theme: Theme) => {
   return {
@@ -42,8 +47,8 @@ const toastBackground = (theme: Theme) => {
  * 종류에 따라 배경색과 아이콘만 바뀌어요.
  * 낭독기에 읽히게 하는 `role`은 토스트를 쌓는 목록 쪽에서 붙여요.
  */
-export default function Toast({ variant, message }: ToastProps) {
-  const Icon = TOAST_ICON[variant];
+export default function Toast({ variant, message, icon }: ToastProps) {
+  const Icon = icon ?? TOAST_ICON[variant];
 
   return (
     <Container $variant={variant}>

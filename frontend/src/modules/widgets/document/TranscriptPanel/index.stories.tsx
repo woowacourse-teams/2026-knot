@@ -4,6 +4,7 @@ import {
   documentDetailsResponse,
   documentTranscriptsResponse,
 } from "@api/mock/responses/document";
+import { recordingDocumentResponse } from "@api/mock/responses/recordingDocument";
 import { resetDocumentMockState } from "@api/mock/state/document";
 import type { DocumentTranscriptResponse } from "@api/mock/types/document";
 import { ToastProvider } from "@provider/context/toastContext";
@@ -30,6 +31,15 @@ const DOCUMENT_PATH = getRouterPath({
   },
 });
 
+/** 원문 패널이 놓이는 녹음 문서 화면의 주소예요. 이 주소의 녹음의 전사 전체를 불러와요 */
+const RECORDING_DOCUMENT_PATH = getRouterPath({
+  routeKey: "RECORDING_DOCUMENT",
+  params: {
+    workspaceId: String(WORKSPACE_ID),
+    recordingId: String(recordingDocumentResponse.recordingId),
+  },
+});
+
 const MILLIS_PER_SECOND = 1000;
 // 기본 원문(32분)을 늦출 시간이에요. 앞 7줄은 한 시간 전, 뒤 5줄은 한 시간을 넘은 뒤가 돼요
 const SHIFT_SECONDS = 50 * 60;
@@ -53,7 +63,8 @@ const overOneHourTranscriptResponse = {
 const ISOLATED_DOCS = { story: { inline: false, iframeHeight: 1000 } };
 
 /**
- * 문서를 만든 원본 전사를 한 줄씩 보여 주는 원문 패널이에요. 문서 보기 화면의 오른쪽에 놓여요.
+ * 전사를 한 줄씩 보여 주는 원문 패널이에요. 문서 보기와 녹음 문서 화면의 오른쪽에 놓여요.
+ * 문서 보기에서는 그 문서를 만든 원본 전사를, 녹음 문서에서는 그 녹음의 전사 전체를 보여 줘요. 두 화면은 날짜와 맨 아래 문구만 달라요.
  * 머리에 제목 「원문」, 문서를 만든 날짜, 녹음 길이가 있고, 구분선 아래에 발화가 한 줄씩 놓여요.
  * 맨 아래에는 「이 문서를 만든 원본이에요. 전사 전체를 그대로 볼 수 있어요」가 있어요.
  * 문서를 보는 화면에서 GNB 오른쪽의 원문 버튼으로 여닫아요. 버튼과 놓이는 자리는 이 패널 밖에 있어서, 이 스토리에는 패널만 있어요.
@@ -65,6 +76,7 @@ const ISOLATED_DOCS = { story: { inline: false, iframeHeight: 1000 } };
  *   녹음이 한 시간을 넘은 뒤의 발화는 시각이 `1:02:03`처럼 바뀌고, 시각 칸이 글자만큼 넓어져요.
  * - 말한 사람은 이름 대신 서버가 준 번호로 「참여자 N」이라고 적어요. 화자를 알 수 없는 구간은 「참여자 N:」 없이 문장만 보여 줘요.
  * - 만든 날짜는 원문 응답에 없어 문서 상세에서 가져와요. 문서 상세를 받는 중이거나 받지 못했으면 날짜만 빼고 원문은 그대로 보여 줘요.
+ * - 녹음 문서에서는 날짜 자리에 녹음을 시작한 날을, 맨 아래에 「이 녹음의 전사 전체예요.」를 둬요. 녹음 문서를 열면 패널이 열려 있어요.
  * - 패널의 폭과 높이의 한계는 패널을 놓는 자리가 정해요. 시안의 폭은 400px이에요.
  *   패널이 자리보다 길어지면 발화 목록만 세로로 스크롤하고, 제목 · 날짜 줄과 맨 아래 문구는 그대로 보여요.
  * - 패널 안에는 닫기 버튼이 없어요. 패널을 여닫는 버튼은 GNB에 두기 때문이에요.
@@ -94,23 +106,25 @@ const meta = {
     },
   ],
   decorators: [
-    (Story, { parameters }) => (
-      <MemoryRouter initialEntries={[DOCUMENT_PATH]}>
-        <ToastProvider>
-          <Routes>
-            <Route
-              path={PATH_ROUTE.DOCUMENT}
-              element={
-                // 문서 화면 오른쪽 자리의 폭(400px)이에요. 높이는 자리를 줄이는 스토리만 줘요
-                <div style={{ width: "25rem", height: parameters.slotHeight }}>
-                  <Story />
-                </div>
-              }
-            />
-          </Routes>
-        </ToastProvider>
-      </MemoryRouter>
-    ),
+    (Story, { parameters }) => {
+      // 문서 화면 오른쪽 자리의 폭(400px)이에요. 높이는 자리를 줄이는 스토리만 줘요
+      const slot = (
+        <div style={{ width: "25rem", height: parameters.slotHeight }}>
+          <Story />
+        </div>
+      );
+
+      return (
+        <MemoryRouter initialEntries={[parameters.path ?? DOCUMENT_PATH]}>
+          <ToastProvider>
+            <Routes>
+              <Route path={PATH_ROUTE.DOCUMENT} element={slot} />
+              <Route path={PATH_ROUTE.RECORDING_DOCUMENT} element={slot} />
+            </Routes>
+          </ToastProvider>
+        </MemoryRouter>
+      );
+    },
   ],
 } satisfies Meta<typeof TranscriptPanel>;
 
@@ -233,6 +247,17 @@ export const LoadFailed: Story = {
           () => new HttpResponse(null, { status: 500 }),
         ),
       },
+    },
+  },
+};
+
+/** 녹음 문서 화면에 놓인 패널이에요. 그 녹음의 전사 전체와 녹음을 시작한 날을 보여 주고, 맨 아래 문구가 「이 녹음의 전사 전체예요.」예요. 예: 문서 탭 「녹음별」 탭에서 녹음 행을 눌렀을 때 */
+export const RecordingDocument: Story = {
+  parameters: {
+    path: RECORDING_DOCUMENT_PATH,
+    design: {
+      type: "figma",
+      url: "https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=5373-3234",
     },
   },
 };

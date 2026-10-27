@@ -49,6 +49,11 @@ interface AnalyticsEventMap {
   recording_ended: {
     result: "uploaded" | "not_uploaded";
     audio_mode: RecordingAudioMode;
+    /**
+     * 끝낼 때의 회의 소리 함께 녹음 상태. 함께 녹음 중(`on`) · 공유가 멈춤(`stopped`) · 소리 없이 공유함(`no_audio`) ·
+     * 마이크만(`off`) · 회의 소리를 받을 수 없는 브라우저(`unsupported`)예요
+     */
+    meeting_audio: "on" | "stopped" | "no_audio" | "off" | "unsupported";
     recording_id: number;
     workspace_id: number;
   };
@@ -105,7 +110,96 @@ interface AnalyticsEventMap {
     /** 돌아왔을 때 답변이 끝나 있었는지 */
     is_answer_ready: boolean;
   };
+  /** 문서 본문 · 회의 전체 요약 · 원문을 복사했어요. 복사에 실패하면 보내지 않아요. 복사한 글은 넣지 않아요 */
+  content_copied: {
+    /** 무엇을 복사했는지. 주제별 문서 본문(`document`) · 녹음 문서의 회의 전체 요약(`meeting_summary`) · 원문 패널의 전사(`transcript`)예요 */
+    content: "document" | "meeting_summary" | "transcript";
+  } & AnalyticsScreenTarget;
+  /** 원문 패널의 발화 목록을 스크롤했어요. 화면에 들어올 때마다 처음 한 번만 보내요. 같은 화면에서 패널을 닫았다 다시 열어도 다시 보내지 않아요 */
+  transcript_panel_scrolled: AnalyticsScreenTarget;
+  /** 녹음 문서를 열어 처리 상태가 정해졌어요. 화면에 들어올 때마다 한 번 보내요. 보는 동안 상태가 바뀌어도 다시 보내지 않아요 */
+  recording_document_viewed: {
+    processing_status:
+      | "organizing"
+      | "transcription_failed"
+      | "topic_failed"
+      | "document_failed"
+      | "no_content"
+      | "completed";
+    /** 회의 전체 요약의 상태. 만드는 중(`drafting`) · 완료(`completed`) · 실패(`failed`) · 요약 기능이 생기기 전에 끝난 녹음(`none`)이에요 */
+    meeting_summary_status: "drafting" | "completed" | "failed" | "none";
+    /** 완료 · 문서 생성 실패일 때만 있어요. 「이 회의에서 나온 문서」의 문서 수예요. 목록을 받지 못했으면 없어요 */
+    document_count?: number;
+    recording_id: number;
+    workspace_id: number;
+  };
+  /** 녹음 문서에서 녹음 음성이 처음 재생되기 시작했어요. 화면에 들어올 때마다 처음 한 번만 보내요. 재생을 누른 것은 자동 클릭으로 세요 */
+  recording_audio_played: {
+    /** 재생을 시작한 위치(초, 소수 첫째 자리까지) */
+    position_seconds: number;
+    /** 녹음 전체 길이(초, 소수 첫째 자리까지) */
+    duration_seconds: number;
+    recording_id: number;
+    workspace_id: number;
+  };
+  /** 녹음 음성을 들은 뒤 녹음 문서를 떠났어요. 재생한 적이 없으면 보내지 않아요 */
+  recording_audio_listened: {
+    /** 실제로 재생된 시간(초, 소수 첫째 자리까지). 위치를 옮겨 건너뛴 구간은 세지 않아요 */
+    listened_seconds: number;
+    /** 녹음 전체 길이(초, 소수 첫째 자리까지) */
+    duration_seconds: number;
+    /** 재생하며 가장 멀리 간 위치(초, 소수 첫째 자리까지) */
+    max_position_seconds: number;
+    /** 위치를 옮긴 횟수. 막대를 끄는 동안의 이동은 한 번으로 세요 */
+    seek_count: number;
+    /** 끝까지 재생했는지 */
+    reached_end: boolean;
+    recording_id: number;
+    workspace_id: number;
+  };
+  /** 녹음 문서에서 녹음 음성을 들을 수 없었어요. 화면에 들어올 때마다 까닭마다 한 번 보내요 */
+  recording_audio_unavailable: {
+    /** 음성 파일이 지워짐(`no_audio`) · 아직 합치는 중(`preparing`) · 재생 정보를 받지 못함(`load_failed`) · 음성을 불러오지 못함(`media_error`) */
+    reason: "no_audio" | "preparing" | "load_failed" | "media_error";
+    recording_id: number;
+    workspace_id: number;
+  };
+  /** 녹음 문서 · 홈 녹음 기록 카드의 다시 시도에 서버가 응답했어요. 거절은 409 · 404, 오류는 5xx · 네트워크 문제예요. 정리 화면의 다시 시도는 `recording_documents_retry`로 보내요 */
+  recording_retry_result: {
+    /** 다시 시도를 누른 곳. 녹음 문서(`recording_document`) 또는 홈 녹음 기록 카드(`recording_history`)예요 */
+    surface: "recording_document" | "recording_history";
+    /** 무엇을 다시 시도했는지. 주제 분류 실패의 다시 시도는 문서 만들기 작업을 다시 접수해서 `document_generation`이에요 */
+    stage: "transcription" | "document_generation" | "meeting_summary";
+    result: "accepted" | "rejected" | "error";
+    recording_id: number;
+    workspace_id: number;
+  };
+  /** 녹음 화면의 회의 소리 연결 안내를 닫았거나 공유 결과가 정해졌어요 */
+  meeting_audio_connect_result: {
+    /** 연결됨(`connected`) · 소리 없이 공유함(`no_audio`) · 공유 창을 닫음(`share_cancelled`) · 안내에서 취소함(`dialog_cancelled`) */
+    result: "connected" | "no_audio" | "share_cancelled" | "dialog_cancelled";
+    /** 연결 안내에서 고른 회의를 연 곳. 브라우저(`browser_tab`) 또는 설치한 앱(`meeting_app`)이에요 */
+    location: "browser_tab" | "meeting_app";
+    /** 「다시 연결하기」로 연 것인지 */
+    is_reconnect: boolean;
+    recording_id: number;
+    workspace_id: number;
+  };
+  /** 회의 소리를 함께 녹음하다 공유가 멈췄어요. 브라우저의 공유 중지를 눌렀거나 공유한 탭을 닫은 거예요. 녹음은 마이크로 이어져요 */
+  meeting_audio_stopped: {
+    recording_id: number;
+    workspace_id: number;
+  };
 }
+
+/** 문서 보기 · 녹음 문서처럼 문서를 읽는 화면과 그 화면의 id. 문서 보기는 `document_id`, 녹음 문서는 `recording_id`가 있어요 */
+export type AnalyticsScreenTarget =
+  | { screen: "document"; document_id: number; workspace_id: number }
+  | {
+      screen: "recording_document";
+      recording_id: number;
+      workspace_id: number;
+    };
 
 type AnalyticsEvent = keyof AnalyticsEventMap;
 

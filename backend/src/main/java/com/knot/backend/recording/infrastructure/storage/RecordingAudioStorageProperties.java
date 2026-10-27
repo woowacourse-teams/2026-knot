@@ -8,7 +8,8 @@ public record RecordingAudioStorageProperties(
         String region,
         String bucket,
         String keyPrefix,
-        Duration uploadUrlTtl
+        Duration uploadUrlTtl,
+        Duration playbackUrlTtl
 ) {
 
     public boolean isConfigured() {

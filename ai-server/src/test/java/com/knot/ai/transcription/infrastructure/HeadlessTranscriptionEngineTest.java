@@ -240,6 +240,62 @@ class HeadlessTranscriptionEngineTest {
     }
 
     @Test
+    @DisplayName("runner 단계 기록은 결과 확인 뒤 승인한 숫자만 한 줄로 남긴다")
+    void transcribe_success_logsRunnerStages() throws Exception {
+        // given
+        stagesRunner("{'decodeCount':1,'defaultDecodeMs':1200,'diarizationMs':900}");
+        CreateTranscriptionCommand command = command();
+
+        // when
+        engine.transcribe(command);
+
+        // then
+        assertThat(fields()).last()
+                .satisfies(
+                        fields -> assertThat(fields).containsExactlyInAnyOrderEntriesOf(
+                                Map.of(
+                                        "event",
+                                        "recording.transcription.runner_stages",
+                                        "outcome",
+                                        "measured",
+                                        "attemptId",
+                                        command.attemptId()
+                                                .toString(),
+                                        "decodeCount",
+                                        1,
+                                        "defaultDecodeMs",
+                                        1200L,
+                                        "diarizationMs",
+                                        900L
+                                )
+                        )
+                );
+        engine.cleanup(command.attemptId());
+    }
+
+    @Test
+    @DisplayName("단계 기록이 틀려도 전사 결과는 그대로 돌려주고 단계 로그만 생략한다")
+    void transcribe_success_skipsInvalidRunnerStages() throws Exception {
+        // given
+        stagesRunner("{'decodeCount':1,'defaultDecodeMs':'audio.webm','diarizationMs':900}");
+        CreateTranscriptionCommand command = command();
+
+        // when
+        TranscriptResult result = engine.transcribe(command);
+
+        // then
+        assertEquals(
+                "안녕",
+                result.utterances()
+                        .getFirst()
+                        .text()
+        );
+        assertThat(fields()).extracting(fields -> fields.get("event"))
+                .doesNotContain("recording.transcription.runner_stages");
+        engine.cleanup(command.attemptId());
+    }
+
+    @Test
     @DisplayName("다운로드 실패는 안전한 코드로 기록하고 디코딩 단계에 진입하지 않는다")
     void transcribe_failure_downloadLogsKnownCodeWithoutUrl() throws Exception {
         // given
@@ -605,6 +661,19 @@ class HeadlessTranscriptionEngineTest {
                                 pair -> pair.value
                         )
                 );
+    }
+
+    private void stagesRunner(String stages) throws Exception {
+        Files.writeString(
+                pnpm,
+                "#!/usr/bin/env python3\nimport sys,json,pathlib,os\n"
+                        + "m=json.loads(pathlib.Path(sys.argv[-1]).read_text())\n"
+                        + "p=pathlib.Path(m['outputDirectory'])\n"
+                        + "r={'schemaVersion':1,'rawWhisperJson':'{\\\"transcription\\\":[]}',"
+                        + "'utterances':[{'ord':0,'speakerLabel':'화자 1','startSec':0,'endSec':1,'text':'안녕'}]}\n"
+                        + "(p/'stages.json').write_text(json.dumps(" + stages + "))\n"
+                        + "(p/'result.tmp').write_text(json.dumps(r))\nos.replace(p/'result.tmp',p/'result.json')\n"
+        );
     }
 
     private void failingRunner(String body) throws Exception {

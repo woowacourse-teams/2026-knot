@@ -2,6 +2,8 @@ package com.knot.backend.recording.infrastructure.persistence;
 
 import com.knot.backend.recording.domain.model.RecordingAudioUpload;
 import com.knot.backend.recording.domain.repository.RecordingAudioUploadRepository;
+import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Repository;
@@ -25,6 +27,12 @@ public class RecordingAudioUploadRepositoryAdapter implements RecordingAudioUplo
     public Optional<RecordingAudioUpload> findByRecordingId(long recordingId) {
         return recordingAudioUploadJpaRepository.findByRecordingId(recordingId);
     }
+
+    @Override
+    public List<RecordingAudioUpload> findAllByRecordingIdIn(Collection<Long> recordingIds) {
+        return recordingAudioUploadJpaRepository.findAllByRecordingIdIn(recordingIds);
+    }
+
     @Override
     public Optional<RecordingAudioUpload> findByRecordingIdForUpdate(long recordingId) {
         return recordingAudioUploadJpaRepository.findWithLockByRecordingId(recordingId);

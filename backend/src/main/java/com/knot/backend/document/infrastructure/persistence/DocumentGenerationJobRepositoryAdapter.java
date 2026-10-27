@@ -2,6 +2,7 @@ package com.knot.backend.document.infrastructure.persistence;
 
 import com.knot.backend.document.domain.model.DocumentGenerationJob;
 import com.knot.backend.document.domain.repository.DocumentGenerationJobRepository;
+import java.util.Collection;
 import java.util.Optional;
 import java.util.List;
 import java.time.Instant;
@@ -24,6 +25,11 @@ public class DocumentGenerationJobRepositoryAdapter implements DocumentGeneratio
     @Override
     public List<DocumentGenerationJob> findAllByBatchId(long batchId) {
         return repository.findAllByBatchIdOrderById(batchId);
+    }
+
+    @Override
+    public List<DocumentGenerationJob> findAllByBatchIdIn(Collection<Long> batchIds) {
+        return repository.findAllByBatchIdInOrderById(batchIds);
     }
 
     @Override

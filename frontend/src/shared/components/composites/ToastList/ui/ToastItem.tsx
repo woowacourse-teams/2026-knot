@@ -30,7 +30,7 @@ export default function ToastItem({
   onExpire,
   onLeaveEnd,
 }: ToastItemProps) {
-  const { id, variant, message, shownAt, isLeaving } = toast;
+  const { id, variant, message, icon, shownAt, isLeaving } = toast;
 
   const { start: startShowing } = useTimeout({
     timeout: TOAST_DURATION_MS[variant],
@@ -55,7 +55,7 @@ export default function ToastItem({
     <div aria-hidden={isLeaving}>
       <FadeCollapse isLeaving={isLeaving}>
         <ToastGapWrapper>
-          <Toast variant={variant} message={message} />
+          <Toast variant={variant} message={message} icon={icon} />
         </ToastGapWrapper>
       </FadeCollapse>
     </div>

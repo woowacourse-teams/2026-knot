@@ -8,6 +8,7 @@ import org.springframework.jdbc.core.simple.JdbcClient;
 
 public class RecordingHistoryFixture {
     public static final Instant CREATED_AT = Instant.parse("2026-10-20T00:00:00Z");
+    public static final String MEETING_SUMMARY = "## 한눈에 보기\n- 탈퇴 시 데이터 보존 범위를 논의했다.";
     private static final String CONTROL_TOKEN_HASH = "a".repeat(64);
 
     private final JdbcClient jdbcClient;
@@ -335,19 +336,21 @@ public class RecordingHistoryFixture {
                 .single();
     }
 
-    public void failedJob(long batchId) {
-        jdbcClient.sql("""
+    public long failedJob(long batchId) {
+        return jdbcClient.sql("""
                 INSERT INTO document_generation_jobs (transcript_id, batch_id, stage, status, created_at, updated_at,
                     last_failed_at, expires_at, failure_cause)
                 SELECT transcript_id, id, 'CLASSIFICATION', 'FAILED', accepted_at, accepted_at, accepted_at,
                     accepted_at + INTERVAL '168 hours', 'INTERNAL'
                 FROM document_generation_batches WHERE id=:batchId
+                RETURNING id
                 """)
                 .param(
                         "batchId",
                         batchId
                 )
-                .update();
+                .query(Long.class)
+                .single();
     }
 
     public void activateTitles(Instant activatedAt) {
@@ -375,6 +378,179 @@ public class RecordingHistoryFixture {
                 .param(
                         "title",
                         title
+                )
+                .param(
+                        "createdAt",
+                        Timestamp.from(CREATED_AT)
+                )
+                .update();
+    }
+
+    // 배치에 주제를 등록하고 그 주제의 성공한 생성 Job과 Document를 만든다.
+    public long document(
+            long batchId,
+            String title,
+            String summary,
+            Instant createdAt
+    ) {
+        String topic = "주제 " + UUID.randomUUID();
+        jdbcClient.sql("""
+                INSERT INTO document_generation_batch_topics (batch_id, position, topic)
+                SELECT :batchId, count(*), :topic FROM document_generation_batch_topics WHERE batch_id = :batchId
+                """)
+                .param(
+                        "batchId",
+                        batchId
+                )
+                .param(
+                        "topic",
+                        topic
+                )
+                .update();
+        return jdbcClient.sql("""
+                WITH job AS (
+                    INSERT INTO document_generation_jobs (batch_id, stage, topic, transcript_id, status, created_at,
+                        updated_at)
+                    SELECT id, 'GENERATION', :topic, transcript_id, 'SUCCEEDED', :createdAt, :createdAt
+                    FROM document_generation_batches WHERE id = :batchId
+                    RETURNING id, batch_id, transcript_id
+                )
+                INSERT INTO documents (workspace_id, recording_session_id, source_transcript_id,
+                    document_generation_job_id, topic, title, summary, content, status, created_at)
+                SELECT s.workspace_id, s.id, job.transcript_id, job.id, :topic, :title, :summary, '# 읽기 전용 본문',
+                    'DRAFT', :createdAt
+                FROM job
+                JOIN document_generation_batches b ON b.id = job.batch_id
+                JOIN recording_sessions s ON s.id = b.recording_session_id
+                RETURNING id
+                """)
+                .param(
+                        "batchId",
+                        batchId
+                )
+                .param(
+                        "topic",
+                        topic
+                )
+                .param(
+                        "title",
+                        title
+                )
+                .param(
+                        "summary",
+                        summary,
+                        Types.VARCHAR
+                )
+                .param(
+                        "createdAt",
+                        Timestamp.from(createdAt)
+                )
+                .query(Long.class)
+                .single();
+    }
+
+    public void deleteAudio(long recordingId) {
+        jdbcClient.sql("UPDATE recording_audio_uploads SET deleted_at=completed_at WHERE recording_id=:recordingId")
+                .param(
+                        "recordingId",
+                        recordingId
+                )
+                .update();
+    }
+
+    public void revokeAudio(long recordingId) {
+        jdbcClient.sql("UPDATE recording_audio_uploads SET revoked_at=completed_at WHERE recording_id=:recordingId")
+                .param(
+                        "recordingId",
+                        recordingId
+                )
+                .update();
+    }
+
+    public void pinAudioVersion(
+            long recordingId,
+            String versionId
+    ) {
+        jdbcClient
+                .sql("UPDATE recording_audio_uploads SET storage_version_id=:versionId WHERE recording_id=:recordingId")
+                .param(
+                        "versionId",
+                        versionId
+                )
+                .param(
+                        "recordingId",
+                        recordingId
+                )
+                .update();
+    }
+
+    // 구간 업로드 녹음의 최종화가 끝나 서버가 만든 WAV를 업로드 기록으로 채택한 상태다.
+    public void finalizedWav(long recordingId) {
+        finalization(
+                recordingId,
+                "READY"
+        );
+        jdbcClient
+                .sql(
+                        """
+                                INSERT INTO recording_audio_uploads (recording_id, storage_key, content_type, content_length, status,
+                                    reserved_at, completed_at, storage_version_id)
+                                VALUES (:recordingId, :storageKey, 'audio/wav', 1984044, 'COMPLETED', :createdAt, :createdAt, 'wav-version')
+                                """
+                )
+                .param(
+                        "recordingId",
+                        recordingId
+                )
+                .param(
+                        "storageKey",
+                        "recordings/" + recordingId + "/final.wav"
+                )
+                .param(
+                        "createdAt",
+                        Timestamp.from(CREATED_AT)
+                )
+                .update();
+    }
+
+    public void meetingSummary(
+            long recordingId,
+            long transcriptId,
+            String status
+    ) {
+        boolean running = "RUNNING".equals(status);
+        jdbcClient.sql("""
+                INSERT INTO recording_meeting_summaries (recording_id, transcript_id, status, content, attempt_no,
+                    claim_token, lease_until, next_run_at, created_at)
+                VALUES (:recordingId, :transcriptId, :status, :content, 1, :claimToken, :leaseUntil, :createdAt,
+                    :createdAt)
+                """)
+                .param(
+                        "recordingId",
+                        recordingId
+                )
+                .param(
+                        "transcriptId",
+                        transcriptId
+                )
+                .param(
+                        "status",
+                        status
+                )
+                .param(
+                        "content",
+                        "SUCCEEDED".equals(status) ? MEETING_SUMMARY : null,
+                        Types.VARCHAR
+                )
+                .param(
+                        "claimToken",
+                        running ? UUID.randomUUID() : null,
+                        Types.OTHER
+                )
+                .param(
+                        "leaseUntil",
+                        running ? Timestamp.from(CREATED_AT.plusSeconds(60)) : null,
+                        Types.TIMESTAMP
                 )
                 .param(
                         "createdAt",
