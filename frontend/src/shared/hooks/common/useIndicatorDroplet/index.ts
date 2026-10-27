@@ -18,6 +18,8 @@ interface UseIndicatorDropletParams {
   containerRef: RefObject<HTMLElement | null>;
   /** 모양을 바꿀 진한 표시 */
   indicatorRef: RefObject<HTMLElement | null>;
+  /** 탭 칸들 중 지금 탭을 찾는 선택자 */
+  activeTabSelector: string;
 }
 
 interface MorphParams {
@@ -44,9 +46,9 @@ const readScale = (element: HTMLElement) => {
   return scale === "none" ? "1" : scale;
 };
 
-const isOnActiveTab = (target: EventTarget | null) =>
+const isOnActiveTab = (target: EventTarget | null, activeTabSelector: string) =>
   target instanceof Element &&
-  target.closest('button[aria-current="page"]') !== null;
+  target.closest(`button${activeTabSelector}`) !== null;
 
 /** 부풀었다가 한 번 되돌아 제 크기로 자리잡는 모양들 */
 const settleKeyframes = ({
@@ -67,7 +69,7 @@ const settleKeyframes = ({
 ];
 
 /**
- * 내비 필의 진한 표시를 물방울처럼 움직여요. 자리는 그대로 두고 모양(`scale`)만 바꿔요.
+ * 알약 모양 탭 묶음의 진한 표시를 물방울처럼 움직여요. 자리는 그대로 두고 모양(`scale`)만 바꿔요.
  *
  * 새 탭으로 미끄러질 때는 진행 방향으로 살짝 늘어났다가, 도착하며 한 번 부풀고 한 번 되돌아 자리잡아요.
  * 지금 탭 칸을 누르면 표시도 칸과 함께 눌리고, 떼면 제자리에서 톡 맺혀요. 키보드로 누를 때도 같아요.
@@ -75,9 +77,10 @@ const settleKeyframes = ({
  * 모양 변화는 언제나 하나만 걸어 둬서 연달아 눌러도 쌓이지 않아요.
  * 움직임 줄이기를 켜 두었거나 모션을 그릴 수 없는 브라우저에서는 모양을 바꾸지 않아요.
  */
-export const useIndicatorDroplet = ({
+const useIndicatorDroplet = ({
   containerRef,
   indicatorRef,
+  activeTabSelector,
 }: UseIndicatorDropletParams) => {
   /** 지금 표시에 걸린 모양 변화. 새 변화를 걸 때 이것만 지워요 */
   const dropletRef = useRef<Animation | null>(null);
@@ -145,7 +148,12 @@ export const useIndicatorDroplet = ({
     };
 
     const handlePointerDown = (event: PointerEvent) => {
-      if (event.button !== 0 || !isOnActiveTab(event.target)) return;
+      if (
+        event.button !== 0 ||
+        !isOnActiveTab(event.target, activeTabSelector)
+      ) {
+        return;
+      }
 
       morph({
         keyframes: [{ scale: String(TAB_PRESS_SCALE) }],
@@ -159,7 +167,12 @@ export const useIndicatorDroplet = ({
     // 포인터로 누른 것은 뗄 때 이미 맺혀서, 키보드로 누른 것(detail 0)만 여기서 맺혀요.
     // React가 화면을 옮기기 전에 불려 지금 탭인지 누르기 전 기준으로 봐요
     const handleClick = (event: MouseEvent) => {
-      if (event.detail === 0 && isOnActiveTab(event.target)) playTapDroplet();
+      if (
+        event.detail === 0 &&
+        isOnActiveTab(event.target, activeTabSelector)
+      ) {
+        playTapDroplet();
+      }
     };
 
     container.addEventListener("pointerdown", handlePointerDown);
@@ -171,7 +184,9 @@ export const useIndicatorDroplet = ({
       window.removeEventListener("pointerup", handleRelease);
       window.removeEventListener("pointercancel", handleRelease);
     };
-  }, [containerRef, morph]);
+  }, [containerRef, morph, activeTabSelector]);
 
   return { playSlideDroplet };
 };
+
+export default useIndicatorDroplet;

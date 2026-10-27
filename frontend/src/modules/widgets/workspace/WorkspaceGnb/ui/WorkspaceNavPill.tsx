@@ -8,9 +8,8 @@ import {
 } from "@constants/tabMotion";
 import { MEDIA_QUERY } from "@constants/breakpoint";
 import styled from "@emotion/styled";
+import useSlidingIndicator from "@hooks/common/useSlidingIndicator";
 import useWorkspaceNav from "@hooks/domain/workspace/useWorkspaceNav";
-
-import { useNavIndicator } from "../model/useNavIndicator";
 
 /**
  * GNB 가운데의 내비 필. 홈 · 탐색 · 문서를 오가고 지금 화면을 채워진 모양으로 알려줘요.
@@ -31,7 +30,10 @@ export default function WorkspaceNavPill() {
     navigateToExplore,
     navigateToDocuments,
   } = useWorkspaceNav();
-  const { containerRef, indicatorRef } = useNavIndicator({ activeTabIndex });
+  const { containerRef, indicatorRef } = useSlidingIndicator({
+    activeTabIndex,
+    activeTabSelector: '[aria-current="page"]',
+  });
 
   return (
     <Container ref={containerRef} aria-label="워크스페이스 화면 이동">
@@ -83,7 +85,7 @@ const Container = styled.nav`
 `;
 
 /**
- * 지금 탭 칸 아래에 깔리는 진한 표시. 자리와 크기는 `useNavIndicator`가 칸을 재서 정해요.
+ * 지금 탭 칸 아래에 깔리는 진한 표시. 자리와 크기는 `useSlidingIndicator`가 칸을 재서 정해요.
  *
  * 탭이 바뀔 때만(`data-sliding="true"`) 미끄러지고, 처음 놓이거나 칸 크기가 바뀌면 바로 그 자리에 놓여요.
  * 모양(`scale`)은 `useIndicatorDroplet`이 바꿔서 여기서는 전환을 걸지 않아요. CSS 전환은 모양 애니메이션보다 앞서 그려져 둘을 함께 걸면 물방울이 끊겨요.
