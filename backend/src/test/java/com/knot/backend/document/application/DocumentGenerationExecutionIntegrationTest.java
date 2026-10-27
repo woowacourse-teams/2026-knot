@@ -18,6 +18,7 @@ import com.knot.backend.testsupport.TestApplicationProperties;
 import com.knot.backend.testsupport.TestcontainersConfiguration;
 import java.time.Clock;
 import java.time.Instant;
+import java.time.Duration;
 import java.sql.Timestamp;
 import java.util.List;
 import java.util.concurrent.CyclicBarrier;
@@ -66,6 +67,10 @@ class DocumentGenerationExecutionIntegrationTest {
     @Autowired
     private DocumentGenerationClaimService claims;
     @Autowired
+    private DocumentGenerationLeaseService leases;
+    @Autowired
+    private com.knot.backend.global.config.DocumentGenerationWorkerProperties workerProperties;
+    @Autowired
     private DocumentGenerationWorker worker;
     @Autowired
     private DocumentGenerationFailureService failures;
@@ -97,6 +102,68 @@ class DocumentGenerationExecutionIntegrationTest {
     private long workspaceId;
     private long recordingId;
     private long classifierId;
+
+    @Test
+    void renewalPreventsPrematureRecoveryAndExpiredAttemptCannotRenew() {
+        worker.execute(
+                workspaceId,
+                classifierId
+        );
+        long jobId = generationIds().getFirst();
+        var execution = claims.claim(
+                workspaceId,
+                jobId
+        )
+                .orElseThrow();
+        when(clock.instant()).thenReturn(NOW.plusSeconds(60));
+        assertThat(leases.renew(execution)).isTrue();
+        when(clock.instant()).thenReturn(NOW.plusSeconds(151));
+        recovery.recoverExpired(
+                workspaceId,
+                jobId,
+                execution.attemptCount()
+        );
+        assertThat(status(jobId)).isEqualTo("RUNNING");
+        when(clock.instant()).thenReturn(NOW.plusSeconds(211));
+        recovery.recoverExpired(
+                workspaceId,
+                jobId,
+                execution.attemptCount()
+        );
+        assertThat(leases.renew(execution)).isFalse();
+        assertThat(status(jobId)).isNotEqualTo("RUNNING");
+    }
+
+    @Test
+    void runningWorkerRenewsWhileTheGeneratorIsWaiting() {
+        worker.execute(
+                workspaceId,
+                classifierId
+        );
+        long jobId = generationIds().getFirst();
+        Duration previous = workerProperties.getExecutionLease();
+        workerProperties.setExecutionLease(Duration.ofMillis(900));
+        when(clock.instant()).thenAnswer(invocation -> Instant.now());
+        when(
+                generator.generate(
+                        anyString(),
+                        anyString()
+                )
+        ).thenAnswer(invocation -> {
+            Thread.sleep(2200);
+            return RESULT;
+        });
+        try {
+            worker.execute(
+                    workspaceId,
+                    jobId
+            );
+            assertThat(status(jobId)).isEqualTo("SUCCEEDED");
+            assertThat(documentCount()).isEqualTo(1);
+        } finally {
+            workerProperties.setExecutionLease(previous);
+        }
+    }
 
     @BeforeEach
     void setUp() {

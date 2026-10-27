@@ -147,8 +147,7 @@ class LlmDocumentGeneratorTest {
     }
 
     @ParameterizedTest
-    @EnumSource(value = LlmErrorCode.class, names = {"LLM_RATE_LIMITED", "LLM_TIMEOUT", "LLM_OUTPUT_LIMIT_EXCEEDED",
-            "LLM_INPUT_LIMIT_EXCEEDED"})
+    @EnumSource(value = LlmErrorCode.class, names = {"LLM_RATE_LIMITED", "LLM_TIMEOUT", "LLM_OUTPUT_LIMIT_EXCEEDED"})
     @DisplayName("공급자 오류는 원래 예외로 전달하며 숨은 재시도를 하지 않는다")
     void generate_failure_providerError(LlmErrorCode code) {
         // given
@@ -166,5 +165,119 @@ class LlmDocumentGeneratorTest {
         ).isSameAs(failure);
         verify(client).complete(any());
         verifyNoMoreInteractions(client);
+    }
+
+    @Test
+    @DisplayName("입력 한도 초과 시 모든 구간의 안건 근거로 최종 문서를 생성한다")
+    void generate_usesAllChunksAfterInputLimit() {
+        String input = "가".repeat(4000) + "뒷부분 결정";
+        when(client.complete(any())).thenThrow(new LlmException(LlmErrorCode.LLM_INPUT_LIMIT_EXCEEDED))
+                .thenReturn("{\"evidence\":\"앞부분 의견\"}")
+                .thenReturn("{\"evidence\":\"뒷부분 결정\"}")
+                .thenReturn("{\"title\":\"검색\",\"summary\":null,\"content\":\"## 핵심 요약\\n합의 내용\"}");
+        DocumentGenerationResult result = generator.generate(
+                DocumentGenerationInput.of(
+                        input,
+                        "검색"
+                )
+        );
+        assertThat(result.title()).isEqualTo("검색");
+        org.mockito.ArgumentCaptor<com.knot.backend.global.infrastructure.llm.LlmCompletionRequest> captor = org.mockito.ArgumentCaptor
+                .forClass(com.knot.backend.global.infrastructure.llm.LlmCompletionRequest.class);
+        verify(
+                client,
+                org.mockito.Mockito.times(4)
+        ).complete(captor.capture());
+        String finalInput = captor.getAllValues()
+                .get(3)
+                .messages()
+                .get(1)
+                .content();
+        assertThat(finalInput).contains(
+                "앞부분 의견",
+                "뒷부분 결정"
+        );
+    }
+
+    @Test
+    void generate_doesNotCreatePartialDocumentWhenChunkFails() {
+        when(client.complete(any())).thenThrow(new LlmException(LlmErrorCode.LLM_INPUT_LIMIT_EXCEEDED))
+                .thenReturn("{\"evidence\":\"앞부분\"}")
+                .thenThrow(new LlmException(LlmErrorCode.LLM_TIMEOUT));
+        assertThatThrownBy(
+                () -> generator.generate(
+                        DocumentGenerationInput.of(
+                                "가".repeat(4100),
+                                "검색"
+                        )
+                )
+        ).isInstanceOf(LlmException.class)
+                .hasMessage(LlmErrorCode.LLM_TIMEOUT.getMessage());
+        verify(
+                client,
+                org.mockito.Mockito.times(3)
+        ).complete(any());
+    }
+
+    @Test
+    void generate_rejectsMalformedChunkEvidence() {
+        when(client.complete(any())).thenThrow(new LlmException(LlmErrorCode.LLM_INPUT_LIMIT_EXCEEDED))
+                .thenReturn("{\"evidence\":\"앞부분\"} {}");
+        assertThatThrownBy(
+                () -> generator.generate(
+                        DocumentGenerationInput.of(
+                                "가".repeat(4100),
+                                "검색"
+                        )
+                )
+        ).hasMessage(DocumentErrorCode.INVALID_DOCUMENT_GENERATION_RESPONSE.getMessage());
+        verify(
+                client,
+                org.mockito.Mockito.times(2)
+        ).complete(any());
+    }
+
+    @Test
+    void generate_reducesCollectedEvidenceIfFinalRequestAlsoExceedsLimit() {
+        when(client.complete(any())).thenThrow(new LlmException(LlmErrorCode.LLM_INPUT_LIMIT_EXCEEDED))
+                .thenReturn(
+                        "{\"evidence\":\"긴 첫 번째 근거\"}",
+                        "{\"evidence\":\"긴 두 번째 근거\"}"
+                )
+                .thenThrow(new LlmException(LlmErrorCode.LLM_INPUT_LIMIT_EXCEEDED))
+                .thenReturn("{\"evidence\":\"압축된 두 근거\"}")
+                .thenReturn("{\"title\":\"검색\",\"summary\":null,\"content\":\"## 핵심 요약\\n합의 내용\"}");
+        DocumentGenerationResult result = generator.generate(
+                DocumentGenerationInput.of(
+                        "가".repeat(4100),
+                        "검색"
+                )
+        );
+        assertThat(result.title()).isEqualTo("검색");
+        verify(
+                client,
+                org.mockito.Mockito.times(6)
+        ).complete(any());
+    }
+
+    @Test
+    void generate_stopsWhenEvidenceCannotBeReducedFurther() {
+        when(client.complete(any())).thenThrow(new LlmException(LlmErrorCode.LLM_INPUT_LIMIT_EXCEEDED))
+                .thenReturn("{\"evidence\":\"반복되는 근거\"}")
+                .thenThrow(new LlmException(LlmErrorCode.LLM_INPUT_LIMIT_EXCEEDED))
+                .thenReturn("{\"evidence\":\"반복되는 근거\"}");
+        assertThatThrownBy(
+                () -> generator.generate(
+                        DocumentGenerationInput.of(
+                                "가".repeat(100),
+                                "검색"
+                        )
+                )
+        ).isInstanceOf(LlmException.class)
+                .hasMessage(LlmErrorCode.LLM_INPUT_LIMIT_EXCEEDED.getMessage());
+        verify(
+                client,
+                org.mockito.Mockito.times(4)
+        ).complete(any());
     }
 }

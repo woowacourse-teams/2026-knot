@@ -19,6 +19,41 @@ class DocumentGenerationJobTest {
     private static final Instant FAILED_AT = CREATED_AT.plusSeconds(60);
 
     @Test
+    void renewsOnlyCurrentUnexpiredRunningAttempt() {
+        DocumentGenerationJob job = DocumentGenerationJob.queueGeneration(
+                1,
+                1,
+                DocumentTopic.of("검색"),
+                CREATED_AT
+        );
+        job.startRunning(
+                CREATED_AT,
+                CREATED_AT.plusSeconds(150)
+        );
+        job.renewExecutionLease(
+                1,
+                CREATED_AT.plusSeconds(100),
+                CREATED_AT.plusSeconds(250)
+        );
+        assertThat(job.getExecutionDeadlineAt()).isEqualTo(CREATED_AT.plusSeconds(250));
+        assertThatThrownBy(
+                () -> job.renewExecutionLease(
+                        2,
+                        CREATED_AT.plusSeconds(101),
+                        CREATED_AT.plusSeconds(251)
+                )
+        ).isInstanceOf(DocumentException.class);
+        assertThatThrownBy(
+                () -> job.renewExecutionLease(
+                        1,
+                        CREATED_AT.plusSeconds(250),
+                        CREATED_AT.plusSeconds(400)
+                )
+        ).isInstanceOf(DocumentException.class);
+        assertThat(job.getExecutionDeadlineAt()).isEqualTo(CREATED_AT.plusSeconds(250));
+    }
+
+    @Test
     @DisplayName("문서 저장은 GENERATION 단계에서만 허용한다")
     void validateGenerationStage_success() {
         // given
