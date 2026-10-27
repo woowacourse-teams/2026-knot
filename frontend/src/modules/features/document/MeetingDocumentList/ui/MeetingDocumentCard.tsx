@@ -1,7 +1,5 @@
-import styled from "@emotion/styled";
-import LinkTo from "@primitives/ui/LinkTo";
+import RelatedCard from "@primitives/ui/RelatedCard";
 
-import ChevronRightIcon from "@/assets/icons/chevronRight.svg";
 import FileIcon from "@/assets/icons/file.svg";
 
 interface MeetingDocumentCardProps {
@@ -24,68 +22,12 @@ export default function MeetingDocumentCard({
 }: MeetingDocumentCardProps) {
   return (
     <li>
-      <CardLink href={href}>
-        <TopRow>
-          <FileIcon size={16} aria-hidden />
-          <Title>{title}</Title>
-          <ChevronRightIcon size={12} aria-hidden />
-        </TopRow>
-        {summary !== null && <Summary>{summary}</Summary>}
-      </CardLink>
+      <RelatedCard
+        href={href}
+        icon={<FileIcon size={16} aria-hidden />}
+        title={title}
+        description={summary}
+      />
     </li>
   );
 }
-
-/** 피그마 Card/RelatedDoc: 흰 카드, 모서리 16px, 안쪽 여백 16px 20px, 줄 사이 6px, 그림자 Shadow02 */
-const CardLink = styled(LinkTo)`
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  gap: 0.375rem; /* 6px */
-  height: 100%;
-  min-height: 5rem; /* 80px */
-  padding: 1rem 1.25rem; /* 16px 20px */
-  border-radius: 1rem; /* 16px */
-  background-color: ${({ theme }) => theme.neutral[0]};
-  box-shadow: ${({ theme }) => theme.shadow02};
-
-  &:focus-visible {
-    outline: 2px solid ${({ theme }) => theme.sub.accent[500]};
-    outline-offset: 2px;
-  }
-`;
-
-/** 피그마 Top: 파일 아이콘 · 제목 · 화살표 사이 8px */
-const TopRow = styled.div`
-  display: flex;
-  align-items: center;
-  gap: 0.5rem; /* 8px */
-
-  & > svg {
-    flex-shrink: 0;
-    color: ${({ theme }) => theme.neutral[400]};
-  }
-
-  /* 화살표는 아이콘보다 한 단계 진해요 */
-  & > svg:last-of-type {
-    color: ${({ theme }) => theme.neutral[500]};
-  }
-`;
-
-const Title = styled.p`
-  flex: 1;
-  min-width: 0;
-  ${({ theme }) => theme.text.label01};
-  overflow: hidden;
-  color: ${({ theme }) => theme.neutral[900]};
-  white-space: nowrap;
-  text-overflow: ellipsis;
-`;
-
-const Summary = styled.p`
-  ${({ theme }) => theme.text.caption02};
-  overflow: hidden;
-  color: ${({ theme }) => theme.neutral[600]};
-  white-space: nowrap;
-  text-overflow: ellipsis;
-`;
