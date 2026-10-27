@@ -13,6 +13,13 @@ import com.knot.backend.global.exception.LlmErrorCode;
 import com.knot.backend.global.exception.ErrorCode;
 import com.knot.backend.global.exception.LlmException;
 import java.util.Optional;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import jakarta.annotation.PreDestroy;
+import com.knot.backend.global.config.DocumentGenerationWorkerProperties;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -26,6 +33,7 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 @ConditionalOnProperty(prefix = "knot.llm", name = "enabled", havingValue = "true")
 public class DocumentGenerationWorker {
+    private static final long MAX_GENERATION_SECONDS = 900;
 
     private final DocumentGenerationClaimService claims;
     private final DocumentTopicClassificationService classifier;
@@ -36,6 +44,14 @@ public class DocumentGenerationWorker {
     private final DocumentCategoryProperties categoryProperties;
     private final DocumentCategoryCheckpointService checkpoints;
     private final DocumentCategoryAssignmentService categoryAssignments;
+    private final DocumentGenerationLeaseService leases;
+    private final DocumentGenerationWorkerProperties workerProperties;
+    private final ScheduledExecutorService leaseExecutor = Executors.newSingleThreadScheduledExecutor(
+            Thread.ofPlatform()
+                    .daemon()
+                    .name("document-generation-lease")
+                    .factory()
+    );
 
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public void execute(
@@ -105,10 +121,7 @@ public class DocumentGenerationWorker {
             );
             return;
         }
-        DocumentGenerationResult result = generator.generate(
-                execution.transcriptContent(),
-                execution.topic()
-        );
+        DocumentGenerationResult result = generateWithLease(execution);
         if (categoryProperties.isEnabled()) {
             checkpoints.prepare(
                     execution,
@@ -122,6 +135,65 @@ public class DocumentGenerationWorker {
                 execution.attemptCount(),
                 result
         );
+    }
+
+    private DocumentGenerationResult generateWithLease(DocumentGenerationExecution execution) {
+        Thread worker = Thread.currentThread();
+        AtomicBoolean lost = new AtomicBoolean(false);
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(MAX_GENERATION_SECONDS);
+        long interval = Math.max(
+                1,
+                workerProperties.getExecutionLease()
+                        .toMillis() / 3
+        );
+        Object guard = new Object();
+        AtomicBoolean active = new AtomicBoolean(true);
+        ScheduledFuture<?> heartbeat = leaseExecutor.scheduleAtFixedRate(() -> {
+            synchronized (guard) {
+                if (!active.get()) {
+                    return;
+                }
+                try {
+                    if (System.nanoTime() >= deadline || !leases.renew(execution)) {
+                        lost.set(true);
+                        worker.interrupt();
+                    }
+                } catch (RuntimeException exception) {
+                    lost.set(true);
+                    worker.interrupt();
+                }
+            }
+        },
+                interval,
+                interval,
+                TimeUnit.MILLISECONDS
+        );
+        try {
+            DocumentGenerationResult result = generator.generate(
+                    execution.transcriptContent(),
+                    execution.topic()
+            );
+            synchronized (guard) {
+                if (lost.get() || System.nanoTime() >= deadline) {
+                    throw new LlmException(LlmErrorCode.LLM_TIMEOUT);
+                }
+                active.set(false);
+            }
+            return result;
+        } finally {
+            synchronized (guard) {
+                active.set(false);
+            }
+            heartbeat.cancel(false);
+            if (lost.get()) {
+                Thread.interrupted();
+            }
+        }
+    }
+
+    @PreDestroy
+    public void shutdownLeaseExecutor() {
+        leaseExecutor.shutdownNow();
     }
 
     private DocumentGenerationFailureCause llmCause(ErrorCode errorCode) {
