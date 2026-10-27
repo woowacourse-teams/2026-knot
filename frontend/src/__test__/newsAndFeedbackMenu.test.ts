@@ -1,4 +1,7 @@
-import { GetReleaseNotesResponseDto } from "@api/dto/releaseNote";
+import {
+  GetReleaseNotesResponseDto,
+  ReleaseNoteItemDto,
+} from "@api/dto/releaseNote";
 import { GetWorkspacesResponseDto } from "@api/dto/workspace";
 import {
   imageReleaseNoteItems,
@@ -24,6 +27,14 @@ const WORKSPACE_ID = new GetWorkspacesResponseDto(workspacesResponse)
 const HOME_PATH = `/workspace/${WORKSPACE_ID}`;
 
 const NOTES = new GetReleaseNotesResponseDto(releaseNotesResponse).notes;
+/** 기본 mock 맨 끝 노트의 사진 칸 경우별 항목. 응답 DTO를 거친 값이에요 */
+const IMAGE_ITEMS = {
+  normal: new ReleaseNoteItemDto(imageReleaseNoteItems.normal),
+  wide: new ReleaseNoteItemDto(imageReleaseNoteItems.wide),
+  tall: new ReleaseNoteItemDto(imageReleaseNoteItems.tall),
+  broken: new ReleaseNoteItemDto(imageReleaseNoteItems.broken),
+  disallowed: new ReleaseNoteItemDto(imageReleaseNoteItems.disallowed),
+};
 const LAST_SEEN_NOTE_ID_KEY = "knot.releaseNote.lastSeenId";
 const READ_BUTTON_NAME = "새 소식과 피드백";
 const UNREAD_BUTTON_NAME = "새 소식과 피드백, 읽지 않은 소식 있음";
@@ -190,7 +201,7 @@ test.describe("소식과 피드백", () => {
   }) => {
     await openNewsPanel(page);
 
-    const wide = await measureNewsImage(page, imageReleaseNoteItems.wide.title);
+    const wide = await measureNewsImage(page, IMAGE_ITEMS.wide.title);
 
     expect(wide.width).toBeCloseTo(wide.itemWidth, 0);
     // 2560×420 사진을 폭에 맞춘 높이 그대로예요
@@ -203,10 +214,7 @@ test.describe("소식과 피드백", () => {
   }) => {
     await openNewsPanel(page);
 
-    for (const { title } of [
-      imageReleaseNoteItems.normal,
-      imageReleaseNoteItems.tall,
-    ]) {
+    for (const { title } of [IMAGE_ITEMS.normal, IMAGE_ITEMS.tall]) {
       const image = await measureNewsImage(page, title);
 
       expect(image.width).toBeCloseTo(image.itemWidth, 0);
@@ -221,11 +229,11 @@ test.describe("소식과 피드백", () => {
   }) => {
     await openNewsPanel(page);
 
-    const item = getNewsItem(page, imageReleaseNoteItems.disallowed.title);
+    const item = getNewsItem(page, IMAGE_ITEMS.disallowed.title);
     await item.scrollIntoViewIfNeeded();
 
     await expect(
-      item.getByText(imageReleaseNoteItems.disallowed.description),
+      item.getByText(IMAGE_ITEMS.disallowed.description),
     ).toBeVisible();
     await expect(item.locator("img")).toHaveCount(0);
   });
@@ -234,18 +242,16 @@ test.describe("소식과 피드백", () => {
     page,
   }) => {
     const brokenImage = page.waitForResponse(
-      imageReleaseNoteItems.broken.image,
+      (response) => response.url() === IMAGE_ITEMS.broken.image,
     );
     await openNewsPanel(page);
 
     expect((await brokenImage).status()).toBe(404);
 
-    const item = getNewsItem(page, imageReleaseNoteItems.broken.title);
+    const item = getNewsItem(page, IMAGE_ITEMS.broken.title);
     await item.scrollIntoViewIfNeeded();
 
-    await expect(
-      item.getByText(imageReleaseNoteItems.broken.description),
-    ).toBeVisible();
+    await expect(item.getByText(IMAGE_ITEMS.broken.description)).toBeVisible();
     await expect(item.locator("img")).toBeHidden();
   });
 

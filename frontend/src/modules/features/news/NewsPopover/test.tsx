@@ -1,4 +1,7 @@
-import { GetReleaseNotesResponseDto } from "@api/dto/releaseNote";
+import {
+  GetReleaseNotesResponseDto,
+  ReleaseNoteItemDto,
+} from "@api/dto/releaseNote";
 import { FEEDBACK_RELAY_PATH } from "@api/fetch/relay/f";
 import { RELEASE_NOTES_RELAY_PATH } from "@api/fetch/relay/n";
 import {
@@ -42,6 +45,9 @@ const FEEDBACK_PANEL_NAME = "피드백 패널";
 
 const NOTES = new GetReleaseNotesResponseDto(releaseNotesResponse).notes;
 const ALL_ITEMS = NOTES.flatMap(({ items }) => items);
+/** 사진 칸 경우별 항목의 기대값. Worker 응답 모양의 mock을 응답 DTO로 바꾼 값이에요 */
+const toExpectedImageItem = (key: keyof typeof imageReleaseNoteItems) =>
+  new ReleaseNoteItemDto(imageReleaseNoteItems[key]);
 
 /** 레이아웃이 넘기는 피드백 패널 자리. 닫기와 보내기만 해 봐요 */
 function FeedbackPanelStub({ onClose }: { onClose: () => void }) {
@@ -550,19 +556,26 @@ describe("NewsPopover", () => {
     });
 
     it("GitHub 첨부 사진 주소의 사진만 그리고, 다른 주소면 사진 칸 없이 글만 보여 준다", async () => {
-      const { normal, disallowed } = imageReleaseNoteItems;
       await renderOpenPanel([
         {
           id: "pr-1051",
           releasedAt: "2026-11-02",
-          items: [normal, disallowed],
+          items: [
+            imageReleaseNoteItems.normal,
+            imageReleaseNoteItems.disallowed,
+          ],
         },
       ]);
 
       const images = document.querySelectorAll("img");
       expect(images).toHaveLength(1);
-      expect(images[0]).toHaveAttribute("src", normal.image);
-      expect(screen.getByText(disallowed.title)).toBeVisible();
+      expect(images[0]).toHaveAttribute(
+        "src",
+        toExpectedImageItem("normal").image,
+      );
+      expect(
+        screen.getByText(toExpectedImageItem("disallowed").title),
+      ).toBeVisible();
     });
 
     it("사진은 다 불러온 뒤에 사진 칸을 보여 준다", async () => {
@@ -583,12 +596,18 @@ describe("NewsPopover", () => {
     });
 
     it("사진을 불러오지 못하면 사진 칸만 숨기고 칩, 제목, 설명, 「바로 가보기」는 그대로 둔다", async () => {
-      const { broken } = imageReleaseNoteItems;
+      const broken = toExpectedImageItem("broken");
       await renderOpenPanel([
         {
           id: "pr-1051",
           releasedAt: "2026-11-02",
-          items: [{ ...broken, link: "CHAT", isFromFeedback: true }],
+          items: [
+            {
+              ...imageReleaseNoteItems.broken,
+              link: "CHAT",
+              isFromFeedback: true,
+            },
+          ],
         },
       ]);
 
