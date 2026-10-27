@@ -31,14 +31,14 @@ const meta = {
   parameters: {
     design: [
       {
-        name: "문서/확인한 사람 보기",
+        name: "문서/확인한 사람 보기 · 이 문서가 나온 녹음",
         type: "figma",
-        url: "https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=1535-2817",
+        url: "https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=5581-39486",
       },
       {
-        name: "문서/이 문서가 나온 녹음 · 카드 상태",
+        name: "Card/RelatedDoc 녹음 · 불러오는 중 · 제목 못 불러옴",
         type: "figma",
-        url: "https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=5584-72163",
+        url: "https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=5374-1752",
       },
     ],
   },
