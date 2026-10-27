@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { captureAnalyticsEvent } from "@utils/captureAnalyticsEvent";
 import { markRecordingStart } from "@utils/recordingStartTrace";
 
 import type { RecordingAudioMode } from "@/shared/types/recording";
@@ -25,6 +26,13 @@ export type RecordingStatus = "idle" | "recording" | "paused";
  * `noAudio`(소리 없이 공유함)와 `stopped`(함께 녹음하다 공유가 멈춤)는 `off`처럼 마이크만 녹음하면서 그 사실을 알려요
  */
 export type MeetingAudioStatus = "off" | "on" | "noAudio" | "stopped";
+
+/**
+ * 회의 소리 연결의 결과. 섞기 시작함(`connected`) · 소리 없이 공유함(`noAudio`) · 공유 창을 닫음(`cancelled`)이에요.
+ * 녹음 중이 아니거나 이미 함께 녹음 중이거나, 공유 창을 연 사이 녹음이 끝났으면 연결하지 않아요(`notConnected`)
+ */
+export type MeetingAudioConnectResult =
+  "connected" | "noAudio" | "cancelled" | "notConnected";
 
 /** 서버에 열어 둔 녹음 세션. 일시정지·재개·종료 요청 경로에 들어가요 */
 export interface RecordingSession {
@@ -112,9 +120,9 @@ interface RecordingActions {
   clearMicrophoneLost: () => void;
   /**
    * 브라우저 공유 창을 열어 받은 회의 소리를 마이크와 섞어 진행 중인 같은 녹음에 이어 담아요. 사용자의 누름 안에서 불러야 해요.
-   * 공유 창을 닫으면 마이크만 녹음하고, 소리 없이 공유하면 공유를 끄고 `noAudio`로 알려요. 회의 소리를 섞기 시작했으면 `true`를 돌려줘요
+   * 공유 창을 닫으면 마이크만 녹음하고, 소리 없이 공유하면 공유를 끄고 `noAudio`로 알려요. 연결의 결과를 돌려줘요
    */
-  connectMeetingAudio: () => Promise<boolean>;
+  connectMeetingAudio: () => Promise<MeetingAudioConnectResult>;
 }
 
 const IDLE_STATE: RecordingState = {
@@ -371,17 +379,17 @@ export const useRecordingStore = create<RecordingState & RecordingActions>()((
     clearMicrophoneLost: () => set({ isMicrophoneLost: false }),
 
     connectMeetingAudio: async () => {
-      if (get().status === "idle" || meetingAudio) return false;
+      if (get().status === "idle" || meetingAudio) return "notConnected";
 
       const shared = await captureMeetingAudio();
       if (shared === "cancelled" || shared === "noAudio") {
         set({ meetingAudioStatus: shared === "noAudio" ? "noAudio" : "off" });
-        return false;
+        return shared;
       }
       // 공유 창을 연 사이 녹음이 끝났으면 받은 공유를 바로 꺼요
       if (get().status === "idle") {
         stopTracks(shared);
-        return false;
+        return "notConnected";
       }
 
       meetingAudio = shared;
@@ -392,9 +400,20 @@ export const useRecordingStore = create<RecordingState & RecordingActions>()((
         if (meetingAudio !== shared) return;
         stopMeetingAudio();
         set({ meetingAudioStatus: "stopped" });
+        // 녹음 화면을 떠나 있어도 공유는 멈출 수 있어, 화면이 아니라 여기서 사용 기록을 보내요
+        const { session } = get();
+        if (session) {
+          captureAnalyticsEvent({
+            event: "meeting_audio_stopped",
+            properties: {
+              recording_id: session.recordingId,
+              workspace_id: session.workspaceId,
+            },
+          });
+        }
       });
       set({ meetingAudioStatus: "on" });
-      return true;
+      return "connected";
     },
   };
 });

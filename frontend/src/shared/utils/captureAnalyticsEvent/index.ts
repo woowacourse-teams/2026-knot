@@ -49,6 +49,11 @@ interface AnalyticsEventMap {
   recording_ended: {
     result: "uploaded" | "not_uploaded";
     audio_mode: RecordingAudioMode;
+    /**
+     * 끝낼 때의 회의 소리 함께 녹음 상태. 함께 녹음 중(`on`) · 공유가 멈춤(`stopped`) · 소리 없이 공유함(`no_audio`) ·
+     * 마이크만(`off`) · 회의 소리를 받을 수 없는 브라우저(`unsupported`)예요
+     */
+    meeting_audio: "on" | "stopped" | "no_audio" | "off" | "unsupported";
     recording_id: number;
     workspace_id: number;
   };
@@ -166,6 +171,22 @@ interface AnalyticsEventMap {
     /** 무엇을 다시 시도했는지. 주제 분류 실패의 다시 시도는 문서 만들기 작업을 다시 접수해서 `document_generation`이에요 */
     stage: "transcription" | "document_generation" | "meeting_summary";
     result: "accepted" | "rejected" | "error";
+    recording_id: number;
+    workspace_id: number;
+  };
+  /** 녹음 화면의 회의 소리 연결 안내를 닫았거나 공유 결과가 정해졌어요 */
+  meeting_audio_connect_result: {
+    /** 연결됨(`connected`) · 소리 없이 공유함(`no_audio`) · 공유 창을 닫음(`share_cancelled`) · 안내에서 취소함(`dialog_cancelled`) */
+    result: "connected" | "no_audio" | "share_cancelled" | "dialog_cancelled";
+    /** 연결 안내에서 고른 회의를 연 곳. 브라우저(`browser_tab`) 또는 설치한 앱(`meeting_app`)이에요 */
+    location: "browser_tab" | "meeting_app";
+    /** 「다시 연결하기」로 연 것인지 */
+    is_reconnect: boolean;
+    recording_id: number;
+    workspace_id: number;
+  };
+  /** 회의 소리를 함께 녹음하다 공유가 멈췄어요. 브라우저의 공유 중지를 눌렀거나 공유한 탭을 닫은 거예요. 녹음은 마이크로 이어져요 */
+  meeting_audio_stopped: {
     recording_id: number;
     workspace_id: number;
   };
