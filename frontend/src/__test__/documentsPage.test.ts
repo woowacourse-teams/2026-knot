@@ -172,7 +172,7 @@ test.describe("녹음별 탭", () => {
     }
   });
 
-  test("[DOC-R22] 녹음 행에 표시 제목 · 녹음 시작 날짜 · 녹음 길이 · 문서 수가 보이고, AI 제목이 없는 녹음은 「OO 님의 녹음」으로 보인다", async ({
+  test("[DOC-R22] 녹음 행에 표시 제목 · 녹음 시작 날짜 · 녹음 길이만 보이고 문서 수는 보이지 않으며, AI 제목이 없는 녹음은 「OO 님의 녹음」으로 보인다", async ({
     page,
   }) => {
     for (const recording of expectedRecordings) {
@@ -190,9 +190,8 @@ test.describe("녹음별 탭", () => {
           formatDurationFromSeconds(recording.recordingDurationSeconds),
         ),
       ).toBeVisible();
-      await expect(
-        group.getByText(`문서 ${recording.documentCount}`),
-      ).toBeVisible();
+      // 그 녹음의 문서는 녹음 행 아래 문서 항목으로 보여요
+      await expect(group.getByText(/^문서 \d+$/)).toHaveCount(0);
     }
 
     const fallbackTitled = expectedRecordings.find(({ title }) =>

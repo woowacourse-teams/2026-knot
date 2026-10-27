@@ -26,7 +26,7 @@ export default function RecordingDocumentListSkeleton() {
                 <Skeleton width={10} height={TEXT_SKELETON_HEIGHT} />
               </Line>
               <MetaLine>
-                {/* 피그마의 날짜 · 길이 · 문서 수 자리 120px */}
+                {/* 피그마의 날짜 · 길이 자리 120px */}
                 <Skeleton width={7.5} />
               </MetaLine>
             </Info>

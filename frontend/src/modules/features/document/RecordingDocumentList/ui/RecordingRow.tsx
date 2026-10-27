@@ -18,14 +18,12 @@ interface RecordingRowProps {
   startedAt: string;
   /** 녹음 길이(초) */
   recordingDurationSeconds: number;
-  /** 이 녹음에서 나온 문서 수 */
-  documentCount: number;
 }
 
 /**
- * 「녹음별」 탭 녹음 묶음의 머리 행. 마이크 배지, 표시 제목, 그 아래 녹음 시작 날짜 · 녹음 길이 칩 · 문서 수를 보여주고, 오른쪽에 「녹음 보기」가 있어요(DOC-R22).
+ * 「녹음별」 탭 녹음 묶음의 머리 행. 마이크 배지, 표시 제목, 그 아래 녹음 시작 날짜 · 녹음 길이 칩을 보여주고, 오른쪽에 「녹음 보기」가 있어요(DOC-R22).
  *
- * 행 전체가 그 녹음의 녹음 문서로 가는 링크예요. 녹음한 사람과 참여자 수는 보여주지 않아요.
+ * 행 전체가 그 녹음의 녹음 문서로 가는 링크예요. 문서 수, 녹음한 사람, 참여자 수는 보여주지 않아요. 그 녹음의 문서는 행 아래 문서 항목으로 봐요.
  */
 export default function RecordingRow({
   href,
@@ -33,7 +31,6 @@ export default function RecordingRow({
   title,
   startedAt,
   recordingDurationSeconds,
-  documentCount,
 }: RecordingRowProps) {
   return (
     <RowLink href={href}>
@@ -47,7 +44,6 @@ export default function RecordingRow({
             {formatDate(startedAt)}
           </StartedDate>
           <Chip>{formatDurationFromSeconds(recordingDurationSeconds)}</Chip>
-          <DocumentCount>문서 {documentCount}</DocumentCount>
         </Meta>
       </Info>
       <ViewRecording>
@@ -103,7 +99,7 @@ const Title = styled.span`
   text-overflow: ellipsis;
 `;
 
-/** 피그마 Meta: 날짜 · 녹음 길이 칩 · 문서 수 사이 8px */
+/** 피그마 Meta: 날짜와 녹음 길이 칩 사이 8px */
 const Meta = styled.span`
   display: flex;
   flex-wrap: wrap;
@@ -112,11 +108,6 @@ const Meta = styled.span`
 `;
 
 const StartedDate = styled.time`
-  ${({ theme }) => theme.text.caption01};
-  color: ${({ theme }) => theme.neutral[500]};
-`;
-
-const DocumentCount = styled.span`
   ${({ theme }) => theme.text.caption01};
   color: ${({ theme }) => theme.neutral[500]};
 `;
