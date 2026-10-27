@@ -9,7 +9,13 @@ import { theme } from "@provider/themeProvider";
 import { getRouterPath, PATH_ROUTE } from "@routes/PATH_ROUTE";
 import { useRecordingStore } from "@store/recordingStore";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -21,7 +27,10 @@ import NewsPopover from ".";
 import { LAST_SEEN_NOTE_ID_KEY } from "./constants/lastSeenNote";
 import { formatReleaseDate } from "./utils/formatReleaseDate";
 
-const BUTTON_NAME = "새 소식과 피드백";
+/** 안 읽은 소식이 있으면 뒤에 붙는 안내까지 받아요 */
+const BUTTON_NAME = /^새 소식과 피드백/;
+const READ_BUTTON_NAME = "새 소식과 피드백";
+const UNREAD_BUTTON_NAME = "새 소식과 피드백, 읽지 않은 소식 있음";
 /** 패널 머리의 설명. 패널이 열려 있는지 이 문구로 봐요 */
 const PANEL_DESCRIPTION = "새로 생기거나 달라진 점을 모아 둬요";
 const WORKSPACE_ID = "1";
@@ -111,10 +120,16 @@ const renderOpenMenu = async (notes?: ReleaseNote[]) => {
   return rendered;
 };
 
+/** 메뉴의 「새 소식」 항목. 안 읽은 소식이 있으면 이름 뒤에 NEW가 붙어요 */
+const getNewsMenuItem = () =>
+  within(screen.getByRole("navigation")).getByRole("button", {
+    name: /^새 소식/,
+  });
+
 /** 메뉴에서 「새 소식」을 골라 새 소식 패널을 연 상태로 그려요 */
 const renderOpenPanel = async (notes?: ReleaseNote[]) => {
   const rendered = await renderOpenMenu(notes);
-  fireEvent.click(screen.getByRole("button", { name: "새 소식" }));
+  fireEvent.click(getNewsMenuItem());
 
   return rendered;
 };
@@ -196,6 +211,7 @@ describe("NewsPopover", () => {
       const { button } = await renderPopover();
 
       expect(button).toHaveAttribute("aria-expanded", "false");
+      expect(button).toHaveAccessibleName(READ_BUTTON_NAME);
       expect(localStorage.getItem(LAST_SEEN_NOTE_ID_KEY)).toBeNull();
 
       fireEvent.click(button);
@@ -204,13 +220,21 @@ describe("NewsPopover", () => {
       expect(screen.getByText("아직 새 소식이 없어요")).toBeInTheDocument();
     });
 
-    it("녹음 중이면 저절로 열지 않고 읽음도 남기지 않는다", async () => {
+    it("녹음 중이면 저절로 열지 않고 읽음도 남기지 않아, 버튼에 안 읽은 소식을 알린다", async () => {
       useRecordingStore.setState({ status: "recording" });
 
       const { button } = await renderPopover();
 
       expect(button).toHaveAttribute("aria-expanded", "false");
+      expect(button).toHaveAccessibleName(UNREAD_BUTTON_NAME);
       expect(localStorage.getItem(LAST_SEEN_NOTE_ID_KEY)).toBeNull();
+    });
+
+    it("저절로 연 패널은 모든 노트에 NEW를 붙이고, 버튼의 안 읽음 표시는 끈다", async () => {
+      const { button } = await renderPopover();
+
+      expect(screen.getAllByText("NEW")).toHaveLength(ALL_ITEMS.length);
+      expect(button).toHaveAccessibleName(READ_BUTTON_NAME);
     });
 
     it("localStorage를 쓸 수 없으면 저절로 열지 않는다", async () => {
@@ -221,6 +245,70 @@ describe("NewsPopover", () => {
       const { button } = await renderPopover();
 
       expect(button).toHaveAttribute("aria-expanded", "false");
+    });
+  });
+
+  describe("안 읽은 새 소식", () => {
+    // 맨 위 노트 하나만 안 읽은 사용자로 둬요
+    beforeEach(() => localStorage.setItem(LAST_SEEN_NOTE_ID_KEY, NOTES[1].id));
+
+    it("안 읽은 노트가 있으면 버튼에 알리고 메뉴의 「새 소식」에 NEW 칩을 붙인다", async () => {
+      const { button } = await renderOpenMenu();
+
+      expect(button).toHaveAccessibleName(UNREAD_BUTTON_NAME);
+      expect(
+        within(screen.getByRole("navigation")).getByText("NEW"),
+      ).toBeInTheDocument();
+    });
+
+    it("새 소식 패널을 열면 안 읽은 노트의 항목에만 NEW를 붙이고 버튼의 안 읽음 표시를 끈다", async () => {
+      const { button } = await renderOpenPanel();
+
+      expect(screen.getAllByText("NEW")).toHaveLength(NOTES[0].items.length);
+      expect(button).toHaveAccessibleName(READ_BUTTON_NAME);
+    });
+
+    it("새 소식 패널을 닫고 다시 열면 메뉴와 패널에 NEW가 없다", async () => {
+      const { button } = await renderOpenPanel();
+
+      fireEvent.click(button);
+      fireEvent.click(button);
+
+      expect(screen.queryByText("NEW")).not.toBeInTheDocument();
+
+      fireEvent.click(getNewsMenuItem());
+
+      expect(screen.getByText(PANEL_DESCRIPTION)).toBeInTheDocument();
+      expect(screen.queryByText("NEW")).not.toBeInTheDocument();
+    });
+
+    it("메뉴만 열고 닫으면 안 읽음 표시를 그대로 둔다", async () => {
+      const { button } = await renderOpenMenu();
+
+      fireEvent.keyDown(document, { key: "Escape" });
+
+      expect(button).toHaveAccessibleName(UNREAD_BUTTON_NAME);
+      expect(localStorage.getItem(LAST_SEEN_NOTE_ID_KEY)).toBe(NOTES[1].id);
+    });
+
+    it("마지막으로 연 노트가 목록에 없으면 모두 읽은 것으로 본다", async () => {
+      localStorage.setItem(LAST_SEEN_NOTE_ID_KEY, "v0.0.1");
+
+      const { button } = await renderOpenMenu();
+
+      expect(button).toHaveAccessibleName(READ_BUTTON_NAME);
+      expect(screen.queryByText("NEW")).not.toBeInTheDocument();
+    });
+
+    it("localStorage를 쓸 수 없으면 안 읽은 소식을 알리지 않는다", async () => {
+      vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
+        throw new Error("SecurityError");
+      });
+
+      const { button } = await renderOpenPanel();
+
+      expect(button).toHaveAccessibleName(READ_BUTTON_NAME);
+      expect(screen.queryByText("NEW")).not.toBeInTheDocument();
     });
   });
 
