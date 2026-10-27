@@ -110,6 +110,8 @@ interface AnalyticsEventMap {
     /** 무엇을 복사했는지. 주제별 문서 본문(`document`) · 녹음 문서의 회의 전체 요약(`meeting_summary`) · 원문 패널의 전사(`transcript`)예요 */
     content: "document" | "meeting_summary" | "transcript";
   } & AnalyticsScreenTarget;
+  /** 원문 패널의 발화 목록을 스크롤했어요. 화면에 들어올 때마다 처음 한 번만 보내요. 같은 화면에서 패널을 닫았다 다시 열어도 다시 보내지 않아요 */
+  transcript_panel_scrolled: AnalyticsScreenTarget;
   /** 녹음 문서를 열어 처리 상태가 정해졌어요. 화면에 들어올 때마다 한 번 보내요. 보는 동안 상태가 바뀌어도 다시 보내지 않아요 */
   recording_document_viewed: {
     processing_status:

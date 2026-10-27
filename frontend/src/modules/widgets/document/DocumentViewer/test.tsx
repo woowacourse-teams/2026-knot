@@ -36,6 +36,7 @@ import {
   waitForElementToBeRemoved,
   within,
 } from "@testing-library/react";
+import { captureAnalyticsEvent } from "@utils/captureAnalyticsEvent";
 import { formatDate } from "@utils/formatDate";
 import { formatDurationFromSeconds } from "@utils/formatDurationFromSeconds";
 import { delay, http, HttpResponse } from "msw";
@@ -43,6 +44,10 @@ import { createMemoryRouter, Outlet, RouterProvider } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import DocumentViewer from ".";
+
+vi.mock("@utils/captureAnalyticsEvent", () => ({
+  captureAnalyticsEvent: vi.fn(),
+}));
 
 const expected = new GetDocumentResponseDto(documentDetailsResponse[0]);
 const WORKSPACE_ID = "1";
@@ -524,6 +529,41 @@ describe("DocumentViewer", () => {
     expect(
       await screen.findByText(TOAST_MESSAGES.COPY_FAILED.message),
     ).toBeInTheDocument();
+  });
+
+  it("복사에 성공하면 문서 보기의 문서 본문 복사를 사용 기록으로 보낸다", async () => {
+    vi.mocked(captureAnalyticsEvent).mockClear();
+    renderViewer(String(expected.id));
+    await screen.findByRole("heading", { level: 2, name: expected.title });
+
+    await click(screen.getByRole("button", { name: "복사" }));
+
+    expect(captureAnalyticsEvent).toHaveBeenCalledWith({
+      event: "content_copied",
+      properties: {
+        content: "document",
+        screen: "document",
+        document_id: expected.id,
+        workspace_id: Number(WORKSPACE_ID),
+      },
+    });
+  });
+
+  it("복사에 실패하면 복사 사용 기록을 보내지 않는다", async () => {
+    vi.mocked(captureAnalyticsEvent).mockClear();
+    writeText.mockRejectedValue(new Error("클립보드 권한이 없어요"));
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    renderViewer(String(expected.id));
+    await screen.findByRole("heading", { level: 2, name: expected.title });
+
+    await click(screen.getByRole("button", { name: "복사" }));
+
+    expect(
+      await screen.findByText(TOAST_MESSAGES.COPY_FAILED.message),
+    ).toBeInTheDocument();
+    expect(captureAnalyticsEvent).not.toHaveBeenCalledWith(
+      expect.objectContaining({ event: "content_copied" }),
+    );
   });
 
   it("아직 확인하지 않았으면 확인 버튼을 보여주고, 누르면 누를 수 없는 「확인했어요」로 바뀌고 확인 수가 늘어난다", async () => {
