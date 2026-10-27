@@ -12,6 +12,7 @@ import { useId } from "react";
 import { useParams } from "react-router";
 
 import { useMeetingSummaryRetry } from "./model/useMeetingSummaryRetry";
+import { useRecordingDocumentAnalytics } from "./model/useRecordingDocumentAnalytics";
 import MeetingSummary from "./ui/MeetingSummary";
 import NoContentState from "./ui/NoContentState";
 import OrganizingState from "./ui/OrganizingState";
@@ -36,6 +37,8 @@ import RecordingDocumentSkeleton from "./ui/RecordingDocumentSkeleton";
  * - 완료 · 문서 생성 실패: 녹음 음성, 회의 전체 요약, 구분선, 이 회의에서 나온 문서. 문서 생성 실패의 다시 시도는 이 회의에서 나온 문서의 실패 카드에 있어요
  *
  * 녹음 음성은 정리를 마친 녹음(완료 · 문서 생성 실패 · 정리할 내용 없음)에만 둬요(STT-R50). 다시 시도 버튼은 현재 멤버 누구에게나 보여요.
+ *
+ * 처리 상태가 정해진 것과 요약 복사는 사용 기록으로도 보내요(`useRecordingDocumentAnalytics`).
  *
  * 주소의 두 id는 숫자인지 확인하지 않고 그대로 요청해요. 잘못된 주소인지는 서버가 판단하고, 여기서는 그 응답에 따라 녹음을 불러오지 못했다고 알려요.
  * 로그인이 풀렸으면(401) 로그인 화면으로 보내요.
@@ -64,6 +67,12 @@ export default function RecordingDocumentViewer() {
   });
   const { retryMeetingSummary, isMeetingSummaryRetrying } =
     useMeetingSummaryRetry({ workspaceId, recordingId });
+  const { trackMeetingSummaryCopied } = useRecordingDocumentAnalytics({
+    workspaceId,
+    recordingId,
+    status,
+    recordingDocument,
+  });
 
   if (status === "loadFailed") {
     return <RecordingDocumentLoadFailed onRetry={retryLoad} />;
@@ -102,6 +111,7 @@ export default function RecordingDocumentViewer() {
             <RecordingDocumentCopyButton
               title={title}
               content={copyableSummary}
+              onCopied={trackMeetingSummaryCopied}
             />
           )}
         </TitleRow>

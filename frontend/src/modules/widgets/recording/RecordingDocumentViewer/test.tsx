@@ -951,6 +951,7 @@ describe("RecordingDocumentViewer", () => {
 
 describe("RecordingDocumentViewer의 사용 기록", () => {
   const RECORDING_ID = expectedRecording.recordingId;
+  const DURATION_SECONDS = expectedAudio.recordingDurationMillis / 1000;
 
   /** 보낸 사용 기록 가운데 그 이벤트의 속성만 보낸 순서대로 모아요 */
   const getTrackedProperties = (event: string) =>
@@ -967,6 +968,133 @@ describe("RecordingDocumentViewer의 사용 기록", () => {
   afterEach(() => {
     vi.restoreAllMocks();
     Reflect.deleteProperty(navigator, "clipboard");
+  });
+
+  describe("녹음 문서 보기", () => {
+    it("완료된 녹음을 열면 처리 상태 · 요약 상태와 만들어진 문서 수를 한 번 보낸다", async () => {
+      renderViewer();
+
+      await expectCardTitles(recordingDocuments);
+      await waitFor(() =>
+        expect(getTrackedProperties("recording_document_viewed")).toEqual([
+          {
+            processing_status: "completed",
+            meeting_summary_status: "completed",
+            document_count: recordingDocuments.length,
+            recording_id: RECORDING_ID,
+            workspace_id: Number(WORKSPACE_ID),
+          },
+        ]),
+      );
+    });
+
+    it("정리 중에 열면 정리 중으로 보내고, 보는 동안 정리가 끝나도 다시 보내지 않는다", async () => {
+      let requestCount = 0;
+      mockServer.use(
+        http.get(RECORDING_DOCUMENT_REQUEST, () => {
+          requestCount += 1;
+          return HttpResponse.json(
+            requestCount === 1
+              ? {
+                  ...recordingDocumentResponse,
+                  processingStatus: "PROCESSING",
+                  meetingSummary: null,
+                }
+              : recordingDocumentResponse,
+          );
+        }),
+      );
+      renderViewer();
+
+      expect(
+        await screen.findByRole(
+          "heading",
+          { name: "한눈에 보기" },
+          { timeout: 5000 },
+        ),
+      ).toBeInTheDocument();
+      expect(getTrackedProperties("recording_document_viewed")).toEqual([
+        {
+          processing_status: "organizing",
+          meeting_summary_status: "none",
+          recording_id: RECORDING_ID,
+          workspace_id: Number(WORKSPACE_ID),
+        },
+      ]);
+    });
+
+    it("주제 분류 실패면 주제 분류 실패와 요약 없음을 보내고 문서 수는 보내지 않는다", async () => {
+      respondWithRecordingDocument({
+        processingStatus: "DOCUMENT_FAILED",
+        meetingSummary: null,
+      });
+      respondWithTranscriptNotFound();
+      renderViewer();
+
+      await screen.findByRole("heading", { name: DOCUMENT_FAILED_TITLE });
+      await waitFor(() =>
+        expect(getTrackedProperties("recording_document_viewed")).toEqual([
+          {
+            processing_status: "topic_failed",
+            meeting_summary_status: "none",
+            recording_id: RECORDING_ID,
+            workspace_id: Number(WORKSPACE_ID),
+          },
+        ]),
+      );
+    });
+
+    it("요약을 만드는 중이면 요약 상태를 만드는 중으로 보낸다", async () => {
+      respondWithRecordingDocument({
+        meetingSummary: { status: "RUNNING", content: null, retryable: false },
+      });
+      renderViewer();
+
+      await screen.findByText(SUMMARY_DRAFTING);
+      await waitFor(() =>
+        expect(getTrackedProperties("recording_document_viewed")).toEqual([
+          expect.objectContaining({ meeting_summary_status: "drafting" }),
+        ]),
+      );
+    });
+  });
+
+  describe("요약 복사", () => {
+    it("제목 줄의 복사로 요약을 복사하면 녹음 문서의 회의 전체 요약 복사를 보낸다", async () => {
+      Object.defineProperty(navigator, "clipboard", {
+        value: { writeText: vi.fn().mockResolvedValue(undefined) },
+        configurable: true,
+      });
+      renderViewer();
+
+      fireEvent.click(await screen.findByRole("button", { name: "복사" }));
+
+      await waitFor(() =>
+        expect(getTrackedProperties("content_copied")).toEqual([
+          {
+            content: "meeting_summary",
+            screen: "recording_document",
+            recording_id: RECORDING_ID,
+            workspace_id: Number(WORKSPACE_ID),
+          },
+        ]),
+      );
+    });
+
+    it("복사에 실패하면 보내지 않는다", async () => {
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      const writeText = vi.fn().mockRejectedValue(new Error("거부"));
+      Object.defineProperty(navigator, "clipboard", {
+        value: { writeText },
+        configurable: true,
+      });
+      renderViewer();
+
+      fireEvent.click(await screen.findByRole("button", { name: "복사" }));
+
+      await waitFor(() => expect(writeText).toHaveBeenCalled());
+      expect(getTrackedProperties("content_copied")).toEqual([]);
+    });
   });
 
   describe("다시 시도 결과", () => {
@@ -1050,6 +1178,211 @@ describe("RecordingDocumentViewer의 사용 기록", () => {
             recording_id: RECORDING_ID,
             workspace_id: Number(WORKSPACE_ID),
           },
+        ]),
+      );
+    });
+  });
+
+  describe("녹음 다시 듣기", () => {
+    let isPaused = true;
+    let position = 0;
+
+    beforeEach(() => {
+      isPaused = true;
+      position = 0;
+      // jsdom은 음성을 재생하지 않아, 재생 · 일시정지 · 위치를 브라우저처럼 흉내 내요
+      vi.spyOn(HTMLMediaElement.prototype, "paused", "get").mockImplementation(
+        () => isPaused,
+      );
+      vi.spyOn(
+        HTMLMediaElement.prototype,
+        "currentTime",
+        "get",
+      ).mockImplementation(() => position);
+      vi.spyOn(
+        HTMLMediaElement.prototype,
+        "currentTime",
+        "set",
+      ).mockImplementation(function seek(this: HTMLMediaElement, seconds) {
+        position = seconds;
+        this.dispatchEvent(new Event("seeking"));
+        this.dispatchEvent(new Event("timeupdate"));
+      });
+      vi.spyOn(HTMLMediaElement.prototype, "play").mockImplementation(
+        function play(this: HTMLMediaElement) {
+          isPaused = false;
+          this.dispatchEvent(new Event("play"));
+          this.dispatchEvent(new Event("playing"));
+          return Promise.resolve();
+        },
+      );
+      vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(
+        function pause(this: HTMLMediaElement) {
+          isPaused = true;
+          this.dispatchEvent(new Event("pause"));
+        },
+      );
+      vi.spyOn(HTMLMediaElement.prototype, "load").mockImplementation(() => {});
+    });
+
+    const getAudio = () => {
+      const audio = document.querySelector("audio");
+      if (audio === null) throw new Error("재생기가 없어요");
+
+      return audio;
+    };
+
+    /** 재생 중인 음성이 그만큼 흘러간 것처럼, 브라우저처럼 0.25초마다 위치를 옮기고 시간 이벤트를 보내요 */
+    const playFor = (seconds: number) => {
+      for (let played = 0; played < seconds; played += 0.25) {
+        act(() => {
+          position += 0.25;
+          getAudio().dispatchEvent(new Event("timeupdate"));
+        });
+      }
+    };
+
+    const findPlayer = async () =>
+      within(await screen.findByRole("group", { name: "녹음 음성" }));
+
+    it("처음 재생되면 시작 위치를 한 번 보내고, 멈췄다 다시 재생해도 다시 보내지 않는다", async () => {
+      renderViewer();
+      const player = await findPlayer();
+
+      fireEvent.click(await player.findByRole("button", { name: "재생" }));
+      playFor(1);
+      fireEvent.click(player.getByRole("button", { name: "일시정지" }));
+      fireEvent.click(player.getByRole("button", { name: "재생" }));
+
+      expect(getTrackedProperties("recording_audio_played")).toEqual([
+        {
+          position_seconds: 0,
+          duration_seconds: DURATION_SECONDS,
+          recording_id: RECORDING_ID,
+          workspace_id: Number(WORKSPACE_ID),
+        },
+      ]);
+    });
+
+    it("들은 뒤 화면을 떠나면 실제로 들은 시간 · 가장 멀리 간 위치 · 위치 이동 횟수 · 끝까지 들었는지를 보낸다", async () => {
+      renderViewer();
+      const player = await findPlayer();
+
+      fireEvent.click(await player.findByRole("button", { name: "재생" }));
+      playFor(3);
+      fireEvent.change(player.getByRole("slider", { name: "재생 위치" }), {
+        target: { value: String((DURATION_SECONDS - 2) * 1000) },
+      });
+      playFor(2);
+      act(() => {
+        isPaused = true;
+        getAudio().dispatchEvent(new Event("ended"));
+      });
+      expect(getTrackedProperties("recording_audio_listened")).toEqual([]);
+
+      fireEvent.click((await findDocumentCardLinks())[0]);
+
+      expect(getTrackedProperties("recording_audio_listened")).toEqual([
+        {
+          listened_seconds: 5,
+          duration_seconds: DURATION_SECONDS,
+          max_position_seconds: DURATION_SECONDS,
+          seek_count: 1,
+          reached_end: true,
+          recording_id: RECORDING_ID,
+          workspace_id: Number(WORKSPACE_ID),
+        },
+      ]);
+    });
+
+    it("재생하지 않고 화면을 떠나면 들은 시간을 보내지 않는다", async () => {
+      renderViewer();
+      await (await findPlayer()).findByRole("button", { name: "재생" });
+
+      fireEvent.click((await findDocumentCardLinks())[0]);
+
+      expect(getTrackedProperties("recording_audio_played")).toEqual([]);
+      expect(getTrackedProperties("recording_audio_listened")).toEqual([]);
+    });
+
+    it("탭을 닫으면(pagehide) 들은 시간을 보내고, 그 뒤 화면을 떠나도 다시 보내지 않는다", async () => {
+      renderViewer();
+      const player = await findPlayer();
+
+      fireEvent.click(await player.findByRole("button", { name: "재생" }));
+      playFor(2);
+      act(() => {
+        window.dispatchEvent(new Event("pagehide"));
+      });
+      fireEvent.click((await findDocumentCardLinks())[0]);
+
+      expect(getTrackedProperties("recording_audio_listened")).toEqual([
+        expect.objectContaining({
+          listened_seconds: 2,
+          seek_count: 0,
+          reached_end: false,
+        }),
+      ]);
+    });
+
+    it.each([
+      { audioStatus: "NO_AUDIO", reason: "no_audio" },
+      { audioStatus: "PREPARING", reason: "preparing" },
+    ])(
+      "음성 상태가 $audioStatus면 들을 수 없는 까닭으로 $reason를 보낸다",
+      async ({ audioStatus, reason }) => {
+        mockServer.use(
+          http.get(AUDIO_PLAYBACK_REQUEST, () =>
+            HttpResponse.json({
+              ...recordingAudioPlaybackResponse,
+              audioStatus,
+              playbackUrl: null,
+              expiresAt: null,
+              contentType: null,
+            }),
+          ),
+        );
+        renderViewer();
+
+        await waitFor(() =>
+          expect(getTrackedProperties("recording_audio_unavailable")).toEqual([
+            {
+              reason,
+              recording_id: RECORDING_ID,
+              workspace_id: Number(WORKSPACE_ID),
+            },
+          ]),
+        );
+      },
+    );
+
+    it("재생 정보를 받지 못하면 load_failed를 보낸다", async () => {
+      mockServer.use(
+        http.get(
+          AUDIO_PLAYBACK_REQUEST,
+          () => new HttpResponse(null, { status: 500 }),
+        ),
+      );
+      renderViewer();
+
+      await waitFor(() =>
+        expect(getTrackedProperties("recording_audio_unavailable")).toEqual([
+          expect.objectContaining({ reason: "load_failed" }),
+        ]),
+      );
+    });
+
+    it("음성을 불러오지 못하면 media_error를 보낸다", async () => {
+      renderViewer();
+      await (await findPlayer()).findByRole("button", { name: "재생" });
+
+      act(() => {
+        getAudio().dispatchEvent(new Event("error"));
+      });
+
+      await waitFor(() =>
+        expect(getTrackedProperties("recording_audio_unavailable")).toEqual([
+          expect.objectContaining({ reason: "media_error" }),
         ]),
       );
     });
