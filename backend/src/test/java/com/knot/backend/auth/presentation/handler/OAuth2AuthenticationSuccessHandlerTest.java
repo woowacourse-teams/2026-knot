@@ -133,7 +133,7 @@ class OAuth2AuthenticationSuccessHandlerTest {
     }
 
     @Test
-    @DisplayName("처음 OAuth 인증한 사용자는 닉네임 쿠키를 받고 설정 화면으로 이동한다")
+    @DisplayName("처음 카카오로 인증한 사용자는 닉네임 쿠키를 받고 설정 화면으로 이동한다")
     void onAuthenticationSuccess_success_nicknameSetupRequired() throws Exception {
         // given
         AuthService authService = mock(AuthService.class);
@@ -146,7 +146,7 @@ class OAuth2AuthenticationSuccessHandlerTest {
                 new AuthCookieManager(jwtProperties)
         );
         OAuthUser oauthUser = OAuthUser.of(
-                OAuthProvider.GITHUB,
+                OAuthProvider.KAKAO,
                 "42",
                 null
         );
