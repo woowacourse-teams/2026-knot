@@ -1,4 +1,5 @@
 import { RELEASE_NOTES_RELAY_PATH } from "@api/fetch/relay/n";
+import { releaseNotesResponse } from "@api/mock/responses/releaseNote";
 import styled from "@emotion/styled";
 import FeedbackPanel from "@features/feedback/FeedbackPanel";
 import { ToastProvider } from "@provider/context/toastContext";
@@ -22,24 +23,33 @@ const Stage = styled.div`
   background-color: ${({ theme }) => theme.neutral[50]};
 `;
 
-/** 버튼을 눌러 메뉴를 열어요 */
+/** 버튼을 눌러 메뉴를 열어요. 안 읽은 소식이 있으면 버튼 이름 뒤에 안내가 붙어 앞부분으로 찾아요 */
 const openMenu = async (canvasElement: HTMLElement) => {
   await userEvent.click(
     await within(canvasElement).findByRole("button", {
-      name: "새 소식과 피드백",
+      name: /^새 소식과 피드백/,
     }),
   );
 };
 
-/** 메뉴를 열고 항목 하나를 골라요. 메뉴는 body에 그려져 화면 전체에서 찾아요 */
+/**
+ * 메뉴를 열고 항목 하나를 골라요. 메뉴는 body에 그려져 화면 전체에서 찾아요.
+ * 안 읽은 소식이 있으면 「새 소식」 이름 뒤에 NEW가 붙어 앞부분으로 찾아요
+ */
 const selectMenuItem = async (
   canvasElement: HTMLElement,
   name: "새 소식" | "피드백 보내기",
 ) => {
   await openMenu(canvasElement);
+  const menu = within(canvasElement.ownerDocument.body).getByRole("navigation");
   await userEvent.click(
-    within(canvasElement.ownerDocument.body).getByRole("button", { name }),
+    within(menu).getByRole("button", { name: new RegExp(`^${name}`) }),
   );
+};
+
+/** 맨 위 노트 하나만 아직 보지 않은 사용자로 둬요 */
+const leaveLatestNoteUnread = () => {
+  localStorage.setItem(LAST_SEEN_NOTE_ID_KEY, releaseNotesResponse[1].id);
 };
 
 /**
@@ -54,6 +64,12 @@ const selectMenuItem = async (
  * - 이 기기에서 새 소식을 한 번도 열지 않았으면 노트를 받은 뒤 메뉴 없이 새 소식 패널을 저절로 열어요. 녹음 중이거나 노트가 없거나 받지 못하면 열지 않아요.
  * - 새 소식 패널이 열리면(저절로든 메뉴에서 골라서든) 맨 위 노트를 읽음으로 남겨 다음부터는 저절로 열지 않아요.
  * - 휴대폰에서는 피드백을 사이드바에서 열어서, 버튼을 누르면 메뉴 없이 새 소식 패널을 바로 열어요.
+ *
+ * **안 읽은 새 소식**
+ * - 마지막으로 새 소식 패널을 연 뒤에 새 노트가 올라왔으면 버튼 오른쪽 위에 점을 켜고, 메뉴의 「새 소식」에 NEW를 붙여요. 화면 낭독기에는 「새 소식과 피드백, 읽지 않은 소식 있음」으로 알려요.
+ * - 새 소식 패널을 열면 점과 메뉴의 NEW를 꺼요. 메뉴만 열었다 닫으면 그대로 둬요.
+ * - 패널에서는 안 읽은 노트의 항목에 NEW를 붙여요. 패널을 연 동안은 보이고, 닫았다 다시 열면 사라져요.
+ * - 새 소식을 처음 확인하는 사용자는 모든 노트가 안 읽음이에요. 이 기기에 저장할 수 없거나 노트를 받지 못하면 아무것도 표시하지 않아요.
  *
  * **패널 내용**
  * - 노트는 main 머지마다 GitHub Actions의 Claude가 Notion 새 소식 DB에 쓰고, 프론트 Worker(`/relay/n`)가 그 DB에서 읽어 와요. 받지 못하면 빈 상태를 보여 줘요.
@@ -103,9 +119,9 @@ const meta = {
       </MemoryRouter>
     ),
   ],
-  // 새 소식을 연 기록과 적던 피드백은 브라우저에 남아 스토리끼리 이어지므로, 이미 본 사용자와 빈 피드백으로 시작해요
+  // 새 소식을 연 기록과 적던 피드백은 브라우저에 남아 스토리끼리 이어지므로, 맨 위 노트까지 본 사용자와 빈 피드백으로 시작해요
   beforeEach: () => {
-    localStorage.setItem(LAST_SEEN_NOTE_ID_KEY, "v0.1.0");
+    localStorage.setItem(LAST_SEEN_NOTE_ID_KEY, releaseNotesResponse[0].id);
     sessionStorage.clear();
   },
   render: (args) => (
@@ -135,7 +151,46 @@ export const Menu: Story = {
   },
 };
 
-/** 이 기기에서 새 소식을 처음 확인하는 사용자예요. 누르지 않아도 메뉴 없이 새 소식 패널이 열려 있어요 */
+/** 마지막으로 새 소식을 본 뒤 새 노트가 올라온 사용자예요. 버튼 오른쪽 위에 점이 켜져 있어요 */
+export const Unread: Story = {
+  beforeEach: leaveLatestNoteUnread,
+  parameters: {
+    design: {
+      type: "figma",
+      url: "https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=4696-29503",
+    },
+  },
+};
+
+/** 안 읽은 노트가 있을 때 버튼을 눌러 연 메뉴예요. 「새 소식」 끝에 NEW가 붙어 있어요 */
+export const UnreadMenu: Story = {
+  beforeEach: leaveLatestNoteUnread,
+  parameters: {
+    design: {
+      type: "figma",
+      url: "https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=4888-24607",
+    },
+  },
+  play: async ({ canvasElement }) => {
+    await openMenu(canvasElement);
+  },
+};
+
+/** 안 읽은 노트가 있을 때 연 새 소식 패널이에요. 새로 올라온 10월 20일 항목에만 NEW가 붙고, 버튼의 점은 꺼져요 */
+export const UnreadNoteList: Story = {
+  beforeEach: leaveLatestNoteUnread,
+  parameters: {
+    design: {
+      type: "figma",
+      url: "https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=4892-55099",
+    },
+  },
+  play: async ({ canvasElement }) => {
+    await selectMenuItem(canvasElement, "새 소식");
+  },
+};
+
+/** 이 기기에서 새 소식을 처음 확인하는 사용자예요. 누르지 않아도 메뉴 없이 새 소식 패널이 열려 있고, 모든 항목에 NEW가 붙어 있어요 */
 export const FirstVisit: Story = {
   beforeEach: () => {
     localStorage.removeItem(LAST_SEEN_NOTE_ID_KEY);
