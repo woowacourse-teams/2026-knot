@@ -1,7 +1,12 @@
 package com.knot.backend.auth.infrastructure.oauth;
 
+import static com.knot.backend.auth.infrastructure.oauth.UserInfoAttributes.optional;
+import static com.knot.backend.auth.infrastructure.oauth.UserInfoAttributes.required;
+
 import com.knot.backend.auth.domain.AuthErrorCode;
 import com.knot.backend.auth.domain.AuthException;
+import com.knot.backend.auth.domain.model.OAuthProvider;
+import com.knot.backend.auth.domain.model.OAuthUser;
 import java.util.Map;
 
 public record GithubUserAttributes(
@@ -37,23 +42,11 @@ public record GithubUserAttributes(
         }
     }
 
-    private static <T> T required(
-            Map<String, ?> attributes,
-            String name,
-            Class<T> type
-    ) {
-        T value = type.cast(attributes.get(name));
-        if (value == null) {
-            throw new AuthException(AuthErrorCode.INVALID_OAUTH_USER);
-        }
-        return value;
-    }
-
-    private static <T> T optional(
-            Map<String, ?> attributes,
-            String name,
-            Class<T> type
-    ) {
-        return type.cast(attributes.get(name));
+    public OAuthUser toOAuthUser() {
+        return OAuthUser.of(
+                OAuthProvider.GITHUB,
+                String.valueOf(id),
+                avatarUrl
+        );
     }
 }
