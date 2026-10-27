@@ -274,6 +274,40 @@ test.describe("녹음 다시 듣기", () => {
     await expect(player.getByRole("button", { name: "재생" })).toBeVisible();
   });
 
+  test("[STT-R50] 재생하는 동안 위치 막대의 점은 1초 단위로 앞서 가지 않고 지금 재생 위치에 있다", async ({
+    page,
+  }) => {
+    await page.goto(RECORDING_DOCUMENT_PATH);
+    const player = getPlayer(page);
+    const slider = player.getByRole("slider", { name: "재생 위치" });
+
+    await player.getByRole("button", { name: "재생" }).click();
+    await expect(
+      player.getByText(formatRecordingTime(1), { exact: true }),
+    ).toBeVisible({ timeout: 5000 });
+
+    // 막대 값과 실제 재생 위치를 같은 순간에 여러 번 읽어요.
+    // 1초 단위로 반올림되면 차이가 100ms 안에 드는 때는 정각 앞뒤 0.1초씩, 1초에 0.2초뿐이에요.
+    // 0.15초 넘게 띄워 5번 읽으면 그 안에 다 들어갈 수 없어서 적어도 한 번은 100ms를 넘어요.
+    // 100ms는 화면을 한 번 그리는 사이(약 16ms)의 차이는 받아 주고, 시간 이벤트 간격(약 0.25초)보다는 작은 값이에요
+    const sampleCount = 5;
+    const sampleIntervalMs = 150;
+    const allowedGapMs = 100;
+
+    for (let sample = 0; sample < sampleCount; sample += 1) {
+      const { sliderMillis, audioMillis } = await slider.evaluate((element) => {
+        const audio = document.querySelector("audio");
+        if (audio === null) throw new Error("audio 요소가 없어요");
+        return {
+          sliderMillis: Number((element as HTMLInputElement).value),
+          audioMillis: audio.currentTime * 1000,
+        };
+      });
+      expect(Math.abs(sliderMillis - audioMillis)).toBeLessThan(allowedGapMs);
+      await page.waitForTimeout(sampleIntervalMs);
+    }
+  });
+
   test("[STT-R50] 위치 막대를 옮기면 지금 위치가 바뀐다", async ({ page }) => {
     await page.goto(RECORDING_DOCUMENT_PATH);
     const slider = getPlayer(page).getByRole("slider", { name: "재생 위치" });

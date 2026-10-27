@@ -19,7 +19,7 @@ const isExpired = (expiresAt: string | null) =>
  * 녹음 음성 플레이어의 `<audio>`를 다루는 훅. 재생 · 일시정지 · 위치 이동과 지금 위치를 맡아요(STT-R50).
  *
  * 화면은 `audioRef`를 붙인 `<audio>`만 그리면 되고, 버튼과 막대는 돌려준 값과 함수로 그려요.
- * 지금 위치는 `<audio>`의 시간 이벤트로 밀리초 단위로 맞춰요.
+ * 지금 위치는 `<audio>`의 시간 이벤트로 밀리초 단위로 맞추고, 재생하는 동안에는 화면을 그릴 때마다 읽어 막대가 끊기지 않고 움직여요.
  *
  * 서명 URL은 만료 시각이 있어요. 만료된 URL로 재생을 누르면 먼저 새 URL을 받고, 새 음성을 불러오면 멈췄던 위치에서 이어서 재생해요.
  * 음성을 불러오지 못하면(`<audio>`의 error) `hasLoadError`가 `true`예요. `retryLoad`는 새 URL을 받아 같은 위치부터 다시 불러와요.
@@ -77,6 +77,19 @@ export const useAudioPlayback = ({
       audio.removeEventListener("loadedmetadata", handleLoadedMetadata);
     };
   }, []);
+
+  // 시간 이벤트는 0.25초쯤마다 와서 그것만 따르면 막대가 뚝뚝 끊겨 움직여요
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!isPlaying || audio === null) return;
+
+    let frameId = requestAnimationFrame(function followPlayback() {
+      setCurrentMillis(audio.currentTime * 1000);
+      frameId = requestAnimationFrame(followPlayback);
+    });
+
+    return () => cancelAnimationFrame(frameId);
+  }, [isPlaying]);
 
   // 새 URL을 받은 뒤 그 음성을 처음부터 다시 불러와요. 이어서 재생할 위치는 불러온 뒤(loadedmetadata) 맞춰요
   const reloadWithNewUrl = async ({ shouldPlay }: { shouldPlay: boolean }) => {
