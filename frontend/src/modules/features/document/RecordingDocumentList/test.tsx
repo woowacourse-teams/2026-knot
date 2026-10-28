@@ -551,6 +551,26 @@ describe("RecordingDocumentList", () => {
   });
 
   describe("신규 목록 경로 미지원 (DOC-R24 · ERR-QA-005 · ERR-QA-006)", () => {
+    it.each([403, 404])("미지원 후 실제 접근 오류 %s로 이동을 기다려도 이전 링크를 다시 열지 않는다", async (status) => {
+      const { queryClient } = renderRecordingDocumentList();
+      await findGroup(expected.items[0].title);
+      mockServer.use(http.get(DOCUMENT_RECORDINGS_REQUEST, () => HttpResponse.json(
+        { code: "REQUEST_PATH_NOT_FOUND" }, { status: 404 },
+      )));
+      await act(async () => { await queryClient.invalidateQueries(); });
+      await screen.findByText("업데이트 준비 중");
+      mockServer.use(
+        http.get(DOCUMENT_RECORDINGS_REQUEST, () => HttpResponse.json(
+          { code: status === 403 ? "WORKSPACE_ACCESS_DENIED" : "WORKSPACE_NOT_FOUND" }, { status },
+        )),
+        http.get("*/api/v1/workspaces", async () => { await delay("infinite"); return HttpResponse.json({}); }),
+      );
+      await act(async () => { await queryClient.invalidateQueries(); });
+      expect(await screen.findByRole("status", { name: LOADING_LABEL })).toBeInTheDocument();
+      expect(screen.queryByRole("link")).not.toBeInTheDocument();
+      expect(screen.queryByText("업데이트 준비 중")).not.toBeInTheDocument();
+    });
+
     it("다음 페이지가 미지원이면 캐시된 첫 페이지의 신규 링크도 제한한다", async () => {
       const { firstPage } = twoPages();
       mockServer.use(http.get(DOCUMENT_RECORDINGS_REQUEST, ({ request }) =>

@@ -90,6 +90,8 @@ export default function RecordingDocumentList() {
     return <UpdatePreparingNotice onCheck={handleRetry} />;
   }
 
+  if (isRedirecting) return <RecordingDocumentListSkeleton />;
+
   if (shouldShowLoadFailed) {
     return <RecordingDocumentListLoadFailed onRetry={handleRetry} />;
   }

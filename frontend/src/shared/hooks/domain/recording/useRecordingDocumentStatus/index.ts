@@ -82,6 +82,7 @@ const useRecordingDocumentStatus = ({
   const getStatus = () => {
     if (isUnsupported) return "unsupported" as const;
     if (isLoadFailed) return "loadFailed" as const;
+    if (isUnavailable) return "loading" as const;
     if (recordingDocument === undefined) return "loading" as const;
 
     switch (recordingDocument.processingStatus) {
