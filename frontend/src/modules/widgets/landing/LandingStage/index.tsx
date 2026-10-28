@@ -18,7 +18,7 @@ import StartScene from "./ui/StartScene";
  *
  * 스크롤 한 번에 한 장면씩 넘어가며 소개 → 문제 → 녹음 → 정리 → 확인 → 탐색 → 시작 순서로 보여 줘요.
  * 입자 수천 개가 장면마다 워드마크, 말 조각, 파형, 문서 카드, 연결망, 새 심볼로 모양을 바꾸고,
- * 포인터를 가져가면 비켜나고 누르면 물결이 퍼져요. 소개와 시작 장면의 버튼으로 바로 GitHub 로그인을 시작해요.
+ * 포인터를 가져가면 비켜나고 누르면 물결이 퍼져요. 소개와 시작 장면의 「시작하기」로 로그인 화면에 가요.
  */
 export default function LandingStage() {
   const { refs, scene, isSettled, recordingSeconds, search, questionIndex, labels, selectQuestion, goToScene } =
