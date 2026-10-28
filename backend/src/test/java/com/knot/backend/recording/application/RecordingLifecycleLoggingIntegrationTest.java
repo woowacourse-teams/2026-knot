@@ -156,7 +156,7 @@ class RecordingLifecycleLoggingIntegrationTest {
                 .param(
                         "oldTime",
                         Instant.now()
-                                .minusSeconds(60)
+                                .minusSeconds(35 * 60)
                                 .atOffset(java.time.ZoneOffset.UTC)
                 )
                 .param(

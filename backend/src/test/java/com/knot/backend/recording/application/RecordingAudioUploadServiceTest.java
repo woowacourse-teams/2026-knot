@@ -1,5 +1,7 @@
 package com.knot.backend.recording.application;
 
+import com.knot.backend.testsupport.RecordingConnectionPolicyFixture;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowable;
 import static org.mockito.ArgumentMatchers.any;
@@ -195,7 +197,10 @@ class RecordingAudioUploadServiceTest {
     void issue_failure_notStarter() {
         // given
         RecordingSession session = session(MEMBER_ID + 1);
-        session.end(STARTED_AT.plusSeconds(60));
+        session.end(
+                STARTED_AT.plusSeconds(60),
+                RecordingConnectionPolicyFixture.DEFAULT
+        );
         when(recordingSessionRepository.findByIdForUpdate(RECORDING_ID)).thenReturn(Optional.of(session));
 
         // when
@@ -250,7 +255,10 @@ class RecordingAudioUploadServiceTest {
 
     private RecordingSession endedSession() {
         RecordingSession session = session(MEMBER_ID);
-        session.end(STARTED_AT.plusSeconds(60));
+        session.end(
+                STARTED_AT.plusSeconds(60),
+                RecordingConnectionPolicyFixture.DEFAULT
+        );
         return session;
     }
 

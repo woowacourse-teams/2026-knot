@@ -1,5 +1,7 @@
 package com.knot.backend.recording.application;
 
+import com.knot.backend.testsupport.RecordingConnectionPolicyFixture;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowable;
 import static org.mockito.ArgumentMatchers.any;
@@ -70,6 +72,7 @@ class RecordingAudioChunkTransactionTest {
                 sessions,
                 streams,
                 chunks,
+                RecordingConnectionPolicyFixture.DEFAULT,
                 Clock.fixed(
                         NOW,
                         ZoneOffset.UTC
@@ -163,7 +166,8 @@ class RecordingAudioChunkTransactionTest {
                 UUID.randomUUID(),
                 CONTROL.tabId(),
                 "0".repeat(64),
-                NOW.minusSeconds(40),
+                NOW.minus(RecordingConnectionPolicyFixture.GRACE)
+                        .minusSeconds(10),
                 RecordingAudioMode.PCM16_CHUNKS_V1
         );
         controlled();
@@ -188,7 +192,8 @@ class RecordingAudioChunkTransactionTest {
         // then
         assertThat(thrown).isInstanceOf(RecordingAudioCaptureExpiredException.class);
         assertThat(session.getStatus()).isEqualTo(RecordingStatus.ENDED);
-        assertThat(session.getEndedAt()).isEqualTo(NOW.minusSeconds(10));
+        assertThat(session.getEndedAt()).isEqualTo(session.getStartedAt());
+        assertThat(session.getLastSeenAt()).isEqualTo(session.getStartedAt());
         verify(sessions).save(session);
         verify(
                 chunks,
@@ -363,7 +368,10 @@ class RecordingAudioChunkTransactionTest {
                 stored(),
                 NOW
         );
-        session.end(NOW);
+        session.end(
+                NOW,
+                RecordingConnectionPolicyFixture.DEFAULT
+        );
         stream.freeze();
         when(
                 chunks.findByRecordingIdAndSequence(

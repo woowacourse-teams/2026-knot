@@ -1,8 +1,10 @@
 package com.knot.backend.recording.application;
 
 import com.knot.backend.global.logging.ServerErrorLogger;
+import com.knot.backend.recording.domain.model.RecordingConnectionPolicy;
 import com.knot.backend.recording.domain.repository.RecordingSessionRepository;
 import java.time.Clock;
+import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
@@ -17,12 +19,15 @@ public class RecordingConnectionExpiryService {
 
     private final RecordingSessionRepository recordingSessionRepository;
     private final RecordingConnectionExpiryTransaction recordingConnectionExpiryTransaction;
+    private final RecordingConnectionPolicy connectionPolicy;
     private final Clock clock;
 
     public int expireDue(int batchSize) {
+        Instant now = clock.instant()
+                .truncatedTo(ChronoUnit.MICROS);
         List<Long> candidateIds = recordingSessionRepository.findActiveIdsDueAt(
-                clock.instant()
-                        .truncatedTo(ChronoUnit.MICROS),
+                now,
+                connectionPolicy.expiredLastSeenThreshold(now),
                 batchSize
         );
         int expiredCount = 0;

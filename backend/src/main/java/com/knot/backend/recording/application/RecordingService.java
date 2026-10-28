@@ -28,6 +28,7 @@ import com.knot.backend.recording.application.dto.result.RecordingResumeResult;
 import com.knot.backend.recording.application.dto.result.RecordingStartResult;
 import com.knot.backend.recording.domain.RecordingErrorCode;
 import com.knot.backend.recording.domain.RecordingException;
+import com.knot.backend.recording.domain.model.RecordingConnectionPolicy;
 import com.knot.backend.recording.domain.model.RecordingSession;
 import com.knot.backend.recording.domain.model.TranscriptionWindowShape;
 import com.knot.backend.recording.domain.model.RecordingStatus;
@@ -59,6 +60,7 @@ public class RecordingService {
     private final RecordingAudioCleanupRepository audioCleanup;
     private final RecordingTranscriptionFailure transcriptionFailure;
     private final DocumentGenerationProgressService documentProgress;
+    private final RecordingConnectionPolicy connectionPolicy;
 
     @Transactional
     public RecordingStartResult start(
@@ -187,7 +189,10 @@ public class RecordingService {
                         session,
                         now
                 );
-                session.pause(now);
+                session.pause(
+                        now,
+                        connectionPolicy
+                );
             } finally {
                 logAutoEnded(
                         session,
@@ -227,7 +232,10 @@ public class RecordingService {
                         session,
                         now
                 );
-                session.resume(now);
+                session.resume(
+                        now,
+                        connectionPolicy
+                );
             } finally {
                 logAutoEnded(
                         session,
@@ -474,7 +482,10 @@ public class RecordingService {
                 seal.lastSequence(),
                 seal.totalFrameCount()
         );
-        session.end(endedAt);
+        session.end(
+                endedAt,
+                connectionPolicy
+        );
         stream.seal(
                 RecordingAudioSealKind.NORMAL,
                 session.getEndedAt()
@@ -511,7 +522,10 @@ public class RecordingService {
             boolean expired
     ) {
         if (seal == null) {
-            session.end(endedAt);
+            session.end(
+                    endedAt,
+                    connectionPolicy
+            );
             audioSealing.sealEnded(session);
             return;
         }
@@ -558,7 +572,10 @@ public class RecordingService {
             RecordingSession session,
             Instant now
     ) {
-        boolean expired = session.expireIfDue(now);
+        boolean expired = session.expireIfDue(
+                now,
+                connectionPolicy
+        );
         audioSealing.sealEnded(session);
         return expired;
     }
@@ -578,7 +595,10 @@ public class RecordingService {
         );
         Instant now = now();
         RecordingStatus previous = session.getStatus();
-        session.recordHeartbeat(now);
+        session.recordAlive(
+                now,
+                connectionPolicy
+        );
         audioSealing.sealEnded(session);
         logAutoEnded(
                 session,
@@ -586,7 +606,8 @@ public class RecordingService {
         );
         return RecordingHeartbeatResult.of(
                 recordingSessionRepository.save(session),
-                now
+                now,
+                connectionPolicy
         );
     }
 
@@ -603,7 +624,10 @@ public class RecordingService {
                 command.audioMode()
         );
         RecordingStatus previous = session.getStatus();
-        if (session.expireIfDue(now())) {
+        if (session.expireIfDue(
+                now(),
+                connectionPolicy
+        )) {
             audioSealing.sealEnded(session);
             recordingSessionRepository.save(session);
             logAutoEnded(
@@ -621,7 +645,10 @@ public class RecordingService {
         Instant now = now();
         for (RecordingSession active : recordingSessionRepository.findAllActiveByMemberIdForUpdate(memberId)) {
             RecordingStatus previous = active.getStatus();
-            active.releaseForNewRecording(now);
+            active.releaseForNewRecording(
+                    now,
+                    connectionPolicy
+            );
             audioSealing.sealEnded(active);
             recordingSessionRepository.save(active);
             logAutoEnded(

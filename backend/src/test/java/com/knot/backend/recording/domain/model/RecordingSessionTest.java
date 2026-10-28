@@ -5,6 +5,7 @@ import com.knot.backend.recording.domain.RecordingException;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowable;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
@@ -17,6 +18,12 @@ class RecordingSessionTest {
     private static final UUID TAB_ID = UUID.fromString("22222222-2222-2222-2222-222222222222");
     private static final String CONTROL_TOKEN_HASH = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
     private static final Instant STARTED_AT = Instant.parse("2026-10-01T00:00:00Z");
+    private static final Duration GRACE = Duration.ofMinutes(30);
+    private static final Duration DISCONNECTED_AFTER = Duration.ofSeconds(30);
+    private static final RecordingConnectionPolicy CONNECTION_POLICY = new RecordingConnectionPolicy(
+            GRACE,
+            DISCONNECTED_AFTER
+    );
 
     @DisplayName("녹음을 시작하면 RECORDING 상태와 시작 시각을 저장한다")
     @Test
@@ -105,7 +112,10 @@ class RecordingSessionTest {
         RecordingSession recordingSession = startRecording();
 
         // when
-        recordingSession.pause(Instant.parse("2026-10-01T00:00:10Z"));
+        recordingSession.pause(
+                Instant.parse("2026-10-01T00:00:10Z"),
+                CONNECTION_POLICY
+        );
 
         // then
         assertThat(recordingSession.getStatus()).isEqualTo(RecordingStatus.PAUSED);
@@ -119,10 +129,16 @@ class RecordingSessionTest {
     void resume_success() {
         // given
         RecordingSession recordingSession = startRecording();
-        recordingSession.pause(Instant.parse("2026-10-01T00:00:10Z"));
+        recordingSession.pause(
+                Instant.parse("2026-10-01T00:00:10Z"),
+                CONNECTION_POLICY
+        );
 
         // when
-        recordingSession.resume(Instant.parse("2026-10-01T00:00:30Z"));
+        recordingSession.resume(
+                Instant.parse("2026-10-01T00:00:30Z"),
+                CONNECTION_POLICY
+        );
 
         // then
         assertThat(recordingSession.getStatus()).isEqualTo(RecordingStatus.RECORDING);
@@ -135,11 +151,20 @@ class RecordingSessionTest {
     void end_success() {
         // given
         RecordingSession recordingSession = startRecording();
-        recordingSession.pause(Instant.parse("2026-10-01T00:00:10Z"));
-        recordingSession.resume(Instant.parse("2026-10-01T00:00:20Z"));
+        recordingSession.pause(
+                Instant.parse("2026-10-01T00:00:10Z"),
+                CONNECTION_POLICY
+        );
+        recordingSession.resume(
+                Instant.parse("2026-10-01T00:00:20Z"),
+                CONNECTION_POLICY
+        );
 
         // when
-        recordingSession.end(Instant.parse("2026-10-01T00:00:25Z"));
+        recordingSession.end(
+                Instant.parse("2026-10-01T00:00:25Z"),
+                CONNECTION_POLICY
+        );
 
         // then
         assertThat(recordingSession.getStatus()).isEqualTo(RecordingStatus.ENDED);
@@ -152,10 +177,16 @@ class RecordingSessionTest {
     void end_success_repeated() {
         // given
         RecordingSession recordingSession = startRecording();
-        recordingSession.end(Instant.parse("2026-10-01T00:00:10Z"));
+        recordingSession.end(
+                Instant.parse("2026-10-01T00:00:10Z"),
+                CONNECTION_POLICY
+        );
 
         // when
-        recordingSession.end(Instant.parse("2026-09-30T23:59:00Z"));
+        recordingSession.end(
+                Instant.parse("2026-09-30T23:59:00Z"),
+                CONNECTION_POLICY
+        );
 
         // then
         assertThat(recordingSession.getEndedAt()).isEqualTo(Instant.parse("2026-10-01T00:00:10Z"));
@@ -167,10 +198,18 @@ class RecordingSessionTest {
     void pause_failure_alreadyEnded() {
         // given
         RecordingSession recordingSession = startRecording();
-        recordingSession.end(Instant.parse("2026-10-01T00:00:10Z"));
+        recordingSession.end(
+                Instant.parse("2026-10-01T00:00:10Z"),
+                CONNECTION_POLICY
+        );
 
         // when
-        Throwable thrown = catchThrowable(() -> recordingSession.pause(Instant.parse("2026-10-01T00:00:11Z")));
+        Throwable thrown = catchThrowable(
+                () -> recordingSession.pause(
+                        Instant.parse("2026-10-01T00:00:11Z"),
+                        CONNECTION_POLICY
+                )
+        );
 
         // then
         assertThat(thrown).isInstanceOf(RecordingException.class)
@@ -224,10 +263,18 @@ class RecordingSessionTest {
     void resume_failure_alreadyEnded() {
         // given
         RecordingSession session = startRecording();
-        session.end(STARTED_AT.plusSeconds(10));
+        session.end(
+                STARTED_AT.plusSeconds(10),
+                CONNECTION_POLICY
+        );
 
         // when
-        Throwable failure = catchThrowable(() -> session.resume(STARTED_AT.plusSeconds(20)));
+        Throwable failure = catchThrowable(
+                () -> session.resume(
+                        STARTED_AT.plusSeconds(20),
+                        CONNECTION_POLICY
+                )
+        );
 
         // then
         assertThat(failure).isInstanceOf(RecordingException.class)
@@ -242,10 +289,16 @@ class RecordingSessionTest {
     void end_success_pausedSession() {
         // given
         RecordingSession session = startRecording();
-        session.pause(STARTED_AT.plusSeconds(10));
+        session.pause(
+                STARTED_AT.plusSeconds(10),
+                CONNECTION_POLICY
+        );
 
         // when
-        session.end(STARTED_AT.plusSeconds(30));
+        session.end(
+                STARTED_AT.plusSeconds(30),
+                CONNECTION_POLICY
+        );
 
         // then
         assertThat(session.getAccumulatedRecordingMillis()).isEqualTo(10_000);
@@ -257,10 +310,16 @@ class RecordingSessionTest {
     void pause_success_repeated() {
         // given
         RecordingSession session = startRecording();
-        session.pause(STARTED_AT.plusSeconds(10));
+        session.pause(
+                STARTED_AT.plusSeconds(10),
+                CONNECTION_POLICY
+        );
 
         // when
-        session.pause(STARTED_AT.plusSeconds(30));
+        session.pause(
+                STARTED_AT.plusSeconds(30),
+                CONNECTION_POLICY
+        );
 
         // then
         assertThat(session.getAccumulatedRecordingMillis()).isEqualTo(10_000);
@@ -273,10 +332,18 @@ class RecordingSessionTest {
     void resume_failure_timeBeforePause() {
         // given
         RecordingSession session = startRecording();
-        session.pause(STARTED_AT.plusSeconds(10));
+        session.pause(
+                STARTED_AT.plusSeconds(10),
+                CONNECTION_POLICY
+        );
 
         // when
-        Throwable failure = catchThrowable(() -> session.resume(STARTED_AT.plusSeconds(5)));
+        Throwable failure = catchThrowable(
+                () -> session.resume(
+                        STARTED_AT.plusSeconds(5),
+                        CONNECTION_POLICY
+                )
+        );
 
         // then
         assertThat(failure).isInstanceOf(RecordingException.class)
@@ -331,7 +398,10 @@ class RecordingSessionTest {
     void discard_success_paused() {
         // given
         RecordingSession session = startRecording();
-        session.pause(STARTED_AT.plusSeconds(10));
+        session.pause(
+                STARTED_AT.plusSeconds(10),
+                CONNECTION_POLICY
+        );
 
         // when
         session.discard(STARTED_AT.plusSeconds(40));
@@ -346,7 +416,10 @@ class RecordingSessionTest {
     void discard_success_timeBeforeLastSeenUsesLastSeen() {
         // given
         RecordingSession session = startRecording();
-        session.pause(STARTED_AT.plusSeconds(10));
+        session.pause(
+                STARTED_AT.plusSeconds(10),
+                CONNECTION_POLICY
+        );
 
         // when
         session.discard(STARTED_AT.plusSeconds(8));
@@ -393,7 +466,10 @@ class RecordingSessionTest {
     void discard_failure_alreadyEnded() {
         // given
         RecordingSession session = startRecording();
-        session.end(STARTED_AT.plusSeconds(10));
+        session.end(
+                STARTED_AT.plusSeconds(10),
+                CONNECTION_POLICY
+        );
 
         // when
         Throwable failure = catchThrowable(() -> session.discard(STARTED_AT.plusSeconds(20)));
@@ -413,7 +489,12 @@ class RecordingSessionTest {
         session.discard(STARTED_AT.plusSeconds(10));
 
         // when
-        Throwable failure = catchThrowable(() -> session.end(STARTED_AT.plusSeconds(20)));
+        Throwable failure = catchThrowable(
+                () -> session.end(
+                        STARTED_AT.plusSeconds(20),
+                        CONNECTION_POLICY
+                )
+        );
 
         // then
         assertThat(failure).isInstanceOf(RecordingException.class)
@@ -430,7 +511,12 @@ class RecordingSessionTest {
         session.discard(STARTED_AT.plusSeconds(10));
 
         // when
-        Throwable failure = catchThrowable(() -> session.resume(STARTED_AT.plusSeconds(20)));
+        Throwable failure = catchThrowable(
+                () -> session.resume(
+                        STARTED_AT.plusSeconds(20),
+                        CONNECTION_POLICY
+                )
+        );
 
         // then
         assertThat(failure).isInstanceOf(RecordingException.class)
@@ -504,7 +590,10 @@ class RecordingSessionTest {
         RecordingSession session = startRecording();
 
         // when
-        session.pause(STARTED_AT.plusSeconds(10));
+        session.pause(
+                STARTED_AT.plusSeconds(10),
+                CONNECTION_POLICY
+        );
 
         // then
         assertThat(session.getPausedAt()).isEqualTo(STARTED_AT.plusSeconds(10));
@@ -577,7 +666,10 @@ class RecordingSessionTest {
                 session,
                 STARTED_AT.plusSeconds(30 * 60)
         );
-        session.pause(STARTED_AT.plusSeconds(30 * 60));
+        session.pause(
+                STARTED_AT.plusSeconds(30 * 60),
+                CONNECTION_POLICY
+        );
         Instant resumedAt = STARTED_AT.plusSeconds(120 * 60);
         keepAlive(
                 session,
@@ -585,7 +677,10 @@ class RecordingSessionTest {
         );
 
         // when
-        session.resume(resumedAt);
+        session.resume(
+                resumedAt,
+                CONNECTION_POLICY
+        );
 
         // then
         assertThat(session.getStatus()).isEqualTo(RecordingStatus.RECORDING);
@@ -600,11 +695,20 @@ class RecordingSessionTest {
     void resume_success_repeatedKeepsResumedAt() {
         // given
         RecordingSession session = startRecording();
-        session.pause(STARTED_AT.plusSeconds(10));
-        session.resume(STARTED_AT.plusSeconds(20));
+        session.pause(
+                STARTED_AT.plusSeconds(10),
+                CONNECTION_POLICY
+        );
+        session.resume(
+                STARTED_AT.plusSeconds(20),
+                CONNECTION_POLICY
+        );
 
         // when
-        session.resume(STARTED_AT.plusSeconds(40));
+        session.resume(
+                STARTED_AT.plusSeconds(40),
+                CONNECTION_POLICY
+        );
 
         // then
         assertThat(session.getResumedAt()).isEqualTo(STARTED_AT.plusSeconds(20));
@@ -618,7 +722,10 @@ class RecordingSessionTest {
         RecordingSession session = startRecording();
 
         // when
-        session.pause(STARTED_AT.plusSeconds(10));
+        session.pause(
+                STARTED_AT.plusSeconds(10),
+                CONNECTION_POLICY
+        );
 
         // then
         assertThat(session.getResumedAt()).isNull();
@@ -629,7 +736,10 @@ class RecordingSessionTest {
     void validateEnded_success_endedAudioUpload() {
         // given
         RecordingSession session = startRecording();
-        session.end(STARTED_AT.plusSeconds(10));
+        session.end(
+                STARTED_AT.plusSeconds(10),
+                CONNECTION_POLICY
+        );
 
         // when
         Throwable failure = catchThrowable(session::validateEnded);
@@ -643,7 +753,10 @@ class RecordingSessionTest {
     void validateEnded_failure_notEndedAudioUpload() {
         // given
         RecordingSession session = startRecording();
-        session.pause(STARTED_AT.plusSeconds(10));
+        session.pause(
+                STARTED_AT.plusSeconds(10),
+                CONNECTION_POLICY
+        );
 
         // when
         Throwable failure = catchThrowable(session::validateEnded);
@@ -671,69 +784,139 @@ class RecordingSessionTest {
     }
 
     @Test
-    @DisplayName("마지막 신호 후 29.999초에는 만료하지 않고 녹음을 유지한다")
-    void expireIfDue_success_keepsBeforeTimeout() {
+    @DisplayName("마지막 생존 시각 뒤 30분 직전에는 만료하지 않고 녹음을 유지한다")
+    void expireIfDue_success_keepsBeforeGrace() {
         // given
         RecordingSession session = startRecording();
+        Instant justBeforeGrace = STARTED_AT.plus(GRACE)
+                .minusMillis(1);
 
         // when
-        boolean expired = session.expireIfDue(STARTED_AT.plusMillis(29_999));
+        boolean expired = session.expireIfDue(
+                justBeforeGrace,
+                CONNECTION_POLICY
+        );
 
         // then
         assertThat(expired).isFalse();
         assertThat(session.getStatus()).isEqualTo(RecordingStatus.RECORDING);
-        assertThat(session.getConnectionExpiresAt()).isEqualTo(STARTED_AT.plusSeconds(30));
+        assertThat(session.connectionExpiresAt(CONNECTION_POLICY)).isEqualTo(STARTED_AT.plus(GRACE));
     }
 
     @Test
-    @DisplayName("마지막 신호 후 정확히 30초가 되면 마지막 신호 시각은 두고 30초 뒤를 종료 시각으로 확정한다")
-    void expireIfDue_success_endsAtTimeoutAndKeepsLastSeen() {
+    @DisplayName("마지막 생존 시각 뒤 정확히 30분이 되면 마지막 생존 시각을 끝난 시각으로 확정하고 기다린 30분은 녹음 시간에 넣지 않는다")
+    void expireIfDue_success_endsAtLastSeen() {
         // given
         RecordingSession session = startRecording();
-        session.recordHeartbeat(STARTED_AT.plusSeconds(10));
+        Instant lastSeenAt = STARTED_AT.plusSeconds(10);
+        session.recordAlive(
+                lastSeenAt,
+                CONNECTION_POLICY
+        );
 
         // when
-        boolean expired = session.expireIfDue(STARTED_AT.plusSeconds(40));
+        boolean expired = session.expireIfDue(
+                lastSeenAt.plus(GRACE),
+                CONNECTION_POLICY
+        );
 
         // then
         assertThat(expired).isTrue();
         assertThat(session.getStatus()).isEqualTo(RecordingStatus.ENDED);
         assertThat(session.getEndReason()).isEqualTo(RecordingEndReason.CONNECTION_EXPIRED);
-        assertThat(session.getEndedAt()).isEqualTo(STARTED_AT.plusSeconds(40));
-        assertThat(session.getLastSeenAt()).isEqualTo(STARTED_AT.plusSeconds(10));
-        assertThat(session.getAccumulatedRecordingMillis()).isEqualTo(40_000L);
-        assertThat(session.getConnectionExpiresAt()).isNull();
+        assertThat(session.getEndedAt()).isEqualTo(lastSeenAt);
+        assertThat(session.getLastSeenAt()).isEqualTo(lastSeenAt);
+        assertThat(session.getAccumulatedRecordingMillis()).isEqualTo(10_000L);
+        assertThat(session.connectionExpiresAt(CONNECTION_POLICY)).isNull();
     }
 
     @Test
-    @DisplayName("요청 처리가 늦어도 연결 만료 종료 시각과 누적 시간은 만료 시점까지만 센다")
+    @DisplayName("요청 처리가 늦어도 연결 만료 끝난 시각과 누적 시간은 마지막 생존 시각까지만 센다")
     void expireIfDue_success_doesNotCountDelay() {
         // given
         RecordingSession session = startRecording();
 
         // when
-        session.expireIfDue(STARTED_AT.plusSeconds(3_600));
+        session.expireIfDue(
+                STARTED_AT.plusSeconds(36_000),
+                CONNECTION_POLICY
+        );
 
         // then
-        assertThat(session.getEndedAt()).isEqualTo(STARTED_AT.plusSeconds(30));
-        assertThat(session.getAccumulatedRecordingMillis()).isEqualTo(30_000L);
+        assertThat(session.getEndedAt()).isEqualTo(STARTED_AT);
+        assertThat(session.getAccumulatedRecordingMillis()).isZero();
     }
 
     @Test
-    @DisplayName("일시정지 중 연결이 만료되면 일시정지 구간을 누적하지 않는다")
+    @DisplayName("일시정지 녹음도 30분 유예가 지나면 일시정지 시각으로 끝나고 일시정지 구간을 누적하지 않는다")
     void expireIfDue_success_pausedKeepsAccumulatedTime() {
         // given
         RecordingSession session = startRecording();
-        session.pause(STARTED_AT.plusSeconds(20));
+        Instant pausedAt = STARTED_AT.plusSeconds(20);
+        session.pause(
+                pausedAt,
+                CONNECTION_POLICY
+        );
 
         // when
-        session.expireIfDue(STARTED_AT.plusSeconds(200));
+        session.expireIfDue(
+                pausedAt.plus(GRACE),
+                CONNECTION_POLICY
+        );
 
         // then
         assertThat(session.getStatus()).isEqualTo(RecordingStatus.ENDED);
-        assertThat(session.getEndedAt()).isEqualTo(STARTED_AT.plusSeconds(50));
+        assertThat(session.getEndReason()).isEqualTo(RecordingEndReason.CONNECTION_EXPIRED);
+        assertThat(session.getEndedAt()).isEqualTo(pausedAt);
         assertThat(session.getAccumulatedRecordingMillis()).isEqualTo(20_000L);
-        assertThat(session.getPausedAt()).isEqualTo(STARTED_AT.plusSeconds(20));
+        assertThat(session.getPausedAt()).isEqualTo(pausedAt);
+    }
+
+    @Test
+    @DisplayName("일시정지 녹음은 30분 유예 직전까지 끝나지 않는다")
+    void expireIfDue_success_pausedKeepsBeforeGrace() {
+        // given
+        RecordingSession session = startRecording();
+        Instant pausedAt = STARTED_AT.plusSeconds(20);
+        session.pause(
+                pausedAt,
+                CONNECTION_POLICY
+        );
+        Instant justBeforeGrace = pausedAt.plus(GRACE)
+                .minusMillis(1);
+
+        // when
+        boolean expired = session.expireIfDue(
+                justBeforeGrace,
+                CONNECTION_POLICY
+        );
+
+        // then
+        assertThat(expired).isFalse();
+        assertThat(session.getStatus()).isEqualTo(RecordingStatus.PAUSED);
+    }
+
+    @Test
+    @DisplayName("유예 안에서 연결이 돌아오면 끊긴 시간도 녹음 시간에 들어간다")
+    void recordAlive_success_countsDisconnectedTime() {
+        // given
+        RecordingSession session = startRecording();
+        Instant returnedAt = STARTED_AT.plus(GRACE)
+                .minusSeconds(1);
+
+        // when
+        session.recordAlive(
+                returnedAt,
+                CONNECTION_POLICY
+        );
+
+        // then
+        assertThat(session.getStatus()).isEqualTo(RecordingStatus.RECORDING);
+        assertThat(session.getLastSeenAt()).isEqualTo(returnedAt);
+        assertThat(session.getRecordingDurationMillis(returnedAt)).isEqualTo(
+                GRACE.minusSeconds(1)
+                        .toMillis()
+        );
     }
 
     @Test
@@ -741,10 +924,16 @@ class RecordingSessionTest {
     void expireIfDue_success_ignoresEnded() {
         // given
         RecordingSession session = startRecording();
-        session.end(STARTED_AT.plusSeconds(10));
+        session.end(
+                STARTED_AT.plusSeconds(10),
+                CONNECTION_POLICY
+        );
 
         // when
-        boolean expired = session.expireIfDue(STARTED_AT.plusSeconds(600));
+        boolean expired = session.expireIfDue(
+                STARTED_AT.plusSeconds(36_000),
+                CONNECTION_POLICY
+        );
 
         // then
         assertThat(expired).isFalse();
@@ -753,62 +942,90 @@ class RecordingSessionTest {
     }
 
     @Test
-    @DisplayName("일시정지 중 생존 신호는 일시정지 상태와 누적 시간을 유지하고 마지막 신호 시각만 갱신한다")
-    void recordHeartbeat_success_pausedKeepsState() {
+    @DisplayName("일시정지 중 생존 신호는 일시정지 상태와 누적 시간을 유지하고 마지막 생존 시각만 갱신한다")
+    void recordAlive_success_pausedKeepsState() {
         // given
         RecordingSession session = startRecording();
-        session.pause(STARTED_AT.plusSeconds(20));
+        session.pause(
+                STARTED_AT.plusSeconds(20),
+                CONNECTION_POLICY
+        );
 
         // when
-        session.recordHeartbeat(STARTED_AT.plusSeconds(40));
+        session.recordAlive(
+                STARTED_AT.plusSeconds(40),
+                CONNECTION_POLICY
+        );
 
         // then
         assertThat(session.getStatus()).isEqualTo(RecordingStatus.PAUSED);
         assertThat(session.getAccumulatedRecordingMillis()).isEqualTo(20_000L);
         assertThat(session.getPausedAt()).isEqualTo(STARTED_AT.plusSeconds(20));
         assertThat(session.getLastSeenAt()).isEqualTo(STARTED_AT.plusSeconds(40));
-        assertThat(session.getConnectionExpiresAt()).isEqualTo(STARTED_AT.plusSeconds(70));
+        assertThat(session.connectionExpiresAt(CONNECTION_POLICY)).isEqualTo(
+                STARTED_AT.plusSeconds(40)
+                        .plus(GRACE)
+        );
     }
 
     @Test
-    @DisplayName("마지막 신호보다 이른 생존 신호는 마지막 신호 시각을 되돌리지 않는다")
-    void recordHeartbeat_success_ignoresOlderSignal() {
+    @DisplayName("마지막 생존 시각보다 이른 생존 신호는 마지막 생존 시각을 되돌리지 않는다")
+    void recordAlive_success_ignoresOlderSignal() {
         // given
         RecordingSession session = startRecording();
-        session.recordHeartbeat(STARTED_AT.plusSeconds(20));
+        session.recordAlive(
+                STARTED_AT.plusSeconds(20),
+                CONNECTION_POLICY
+        );
 
         // when
-        session.recordHeartbeat(STARTED_AT.plusSeconds(10));
+        session.recordAlive(
+                STARTED_AT.plusSeconds(10),
+                CONNECTION_POLICY
+        );
 
         // then
         assertThat(session.getLastSeenAt()).isEqualTo(STARTED_AT.plusSeconds(20));
     }
 
     @Test
-    @DisplayName("만료 뒤 늦게 도착한 생존 신호는 녹음을 되살리지 않고 만료 시각으로 종료한다")
-    void recordHeartbeat_success_lateSignalEndsAsExpired() {
+    @DisplayName("유예가 지난 뒤 늦게 도착한 생존 신호는 녹음을 되살리지 않고 마지막 생존 시각으로 끝낸다")
+    void recordAlive_success_lateSignalEndsAsExpired() {
         // given
         RecordingSession session = startRecording();
+        Instant lateAt = STARTED_AT.plus(GRACE)
+                .plusSeconds(10);
 
         // when
-        session.recordHeartbeat(STARTED_AT.plusSeconds(40));
+        session.recordAlive(
+                lateAt,
+                CONNECTION_POLICY
+        );
 
         // then
         assertThat(session.getStatus()).isEqualTo(RecordingStatus.ENDED);
         assertThat(session.getEndReason()).isEqualTo(RecordingEndReason.CONNECTION_EXPIRED);
-        assertThat(session.getEndedAt()).isEqualTo(STARTED_AT.plusSeconds(30));
+        assertThat(session.getEndedAt()).isEqualTo(STARTED_AT);
         assertThat(session.getLastSeenAt()).isEqualTo(STARTED_AT);
     }
 
     @Test
-    @DisplayName("종료된 녹음의 생존 신호는 마지막 신호 시각을 바꾸지 않는다")
-    void recordHeartbeat_success_ignoresEnded() {
+    @DisplayName("종료된 녹음의 생존 신호는 마지막 생존 시각을 바꾸지 않는다")
+    void recordAlive_success_ignoresEnded() {
         // given
         RecordingSession session = startRecording();
-        session.expireIfDue(STARTED_AT.plusSeconds(30));
+        session.expireIfDue(
+                STARTED_AT.plus(GRACE),
+                CONNECTION_POLICY
+        );
+        Instant lateAt = STARTED_AT.plus(GRACE)
+                .plusSeconds(10);
 
         // when
-        session.recordHeartbeat(STARTED_AT.plusSeconds(40));
+        session.recordAlive(
+                lateAt,
+                CONNECTION_POLICY
+        );
 
         // then
         assertThat(session.getLastSeenAt()).isEqualTo(STARTED_AT);
@@ -816,13 +1033,20 @@ class RecordingSessionTest {
     }
 
     @Test
-    @DisplayName("연결이 끊긴 녹음의 늦은 일시정지는 만료 시각으로 종료한 뒤 이미 종료된 녹음으로 거절한다")
+    @DisplayName("유예가 지난 녹음의 늦은 일시정지는 마지막 생존 시각으로 끝낸 뒤 이미 종료된 녹음으로 거절한다")
     void pause_failure_disconnected() {
         // given
         RecordingSession session = startRecording();
+        Instant lateAt = STARTED_AT.plus(GRACE)
+                .plusSeconds(10);
 
         // when
-        Throwable thrown = catchThrowable(() -> session.pause(STARTED_AT.plusSeconds(40)));
+        Throwable thrown = catchThrowable(
+                () -> session.pause(
+                        lateAt,
+                        CONNECTION_POLICY
+                )
+        );
 
         // then
         assertThat(thrown).isInstanceOf(RecordingException.class)
@@ -830,42 +1054,81 @@ class RecordingSessionTest {
                 .isEqualTo(RecordingErrorCode.RECORDING_ALREADY_ENDED);
         assertThat(session.getStatus()).isEqualTo(RecordingStatus.ENDED);
         assertThat(session.getEndReason()).isEqualTo(RecordingEndReason.CONNECTION_EXPIRED);
-        assertThat(session.getEndedAt()).isEqualTo(STARTED_AT.plusSeconds(30));
+        assertThat(session.getEndedAt()).isEqualTo(STARTED_AT);
     }
 
     @Test
-    @DisplayName("연결이 끊긴 일시정지 녹음의 늦은 재개는 만료 시각으로 종료한 뒤 이미 종료된 녹음으로 거절한다")
+    @DisplayName("유예가 지난 일시정지 녹음의 늦은 재개는 일시정지 시각으로 끝낸 뒤 이미 종료된 녹음으로 거절한다")
     void resume_failure_disconnected() {
         // given
         RecordingSession session = startRecording();
-        session.pause(STARTED_AT.plusSeconds(20));
+        Instant pausedAt = STARTED_AT.plusSeconds(20);
+        session.pause(
+                pausedAt,
+                CONNECTION_POLICY
+        );
+        Instant lateAt = pausedAt.plus(GRACE)
+                .plusSeconds(10);
 
         // when
-        Throwable thrown = catchThrowable(() -> session.resume(STARTED_AT.plusSeconds(60)));
+        Throwable thrown = catchThrowable(
+                () -> session.resume(
+                        lateAt,
+                        CONNECTION_POLICY
+                )
+        );
 
         // then
         assertThat(thrown).isInstanceOf(RecordingException.class)
                 .extracting("errorCode")
                 .isEqualTo(RecordingErrorCode.RECORDING_ALREADY_ENDED);
         assertThat(session.getStatus()).isEqualTo(RecordingStatus.ENDED);
-        assertThat(session.getEndedAt()).isEqualTo(STARTED_AT.plusSeconds(50));
+        assertThat(session.getEndedAt()).isEqualTo(pausedAt);
         assertThat(session.getAccumulatedRecordingMillis()).isEqualTo(20_000L);
     }
 
     @Test
-    @DisplayName("연결이 끊긴 뒤 도착한 종료 요청은 요청 시각이 아니라 만료 시각과 연결 만료 사유로 종료한다")
+    @DisplayName("유예가 지난 뒤 도착한 종료 요청은 요청 시각이 아니라 마지막 생존 시각과 연결 만료 사유로 끝낸다")
     void end_success_lateRequestEndsAsExpired() {
         // given
         RecordingSession session = startRecording();
+        Instant lateAt = STARTED_AT.plus(GRACE)
+                .plusSeconds(300);
 
         // when
-        session.end(STARTED_AT.plusSeconds(300));
+        session.end(
+                lateAt,
+                CONNECTION_POLICY
+        );
 
         // then
         assertThat(session.getStatus()).isEqualTo(RecordingStatus.ENDED);
-        assertThat(session.getEndedAt()).isEqualTo(STARTED_AT.plusSeconds(30));
+        assertThat(session.getEndedAt()).isEqualTo(STARTED_AT);
         assertThat(session.getEndReason()).isEqualTo(RecordingEndReason.CONNECTION_EXPIRED);
         assertThat(session.getLastSeenAt()).isEqualTo(STARTED_AT);
+    }
+
+    @Test
+    @DisplayName("연결이 끊겼어도 유예 안에서 종료하면 요청 시각과 사용자 종료 사유로 끝낸다")
+    void end_success_userEndedWhileDisconnected() {
+        // given
+        RecordingSession session = startRecording();
+        Instant endedAt = STARTED_AT.plus(GRACE)
+                .minusSeconds(1);
+
+        // when
+        session.end(
+                endedAt,
+                CONNECTION_POLICY
+        );
+
+        // then
+        assertThat(session.getEndedAt()).isEqualTo(endedAt);
+        assertThat(session.getEndReason()).isEqualTo(RecordingEndReason.USER_ENDED);
+        assertThat(session.getAccumulatedRecordingMillis()).isEqualTo(
+                GRACE.minusSeconds(1)
+                        .toMillis()
+        );
     }
 
     @Test
@@ -875,7 +1138,10 @@ class RecordingSessionTest {
         RecordingSession session = startRecording();
 
         // when
-        session.end(STARTED_AT.plusSeconds(20));
+        session.end(
+                STARTED_AT.plusSeconds(20),
+                CONNECTION_POLICY
+        );
 
         // then
         assertThat(session.getEndedAt()).isEqualTo(STARTED_AT.plusSeconds(20));
@@ -883,19 +1149,26 @@ class RecordingSessionTest {
     }
 
     @Test
-    @DisplayName("연결 만료 기준 시각보다 마지막 신호가 같거나 이르면 만료 판정과 같은 결과다")
-    void disconnectionThreshold_success_matchesExpiry() {
+    @DisplayName("회수 기준 시각보다 마지막 생존 시각이 같거나 이르면 만료 판정과 같은 결과다")
+    void expiredLastSeenThreshold_success_matchesExpiry() {
         // given
         RecordingSession session = startRecording();
-        Instant now = STARTED_AT.plusSeconds(30);
+        Instant now = STARTED_AT.plus(GRACE);
 
         // when
-        Instant threshold = RecordingSession.disconnectionThreshold(now);
+        Instant threshold = CONNECTION_POLICY.expiredLastSeenThreshold(now);
 
         // then
         assertThat(threshold).isEqualTo(session.getLastSeenAt());
-        assertThat(session.expireIfDue(now)).isTrue();
+        assertThat(
+                session.expireIfDue(
+                        now,
+                        CONNECTION_POLICY
+                )
+        ).isTrue();
     }
+
+
 
     @Test
     @DisplayName("생존 신호가 이어지면 누적 2시간 직전에는 녹음을 유지한다")
@@ -910,7 +1183,8 @@ class RecordingSessionTest {
         // when
         boolean expired = session.expireIfDue(
                 STARTED_AT.plusSeconds(7_200)
-                        .minusMillis(1)
+                        .minusMillis(1),
+                CONNECTION_POLICY
         );
 
         // then
@@ -929,7 +1203,10 @@ class RecordingSessionTest {
         );
 
         // when
-        boolean expired = session.expireIfDue(STARTED_AT.plusSeconds(7_230));
+        boolean expired = session.expireIfDue(
+                STARTED_AT.plusSeconds(7_230),
+                CONNECTION_POLICY
+        );
 
         // then
         assertThat(expired).isTrue();
@@ -941,57 +1218,8 @@ class RecordingSessionTest {
     }
 
     @Test
-    @DisplayName("30분 녹음하고 90분 일시정지한 뒤 재개하면 재개 후 90분이 지난 시각에 상한으로 종료한다")
-    void expireIfDue_success_excludesPauseFromMaxDuration() {
-        // given
-        RecordingSession session = startRecording();
-        keepAlive(
-                session,
-                STARTED_AT.plusSeconds(1_800)
-        );
-        session.pause(STARTED_AT.plusSeconds(1_800));
-        Instant resumedAt = STARTED_AT.plusSeconds(7_200);
-        keepAlive(
-                session,
-                resumedAt
-        );
-        session.resume(resumedAt);
-        keepAlive(
-                session,
-                resumedAt.plusSeconds(5_400)
-        );
-
-        // when
-        session.expireIfDue(resumedAt.plusSeconds(5_400));
-
-        // then
-        assertThat(session.getEndReason()).isEqualTo(RecordingEndReason.MAX_DURATION);
-        assertThat(session.getEndedAt()).isEqualTo(resumedAt.plusSeconds(5_400));
-        assertThat(session.getAccumulatedRecordingMillis()).isEqualTo(7_200_000L);
-    }
-
-    @Test
-    @DisplayName("상한 도달과 연결 만료가 같은 시각이면 상한을 종료 사유로 둔다")
-    void expireIfDue_success_prefersMaxDurationOnSameBoundary() {
-        // given
-        RecordingSession session = startRecording();
-        keepAlive(
-                session,
-                STARTED_AT.plusSeconds(7_171)
-        );
-
-        // when
-        session.expireIfDue(STARTED_AT.plusSeconds(7_200));
-
-        // then
-        assertThat(session.getLastSeenAt()).isEqualTo(STARTED_AT.plusSeconds(7_170));
-        assertThat(session.getEndReason()).isEqualTo(RecordingEndReason.MAX_DURATION);
-        assertThat(session.getEndedAt()).isEqualTo(STARTED_AT.plusSeconds(7_200));
-    }
-
-    @Test
-    @DisplayName("연결 만료가 상한보다 먼저면 상한이 지난 뒤 판정해도 연결 만료 시각과 사유로 종료한다")
-    void expireIfDue_success_connectionExpiryBeforeMaxDuration() {
+    @DisplayName("끊긴 동안 2시간 상한에 먼저 닿으면 유예 만료가 아니라 상한 도달 시각과 상한 사유로 끝낸다")
+    void expireIfDue_success_maxDurationBeforeGraceWhileDisconnected() {
         // given
         RecordingSession session = startRecording();
         keepAlive(
@@ -1000,12 +1228,99 @@ class RecordingSessionTest {
         );
 
         // when
-        session.expireIfDue(STARTED_AT.plusSeconds(9_000));
+        session.expireIfDue(
+                STARTED_AT.plusSeconds(9_000),
+                CONNECTION_POLICY
+        );
+
+        // then
+        assertThat(session.getLastSeenAt()).isEqualTo(STARTED_AT.plusSeconds(6_990));
+        assertThat(session.getEndReason()).isEqualTo(RecordingEndReason.MAX_DURATION);
+        assertThat(session.getEndedAt()).isEqualTo(STARTED_AT.plusSeconds(7_200));
+        assertThat(session.getAccumulatedRecordingMillis()).isEqualTo(7_200_000L);
+    }
+
+    @Test
+    @DisplayName("30분 녹음하고 90분 일시정지한 뒤 재개하면 재개 후 90분이 지난 시각에 상한으로 종료한다")
+    void expireIfDue_success_excludesPauseFromMaxDuration() {
+        // given
+        RecordingSession session = startRecording();
+        keepAlive(
+                session,
+                STARTED_AT.plusSeconds(1_800)
+        );
+        session.pause(
+                STARTED_AT.plusSeconds(1_800),
+                CONNECTION_POLICY
+        );
+        Instant resumedAt = STARTED_AT.plusSeconds(7_200);
+        keepAlive(
+                session,
+                resumedAt
+        );
+        session.resume(
+                resumedAt,
+                CONNECTION_POLICY
+        );
+        keepAlive(
+                session,
+                resumedAt.plusSeconds(5_400)
+        );
+
+        // when
+        session.expireIfDue(
+                resumedAt.plusSeconds(5_400),
+                CONNECTION_POLICY
+        );
+
+        // then
+        assertThat(session.getEndReason()).isEqualTo(RecordingEndReason.MAX_DURATION);
+        assertThat(session.getEndedAt()).isEqualTo(resumedAt.plusSeconds(5_400));
+        assertThat(session.getAccumulatedRecordingMillis()).isEqualTo(7_200_000L);
+    }
+
+    @Test
+    @DisplayName("상한 도달과 유예 만료가 같은 시각이면 상한을 종료 사유로 둔다")
+    void expireIfDue_success_prefersMaxDurationOnSameBoundary() {
+        // given
+        RecordingSession session = startRecording();
+        keepAlive(
+                session,
+                STARTED_AT.plusSeconds(5_401)
+        );
+
+        // when
+        session.expireIfDue(
+                STARTED_AT.plusSeconds(7_200),
+                CONNECTION_POLICY
+        );
+
+        // then
+        assertThat(session.getLastSeenAt()).isEqualTo(STARTED_AT.plusSeconds(5_400));
+        assertThat(session.getEndReason()).isEqualTo(RecordingEndReason.MAX_DURATION);
+        assertThat(session.getEndedAt()).isEqualTo(STARTED_AT.plusSeconds(7_200));
+    }
+
+    @Test
+    @DisplayName("유예 만료가 상한보다 먼저면 상한이 지난 뒤 판정해도 마지막 생존 시각과 연결 만료 사유로 끝낸다")
+    void expireIfDue_success_connectionExpiryBeforeMaxDuration() {
+        // given
+        RecordingSession session = startRecording();
+        keepAlive(
+                session,
+                STARTED_AT.plusSeconds(5_000)
+        );
+
+        // when
+        session.expireIfDue(
+                STARTED_AT.plusSeconds(9_000),
+                CONNECTION_POLICY
+        );
 
         // then
         assertThat(session.getEndReason()).isEqualTo(RecordingEndReason.CONNECTION_EXPIRED);
-        assertThat(session.getEndedAt()).isEqualTo(STARTED_AT.plusSeconds(7_020));
-        assertThat(session.getAccumulatedRecordingMillis()).isEqualTo(7_020_000L);
+        assertThat(session.getEndedAt()).isEqualTo(STARTED_AT.plusSeconds(4_990));
+        assertThat(session.getAccumulatedRecordingMillis()).isEqualTo(4_990_000L);
     }
 
     @Test
@@ -1019,7 +1334,12 @@ class RecordingSessionTest {
         );
 
         // when
-        Throwable thrown = catchThrowable(() -> session.pause(STARTED_AT.plusSeconds(7_200)));
+        Throwable thrown = catchThrowable(
+                () -> session.pause(
+                        STARTED_AT.plusSeconds(7_200),
+                        CONNECTION_POLICY
+                )
+        );
 
         // then
         assertThat(thrown).isInstanceOf(RecordingException.class)
@@ -1041,7 +1361,10 @@ class RecordingSessionTest {
         );
 
         // when
-        session.end(STARTED_AT.plusSeconds(7_260));
+        session.end(
+                STARTED_AT.plusSeconds(7_260),
+                CONNECTION_POLICY
+        );
 
         // then
         assertThat(session.getEndedAt()).isEqualTo(STARTED_AT.plusSeconds(7_200));
@@ -1096,7 +1419,10 @@ class RecordingSessionTest {
     void validateEnded_success() {
         // given
         RecordingSession session = startRecording();
-        session.end(STARTED_AT.plusSeconds(10));
+        session.end(
+                STARTED_AT.plusSeconds(10),
+                CONNECTION_POLICY
+        );
 
         // when
         Throwable failure = catchThrowable(session::validateEnded);
@@ -1141,7 +1467,10 @@ class RecordingSessionTest {
     void isTranscribableIn_success_endedInSameWorkspace() {
         // given
         RecordingSession session = startRecording();
-        session.end(STARTED_AT.plusSeconds(10));
+        session.end(
+                STARTED_AT.plusSeconds(10),
+                CONNECTION_POLICY
+        );
 
         // when
         boolean transcribable = session.isTranscribableIn(WORKSPACE_ID);
@@ -1155,7 +1484,10 @@ class RecordingSessionTest {
     void isTranscribableIn_success_falseInOtherWorkspace() {
         // given
         RecordingSession session = startRecording();
-        session.end(STARTED_AT.plusSeconds(10));
+        session.end(
+                STARTED_AT.plusSeconds(10),
+                CONNECTION_POLICY
+        );
 
         // when
         boolean transcribable = session.isTranscribableIn(WORKSPACE_ID + 1);
@@ -1192,28 +1524,38 @@ class RecordingSessionTest {
     }
 
     @Test
-    @DisplayName("연결이 끊긴 기존 녹음은 새 녹음을 위해 만료 종료로 회수한다")
+    @DisplayName("유예가 지난 기존 녹음은 새 녹음을 위해 만료 종료로 회수한다")
     void releaseForNewRecording_success_disconnected() {
         // given
         RecordingSession session = startRecording();
 
         // when
-        session.releaseForNewRecording(STARTED_AT.plusSeconds(40));
+        session.releaseForNewRecording(
+                STARTED_AT.plus(GRACE),
+                CONNECTION_POLICY
+        );
 
         // then
         assertThat(session.getStatus()).isEqualTo(RecordingStatus.ENDED);
         assertThat(session.getEndReason()).isEqualTo(RecordingEndReason.CONNECTION_EXPIRED);
-        assertThat(session.getEndedAt()).isEqualTo(STARTED_AT.plusSeconds(30));
+        assertThat(session.getEndedAt()).isEqualTo(STARTED_AT);
     }
 
     @Test
-    @DisplayName("연결이 살아 있는 기존 녹음이 있으면 새 녹음을 시작할 수 없다")
+    @DisplayName("유예 중인 기존 녹음이 있으면 새 녹음을 시작할 수 없다")
     void releaseForNewRecording_failure_stillConnected() {
         // given
         RecordingSession session = startRecording();
+        Instant stillInGrace = STARTED_AT.plus(GRACE)
+                .minusSeconds(1);
 
         // when
-        Throwable failure = catchThrowable(() -> session.releaseForNewRecording(STARTED_AT.plusSeconds(20)));
+        Throwable failure = catchThrowable(
+                () -> session.releaseForNewRecording(
+                        stillInGrace,
+                        CONNECTION_POLICY
+                )
+        );
 
         // then
         assertThat(failure).isInstanceOf(RecordingException.class)
@@ -1239,7 +1581,10 @@ class RecordingSessionTest {
     ) {
         for (Instant at = session.getLastSeenAt()
                 .plusSeconds(10); at.isBefore(until); at = at.plusSeconds(10)) {
-            session.recordHeartbeat(at);
+            session.recordAlive(
+                    at,
+                    CONNECTION_POLICY
+            );
         }
     }
 }

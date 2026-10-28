@@ -17,6 +17,7 @@ import com.knot.backend.recording.domain.model.RecordingAudioChunk;
 import com.knot.backend.recording.domain.model.RecordingAudioChunkStatus;
 import com.knot.backend.recording.domain.model.RecordingAudioMode;
 import com.knot.backend.recording.domain.model.RecordingAudioStream;
+import com.knot.backend.recording.domain.model.RecordingConnectionPolicy;
 import com.knot.backend.recording.domain.model.RecordingSession;
 import com.knot.backend.recording.domain.model.RecordingStatus;
 import com.knot.backend.recording.domain.model.StoredAudioChunk;
@@ -42,6 +43,7 @@ public class RecordingAudioChunkTransaction {
     private final RecordingSessionRepository sessions;
     private final RecordingAudioStreamRepository streams;
     private final RecordingAudioChunkRepository chunks;
+    private final RecordingConnectionPolicy connectionPolicy;
     private final Clock clock;
 
     @Transactional(noRollbackFor = RecordingException.class)
@@ -294,7 +296,11 @@ public class RecordingAudioChunkTransaction {
         }
         RecordingAudioStream stream = streams.findByRecordingIdForUpdate(recordingId)
                 .orElseThrow(() -> new RecordingException(RecordingErrorCode.RECORDING_NOT_FOUND));
-        boolean expired = session.expireIfDue(now());
+        Instant receivedAt = now();
+        boolean expired = session.expireIfDue(
+                receivedAt,
+                connectionPolicy
+        );
         if (session.getStatus() == RecordingStatus.ENDED) {
             RecordingAudioSealKind kind = switch (session.getEndReason()) {
                 case CONNECTION_EXPIRED -> RecordingAudioSealKind.TIMEOUT;

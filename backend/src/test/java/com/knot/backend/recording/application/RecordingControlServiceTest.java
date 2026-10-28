@@ -1,5 +1,7 @@
 package com.knot.backend.recording.application;
 
+import com.knot.backend.testsupport.RecordingConnectionPolicyFixture;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowable;
 import static org.mockito.ArgumentMatchers.any;
@@ -50,6 +52,8 @@ class RecordingControlServiceTest {
     private static final Instant STARTED_AT = Instant.parse("2026-10-05T00:00:00Z");
     private static final Instant NOW = Instant.parse("2026-10-05T00:10:00.123456Z");
     private static final Instant HEARTBEAT_STARTED_AT = Instant.parse("2026-10-05T00:09:40Z");
+    private static final Instant EXPIRED_STARTED_AT = NOW.minus(RecordingConnectionPolicyFixture.GRACE)
+            .minusSeconds(10);
     private static final long WORKSPACE_ID = 10L;
     private static final long MEMBER_ID = 1L;
     private static final long RECORDING_ID = 7L;
@@ -98,7 +102,8 @@ class RecordingControlServiceTest {
                 finalizations,
                 mock(com.knot.backend.recording.domain.repository.RecordingAudioCleanupRepository.class),
                 mock(RecordingTranscriptionFailure.class),
-                mock(com.knot.backend.document.application.DocumentGenerationProgressService.class)
+                mock(com.knot.backend.document.application.DocumentGenerationProgressService.class),
+                RecordingConnectionPolicyFixture.DEFAULT
         );
     }
 
@@ -140,11 +145,11 @@ class RecordingControlServiceTest {
     }
 
     @Test
-    @DisplayName("연결이 만료된 녹음은 만료 종료를 저장한 뒤 이미 종료된 녹음으로 거절한다")
+    @DisplayName("끊김 유예가 지난 녹음은 마지막 생존 시각으로 끝낸 뒤 이미 종료된 녹음으로 거절한다")
     void pause_failure_connectionExpired() {
         // given
         prepareAccess();
-        RecordingSession session = recordingSession(MEMBER_ID);
+        RecordingSession session = recordingSessionStartedAt(EXPIRED_STARTED_AT);
         when(recordingSessionRepository.findByIdForUpdate(RECORDING_ID)).thenReturn(Optional.of(session));
 
         // when
@@ -162,7 +167,7 @@ class RecordingControlServiceTest {
                 .extracting("errorCode")
                 .isEqualTo(RecordingErrorCode.RECORDING_ALREADY_ENDED);
         assertThat(session.getStatus()).isEqualTo(RecordingStatus.ENDED);
-        assertThat(session.getEndedAt()).isEqualTo(STARTED_AT.plusSeconds(30));
+        assertThat(session.getEndedAt()).isEqualTo(EXPIRED_STARTED_AT);
     }
 
     @Test
@@ -225,7 +230,10 @@ class RecordingControlServiceTest {
         // given
         prepareAccess();
         RecordingSession session = recordingSession(MEMBER_ID);
-        session.end(STARTED_AT.plusSeconds(20));
+        session.end(
+                STARTED_AT.plusSeconds(20),
+                RecordingConnectionPolicyFixture.DEFAULT
+        );
         when(recordingSessionRepository.findByIdForUpdate(RECORDING_ID)).thenReturn(Optional.of(session));
 
         // when
@@ -280,7 +288,10 @@ class RecordingControlServiceTest {
         // given
         prepareAccess();
         RecordingSession session = recordingSession(MEMBER_ID);
-        session.pause(STARTED_AT.plusSeconds(20));
+        session.pause(
+                STARTED_AT.plusSeconds(20),
+                RecordingConnectionPolicyFixture.DEFAULT
+        );
         keepAlive(
                 session,
                 NOW
@@ -318,7 +329,10 @@ class RecordingControlServiceTest {
         // given
         prepareAccess();
         RecordingSession session = recordingSession(MEMBER_ID);
-        session.pause(STARTED_AT.plusSeconds(20));
+        session.pause(
+                STARTED_AT.plusSeconds(20),
+                RecordingConnectionPolicyFixture.DEFAULT
+        );
         when(recordingSessionRepository.findByIdForUpdate(RECORDING_ID)).thenReturn(Optional.of(session));
 
         // when
@@ -373,7 +387,10 @@ class RecordingControlServiceTest {
         // given
         prepareAccess();
         RecordingSession session = recordingSession(MEMBER_ID);
-        session.end(STARTED_AT.plusSeconds(20));
+        session.end(
+                STARTED_AT.plusSeconds(20),
+                RecordingConnectionPolicyFixture.DEFAULT
+        );
         when(recordingSessionRepository.findByIdForUpdate(RECORDING_ID)).thenReturn(Optional.of(session));
 
         // when
@@ -423,12 +440,16 @@ class RecordingControlServiceTest {
     }
 
     @Test
-    @DisplayName("일시정지 중 연결이 만료된 녹음은 만료 종료를 저장한 뒤 이미 종료된 녹음으로 거절한다")
+    @DisplayName("일시정지 중 끊김 유예가 지난 녹음은 일시정지 시각으로 끝낸 뒤 이미 종료된 녹음으로 거절한다")
     void resume_failure_connectionExpired() {
         // given
         prepareAccess();
-        RecordingSession session = recordingSession(MEMBER_ID);
-        session.pause(STARTED_AT.plusSeconds(20));
+        Instant startedAt = EXPIRED_STARTED_AT.minusSeconds(20);
+        RecordingSession session = recordingSessionStartedAt(startedAt);
+        session.pause(
+                startedAt.plusSeconds(20),
+                RecordingConnectionPolicyFixture.DEFAULT
+        );
         when(recordingSessionRepository.findByIdForUpdate(RECORDING_ID)).thenReturn(Optional.of(session));
 
         // when
@@ -446,7 +467,7 @@ class RecordingControlServiceTest {
                 .extracting("errorCode")
                 .isEqualTo(RecordingErrorCode.RECORDING_ALREADY_ENDED);
         assertThat(session.getStatus()).isEqualTo(RecordingStatus.ENDED);
-        assertThat(session.getEndedAt()).isEqualTo(STARTED_AT.plusSeconds(50));
+        assertThat(session.getEndedAt()).isEqualTo(startedAt.plusSeconds(20));
         assertThat(session.getAccumulatedRecordingMillis()).isEqualTo(20_000L);
     }
 
@@ -494,11 +515,11 @@ class RecordingControlServiceTest {
     }
 
     @Test
-    @DisplayName("연결이 만료된 녹음을 종료하면 요청 시각이 아니라 만료 시각으로 종료한다")
+    @DisplayName("끊김 유예가 지난 녹음을 종료하면 요청 시각이 아니라 마지막 생존 시각으로 끝낸다")
     void end_success_connectionExpired() {
         // given
         prepareAccess();
-        RecordingSession session = recordingSession(MEMBER_ID);
+        RecordingSession session = recordingSessionStartedAt(EXPIRED_STARTED_AT);
         when(recordingSessionRepository.findByIdForUpdate(RECORDING_ID)).thenReturn(Optional.of(session));
         when(recordingSessionRepository.save(session)).thenReturn(session);
 
@@ -512,7 +533,7 @@ class RecordingControlServiceTest {
 
         // then
         assertThat(result.status()).isEqualTo(RecordingStatus.ENDED);
-        assertThat(result.endedAt()).isEqualTo(STARTED_AT.plusSeconds(30));
+        assertThat(result.endedAt()).isEqualTo(EXPIRED_STARTED_AT);
         assertThat(session.getEndReason()).isEqualTo(RecordingEndReason.CONNECTION_EXPIRED);
     }
 
@@ -523,7 +544,10 @@ class RecordingControlServiceTest {
         prepareAccess();
         RecordingSession session = recordingSession(MEMBER_ID);
         Instant firstEndedAt = STARTED_AT.plusSeconds(20);
-        session.end(firstEndedAt);
+        session.end(
+                firstEndedAt,
+                RecordingConnectionPolicyFixture.DEFAULT
+        );
         when(recordingSessionRepository.findByIdForUpdate(RECORDING_ID)).thenReturn(Optional.of(session));
         when(recordingSessionRepository.save(session)).thenReturn(session);
 
@@ -639,7 +663,10 @@ class RecordingControlServiceTest {
         prepareAccess();
         RecordingSession session = recordingSession(MEMBER_ID);
         Instant firstEndedAt = STARTED_AT.plusSeconds(20);
-        session.end(firstEndedAt);
+        session.end(
+                firstEndedAt,
+                RecordingConnectionPolicyFixture.DEFAULT
+        );
         when(recordingSessionRepository.findByIdForUpdate(RECORDING_ID)).thenReturn(Optional.of(session));
 
         // when
@@ -769,7 +796,7 @@ class RecordingControlServiceTest {
     }
 
     @Test
-    @DisplayName("최초 탭의 신호는 마지막 신호 시각을 서버 시각으로 갱신하고 다음 만료 시각을 돌려준다")
+    @DisplayName("녹음 탭의 신호는 마지막 생존 시각을 서버 시각으로 갱신하고 30분 뒤 만료 시각과 연결 상태를 돌려준다")
     void heartbeat_success_firstTab() {
         // given
         prepareAccess();
@@ -788,7 +815,7 @@ class RecordingControlServiceTest {
         // then
         assertThat(result.status()).isEqualTo(RecordingStatus.RECORDING);
         assertThat(result.lastSeenAt()).isEqualTo(NOW);
-        assertThat(result.expiresAt()).isEqualTo(NOW.plusSeconds(30));
+        assertThat(result.expiresAt()).isEqualTo(NOW.plus(RecordingConnectionPolicyFixture.GRACE));
         assertThat(result.elapsedMillis()).isEqualTo(20_123L);
         assertThat(result.endedAt()).isNull();
         assertThat(result.endReason()).isNull();
@@ -796,11 +823,12 @@ class RecordingControlServiceTest {
     }
 
     @Test
-    @DisplayName("마지막 신호 후 30초가 지난 신호는 녹음을 되살리지 않고 연결 만료 종료 상태를 돌려준다")
+    @DisplayName("마지막 생존 시각 뒤 30분이 지난 신호는 녹음을 되살리지 않고 마지막 생존 시각으로 끝난 상태를 돌려준다")
     void heartbeat_success_expiredReturnsEndedSnapshot() {
         // given
         prepareAccess();
-        RecordingSession session = recordingSessionStartedAt(NOW.minusSeconds(30));
+        Instant lastSeenAt = NOW.minus(RecordingConnectionPolicyFixture.GRACE);
+        RecordingSession session = recordingSessionStartedAt(lastSeenAt);
         when(recordingSessionRepository.findByIdForUpdate(RECORDING_ID)).thenReturn(Optional.of(session));
         when(recordingSessionRepository.save(session)).thenReturn(session);
 
@@ -815,8 +843,8 @@ class RecordingControlServiceTest {
         // then
         assertThat(result.status()).isEqualTo(RecordingStatus.ENDED);
         assertThat(result.endReason()).isEqualTo(RecordingEndReason.CONNECTION_EXPIRED);
-        assertThat(result.endedAt()).isEqualTo(NOW);
-        assertThat(result.lastSeenAt()).isEqualTo(NOW.minusSeconds(30));
+        assertThat(result.endedAt()).isEqualTo(lastSeenAt);
+        assertThat(result.lastSeenAt()).isEqualTo(lastSeenAt);
         assertThat(result.expiresAt()).isNull();
         verify(recordingSessionRepository).save(session);
     }
@@ -897,7 +925,10 @@ class RecordingControlServiceTest {
         );
         doReturn(RECORDING_ID).when(session)
                 .getId();
-        session.end(NOW.minusSeconds(1));
+        session.end(
+                NOW.minusSeconds(1),
+                RecordingConnectionPolicyFixture.DEFAULT
+        );
         when(recordingSessionRepository.findByIdForUpdate(RECORDING_ID)).thenReturn(Optional.of(session));
         RecordingAudioStream stream = RecordingAudioStream.create(RECORDING_ID);
         stream.seal(
@@ -973,7 +1004,10 @@ class RecordingControlServiceTest {
     ) {
         for (Instant at = session.getLastSeenAt()
                 .plusSeconds(10); at.isBefore(until); at = at.plusSeconds(10)) {
-            session.recordHeartbeat(at);
+            session.recordAlive(
+                    at,
+                    RecordingConnectionPolicyFixture.DEFAULT
+            );
         }
     }
 

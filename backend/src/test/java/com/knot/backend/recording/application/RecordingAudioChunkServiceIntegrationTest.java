@@ -1,5 +1,7 @@
 package com.knot.backend.recording.application;
 
+import com.knot.backend.testsupport.RecordingConnectionPolicyFixture;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowable;
 import static org.mockito.ArgumentMatchers.any;
@@ -49,6 +51,8 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 @SpringBootTest(properties = "recording.audio-chunks.enabled=true")
 class RecordingAudioChunkServiceIntegrationTest {
     private static final Instant NOW = Instant.parse("2026-10-17T00:00:10Z");
+    private static final Instant EXPIRED_LAST_SEEN_AT = NOW.minus(RecordingConnectionPolicyFixture.GRACE)
+            .minusSeconds(10);
     private static final String HASH = Base64.getEncoder()
             .encodeToString(new byte[32]);
     private static final UUID TAB = UUID.fromString("11111111-1111-1111-1111-111111111111");
@@ -333,8 +337,7 @@ class RecordingAudioChunkServiceIntegrationTest {
                 """)
                 .param(
                         "past",
-                        NOW.minusSeconds(40)
-                                .toString()
+                        EXPIRED_LAST_SEEN_AT.toString()
                 )
                 .param(
                         "id",
@@ -374,7 +377,7 @@ class RecordingAudioChunkServiceIntegrationTest {
                         )
                         .query(Instant.class)
                         .single()
-        ).isEqualTo(NOW.minusSeconds(10));
+        ).isEqualTo(EXPIRED_LAST_SEEN_AT);
         assertThat(countChunks()).isZero();
         assertThat(nextSequence()).isEqualTo(1);
     }

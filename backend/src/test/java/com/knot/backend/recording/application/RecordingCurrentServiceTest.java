@@ -1,5 +1,7 @@
 package com.knot.backend.recording.application;
 
+import com.knot.backend.testsupport.RecordingConnectionPolicyFixture;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowable;
 import static org.mockito.ArgumentMatchers.anyLong;
@@ -100,7 +102,8 @@ class RecordingCurrentServiceTest {
                         uploads,
                         transcriptionProperties
                 ),
-                documentProgress
+                documentProgress,
+                RecordingConnectionPolicyFixture.DEFAULT
         );
     }
 
@@ -141,7 +144,10 @@ class RecordingCurrentServiceTest {
         // given
         prepareAccess();
         RecordingSession session = recordingSession();
-        session.pause(STARTED_AT.plusSeconds(20));
+        session.pause(
+                STARTED_AT.plusSeconds(20),
+                RecordingConnectionPolicyFixture.DEFAULT
+        );
         when(
                 recordingSessionRepository.findCurrentByWorkspaceIdAndMemberId(
                         WORKSPACE_ID,
@@ -173,7 +179,10 @@ class RecordingCurrentServiceTest {
         when(clock.instant()).thenAnswer(invocation -> currentTime.get());
         Instant resumedAt = NOW.plusMillis(2);
         RecordingSession session = recordingSession();
-        session.pause(STARTED_AT.plusSeconds(20));
+        session.pause(
+                STARTED_AT.plusSeconds(20),
+                RecordingConnectionPolicyFixture.DEFAULT
+        );
         keepAlive(
                 session,
                 NOW
@@ -185,7 +194,10 @@ class RecordingCurrentServiceTest {
                         NOW
                 )
         ).thenAnswer(invocation -> {
-            session.resume(resumedAt);
+            session.resume(
+                    resumedAt,
+                    RecordingConnectionPolicyFixture.DEFAULT
+            );
             currentTime.set(resumedAt.plusMillis(1));
             return Optional.of(session);
         });
@@ -211,7 +223,8 @@ class RecordingCurrentServiceTest {
                         uploads,
                         transcriptionProperties
                 ),
-                documentProgress
+                documentProgress,
+                RecordingConnectionPolicyFixture.DEFAULT
         );
 
         // when
@@ -670,7 +683,10 @@ class RecordingCurrentServiceTest {
     private void prepareEndedRecording() {
         prepareAccess();
         RecordingSession session = recordingSession();
-        session.end(STARTED_AT.plusSeconds(20));
+        session.end(
+                STARTED_AT.plusSeconds(20),
+                RecordingConnectionPolicyFixture.DEFAULT
+        );
         when(
                 recordingSessionRepository.findCurrentByWorkspaceIdAndMemberId(
                         WORKSPACE_ID,
@@ -727,7 +743,10 @@ class RecordingCurrentServiceTest {
     ) {
         for (Instant at = session.getLastSeenAt()
                 .plusSeconds(10); at.isBefore(until); at = at.plusSeconds(10)) {
-            session.recordHeartbeat(at);
+            session.recordAlive(
+                    at,
+                    RecordingConnectionPolicyFixture.DEFAULT
+            );
         }
     }
 }

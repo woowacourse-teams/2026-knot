@@ -27,7 +27,6 @@ public class RecordingSession {
     public static final long MAX_RECORDING_MILLIS = Duration.ofHours(2)
             .toMillis();
     private static final Pattern SHA_256_HEX_PATTERN = Pattern.compile("^[0-9a-f]{64}$");
-    private static final Duration CONNECTION_TIMEOUT = Duration.ofSeconds(30);
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -122,10 +121,6 @@ public class RecordingSession {
         this.accumulatedRecordingMillis = 0L;
     }
 
-    public static Instant disconnectionThreshold(Instant now) {
-        return now.minus(CONNECTION_TIMEOUT);
-    }
-
     public static RecordingSession start(
             Long workspaceId,
             Long memberId,
@@ -203,8 +198,14 @@ public class RecordingSession {
         );
     }
 
-    public void releaseForNewRecording(Instant now) {
-        if (!expireIfDue(now)) {
+    public void releaseForNewRecording(
+            Instant now,
+            RecordingConnectionPolicy connectionPolicy
+    ) {
+        if (!expireIfDue(
+                now,
+                connectionPolicy
+        )) {
             throw new RecordingException(RecordingErrorCode.ACTIVE_RECORDING_ALREADY_EXISTS);
         }
     }
@@ -223,7 +224,10 @@ public class RecordingSession {
             UUID tabId,
             String controlTokenHash
     ) {
-        if (!this.tabId.equals(tabId) || !sameControlTokenHash(controlTokenHash)) {
+        if (!isControlledBy(
+                tabId,
+                controlTokenHash
+        )) {
             throw new RecordingException(RecordingErrorCode.RECORDING_CONTROL_DENIED);
         }
     }
@@ -253,9 +257,15 @@ public class RecordingSession {
         }
     }
 
-    public void pause(Instant pausedAt) {
+    public void pause(
+            Instant pausedAt,
+            RecordingConnectionPolicy connectionPolicy
+    ) {
         ensureActive();
-        endIfExpired(pausedAt);
+        endIfExpired(
+                pausedAt,
+                connectionPolicy
+        );
         if (status == RecordingStatus.PAUSED) {
             return;
         }
@@ -272,9 +282,15 @@ public class RecordingSession {
         lastSeenAt = pausedAt;
     }
 
-    public void resume(Instant resumedAt) {
+    public void resume(
+            Instant resumedAt,
+            RecordingConnectionPolicy connectionPolicy
+    ) {
         ensureActive();
-        endIfExpired(resumedAt);
+        endIfExpired(
+                resumedAt,
+                connectionPolicy
+        );
         if (status == RecordingStatus.RECORDING) {
             return;
         }
@@ -292,12 +308,18 @@ public class RecordingSession {
         return currentIntervalStartedAt;
     }
 
-    public void end(Instant endedAt) {
+    public void end(
+            Instant endedAt,
+            RecordingConnectionPolicy connectionPolicy
+    ) {
         if (status == RecordingStatus.ENDED) {
             return;
         }
         ensureNotDiscarded();
-        if (expireIfDue(endedAt)) {
+        if (expireIfDue(
+                endedAt,
+                connectionPolicy
+        )) {
             return;
         }
         stop(
@@ -307,12 +329,21 @@ public class RecordingSession {
         endReason = RecordingEndReason.USER_ENDED;
     }
 
-    public boolean expireIfDue(Instant now) {
-        if (!isActive() || !isDue(now)) {
+    /**
+     * 끊김 유예나 2시간 상한이 지났으면 끝낸다. 연결 만료의 끝난 시각은 마지막 생존 시각이고 기다린 유예는 녹음 시간에 넣지 않는다.
+     */
+    public boolean expireIfDue(
+            Instant now,
+            RecordingConnectionPolicy connectionPolicy
+    ) {
+        if (!isActive() || !isDue(
+                now,
+                connectionPolicy
+        )) {
             return false;
         }
-        RecordingEndReason reason = calculateDueReason();
-        Instant expiredAt = calculateDueAt();
+        RecordingEndReason reason = calculateDueReason(connectionPolicy);
+        Instant expiredAt = calculateAutoEndedAt(reason);
         if (status == RecordingStatus.RECORDING) {
             accumulatedRecordingMillis += Duration.between(
                     currentIntervalStartedAt,
@@ -327,8 +358,15 @@ public class RecordingSession {
         return true;
     }
 
-    public void recordHeartbeat(Instant receivedAt) {
-        if (!isActive() || expireIfDue(receivedAt)) {
+    /** 녹음 탭의 생존 신호를 접수한다. 늦게 도착한 요청은 마지막 생존 시각을 되돌리지 않는다. */
+    public void recordAlive(
+            Instant receivedAt,
+            RecordingConnectionPolicy connectionPolicy
+    ) {
+        if (!isActive() || expireIfDue(
+                receivedAt,
+                connectionPolicy
+        )) {
             return;
         }
         if (receivedAt.isAfter(lastSeenAt)) {
@@ -340,11 +378,11 @@ public class RecordingSession {
         return RecordingStatus.ACTIVE_STATUSES.contains(status);
     }
 
-    public Instant getConnectionExpiresAt() {
+    public Instant connectionExpiresAt(RecordingConnectionPolicy connectionPolicy) {
         if (!isActive()) {
             return null;
         }
-        return lastSeenAt.plus(CONNECTION_TIMEOUT);
+        return connectionPolicy.expiresAt(lastSeenAt);
     }
 
     public void discard(Instant discardedAt) {
@@ -383,6 +421,13 @@ public class RecordingSession {
         }
     }
 
+    private boolean isControlledBy(
+            UUID tabId,
+            String controlTokenHash
+    ) {
+        return this.tabId.equals(tabId) && sameControlTokenHash(controlTokenHash);
+    }
+
     private boolean sameControlTokenHash(String controlTokenHash) {
         if (!isValidControlTokenHash(controlTokenHash)) {
             return false;
@@ -419,23 +464,33 @@ public class RecordingSession {
         return pointInTime;
     }
 
-    private boolean isDue(Instant now) {
+    private boolean isDue(
+            Instant now,
+            RecordingConnectionPolicy connectionPolicy
+    ) {
         if (now == null) {
             throw new RecordingException(RecordingErrorCode.INVALID_RECORDING_TIME);
         }
-        return !now.isBefore(calculateDueAt());
+        return !now.isBefore(calculateDueAt(connectionPolicy));
     }
 
-    private Instant calculateDueAt() {
-        if (calculateDueReason() == RecordingEndReason.MAX_DURATION) {
+    private Instant calculateDueAt(RecordingConnectionPolicy connectionPolicy) {
+        if (calculateDueReason(connectionPolicy) == RecordingEndReason.MAX_DURATION) {
             return calculateMaxDurationReachedAt();
         }
-        return lastSeenAt.plus(CONNECTION_TIMEOUT);
+        return connectionPolicy.expiresAt(lastSeenAt);
     }
 
-    private RecordingEndReason calculateDueReason() {
+    private Instant calculateAutoEndedAt(RecordingEndReason reason) {
+        if (reason == RecordingEndReason.MAX_DURATION) {
+            return calculateMaxDurationReachedAt();
+        }
+        return lastSeenAt;
+    }
+
+    private RecordingEndReason calculateDueReason(RecordingConnectionPolicy connectionPolicy) {
         Instant maxDurationReachedAt = calculateMaxDurationReachedAt();
-        if (maxDurationReachedAt != null && !maxDurationReachedAt.isAfter(lastSeenAt.plus(CONNECTION_TIMEOUT))) {
+        if (maxDurationReachedAt != null && !maxDurationReachedAt.isAfter(connectionPolicy.expiresAt(lastSeenAt))) {
             return RecordingEndReason.MAX_DURATION;
         }
         return RecordingEndReason.CONNECTION_EXPIRED;
@@ -448,8 +503,14 @@ public class RecordingSession {
         return currentIntervalStartedAt.plusMillis(MAX_RECORDING_MILLIS - accumulatedRecordingMillis);
     }
 
-    private void endIfExpired(Instant now) {
-        if (expireIfDue(now)) {
+    private void endIfExpired(
+            Instant now,
+            RecordingConnectionPolicy connectionPolicy
+    ) {
+        if (expireIfDue(
+                now,
+                connectionPolicy
+        )) {
             throw new RecordingException(RecordingErrorCode.RECORDING_ALREADY_ENDED);
         }
     }

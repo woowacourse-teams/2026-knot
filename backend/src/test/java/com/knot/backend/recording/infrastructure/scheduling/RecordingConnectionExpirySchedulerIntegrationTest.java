@@ -76,9 +76,9 @@ class RecordingConnectionExpirySchedulerIntegrationTest {
         // when
         jdbcClient.sql("""
                 UPDATE recording_sessions
-                SET started_at = started_at - INTERVAL '10 minutes',
-                    current_interval_started_at = current_interval_started_at - INTERVAL '10 minutes',
-                    last_seen_at = last_seen_at - INTERVAL '10 minutes'
+                SET started_at = started_at - INTERVAL '40 minutes',
+                    current_interval_started_at = current_interval_started_at - INTERVAL '40 minutes',
+                    last_seen_at = last_seen_at - INTERVAL '40 minutes'
                 WHERE id = :recordingId
                 """)
                 .param(
