@@ -26,7 +26,7 @@ import OAuthLoginButtonList from ".";
  * - 이동 뒤의 흐름은 백엔드가 정해요. 기존 회원은 접근 토큰 쿠키를 받고,
  *   신규 사용자는 온보딩 토큰 쿠키를 받아 닉네임 입력 화면(`/onboarding`)으로 돌아옵니다.
  * - 서버가 허용한 출처에서만 동작해요. 스토리북과 `localhost`에서는 눌러도 로그인되지 않으니 배포된 주소에서 확인해야 합니다.
- * - 로그인이 실패해 돌아오면 버튼 바로 위에 `Auth/OAuthErrorNotice`가 실패 문구를 띄우고, 이 버튼들로 다시 시도해요. 승인 화면에서 취소하고 돌아오면 아무것도 띄우지 않아요.
+ * - 로그인이 실패해 돌아오면 로그인 실패 화면(`/login/failed`, `Shared/PageErrorNotice`의 ERR-15)으로 가고, 「로그인 화면으로」를 눌러 이 버튼들로 다시 시도해요. 승인 화면에서 취소하고 돌아오면 아무것도 띄우지 않아요.
  */
 const meta = {
   title: "Auth/OAuthLoginButtonList",
