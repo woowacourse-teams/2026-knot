@@ -1,5 +1,7 @@
 import { GetDocumentRecordingsResponseDto, GetDocumentResponseDto } from "@api/dto/document";
 import { GetWorkspacesResponseDto } from "@api/dto/workspace";
+import { GetRecordingsResponseDto } from "@api/dto/recording";
+import { recordingsResponse } from "@api/mock/responses/recording";
 import { documentDetailsResponse, documentRecordingsResponse } from "@api/mock/responses/document";
 import { workspacesResponse } from "@api/mock/responses/workspace";
 import { expect, test, type Page } from "@playwright/test";
@@ -60,7 +62,7 @@ test("[ERR-QA-005, ERR-QA-006] 만료된 재생 정보가 캐시에 있어도 �
   await expect(player.getByRole("button", { name: "재생" })).toBeVisible();
 });
 
-test("[ERR-QA-001, ERR-QA-002, DOC-R24, DOC-R25] 이전 서버 응답에서도 홈과 기존 문서 조회, 확인, 복사, 원문을 이용한다", async ({ page, context }) => {
+test("[ERR-R1, ERR-QA-001, ERR-QA-002, DOC-R24, DOC-R25] 이전 서버 응답에서도 홈과 기존 문서 조회, 확인, 복사, 원문을 이용한다", async ({ page, context }) => {
   await context.grantPermissions(["clipboard-read", "clipboard-write"]);
   await page.addInitScript(({ key }) => localStorage.setItem(key, "legacy"), { key: STORAGE_KEY });
   await page.goto(HOME);
@@ -88,14 +90,47 @@ test("[ERR-QA-001, ERR-QA-002, DOC-R24, DOC-R25] 이전 서버 응답에서도 �
   await expect(page.getByText("잠시 문제가 생겼어요")).toHaveCount(0);
 });
 
+for (const scenario of ["legacy", "unknown"]) {
+  test(`[ERR-QA-002] ${scenario} 응답의 다음 페이지에서도 제목을 유지하고 상태 의존 동작을 제한한다`, async ({ page }) => {
+    const expected = new GetRecordingsResponseDto(recordingsResponse).items;
+    await page.addInitScript(({ key, scenario }) => localStorage.setItem(key, scenario), { key: STORAGE_KEY, scenario });
+    await page.goto(HOME);
+    const list = page.getByRole("list", { name: "녹음 기록" });
+    await expect(list.getByRole("listitem")).toHaveCount(20);
+    const [response] = await Promise.all([
+      page.waitForResponse((response) => new URL(response.url()).searchParams.has("cursor") && new URL(response.url()).pathname.endsWith("/recordings")),
+      list.getByRole("listitem").last().scrollIntoViewIfNeeded(),
+    ]);
+    const body = await response.json();
+    expect(body.items).toHaveLength(expected.length - 20);
+    expect(body.nextCursor).toBeNull();
+    if (scenario === "legacy") expect(body.items[0]).not.toHaveProperty("processingStatus");
+    else expect(body.items[0].processingStatus).toBe("FUTURE_STATUS");
+    await expect(list.getByRole("listitem")).toHaveCount(expected.length);
+    const lastRow = list.getByRole("listitem").last();
+    await expect(lastRow).toContainText(expected[expected.length - 1].title);
+    await expect(lastRow).toContainText("처리 상태를 확인할 수 없어요");
+    await expect(lastRow.getByRole("link", { name: "녹음 보기" })).toHaveAttribute("aria-disabled", "true");
+    await expect(lastRow.getByRole("button", { name: "다시 시도" })).toHaveCount(0);
+  });
+}
+
 test("[ERR-QA-002, ERR-QA-006] 열린 홈이 정상, 미지 상태, 이전 응답, 복구 순서로 바뀌어도 오류 화면 없이 유지된다", async ({ page }) => {
   await page.goto(HOME);
   const viewLinks = page.getByRole("link", { name: "녹음 보기" });
   const activeViewLinks = page.locator("a").filter({ hasText: "녹음 보기" });
   await expect(activeViewLinks.first()).toHaveAttribute("href", /recordings/);
   for (const scenario of ["unknown", "legacy"]) {
-    await setScenario({ page, scenario: scenario });
-    await returnToTab(page);
+    await setScenario({ page, scenario });
+    const [response] = await Promise.all([
+      page.waitForResponse((response) => response.request().method() === "GET" &&
+        new URL(response.url()).pathname === `/api/v1/workspaces/${WORKSPACE_ID}/recordings`),
+      returnToTab(page),
+    ]);
+    await response.finished();
+    const body = await response.json();
+    if (scenario === "legacy") expect(body.items[0]).not.toHaveProperty("processingStatus");
+    else expect(body.items[0].processingStatus).toBe("FUTURE_STATUS");
     await expect(page.getByText("처리 상태를 확인할 수 없어요").first()).toBeVisible();
     await expect(viewLinks.first()).toHaveAttribute("aria-disabled", "true");
     await expect(page.getByRole("heading", { name: "팀원 초대" })).toBeVisible();

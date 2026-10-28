@@ -1,5 +1,5 @@
-import { recordingsResponse } from "@api/mock/responses/recording";
 import { recordingAudioPlaybackResponse } from "@api/mock/responses/recordingDocument";
+import { findRecordingHistoryItems } from "@api/mock/state/recording";
 import { http, HttpResponse } from "msw";
 
 /** 개발 브라우저에서만 쓰는 배포 시차 응답. 값을 바꾸면 다음 조회부터 적용해 열린 탭의 롤백도 재현해요. */
@@ -28,16 +28,26 @@ const respondToNewApi = (feature: string) => {
 
 /** browser.ts에서만 기본 핸들러 앞에 등록해요. 프로덕션과 vitest의 기본 응답은 바뀌지 않아요. */
 export const deploymentCompatibilityHandlers = [
-  http.get("*/api/v1/workspaces/:workspaceId/recordings", () => {
+  http.get("*/api/v1/workspaces/:workspaceId/recordings", ({ request }) => {
     const scenario = readScenario();
+    if (!["missing-retryable", "legacy", "unknown"].includes(scenario ?? "")) return;
+    const items = findRecordingHistoryItems();
+    const cursor = new URL(request.url).searchParams.get("cursor");
+    const cursorIndex = items.findIndex(({ recordingId }) => String(recordingId) === cursor);
+    // 잘못된 커서는 기본 핸들러가 기존 400 응답으로 처리해요.
+    if (cursor !== null && cursorIndex === -1) return;
+    const end = cursorIndex + 1 + 20;
+    const page = {
+      items: items.slice(cursorIndex + 1, end),
+      nextCursor: end < items.length ? String(items[end - 1].recordingId) : null,
+    };
     if (scenario === "missing-retryable") return HttpResponse.json({
-      ...recordingsResponse,
-      items: recordingsResponse.items.map((item) => ({ ...item, processingStatus: "TRANSCRIPTION_FAILED", retryable: undefined })),
+      ...page,
+      items: page.items.map((item) => ({ ...item, processingStatus: "TRANSCRIPTION_FAILED", retryable: undefined })),
     });
-    if (scenario !== "legacy" && scenario !== "unknown") return;
     return HttpResponse.json({
-      ...recordingsResponse,
-      items: recordingsResponse.items.map(
+      ...page,
+      items: page.items.map(
         ({ recordingId, title, startedAt, recordingDurationSeconds }) => ({
           recordingId,
           title,
