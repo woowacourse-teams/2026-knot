@@ -22,7 +22,9 @@ const TERMS_NOTICE =
 // 로그인 화면은 로그인하지 않은 사람만 볼 수 있어, 기본으로 넣는 mock 로그인 쿠키를 빼요
 test.use({ storageState: { cookies: [], origins: [] } });
 
-const getLoginButtons = (page: Page) => page.getByRole("button");
+// 개발 서버에는 개발 도구 버튼이 화면에 더 붙어, 로그인 버튼만 이름으로 골라요
+const getLoginButtons = (page: Page) =>
+  page.getByRole("button", { name: /로 시작하기$/ });
 
 /** 위에서 아래로 놓인 순서대로 요소의 화면 위 끝(px)을 돌려줘요 */
 const topOf = async (page: Page, text: string) => {
