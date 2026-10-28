@@ -402,6 +402,18 @@ Harudeul 메모에는 Codex CLI 연결과 기기 소음의 불편이 있다. Ril
 - 최초 탭은 10초마다 신호를 보내고, 서버는 마지막 유효 신호 + 30초가 지나면 `CONNECTION_EXPIRED`로 종료한다. 종료 시각은 마지막 신호 + 30초다.
 - FE #694의 10초 주기를 먼저 배포한 뒤 BE 기준을 바꾼다. 결정 기록은 [ADR 695](../adr/695-recording-connection-timeout-30-seconds.md)다.
 
+### 2026-10-28 녹음 연결 끊김 30분 유예와 이어 받기 (#1065)
+
+[Issue #1065](https://github.com/woowacourse-teams/2026-Knot/issues/1065)의 노션 도메인 규칙 4. 녹음 '연결 끊김과 유예'와 API 명세가
+위 #695 절의 30초 만료와 #378 절의 시작 재요청 복구를 대체한다. 결정 기록은 [ADR 1065](../adr/1065-recording-disconnect-grace-and-reconnect.md)다.
+
+- 마지막 생존 시각 뒤 끊김 유예 30분(`recording.connection-expiry.grace`)이 지나면 `CONNECTION_EXPIRED`로 끝낸다.
+  끝난 시각은 마지막 생존 시각이고 기다린 30분은 녹음 시간에 넣지 않는다. 2시간 상한에 먼저 닿으면 `MAX_DURATION`이다.
+- 생존 신호는 신호·일시정지·이어서 녹음·조각 예약·조각 완료 확인·이어 받기다.
+- 신호 응답과 진행 중 녹음 조회는 `connectionStatus`를 준다. 마지막 생존 뒤 30초(`recording.connection-expiry.disconnected-after`)부터 `DISCONNECTED`다.
+- 같은 탭 새로고침은 `POST .../recordings/{recordingId}/reconnect`로 녹음 탭 증명을 바꿔 이어 받는다. 구간 업로드 녹음은
+  확인되지 않은 예약 조각을 지우고 확인된 조각 바로 뒤부터 이어 예약한다(2026-10-28 사용자 결정).
+
 ## 계속 적용할 기존 규칙
 
 V2 전환은 모든 기술 규칙과 ADR의 일괄 폐기가 아니다.
