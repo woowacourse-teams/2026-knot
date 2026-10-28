@@ -18,6 +18,8 @@ class RecordingSessionTest {
     private static final UUID TAB_ID = UUID.fromString("22222222-2222-2222-2222-222222222222");
     private static final String CONTROL_TOKEN_HASH = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
     private static final Instant STARTED_AT = Instant.parse("2026-10-01T00:00:00Z");
+    private static final UUID NEW_TAB_ID = UUID.fromString("33333333-3333-3333-3333-333333333333");
+    private static final String NEW_CONTROL_TOKEN_HASH = "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789";
     private static final Duration GRACE = Duration.ofMinutes(30);
     private static final Duration DISCONNECTED_AFTER = Duration.ofSeconds(30);
     private static final RecordingConnectionPolicy CONNECTION_POLICY = new RecordingConnectionPolicy(
@@ -1247,6 +1249,243 @@ class RecordingSessionTest {
 
         // then
         assertThat(status).isNull();
+    }
+
+    @Test
+    @DisplayName("이전 증명이 현재 녹음 탭 증명이면 새 증명으로 바꾸고 상태는 그대로 둔 채 마지막 생존 시각을 갱신한다")
+    void reconnect_success_handsOverProof() {
+        // given
+        RecordingSession session = startRecording();
+        session.pause(
+                STARTED_AT.plusSeconds(10),
+                CONNECTION_POLICY
+        );
+        Instant reconnectedAt = STARTED_AT.plusSeconds(600);
+
+        // when
+        boolean handedOver = session.reconnect(
+                TAB_ID,
+                CONTROL_TOKEN_HASH,
+                NEW_TAB_ID,
+                NEW_CONTROL_TOKEN_HASH,
+                reconnectedAt,
+                CONNECTION_POLICY
+        );
+
+        // then
+        assertThat(handedOver).isTrue();
+        assertThat(session.getTabId()).isEqualTo(NEW_TAB_ID);
+        assertThat(session.getStatus()).isEqualTo(RecordingStatus.PAUSED);
+        assertThat(session.getAccumulatedRecordingMillis()).isEqualTo(10_000L);
+        assertThat(session.getLastSeenAt()).isEqualTo(reconnectedAt);
+        assertThat(
+                catchThrowable(
+                        () -> session.validateControlProof(
+                                NEW_TAB_ID,
+                                NEW_CONTROL_TOKEN_HASH
+                        )
+                )
+        ).isNull();
+    }
+
+    @Test
+    @DisplayName("이어 받은 뒤 이전 증명으로 온 제어는 거절한다")
+    void reconnect_success_previousProofDenied() {
+        // given
+        RecordingSession session = startRecording();
+        session.reconnect(
+                TAB_ID,
+                CONTROL_TOKEN_HASH,
+                NEW_TAB_ID,
+                NEW_CONTROL_TOKEN_HASH,
+                STARTED_AT.plusSeconds(60),
+                CONNECTION_POLICY
+        );
+
+        // when
+        Throwable failure = catchThrowable(
+                () -> session.validateControlProof(
+                        TAB_ID,
+                        CONTROL_TOKEN_HASH
+                )
+        );
+
+        // then
+        assertThat(failure).isInstanceOf(RecordingException.class)
+                .extracting("errorCode")
+                .isEqualTo(RecordingErrorCode.RECORDING_CONTROL_DENIED);
+    }
+
+    @Test
+    @DisplayName("같은 새 증명으로 다시 보낸 이어 받기는 증명을 다시 바꾸지 않고 같은 결과를 준다")
+    void reconnect_success_retryWithSameNewProof() {
+        // given
+        RecordingSession session = startRecording();
+        session.reconnect(
+                TAB_ID,
+                CONTROL_TOKEN_HASH,
+                NEW_TAB_ID,
+                NEW_CONTROL_TOKEN_HASH,
+                STARTED_AT.plusSeconds(60),
+                CONNECTION_POLICY
+        );
+
+        // when
+        boolean handedOver = session.reconnect(
+                TAB_ID,
+                CONTROL_TOKEN_HASH,
+                NEW_TAB_ID,
+                NEW_CONTROL_TOKEN_HASH,
+                STARTED_AT.plusSeconds(70),
+                CONNECTION_POLICY
+        );
+
+        // then
+        assertThat(handedOver).isFalse();
+        assertThat(session.getTabId()).isEqualTo(NEW_TAB_ID);
+        assertThat(session.getStatus()).isEqualTo(RecordingStatus.RECORDING);
+        assertThat(session.getLastSeenAt()).isEqualTo(STARTED_AT.plusSeconds(70));
+    }
+
+    @Test
+    @DisplayName("다른 탭이 먼저 이어 받았으면 같은 이전 증명의 이어 받기를 거절하고 아무것도 바꾸지 않는다")
+    void reconnect_failure_otherTabHandedOverFirst() {
+        // given
+        RecordingSession session = startRecording();
+        session.reconnect(
+                TAB_ID,
+                CONTROL_TOKEN_HASH,
+                NEW_TAB_ID,
+                NEW_CONTROL_TOKEN_HASH,
+                STARTED_AT.plusSeconds(60),
+                CONNECTION_POLICY
+        );
+        UUID duplicatedTabId = UUID.fromString("44444444-4444-4444-4444-444444444444");
+        String duplicatedHash = "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210";
+
+        // when
+        Throwable failure = catchThrowable(
+                () -> session.reconnect(
+                        TAB_ID,
+                        CONTROL_TOKEN_HASH,
+                        duplicatedTabId,
+                        duplicatedHash,
+                        STARTED_AT.plusSeconds(61),
+                        CONNECTION_POLICY
+                )
+        );
+
+        // then
+        assertThat(failure).isInstanceOf(RecordingException.class)
+                .extracting("errorCode")
+                .isEqualTo(RecordingErrorCode.RECORDING_CONTROL_DENIED);
+        assertThat(session.getTabId()).isEqualTo(NEW_TAB_ID);
+        assertThat(session.getLastSeenAt()).isEqualTo(STARTED_AT.plusSeconds(60));
+    }
+
+    @Test
+    @DisplayName("새 증명이 이전 증명과 같으면 잘못된 요청으로 거절한다")
+    void reconnect_failure_sameProof() {
+        // given
+        RecordingSession session = startRecording();
+
+        // when
+        Throwable failure = catchThrowable(
+                () -> session.reconnect(
+                        TAB_ID,
+                        CONTROL_TOKEN_HASH,
+                        NEW_TAB_ID,
+                        CONTROL_TOKEN_HASH,
+                        STARTED_AT.plusSeconds(10),
+                        CONNECTION_POLICY
+                )
+        );
+
+        // then
+        assertThat(failure).isInstanceOf(RecordingException.class)
+                .extracting("errorCode")
+                .isEqualTo(RecordingErrorCode.INVALID_RECORDING_DATA);
+        assertThat(session.getTabId()).isEqualTo(TAB_ID);
+    }
+
+    @Test
+    @DisplayName("유예가 지난 녹음의 이어 받기는 마지막 생존 시각으로 끝내고 증명을 바꾸지 않는다")
+    void reconnect_success_expiredKeepsProof() {
+        // given
+        RecordingSession session = startRecording();
+        Instant lateAt = STARTED_AT.plus(GRACE)
+                .plusSeconds(1);
+
+        // when
+        boolean handedOver = session.reconnect(
+                TAB_ID,
+                CONTROL_TOKEN_HASH,
+                NEW_TAB_ID,
+                NEW_CONTROL_TOKEN_HASH,
+                lateAt,
+                CONNECTION_POLICY
+        );
+
+        // then
+        assertThat(handedOver).isFalse();
+        assertThat(session.getStatus()).isEqualTo(RecordingStatus.ENDED);
+        assertThat(session.getEndReason()).isEqualTo(RecordingEndReason.CONNECTION_EXPIRED);
+        assertThat(session.getEndedAt()).isEqualTo(STARTED_AT);
+        assertThat(session.getTabId()).isEqualTo(TAB_ID);
+    }
+
+    @Test
+    @DisplayName("폐기된 녹음의 이어 받기는 폐기 오류로 거절한다")
+    void reconnect_failure_discarded() {
+        // given
+        RecordingSession session = startRecording();
+        session.discard(STARTED_AT.plusSeconds(10));
+
+        // when
+        Throwable failure = catchThrowable(
+                () -> session.reconnect(
+                        TAB_ID,
+                        CONTROL_TOKEN_HASH,
+                        NEW_TAB_ID,
+                        NEW_CONTROL_TOKEN_HASH,
+                        STARTED_AT.plusSeconds(20),
+                        CONNECTION_POLICY
+                )
+        );
+
+        // then
+        assertThat(failure).isInstanceOf(RecordingException.class)
+                .extracting("errorCode")
+                .isEqualTo(RecordingErrorCode.RECORDING_ALREADY_DISCARDED);
+    }
+
+    @Test
+    @DisplayName("이어 받은 뒤 같은 요청 키의 이전 증명 시작 재요청은 시작 요청 충돌이다")
+    void reconnect_success_previousStartRetryConflicts() {
+        // given
+        RecordingSession session = startRecording();
+        session.reconnect(
+                TAB_ID,
+                CONTROL_TOKEN_HASH,
+                NEW_TAB_ID,
+                NEW_CONTROL_TOKEN_HASH,
+                STARTED_AT.plusSeconds(60),
+                CONNECTION_POLICY
+        );
+
+        // when
+        Throwable failure = catchThrowable(
+                () -> session.validateStartRetry(
+                        WORKSPACE_ID,
+                        TAB_ID,
+                        CONTROL_TOKEN_HASH
+                )
+        );
+
+        // then
+        assertThat(failure).isInstanceOf(RecordingException.class)
+                .extracting("errorCode")
+                .isEqualTo(RecordingErrorCode.RECORDING_START_REQUEST_CONFLICT);
     }
 
     @Test
