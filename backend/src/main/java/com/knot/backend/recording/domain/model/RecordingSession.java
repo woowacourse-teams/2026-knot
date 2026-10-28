@@ -232,6 +232,56 @@ public class RecordingSession {
         }
     }
 
+    /**
+     * 같은 탭 새로고침 뒤 이어 받기다. 이전 증명이 현재 녹음 탭 증명이면 새 증명으로 바꾸고, 새 증명이 이미 현재 증명이면 같은 이어
+     * 받기의 재시도로 본다. 끝난 녹음은 증명을 바꾸지 않는다.
+     *
+     * @return 이번 요청으로 녹음 탭 증명을 바꿨으면 true
+     */
+    public boolean reconnect(
+            UUID previousTabId,
+            String previousControlTokenHash,
+            UUID tabId,
+            String controlTokenHash,
+            Instant reconnectedAt,
+            RecordingConnectionPolicy connectionPolicy
+    ) {
+        validateReplacementProof(
+                previousTabId,
+                previousControlTokenHash,
+                tabId,
+                controlTokenHash
+        );
+        boolean handedOver = isControlledBy(
+                previousTabId,
+                previousControlTokenHash
+        );
+        boolean retried = isControlledBy(
+                tabId,
+                controlTokenHash
+        );
+        if (!handedOver && !retried) {
+            throw new RecordingException(RecordingErrorCode.RECORDING_CONTROL_DENIED);
+        }
+        ensureNotDiscarded();
+        expireIfDue(
+                reconnectedAt,
+                connectionPolicy
+        );
+        if (!isActive()) {
+            return false;
+        }
+        if (handedOver) {
+            this.tabId = tabId;
+            this.controlTokenHash = controlTokenHash;
+        }
+        recordAlive(
+                reconnectedAt,
+                connectionPolicy
+        );
+        return handedOver;
+    }
+
     public boolean belongsTo(long workspaceId) {
         return this.workspaceId == workspaceId;
     }
@@ -439,6 +489,20 @@ public class RecordingSession {
             String controlTokenHash
     ) {
         return this.tabId.equals(tabId) && sameControlTokenHash(controlTokenHash);
+    }
+
+    private void validateReplacementProof(
+            UUID previousTabId,
+            String previousControlTokenHash,
+            UUID tabId,
+            String controlTokenHash
+    ) {
+        if (previousTabId == null || tabId == null || !isValidControlTokenHash(controlTokenHash)) {
+            throw new RecordingException(RecordingErrorCode.INVALID_RECORDING_DATA);
+        }
+        if (previousTabId.equals(tabId) || controlTokenHash.equals(previousControlTokenHash)) {
+            throw new RecordingException(RecordingErrorCode.INVALID_RECORDING_DATA);
+        }
     }
 
     private boolean sameControlTokenHash(String controlTokenHash) {
