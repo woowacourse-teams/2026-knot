@@ -34,12 +34,14 @@ interface NewsPopoverProps {
  *
  * 노트는 프론트 Worker가 Notion 새 소식 DB에서 읽어 와요(ADR 956). 받지 못하면 새 소식 패널은 빈 상태를 보여 줘요.
  * 이 기기에서 새 소식을 한 번도 열지 않은 사용자에게는 노트를 받은 뒤 메뉴 없이 새 소식 패널을 저절로 열어 줘요(NEWS-R6).
+ * 안 읽은 새 소식이 있으면 버튼 오른쪽 위에 점을 켜고 aria-label에 알려요. 새 소식 패널을 열면 꺼요(NEWS-R1, NEWS-R2).
  * 휴대폰에서는 피드백을 사이드바에서 열어서(FEEDBACK-R2), 누르면 메뉴 없이 새 소식 패널을 바로 열어요.
  */
 export default function NewsPopover({ renderFeedbackPanel }: NewsPopoverProps) {
   const { data, isPending } = useReleaseNotesQuery();
   const notes = data?.notes ?? [];
-  const { isAutoOpen, markAsSeen } = useLastSeenNote({ notes });
+  const { isAutoOpen, unreadNoteIds, markAsSeen } = useLastSeenNote({ notes });
+  const hasUnreadNews = unreadNoteIds.length > 0;
   const { isMatched: isMobile } = useMediaQuery(SCREEN_CONDITION.mobile);
   const { isSendingFeedback } = useIsSendingFeedback();
   const initialView = isAutoOpen || isMobile ? "news" : "menu";
@@ -60,13 +62,23 @@ export default function NewsPopover({ renderFeedbackPanel }: NewsPopoverProps) {
         <NewsPopoverContent
           initialView={initialView}
           notes={notes}
+          unreadNoteIds={unreadNoteIds}
           onNewsOpen={markAsSeen}
           feedbackPanel={renderFeedbackPanel({ onClose: close })}
         />
       )}
     >
       {(triggerProps) => (
-        <Trigger type="button" aria-label="새 소식과 피드백" {...triggerProps}>
+        <Trigger
+          type="button"
+          aria-label={
+            hasUnreadNews
+              ? "새 소식과 피드백, 읽지 않은 소식 있음"
+              : "새 소식과 피드백"
+          }
+          $hasUnreadNews={hasUnreadNews}
+          {...triggerProps}
+        >
           <LetterIcon size={18} />
           <Tooltip aria-hidden>새 소식과 피드백</Tooltip>
         </Trigger>
@@ -92,7 +104,7 @@ const Tooltip = styled.span`
 `;
 
 /** 피그마 Btn/소식과 피드백: 36px 원 · 아이콘 18px */
-const Trigger = styled.button`
+const Trigger = styled.button<{ $hasUnreadNews: boolean }>`
   position: relative;
   display: flex;
   align-items: center;
@@ -130,6 +142,24 @@ const Trigger = styled.button`
     outline: 2px solid ${({ theme }) => theme.sub.accent[500]};
     outline-offset: 2px;
   }
+
+  /* 피그마 상태=새 소식 있음: 8px 점을 버튼 바깥 가장자리에서 위와 오른쪽으로 1px 안에 두고 흰 테두리 2px를 바깥으로 둘러요 */
+  /* 위치는 버튼 테두리(1px) 안쪽에서 재므로 점 테두리와 버튼 테두리만큼 밖으로 밀어요 */
+  ${({ $hasUnreadNews, theme }) =>
+    $hasUnreadNews &&
+    `
+    &::before {
+      position: absolute;
+      top: -0.125rem; /* 2px */
+      right: -0.125rem; /* 2px */
+      width: 0.75rem; /* 12px */
+      height: 0.75rem; /* 12px */
+      border: 2px solid ${theme.neutral[0]};
+      border-radius: 62.4375rem; /* 999px */
+      background-color: ${theme.sub.accent[500]};
+      content: "";
+    }
+  `}
 
   /* 손가락으로 누를 때는 보이는 크기(36px)는 그대로 두고 누르는 영역만 44px로 넓혀요(RESP-R9) */
   @media (pointer: coarse) {

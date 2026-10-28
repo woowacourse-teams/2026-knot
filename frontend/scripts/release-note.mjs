@@ -7,6 +7,7 @@
  * - guide: Notion 「릴리즈 노트」 페이지(노트 문구 기준)를 글로 읽어 GITHUB_OUTPUT의 `guide`로 낸다. 저장소에는 옮기지 않는다.
  *   바로 가보기로 고를 수 있는 앱 화면도 앱 라우트 표에서 읽어 `link_keys`(JSON 배열)와 `links`(화면 키와 주소)로 낸다.
  * - publish: NOTE_JSON(Claude의 structured_output)을 검사하고, 항목이 있으면 노트 id `pr-{PR_NUMBER}`로 DB에 바꿔 넣는다.
+ *   사진은 GitHub 첨부 사진 주소만 받아 「사진」 칸에 넣는다. 사진이 있는 노트를 쓰려면 DB에 URL 칸 「사진」이 있어야 한다.
  *   항목이 없으면 「사용자 변화 없음」으로 DB를 건드리지 않는다.
  *
  * 환경 변수: NOTION_TOKEN(새 소식 DB와 「릴리즈 노트」 페이지에 연결한 쓰기 연동), NOTION_DATABASE_ID,
@@ -24,6 +25,8 @@ const NOTION_API_URL = "https://api.notion.com/v1";
 // Worker(`src/worker/relay`)와 같은 판을 써요. 2022-06-28 판은 DB ID로 줄을 넣고 조회해요
 const NOTION_VERSION = "2022-06-28";
 const KST_OFFSET_MS = 9 * 60 * 60 * 1000;
+/** 사진으로 받는 주소의 앞부분. 앱 `NewsPopover/constants/newsImage.ts`의 `NEWS_IMAGE_URL_PREFIX`와 같다. 리디렉트된 S3 주소는 몇 분 뒤 만료돼 받지 않는다 */
+const IMAGE_URL_PREFIX = "https://github.com/user-attachments/assets/";
 
 /** 「바로 가보기」로 고를 화면을 읽는 앱 라우트 표. 화면 목록을 따로 적어 두지 않고 실행할 때마다 여기서 읽는다 */
 const PATH_ROUTE_FILE = new URL(
@@ -57,7 +60,7 @@ const isFilledString = (value) =>
   typeof value === "string" && value.trim().length > 0;
 
 /**
- * Claude가 낸 노트 JSON을 검사한다. 제목과 설명은 꼭 있어야 하고, 바로 가보기는 앱 화면 키만, 큰 변화는 하나까지 받는다.
+ * Claude가 낸 노트 JSON을 검사한다. 제목과 설명은 꼭 있어야 하고, 사진은 GitHub 첨부 사진 주소만, 바로 가보기는 앱 화면 키만, 큰 변화는 하나까지 받는다.
  * items가 비어 있으면 사용자 변화가 없는 노트다.
  */
 export const validateNote = ({ note, linkKeys }) => {
@@ -70,12 +73,20 @@ export const validateNote = ({ note, linkKeys }) => {
 
   const errors = [];
   const items = note.items.map((rawItem, index) => {
-    const { title, description, link, isFromFeedback, isHighlight } =
+    const { title, description, image, link, isFromFeedback, isHighlight } =
       rawItem ?? {};
     const label = `${index + 1}번째 항목`;
 
     if (!isFilledString(title)) errors.push(`${label}에 제목이 없어요.`);
     if (!isFilledString(description)) errors.push(`${label}에 설명이 없어요.`);
+    if (
+      image != null &&
+      !(typeof image === "string" && image.startsWith(IMAGE_URL_PREFIX))
+    ) {
+      errors.push(
+        `${label}의 사진 「${image}」는 GitHub 첨부 사진 주소(${IMAGE_URL_PREFIX})가 아니에요.`,
+      );
+    }
     if (link != null && !linkKeys.includes(link)) {
       errors.push(
         `${label}의 바로 가보기 「${link}」는 앱 화면 키(${linkKeys.join(", ")})가 아니에요.`,
@@ -85,6 +96,7 @@ export const validateNote = ({ note, linkKeys }) => {
     return {
       title: String(title ?? "").trim(),
       description: String(description ?? "").trim(),
+      image: image ?? undefined,
       link: link ?? undefined,
       isFromFeedback: isFromFeedback === true,
       isHighlight: isHighlight === true,
@@ -104,7 +116,10 @@ export const toKstDate = (iso) =>
 
 const toRichText = (content) => (content ? [{ text: { content } }] : []);
 
-/** 항목 하나를 새 소식 DB 한 줄로 바꾼다. 칸 이름은 Worker가 읽는 이름과 같다 */
+/**
+ * 항목 하나를 새 소식 DB 한 줄로 바꾼다. 칸 이름은 Worker가 읽는 이름과 같다.
+ * 「사진」 칸은 사진이 있을 때만 넣어, 칸을 더하기 전의 DB에도 사진 없는 노트는 쓸 수 있다
+ */
 const toNotionPage = ({ databaseId, noteId, releasedAt, item, order }) => ({
   parent: { database_id: databaseId },
   properties: {
@@ -116,6 +131,7 @@ const toNotionPage = ({ databaseId, noteId, releasedAt, item, order }) => ({
     "피드백 덕분": { checkbox: item.isFromFeedback === true },
     "큰 변화": { checkbox: item.isHighlight === true },
     순서: { number: order },
+    ...(item.image && { 사진: { url: item.image } }),
   },
 });
 
@@ -237,11 +253,13 @@ const writeSummary = (markdown) => {
 const renderItem = ({
   title,
   description,
+  image,
   link,
   isFromFeedback,
   isHighlight,
 }) => {
   const marks = [
+    image && `사진: ${image}`,
     link && `바로 가보기: ${link}`,
     isFromFeedback && "피드백 덕분",
     isHighlight && "큰 변화",

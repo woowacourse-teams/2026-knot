@@ -19,6 +19,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import tools.jackson.databind.ObjectMapper;
@@ -109,14 +110,120 @@ class LlmDocumentTopicClassifierTest {
                 .hasMessage(DocumentErrorCode.INVALID_TOPIC_CLASSIFICATION_RESPONSE.getMessage());
     }
 
-    @Test
+    @ParameterizedTest
+    @EnumSource(value = LlmErrorCode.class, names = {"LLM_TIMEOUT", "LLM_RATE_LIMITED"})
     @DisplayName("공급자 실패를 빈 배열로 바꾸지 않고 호출자에게 전달한다")
-    void classify_failure_providerError() {
+    void classify_failure_providerError(LlmErrorCode errorCode) {
         // given
-        LlmException failure = new LlmException(LlmErrorCode.LLM_TIMEOUT);
+        LlmException failure = new LlmException(errorCode);
         when(client.complete(any())).thenThrow(failure);
 
         // when & then
         assertThatThrownBy(() -> classifier.classify("유효한 논의")).isSameAs(failure);
+    }
+
+    @Test
+    void classify_mergesSimilarTopicsAcrossAllChunksInFirstAppearanceOrder() {
+        when(client.complete(any())).thenThrow(new LlmException(LlmErrorCode.LLM_INPUT_LIMIT_EXCEEDED))
+                .thenReturn("{\"topics\":[\"알림 문구\",\"검색 조건\"]}")
+                .thenReturn("{\"topics\":[\"검색 개발 조건\",\"배포 일정\"]}")
+                .thenReturn(
+                        "{\"groups\":[{\"name\":\"검색 조건\",\"ids\":[1,2]},"
+                                + "{\"name\":\"배포 일정\",\"ids\":[3]},{\"name\":\"알림 문구\",\"ids\":[0]}]}"
+                );
+        List<DocumentTopic> result = classifier.classify("가".repeat(4100));
+        assertThat(result).extracting(DocumentTopic::value)
+                .containsExactly(
+                        "알림 문구",
+                        "검색 조건",
+                        "배포 일정"
+                );
+    }
+
+    @Test
+    void classify_doesNotAcceptMergeThatDropsCandidate() {
+        when(client.complete(any())).thenThrow(new LlmException(LlmErrorCode.LLM_INPUT_LIMIT_EXCEEDED))
+                .thenReturn("{\"topics\":[\"알림 문구\"]}")
+                .thenReturn("{\"topics\":[\"검색 조건\"]}")
+                .thenReturn("{\"groups\":[{\"name\":\"알림 문구\",\"ids\":[0]}]}");
+        assertThatThrownBy(() -> classifier.classify("가".repeat(4100))).isInstanceOf(DocumentException.class)
+                .hasMessage(DocumentErrorCode.INVALID_TOPIC_CLASSIFICATION_RESPONSE.getMessage());
+    }
+
+    @Test
+    void classify_doesNotPublishPartialResultsWhenAChunkFails() {
+        LlmException failure = new LlmException(LlmErrorCode.LLM_TIMEOUT);
+        when(client.complete(any())).thenThrow(new LlmException(LlmErrorCode.LLM_INPUT_LIMIT_EXCEEDED))
+                .thenReturn("{\"topics\":[\"알림 문구\"]}")
+                .thenThrow(failure);
+        assertThatThrownBy(() -> classifier.classify("가".repeat(4100))).isSameAs(failure);
+        verify(
+                client,
+                org.mockito.Mockito.times(3)
+        ).complete(any());
+    }
+
+    @Test
+    void classify_returnsEmptyOnlyAfterAllChunksHaveNoTopics() {
+        when(client.complete(any())).thenThrow(new LlmException(LlmErrorCode.LLM_INPUT_LIMIT_EXCEEDED))
+                .thenReturn(
+                        "{\"topics\":[]}",
+                        "{\"topics\":[]}"
+                );
+        assertThat(classifier.classify("가".repeat(4100))).isEmpty();
+        verify(
+                client,
+                org.mockito.Mockito.times(3)
+        ).complete(any());
+    }
+
+    @Test
+    void classify_rejectsMergeWithInventedName() {
+        when(client.complete(any())).thenThrow(new LlmException(LlmErrorCode.LLM_INPUT_LIMIT_EXCEEDED))
+                .thenReturn(
+                        "{\"topics\":[\"알림 문구\"]}",
+                        "{\"topics\":[\"검색 조건\"]}"
+                )
+                .thenReturn("{\"groups\":[{\"name\":\"없는 주제\",\"ids\":[0,1]}]}");
+        assertThatThrownBy(() -> classifier.classify("가".repeat(4100))).isInstanceOf(DocumentException.class)
+                .hasMessage(DocumentErrorCode.INVALID_TOPIC_CLASSIFICATION_RESPONSE.getMessage());
+    }
+
+    @Test
+    void classify_rejectsMergeWithRepeatedIds() {
+        when(client.complete(any())).thenThrow(new LlmException(LlmErrorCode.LLM_INPUT_LIMIT_EXCEEDED))
+                .thenReturn(
+                        "{\"topics\":[\"알림 문구\"]}",
+                        "{\"topics\":[\"검색 조건\"]}"
+                )
+                .thenReturn("{\"groups\":[{\"name\":\"알림 문구\",\"ids\":[0,0,1]}]}");
+        assertThatThrownBy(() -> classifier.classify("가".repeat(4100))).isInstanceOf(DocumentException.class)
+                .hasMessage(DocumentErrorCode.INVALID_TOPIC_CLASSIFICATION_RESPONSE.getMessage());
+    }
+
+    @Test
+    void classify_recursivelySplitsOversizedChunk() {
+        when(client.complete(any())).thenThrow(new LlmException(LlmErrorCode.LLM_INPUT_LIMIT_EXCEEDED))
+                .thenThrow(new LlmException(LlmErrorCode.LLM_INPUT_LIMIT_EXCEEDED))
+                .thenReturn(
+                        "{\"topics\":[\"검색 조건\"]}",
+                        "{\"topics\":[\"검색 조건\"]}"
+                );
+        assertThat(classifier.classify("가".repeat(3000))).extracting(DocumentTopic::value)
+                .containsExactly("검색 조건");
+    }
+
+    @Test
+    void classify_doesNotMarkNoContentWhenChunkLimitIsReached() {
+        java.util.concurrent.atomic.AtomicInteger calls = new java.util.concurrent.atomic.AtomicInteger();
+        when(client.complete(any())).thenAnswer(invocation -> {
+            if (calls.getAndIncrement() == 0) {
+                throw new LlmException(LlmErrorCode.LLM_INPUT_LIMIT_EXCEEDED);
+            }
+            return "{\"topics\":[]}";
+        });
+        assertThatThrownBy(() -> classifier.classify("가".repeat(4000 * 81))).isInstanceOf(LlmException.class)
+                .hasMessage(LlmErrorCode.LLM_INPUT_LIMIT_EXCEEDED.getMessage());
+        assertThat(calls.get()).isEqualTo(81);
     }
 }

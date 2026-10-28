@@ -16,12 +16,15 @@ import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.web.authentication.AuthenticationFailureHandler;
 import org.springframework.stereotype.Component;
+import org.springframework.web.util.UriComponentsBuilder;
 
 @Component
 public class OAuth2AuthenticationFailureHandler implements AuthenticationFailureHandler {
     private static final Logger log = LoggerFactory.getLogger(OAuth2AuthenticationFailureHandler.class);
+    private static final String CANCELLED_ERROR = "oauth2_cancelled";
 
     private final OAuth2LoginProperties loginProperties;
+    private final String cancelRedirectUri;
     private final AuthCookieManager cookieManager;
 
     public OAuth2AuthenticationFailureHandler(
@@ -34,6 +37,13 @@ public class OAuth2AuthenticationFailureHandler implements AuthenticationFailure
             throw new AuthException(AuthErrorCode.OAUTH_CONFIGURATION_INVALID);
         }
         this.loginProperties = loginProperties;
+        this.cancelRedirectUri = UriComponentsBuilder.fromUriString(loginProperties.getFailureRedirectUri())
+                .replaceQueryParam(
+                        "error",
+                        CANCELLED_ERROR
+                )
+                .build()
+                .toUriString();
         this.cookieManager = cookieManager;
     }
 
@@ -46,8 +56,16 @@ public class OAuth2AuthenticationFailureHandler implements AuthenticationFailure
         logFailure(exception);
         handleFailure(
                 request,
-                response
+                response,
+                redirectUri(exception)
         );
+    }
+
+    private String redirectUri(AuthenticationException exception) {
+        if (isCancelled(exception)) {
+            return cancelRedirectUri;
+        }
+        return loginProperties.getFailureRedirectUri();
     }
 
     private void logFailure(AuthenticationException exception) {
@@ -94,11 +112,12 @@ public class OAuth2AuthenticationFailureHandler implements AuthenticationFailure
 
     public void handleFailure(
             HttpServletRequest request,
-            HttpServletResponse response
+            HttpServletResponse response,
+            String redirectUri
     ) throws IOException {
         clearAuthentication(request);
         cookieManager.expireLoginCookies(response);
-        response.sendRedirect(loginProperties.getFailureRedirectUri());
+        response.sendRedirect(redirectUri);
     }
 
     public void clearAuthentication(HttpServletRequest request) {

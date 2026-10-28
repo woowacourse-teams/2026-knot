@@ -487,6 +487,7 @@ describe("relayReleaseNotes", () => {
     releasedAt?: string;
     title?: string;
     description?: string;
+    image?: string | null;
     link?: string;
     isFromFeedback?: boolean;
     isHighlight?: boolean;
@@ -501,6 +502,7 @@ describe("relayReleaseNotes", () => {
     releasedAt = "2026-10-25",
     title = "제목",
     description = "설명",
+    image = null,
     link = "",
     isFromFeedback = false,
     isHighlight = false,
@@ -515,6 +517,7 @@ describe("relayReleaseNotes", () => {
         date: releasedAt ? { start: releasedAt } : null,
       },
       설명: { type: "rich_text", rich_text: toText(description) },
+      사진: { type: "url", url: image },
       "바로 가보기": { type: "rich_text", rich_text: toText(link) },
       "피드백 덕분": { type: "checkbox", checkbox: isFromFeedback },
       "큰 변화": { type: "checkbox", checkbox: isHighlight },
@@ -653,6 +656,29 @@ describe("relayReleaseNotes", () => {
     const [note] = await response.json();
 
     expect(note.items[0].link).toBe("LOGIN");
+  });
+
+  it("사진 칸의 주소는 확인하지 않고 image로 넘기고, 비어 있으면 image를 빼고 넘긴다", async () => {
+    const image = "https://github.com/user-attachments/assets/abc";
+    respondRows([
+      toRow({ title: "사진", image, order: 1 }),
+      toRow({
+        title: "S3 주소",
+        image: "https://s3.amazonaws.com/a.png",
+        order: 2,
+      }),
+      toRow({ title: "빈 칸", image: null, order: 3 }),
+    ]);
+
+    const response = await requestNotes();
+    const [note] = await response.json();
+
+    expect(note.items.map((item: { image?: string }) => item.image)).toEqual([
+      image,
+      "https://s3.amazonaws.com/a.png",
+      undefined,
+    ]);
+    expect(note.items[2]).not.toHaveProperty("image");
   });
 
   it("새 소식 DB가 비어 있으면 빈 배열을 돌려준다", async () => {

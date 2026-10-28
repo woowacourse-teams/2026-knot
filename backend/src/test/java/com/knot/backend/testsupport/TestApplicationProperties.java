@@ -15,6 +15,10 @@ import org.springframework.test.context.TestPropertySource;
         "spring.datasource.username=knot", "spring.datasource.password=knot",
         "spring.security.oauth2.client.registration.github.client-id=test-client-id",
         "spring.security.oauth2.client.registration.github.client-secret=test-client-secret",
+        "spring.security.oauth2.client.registration.google.client-id=test-client-id",
+        "spring.security.oauth2.client.registration.google.client-secret=test-client-secret",
+        "spring.security.oauth2.client.registration.kakao.client-id=test-client-id",
+        "spring.security.oauth2.client.registration.kakao.client-secret=test-client-secret",
         "recording.audio-storage.region=ap-northeast-2", "recording.audio-storage.bucket=knot-test-audio",
         "recording.connection-expiry.enabled=false"})
 public @interface TestApplicationProperties {

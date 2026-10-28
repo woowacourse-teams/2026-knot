@@ -52,6 +52,59 @@ class OAuth2AuthenticationFailureHandlerTest {
     }
 
     @Test
+    @DisplayName("OAuth 승인을 취소하면 취소 오류 값으로 로그인 화면에 redirect한다")
+    void onAuthenticationFailure_success_redirectsCancelledToLogin() throws Exception {
+        // given
+        OAuth2LoginProperties loginProperties = new OAuth2LoginProperties();
+        loginProperties.setFailureRedirectUri("/login?error=oauth2");
+        OAuth2AuthenticationFailureHandler handler = new OAuth2AuthenticationFailureHandler(
+                loginProperties,
+                new AuthCookieManager(new JwtProperties())
+        );
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        request.getSession();
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        OAuth2AuthenticationException exception = new OAuth2AuthenticationException(new OAuth2Error("access_denied"));
+
+        // when
+        handler.onAuthenticationFailure(
+                request,
+                response,
+                exception
+        );
+
+        // then
+        assertThat(response.getRedirectedUrl()).isEqualTo("/login?error=oauth2_cancelled");
+        assertThat(request.getSession(false)).isNull();
+        assertThat(response.getCookies()).isNotEmpty()
+                .allSatisfy(cookie -> assertThat(cookie.getMaxAge()).isZero());
+    }
+
+    @Test
+    @DisplayName("절대 주소 실패 redirect 설정에서도 취소는 error 값만 바꿔 redirect한다")
+    void onAuthenticationFailure_success_redirectsCancelledToAbsoluteLogin() throws Exception {
+        // given
+        OAuth2LoginProperties loginProperties = new OAuth2LoginProperties();
+        loginProperties.setFailureRedirectUri("https://knoted.kr/login?error=oauth2");
+        OAuth2AuthenticationFailureHandler handler = new OAuth2AuthenticationFailureHandler(
+                loginProperties,
+                new AuthCookieManager(new JwtProperties())
+        );
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        OAuth2AuthenticationException exception = new OAuth2AuthenticationException(new OAuth2Error("access_denied"));
+
+        // when
+        handler.onAuthenticationFailure(
+                new MockHttpServletRequest(),
+                response,
+                exception
+        );
+
+        // then
+        assertThat(response.getRedirectedUrl()).isEqualTo("https://knoted.kr/login?error=oauth2_cancelled");
+    }
+
+    @Test
     @DisplayName("OAuth 실패 redirect 설정이 비어 있으면 설정 예외를 발생시킨다")
     void create_failure_blankRedirectUri() {
         // given

@@ -16,6 +16,62 @@ class RecordingMeetingSummaryTest {
     private static final String CONTENT = "## 한눈에 보기\n\n### 정한 방향\n- 정책을 유지한다.\n\n회의 핵심 결론: 정책을 유지한다.";
 
     @Test
+    void renew_extendsOnlyCurrentUnexpiredClaim() {
+        RecordingMeetingSummary summary = RecordingMeetingSummary.queue(
+                1,
+                2,
+                NOW
+        );
+        UUID token = summary.claim(
+                NOW,
+                LEASE
+        )
+                .orElseThrow();
+        assertThat(
+                summary.renew(
+                        token,
+                        NOW.plusSeconds(120),
+                        LEASE
+                )
+        ).isTrue();
+        assertThat(
+                summary.renew(
+                        UUID.randomUUID(),
+                        NOW.plusSeconds(121),
+                        LEASE
+                )
+        ).isFalse();
+        assertThat(
+                summary.succeed(
+                        token,
+                        CONTENT,
+                        NOW.plusSeconds(181)
+                )
+        ).isTrue();
+    }
+
+    @Test
+    void renew_rejectsExpiredClaim() {
+        RecordingMeetingSummary summary = RecordingMeetingSummary.queue(
+                1,
+                2,
+                NOW
+        );
+        UUID token = summary.claim(
+                NOW,
+                LEASE
+        )
+                .orElseThrow();
+        assertThat(
+                summary.renew(
+                        token,
+                        NOW.plusSeconds(180),
+                        LEASE
+                )
+        ).isFalse();
+    }
+
+    @Test
     @DisplayName("선점한 요약의 정상 결과를 한 번 저장하고 성공 결과를 유지한다")
     void succeed_success() {
         // given

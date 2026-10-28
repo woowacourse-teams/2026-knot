@@ -154,11 +154,12 @@ class SearchStreamingAnswerGeneratorTest {
             assertThat(messages.getFirst()).containsEntry(
                     "role",
                     "system"
-            )
-                    .containsEntry(
-                            "content",
-                            SearchAnswerPrompt.system()
-                    );
+            );
+            assertThat(
+                    messages.getFirst()
+                            .get("content")
+                            .toString()
+            ).startsWith(SearchAnswerPrompt.system());
             String system = (String) messages.getFirst()
                     .get("content");
             assertThat(system).contains(
@@ -246,6 +247,66 @@ class SearchStreamingAnswerGeneratorTest {
                         deltas
                 )
         ).isEqualTo("부분 답변");
+    }
+
+    @Test
+    @DisplayName("입력 한도로 제외된 문서를 모델이 인용하면 실패한다")
+    void generate_failure_rejectsEvidenceExcludedByBudget() {
+        // given
+        SearchAgentProperties properties = new SearchAgentProperties();
+        properties.setContextCharacterLimit(8000);
+        generator = new SearchStreamingAnswerGenerator(
+                llm,
+                history,
+                access,
+                properties,
+                mapper
+        );
+        List<SearchDocumentResult> large = List.of(
+                new SearchDocumentResult(
+                        1,
+                        "첫 문서",
+                        "주제",
+                        "내용".repeat(4000)
+                ),
+                new SearchDocumentResult(
+                        2,
+                        "둘째 문서",
+                        "주제",
+                        "내용".repeat(4000)
+                )
+        );
+        doAnswer(call -> {
+            List<Map<String, Object>> messages = call.getArgument(1);
+            assertThat(
+                    mapper.writeValueAsString(messages)
+                            .length()
+            ).isLessThanOrEqualTo(8000);
+            assertThat(
+                    messages.getLast()
+                            .get("content")
+                            .toString()
+            ).contains("E1")
+                    .doesNotContain("E2");
+            Consumer<String> consumer = call.getArgument(2);
+            consumer.accept(response(List.of("E2")));
+            return null;
+        }).when(llm)
+                .stream(
+                        eq(scope),
+                        any(),
+                        any()
+                );
+        // when & then
+        assertThatThrownBy(
+                () -> generator.generate(
+                        scope,
+                        "어제 회의",
+                        large,
+                        text -> {
+                        }
+                )
+        ).hasMessage("INVALID_MODEL_ANSWER");
     }
 
     private String response(List<String> ids) {

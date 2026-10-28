@@ -8,6 +8,8 @@ import com.knot.backend.document.domain.DocumentErrorCode;
 import com.knot.backend.document.domain.DocumentException;
 import com.knot.backend.global.infrastructure.llm.LlmClient;
 import com.knot.backend.global.infrastructure.llm.LlmCompletionRequest;
+import com.knot.backend.global.exception.LlmErrorCode;
+import com.knot.backend.global.exception.LlmException;
 import java.util.regex.Pattern;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
@@ -20,6 +22,7 @@ import tools.jackson.databind.ObjectMapper;
 @Component
 @ConditionalOnProperty(prefix = "knot.llm", name = "enabled", havingValue = "true")
 public class LlmDocumentGenerator implements DocumentGenerator {
+    private static final int MAX_EVIDENCE_REDUCTIONS = 3;
     private static final Pattern OUTER_WHITESPACE = Pattern
             .compile("^[\\p{javaWhitespace}\\p{Z}]+|[\\p{javaWhitespace}\\p{Z}]+$");
 
@@ -45,7 +48,15 @@ public class LlmDocumentGenerator implements DocumentGenerator {
     @Override
     public DocumentGenerationResult generate(DocumentGenerationInput input) {
         LlmCompletionRequest request = prompt.createRequest(input);
-        String response = client.complete(request);
+        String response;
+        try {
+            response = client.complete(request);
+        } catch (LlmException exception) {
+            if (exception.getErrorCode() != LlmErrorCode.LLM_INPUT_LIMIT_EXCEEDED) {
+                throw exception;
+            }
+            response = generateFromEvidence(input);
+        }
         JsonNode root = readResponse(response);
         validateResponseFields(root);
         String title = stripOuterWhitespace(
@@ -65,6 +76,35 @@ public class LlmDocumentGenerator implements DocumentGenerator {
                 content
         );
         return validator.normalizeAndValidate(result);
+    }
+
+    private String generateFromEvidence(DocumentGenerationInput input) {
+        TopicEvidenceExtractor extractor = new TopicEvidenceExtractor(
+                client,
+                mapper
+        );
+        DocumentGenerationInput current = input;
+        LlmException lastLimit = null;
+        for (int round = 0; round < MAX_EVIDENCE_REDUCTIONS; round++) {
+            String evidence = extractor.extract(current);
+            if (round > 0 && evidence.length() >= current.getTranscriptContent()
+                    .length()) {
+                throw lastLimit;
+            }
+            current = DocumentGenerationInput.from(
+                    evidence,
+                    input.getTopic()
+            );
+            try {
+                return client.complete(prompt.createRequest(current));
+            } catch (LlmException exception) {
+                if (exception.getErrorCode() != LlmErrorCode.LLM_INPUT_LIMIT_EXCEEDED) {
+                    throw exception;
+                }
+                lastLimit = exception;
+            }
+        }
+        throw lastLimit;
     }
 
     private JsonNode readResponse(String response) {

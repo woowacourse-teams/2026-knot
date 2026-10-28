@@ -4,7 +4,7 @@ import com.knot.backend.auth.domain.AuthErrorCode;
 import com.knot.backend.document.presentation.DocumentTopicAuthenticationEntryPoint;
 import com.knot.backend.global.logging.RequestIdFilter;
 import com.knot.backend.auth.domain.AuthException;
-import com.knot.backend.auth.infrastructure.github.GithubOAuth2UserService;
+import com.knot.backend.auth.infrastructure.oauth.OAuthLoginUserService;
 import com.knot.backend.auth.infrastructure.jwt.JwtAuthenticationFilter;
 import com.knot.backend.auth.presentation.handler.AuthAccessDeniedHandler;
 import com.knot.backend.auth.presentation.handler.AuthAuthenticationEntryPoint;
@@ -41,7 +41,7 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
         ApiDocumentationProperties.class})
 @RequiredArgsConstructor
 public class SecurityConfig {
-    private final GithubOAuth2UserService githubOAuth2UserService;
+    private final OAuthLoginUserService oauthLoginUserService;
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
     private final OAuth2AuthenticationSuccessHandler successHandler;
     private final OAuth2AuthenticationFailureHandler failureHandler;
@@ -187,7 +187,7 @@ public class SecurityConfig {
                 )
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED))
                 .oauth2Login(
-                        oauth2 -> oauth2.userInfoEndpoint(userInfo -> userInfo.userService(githubOAuth2UserService))
+                        oauth2 -> oauth2.userInfoEndpoint(userInfo -> userInfo.userService(oauthLoginUserService))
                                 .successHandler(successHandler)
                                 .failureHandler(failureHandler)
                 )

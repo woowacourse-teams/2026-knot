@@ -278,6 +278,23 @@ public class DocumentGenerationJob {
         }
     }
 
+    public void renewExecutionLease(
+            int expectedAttemptCount,
+            Instant now,
+            Instant deadline
+    ) {
+        validateRunningAttemptAt(
+                expectedAttemptCount,
+                now
+        );
+        if (processingPhase != DocumentGenerationPhase.WRITE_BODY || deadline == null
+                || !deadline.isAfter(executionDeadlineAt)) {
+            throw new DocumentException(DocumentErrorCode.GENERATION_REGISTRATION_CONFLICT);
+        }
+        validateFailureYear(deadline);
+        executionDeadlineAt = deadline;
+    }
+
     public void validateRunningAttempt(int expectedAttemptCount) {
         validateAttempt(expectedAttemptCount);
         if (status != DocumentGenerationJobStatus.RUNNING) {

@@ -85,6 +85,18 @@ public class MeetingSummaryGenerationService {
     }
 
     @Transactional
+    public boolean renew(MeetingSummaryTask task) {
+        return lock(task.recordingId()).map(
+                summary -> summary.renew(
+                        task.token(),
+                        now(),
+                        LEASE
+                )
+        )
+                .orElse(false);
+    }
+
+    @Transactional
     public void succeed(
             MeetingSummaryTask task,
             String content

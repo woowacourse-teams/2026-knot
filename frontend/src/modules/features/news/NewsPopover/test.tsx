@@ -1,7 +1,13 @@
-import { GetReleaseNotesResponseDto } from "@api/dto/releaseNote";
+import {
+  GetReleaseNotesResponseDto,
+  ReleaseNoteItemDto,
+} from "@api/dto/releaseNote";
 import { FEEDBACK_RELAY_PATH } from "@api/fetch/relay/f";
 import { RELEASE_NOTES_RELAY_PATH } from "@api/fetch/relay/n";
-import { releaseNotesResponse } from "@api/mock/responses/releaseNote";
+import {
+  imageReleaseNoteItems,
+  releaseNotesResponse,
+} from "@api/mock/responses/releaseNote";
 import { mockServer } from "@api/mock/server";
 import useSendFeedbackMutation from "@api/mutations/useSendFeedbackMutation";
 import { ThemeProvider } from "@emotion/react";
@@ -9,7 +15,13 @@ import { theme } from "@provider/themeProvider";
 import { getRouterPath, PATH_ROUTE } from "@routes/PATH_ROUTE";
 import { useRecordingStore } from "@store/recordingStore";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -21,7 +33,10 @@ import NewsPopover from ".";
 import { LAST_SEEN_NOTE_ID_KEY } from "./constants/lastSeenNote";
 import { formatReleaseDate } from "./utils/formatReleaseDate";
 
-const BUTTON_NAME = "새 소식과 피드백";
+/** 안 읽은 소식이 있으면 뒤에 붙는 안내까지 받아요 */
+const BUTTON_NAME = /^새 소식과 피드백/;
+const READ_BUTTON_NAME = "새 소식과 피드백";
+const UNREAD_BUTTON_NAME = "새 소식과 피드백, 읽지 않은 소식 있음";
 /** 패널 머리의 설명. 패널이 열려 있는지 이 문구로 봐요 */
 const PANEL_DESCRIPTION = "새로 생기거나 달라진 점을 모아 둬요";
 const WORKSPACE_ID = "1";
@@ -30,6 +45,9 @@ const FEEDBACK_PANEL_NAME = "피드백 패널";
 
 const NOTES = new GetReleaseNotesResponseDto(releaseNotesResponse).notes;
 const ALL_ITEMS = NOTES.flatMap(({ items }) => items);
+/** 사진 칸 경우별 항목의 기대값. Worker 응답 모양의 mock을 응답 DTO로 바꾼 값이에요 */
+const toExpectedImageItem = (key: keyof typeof imageReleaseNoteItems) =>
+  new ReleaseNoteItemDto(imageReleaseNoteItems[key]);
 
 /** 레이아웃이 넘기는 피드백 패널 자리. 닫기와 보내기만 해 봐요 */
 function FeedbackPanelStub({ onClose }: { onClose: () => void }) {
@@ -111,10 +129,16 @@ const renderOpenMenu = async (notes?: ReleaseNote[]) => {
   return rendered;
 };
 
+/** 메뉴의 「새 소식」 항목. 안 읽은 소식이 있으면 이름 뒤에 NEW가 붙어요 */
+const getNewsMenuItem = () =>
+  within(screen.getByRole("navigation")).getByRole("button", {
+    name: /^새 소식/,
+  });
+
 /** 메뉴에서 「새 소식」을 골라 새 소식 패널을 연 상태로 그려요 */
 const renderOpenPanel = async (notes?: ReleaseNote[]) => {
   const rendered = await renderOpenMenu(notes);
-  fireEvent.click(screen.getByRole("button", { name: "새 소식" }));
+  fireEvent.click(getNewsMenuItem());
 
   return rendered;
 };
@@ -196,6 +220,7 @@ describe("NewsPopover", () => {
       const { button } = await renderPopover();
 
       expect(button).toHaveAttribute("aria-expanded", "false");
+      expect(button).toHaveAccessibleName(READ_BUTTON_NAME);
       expect(localStorage.getItem(LAST_SEEN_NOTE_ID_KEY)).toBeNull();
 
       fireEvent.click(button);
@@ -204,13 +229,21 @@ describe("NewsPopover", () => {
       expect(screen.getByText("아직 새 소식이 없어요")).toBeInTheDocument();
     });
 
-    it("녹음 중이면 저절로 열지 않고 읽음도 남기지 않는다", async () => {
+    it("녹음 중이면 저절로 열지 않고 읽음도 남기지 않아, 버튼에 안 읽은 소식을 알린다", async () => {
       useRecordingStore.setState({ status: "recording" });
 
       const { button } = await renderPopover();
 
       expect(button).toHaveAttribute("aria-expanded", "false");
+      expect(button).toHaveAccessibleName(UNREAD_BUTTON_NAME);
       expect(localStorage.getItem(LAST_SEEN_NOTE_ID_KEY)).toBeNull();
+    });
+
+    it("저절로 연 패널은 모든 노트에 NEW를 붙이고, 버튼의 안 읽음 표시는 끈다", async () => {
+      const { button } = await renderPopover();
+
+      expect(screen.getAllByText("NEW")).toHaveLength(ALL_ITEMS.length);
+      expect(button).toHaveAccessibleName(READ_BUTTON_NAME);
     });
 
     it("localStorage를 쓸 수 없으면 저절로 열지 않는다", async () => {
@@ -221,6 +254,70 @@ describe("NewsPopover", () => {
       const { button } = await renderPopover();
 
       expect(button).toHaveAttribute("aria-expanded", "false");
+    });
+  });
+
+  describe("안 읽은 새 소식", () => {
+    // 맨 위 노트 하나만 안 읽은 사용자로 둬요
+    beforeEach(() => localStorage.setItem(LAST_SEEN_NOTE_ID_KEY, NOTES[1].id));
+
+    it("안 읽은 노트가 있으면 버튼에 알리고 메뉴의 「새 소식」에 NEW 칩을 붙인다", async () => {
+      const { button } = await renderOpenMenu();
+
+      expect(button).toHaveAccessibleName(UNREAD_BUTTON_NAME);
+      expect(
+        within(screen.getByRole("navigation")).getByText("NEW"),
+      ).toBeInTheDocument();
+    });
+
+    it("새 소식 패널을 열면 안 읽은 노트의 항목에만 NEW를 붙이고 버튼의 안 읽음 표시를 끈다", async () => {
+      const { button } = await renderOpenPanel();
+
+      expect(screen.getAllByText("NEW")).toHaveLength(NOTES[0].items.length);
+      expect(button).toHaveAccessibleName(READ_BUTTON_NAME);
+    });
+
+    it("새 소식 패널을 닫고 다시 열면 메뉴와 패널에 NEW가 없다", async () => {
+      const { button } = await renderOpenPanel();
+
+      fireEvent.click(button);
+      fireEvent.click(button);
+
+      expect(screen.queryByText("NEW")).not.toBeInTheDocument();
+
+      fireEvent.click(getNewsMenuItem());
+
+      expect(screen.getByText(PANEL_DESCRIPTION)).toBeInTheDocument();
+      expect(screen.queryByText("NEW")).not.toBeInTheDocument();
+    });
+
+    it("메뉴만 열고 닫으면 안 읽음 표시를 그대로 둔다", async () => {
+      const { button } = await renderOpenMenu();
+
+      fireEvent.keyDown(document, { key: "Escape" });
+
+      expect(button).toHaveAccessibleName(UNREAD_BUTTON_NAME);
+      expect(localStorage.getItem(LAST_SEEN_NOTE_ID_KEY)).toBe(NOTES[1].id);
+    });
+
+    it("마지막으로 연 노트가 목록에 없으면 모두 읽은 것으로 본다", async () => {
+      localStorage.setItem(LAST_SEEN_NOTE_ID_KEY, "v0.0.1");
+
+      const { button } = await renderOpenMenu();
+
+      expect(button).toHaveAccessibleName(READ_BUTTON_NAME);
+      expect(screen.queryByText("NEW")).not.toBeInTheDocument();
+    });
+
+    it("localStorage를 쓸 수 없으면 안 읽은 소식을 알리지 않는다", async () => {
+      vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
+        throw new Error("SecurityError");
+      });
+
+      const { button } = await renderOpenPanel();
+
+      expect(button).toHaveAccessibleName(READ_BUTTON_NAME);
+      expect(screen.queryByText("NEW")).not.toBeInTheDocument();
     });
   });
 
@@ -435,16 +532,16 @@ describe("NewsPopover", () => {
       );
     });
 
-    it("이미지와 「바로 가보기」는 있는 항목에만 보여 준다", async () => {
+    it("사진과 「바로 가보기」는 있는 항목에만 보여 준다", async () => {
       await renderOpenPanel([
         {
           id: "v1.0.0",
           releasedAt: "2026-11-02",
           items: [
             {
-              title: "이미지와 바로 가보기가 있는 항목",
+              title: "사진과 바로 가보기가 있는 항목",
               description: "설명",
-              image: "/news.png",
+              image: imageReleaseNoteItems.normal.image,
               link: "CHAT",
             },
             { title: "글만 있는 항목", description: "설명" },
@@ -456,6 +553,71 @@ describe("NewsPopover", () => {
       expect(screen.getAllByRole("link", { name: "바로 가보기" })).toHaveLength(
         1,
       );
+    });
+
+    it("GitHub 첨부 사진 주소의 사진만 그리고, 다른 주소면 사진 칸 없이 글만 보여 준다", async () => {
+      await renderOpenPanel([
+        {
+          id: "pr-1051",
+          releasedAt: "2026-11-02",
+          items: [
+            imageReleaseNoteItems.normal,
+            imageReleaseNoteItems.disallowed,
+          ],
+        },
+      ]);
+
+      const images = document.querySelectorAll("img");
+      expect(images).toHaveLength(1);
+      expect(images[0]).toHaveAttribute(
+        "src",
+        toExpectedImageItem("normal").image,
+      );
+      expect(
+        screen.getByText(toExpectedImageItem("disallowed").title),
+      ).toBeVisible();
+    });
+
+    it("사진은 다 불러온 뒤에 사진 칸을 보여 준다", async () => {
+      await renderOpenPanel([
+        {
+          id: "pr-1051",
+          releasedAt: "2026-11-02",
+          items: [imageReleaseNoteItems.normal],
+        },
+      ]);
+      const image = document.querySelector("img")!;
+
+      expect(image).not.toBeVisible();
+
+      fireEvent.load(image);
+
+      expect(image).toBeVisible();
+    });
+
+    it("사진을 불러오지 못하면 사진 칸만 숨기고 칩, 제목, 설명, 「바로 가보기」는 그대로 둔다", async () => {
+      const broken = toExpectedImageItem("broken");
+      await renderOpenPanel([
+        {
+          id: "pr-1051",
+          releasedAt: "2026-11-02",
+          items: [
+            {
+              ...imageReleaseNoteItems.broken,
+              link: "CHAT",
+              isFromFeedback: true,
+            },
+          ],
+        },
+      ]);
+
+      fireEvent.error(document.querySelector("img")!);
+
+      expect(document.querySelector("img")).not.toBeVisible();
+      expect(screen.getByText("피드백 덕분에 바뀌었어요")).toBeVisible();
+      expect(screen.getByText(broken.title)).toBeVisible();
+      expect(screen.getByText(broken.description)).toBeVisible();
+      expect(screen.getByRole("link", { name: "바로 가보기" })).toBeVisible();
     });
 
     it("앱에 없는 화면이나 워크스페이스 ID만으로 갈 수 없는 화면이면 「바로 가보기」를 숨긴다", async () => {
