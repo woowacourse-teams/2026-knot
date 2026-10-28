@@ -1,5 +1,5 @@
 import styled from "@emotion/styled";
-import GithubLoginButton from "@features/auth/GithubLoginButton";
+import OAuthLoginButtonList from "@features/auth/OAuthLoginButtonList";
 
 import { Lead } from "./ScenePanel";
 import { interactive, mobile, sceneFade } from "./SceneLayer";
@@ -18,7 +18,7 @@ export default function StartScene({ isOn }: StartSceneProps) {
       </Title>
       <Lead>흩어지던 말은 문서로, 문서는 모두의 기억으로.</Lead>
       <StartWrapper $isOn={isOn}>
-        <GithubLoginButton />
+        <OAuthLoginButtonList />
       </StartWrapper>
     </Container>
   );
@@ -59,9 +59,10 @@ const MobileBreak = styled.br`
   }
 `;
 
+/** 시작 버튼의 너비. 첫 장면과 같이 데스크톱에서는 세 로그인 버튼이 한 줄에 들어가는 너비를 줘요. */
 const StartWrapper = styled.div<{ $isOn: boolean }>`
   ${({ $isOn }) => interactive({ isOn: $isOn })};
   width: 100%;
-  max-width: 20rem; /* 320px */
+  max-width: 45rem; /* 720px */
   margin-top: 0.875rem; /* 14px */
 `;

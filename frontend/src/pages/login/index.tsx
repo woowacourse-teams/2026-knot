@@ -1,5 +1,5 @@
 import styled from "@emotion/styled";
-import GithubLoginButton from "@features/auth/GithubLoginButton";
+import OAuthLoginButtonList from "@features/auth/OAuthLoginButtonList";
 import OAuthErrorNotice from "@features/auth/OAuthErrorNotice";
 import useSessionExpiredToast from "@hooks/domain/auth/useSessionExpiredToast";
 import Spacing from "@primitives/layout/Spacing";
@@ -28,7 +28,7 @@ export default function LoginPage() {
 
       <Actions>
         <OAuthErrorNotice />
-        <GithubLoginButton />
+        <OAuthLoginButtonList />
         <Spacing size={1} />
         <Terms>
           로그인하면 서비스 이용약관과 개인정보 처리방침에 동의하게 됩니다.

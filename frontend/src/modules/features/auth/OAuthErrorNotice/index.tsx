@@ -8,7 +8,9 @@ import {
 } from "./constants/oauthError";
 
 /**
- * GitHub 로그인이 실패해 돌아왔을 때 그 사실을 알립니다.
+ * GitHub, Google, 카카오 로그인이 실패해 돌아왔을 때 그 사실을 알립니다.
+ *
+ * 그 수단의 승인 화면에서 취소하고 돌아오면(`?error=oauth2_cancelled`) 알리지 않아요(AUTH-R16).
  */
 export default function OAuthErrorNotice() {
   const [searchParams] = useSearchParams();
