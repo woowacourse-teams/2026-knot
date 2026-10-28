@@ -6,6 +6,7 @@ import {
 } from "@api/dto/workspace";
 import { meResponse } from "@api/mock/responses/auth";
 import { GetRecordingDocumentResponseDto } from "@api/dto/recordingDocument";
+import { AUTH_ME_API_PATH } from "@api/fetch/api/v1/auth/me";
 import { documentDetailsResponse } from "@api/mock/responses/document";
 import { recordingDocumentResponse } from "@api/mock/responses/recordingDocument";
 import {
@@ -361,6 +362,23 @@ describe("WorkspaceGnb", () => {
         expectedMe.profileImageUrl,
       );
     });
+  });
+
+  it("프로필 사진이 없는 회원은 아바타에 닉네임 첫 글자를 보여준다(AUTH-R15)", async () => {
+    // Google, 카카오 회원은 사진이 없거나 제공에 동의하지 않으면 사진 주소가 null로 와요
+    mockServer.use(
+      http.get(`*${AUTH_ME_API_PATH}`, () =>
+        HttpResponse.json({ ...meResponse, profileImageUrl: null }),
+      ),
+    );
+    renderGnb();
+
+    const avatar = screen.getByRole("img", { name: "내 프로필" });
+
+    await waitFor(() => {
+      expect(avatar).toHaveTextContent(expectedMe.nickname.charAt(0));
+    });
+    expect(avatar.querySelector("img")).not.toBeInTheDocument();
   });
 
   it("우측에 받은 버튼을 아바타 앞에 둔다 (Figma GNB/Floating)", () => {
