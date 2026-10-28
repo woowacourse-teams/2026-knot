@@ -1,5 +1,5 @@
 import styled from "@emotion/styled";
-import GithubLoginButton from "@features/auth/GithubLoginButton";
+import OAuthLoginButtonList from "@features/auth/OAuthLoginButtonList";
 import type { Ref } from "react";
 
 import { DesktopOnly, Lead, Phrase } from "./ScenePanel";
@@ -35,7 +35,7 @@ export default function IntroScene({ isOn, scrollCueRef, onNext }: IntroScenePro
           <Phrase>나중에 물어보면</Phrase> <Phrase>근거와 함께 다시 찾아 줘요.</Phrase>
         </Lead>
         <StartWrapper $isOn={isOn}>
-          <GithubLoginButton />
+          <OAuthLoginButtonList />
         </StartWrapper>
       </Container>
       <ScrollCue type="button" $isOn={isOn} aria-hidden={!isOn} inert={!isOn} onClick={onNext}>
@@ -59,8 +59,9 @@ const Container = styled.section<{ $isOn: boolean }>`
   padding: 0 1.5rem;
   text-align: center;
 
+  /* 세 로그인 버튼을 세로로 쌓아도 아래 스크롤 안내와 겹치지 않도록, 워드마크 바로 아래에서 시작해요 */
   ${mobile} {
-    top: 33%;
+    top: 29%;
   }
 `;
 
@@ -77,11 +78,14 @@ const Slogan = styled.p`
   }
 `;
 
-/** 시작 버튼의 너비. 로그인 화면과 같은 버튼을 화면 가운데에 알맞은 폭으로 놓아요. */
+/**
+ * 시작 버튼의 너비. 로그인 화면과 같은 버튼을 화면 가운데에 놓아요.
+ * 데스크톱에서는 세 로그인 버튼이 한 줄에 들어가는 너비를 줘요. 세로로 쌓으면 아래의 스크롤 안내와 겹쳐요.
+ */
 const StartWrapper = styled.div<{ $isOn: boolean }>`
   ${({ $isOn }) => interactive({ isOn: $isOn })};
   width: 100%;
-  max-width: 20rem; /* 320px */
+  max-width: 45rem; /* 720px */
   margin-top: 0.875rem; /* 14px */
 `;
 
@@ -100,6 +104,8 @@ const ScrollCue = styled.button<{ $isOn: boolean }>`
   padding: 0.5rem 1rem 0; /* 8px 16px */
   ${({ theme }) => theme.text.caption02};
   color: ${({ theme }) => theme.neutral[600]};
+  /* 화면 가운데에서 시작하는 자리라 너비가 화면의 절반으로 묶여, 모바일에서 두 줄로 꺾이지 않게 해요 */
+  white-space: nowrap;
   transform: translateX(-50%);
   ${({ theme }) => focusRing(theme)};
 

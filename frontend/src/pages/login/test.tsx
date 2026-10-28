@@ -97,7 +97,7 @@ const failMeAndRefresh = (refreshStatus = 401) => {
 };
 
 describe("LoginPage", () => {
-  it("제목과 GitHub 로그인 버튼, 약관 안내를 보여 준다", () => {
+  it("제목과 세 로그인 버튼을 보여 주고, 약관 안내는 버튼과 같은 계정 안내 아래에 둔다(TERMS-R10)", () => {
     renderLoginPage();
 
     expect(
@@ -106,14 +106,24 @@ describe("LoginPage", () => {
         name: "팀의 결정을 모두의 기억으로",
       }),
     ).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: "GitHub으로 시작하기" }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText(
-        "로그인하면 서비스 이용약관과 개인정보 처리방침에 동의하게 됩니다.",
-      ),
-    ).toBeInTheDocument();
+
+    const buttons = screen.getAllByRole("button");
+    const guide = screen.getByText(
+      "처음 가입한 방법으로 로그인해야 같은 계정이에요",
+    );
+    const terms = screen.getByText(
+      "로그인하면 서비스 이용약관과 개인정보 처리방침에 동의하게 됩니다.",
+    );
+
+    expect(buttons).toHaveLength(3);
+    for (const button of buttons) {
+      expect(guide.compareDocumentPosition(button)).toBe(
+        Node.DOCUMENT_POSITION_PRECEDING,
+      );
+    }
+    expect(guide.compareDocumentPosition(terms)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
   });
 
   describe("로그인 만료 안내 (ERR-07)", () => {

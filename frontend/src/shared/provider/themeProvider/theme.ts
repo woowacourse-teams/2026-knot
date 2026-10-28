@@ -109,6 +109,24 @@ export const theme = {
     },
   },
 
+  /**
+   * 외부 로그인 버튼의 색. 각 사 로그인 버튼 가이드가 정한 값이라 서비스 색에 맞춰 바꾸지 않아요.
+   *
+   * - Google: Sign in with Google 브랜딩 가이드의 밝은 버튼
+   * - 카카오: 카카오 로그인 디자인 가이드
+   */
+  brand: {
+    google: {
+      container: "#FFFFFF",
+      stroke: "#747775",
+      label: "#1F1F1F",
+    },
+    kakao: {
+      container: "#FEE500",
+      label: "rgba(0, 0, 0, 0.85)",
+    },
+  },
+
   text,
 
   shadow01:

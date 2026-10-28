@@ -35,6 +35,12 @@ describe("OAuthErrorNotice", () => {
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
+  it("로그인 수단의 승인 화면에서 취소하고 돌아오면 아무것도 알리지 않는다(AUTH-R16)", () => {
+    renderNotice("?error=oauth2_cancelled");
+
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
   it("모르는 error 값에는 아무것도 알리지 않는다", () => {
     renderNotice("?error=somethingElse");
 
