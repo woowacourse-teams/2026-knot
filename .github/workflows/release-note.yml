@@ -3,7 +3,7 @@ name: Release Note
 # main에 머지될 때마다 Claude가 사용자에게 바뀐 점을 읽어 새 소식 노트를 Notion 새 소식 DB에 바로 써요(ADR 956).
 # 앱은 프론트 Worker(/relay/n)를 거쳐 그 DB를 읽어요. Claude나 Notion이 실패하면 이 실행을 다시 돌리면 같은 노트 id로 바꿔 넣어요.
 # 필요한 값: secrets.CLAUDE_CODE_OAUTH_TOKEN(claude setup-token), secrets.NOTION_RELEASE_NOTE_WRITE_TOKEN(새 소식 DB와 「릴리즈 노트」 페이지에 연결한 쓰기 연동),
-# vars.NOTION_RELEASE_NOTE_DATABASE_ID(새 소식 DB ID)
+# vars.NOTION_RELEASE_NOTE_DATABASE_ID(새 소식 DB ID). 사진을 쓰려면 새 소식 DB에 URL 칸 「사진」이 있어야 해요
 # claude-code-action은 push 이벤트를 받지 않아서, main 대상 PR이 닫힐 때(머지만) 돌아요. 빠진 노트는 PR 번호를 넣어 손으로 돌려요.
 on:
   pull_request:
@@ -89,16 +89,17 @@ jobs:
             ## 쓰는 방법
             - 사용자가 화면에서 알아챌 변화만 항목으로 써요. 테스트, CI, 문서, 리팩터링, 서버 내부 변경처럼 사용자가 알아챌 수 없는 것은 쓰지 않아요.
             - 그런 변화가 없으면 items를 빈 배열로 내요.
+            - image는 아래 기준의 「사진 고르는 기준」을 따라 고른 사진 주소 하나만 넣어요. 맞는 사진이 없으면 넣지 않아요. 사진 주소는 image에만 넣고 제목이나 설명에 쓰지 않아요.
             - link는 그 변화를 바로 볼 수 있는 화면이 있을 때만 넣어요. 다음 화면 키 중 하나예요(괄호는 앱 주소): ${{ steps.guide.outputs.links }}
             - isFromFeedback은 사용자 피드백으로 고쳤다고 PR에 드러날 때만 true예요.
             - isHighlight는 노트에서 가장 큰 변화 하나에만 true예요.
-            - 제목과 설명의 문구는 아래 기준을 따라요. 기준에 적힌 작성 절차(상수 파일, 릴리즈 PR 확인)는 이 실행과 관계없어요.
+            - 제목과 설명의 문구는 아래 기준을 따라요.
 
             ## 노트 문구 기준(Notion 「릴리즈 노트」)
             ${{ steps.guide.outputs.guide }}
           claude_args: >-
             --allowedTools "Bash(gh pr view:*),Bash(gh pr diff:*)"
-            --json-schema '{"type":"object","properties":{"items":{"type":"array","items":{"type":"object","properties":{"title":{"type":"string"},"description":{"type":"string"},"link":{"type":"string","enum":${{ steps.guide.outputs.link_keys }}},"isFromFeedback":{"type":"boolean"},"isHighlight":{"type":"boolean"}},"required":["title","description"],"additionalProperties":false}}},"required":["items"],"additionalProperties":false}'
+            --json-schema '{"type":"object","properties":{"items":{"type":"array","items":{"type":"object","properties":{"title":{"type":"string"},"description":{"type":"string"},"image":{"type":"string","pattern":"^https://github\\.com/user-attachments/assets/"},"link":{"type":"string","enum":${{ steps.guide.outputs.link_keys }}},"isFromFeedback":{"type":"boolean"},"isHighlight":{"type":"boolean"}},"required":["title","description"],"additionalProperties":false}}},"required":["items"],"additionalProperties":false}'
 
       - name: Publish note to Notion
         env:
