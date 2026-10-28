@@ -32,6 +32,7 @@ import com.knot.backend.recording.domain.model.RecordingAudioSealKind;
 import com.knot.backend.recording.domain.repository.RecordingAudioStreamRepository;
 import com.knot.backend.recording.domain.repository.RecordingAudioFinalizationRepository;
 import com.knot.backend.recording.domain.repository.RecordingSessionRepository;
+import com.knot.backend.recording.domain.model.RecordingConnectionStatus;
 import com.knot.backend.recording.domain.model.RecordingStatus;
 import com.knot.backend.workspace.domain.model.Workspace;
 import com.knot.backend.workspace.domain.WorkspaceErrorCode;
@@ -816,6 +817,7 @@ class RecordingControlServiceTest {
         assertThat(result.status()).isEqualTo(RecordingStatus.RECORDING);
         assertThat(result.lastSeenAt()).isEqualTo(NOW);
         assertThat(result.expiresAt()).isEqualTo(NOW.plus(RecordingConnectionPolicyFixture.GRACE));
+        assertThat(result.connectionStatus()).isEqualTo(RecordingConnectionStatus.CONNECTED);
         assertThat(result.elapsedMillis()).isEqualTo(20_123L);
         assertThat(result.endedAt()).isNull();
         assertThat(result.endReason()).isNull();
@@ -846,6 +848,7 @@ class RecordingControlServiceTest {
         assertThat(result.endedAt()).isEqualTo(lastSeenAt);
         assertThat(result.lastSeenAt()).isEqualTo(lastSeenAt);
         assertThat(result.expiresAt()).isNull();
+        assertThat(result.connectionStatus()).isNull();
         verify(recordingSessionRepository).save(session);
     }
 

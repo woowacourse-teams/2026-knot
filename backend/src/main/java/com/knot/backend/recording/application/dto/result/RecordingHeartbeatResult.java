@@ -1,6 +1,7 @@
 package com.knot.backend.recording.application.dto.result;
 
 import com.knot.backend.recording.domain.model.RecordingConnectionPolicy;
+import com.knot.backend.recording.domain.model.RecordingConnectionStatus;
 import com.knot.backend.recording.domain.model.RecordingEndReason;
 import com.knot.backend.recording.domain.model.RecordingSession;
 import com.knot.backend.recording.domain.model.RecordingStatus;
@@ -14,6 +15,7 @@ public record RecordingHeartbeatResult(
         Instant expiresAt,
         Instant endedAt,
         RecordingEndReason endReason,
+        RecordingConnectionStatus connectionStatus,
         Instant serverNow
 ) {
 
@@ -30,6 +32,10 @@ public record RecordingHeartbeatResult(
                 session.connectionExpiresAt(connectionPolicy),
                 session.getEndedAt(),
                 session.getEndReason(),
+                session.connectionStatusAt(
+                        serverNow,
+                        connectionPolicy
+                ),
                 serverNow
         );
     }

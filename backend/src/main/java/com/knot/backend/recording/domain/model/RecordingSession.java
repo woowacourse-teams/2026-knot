@@ -385,6 +385,19 @@ public class RecordingSession {
         return connectionPolicy.expiresAt(lastSeenAt);
     }
 
+    public RecordingConnectionStatus connectionStatusAt(
+            Instant now,
+            RecordingConnectionPolicy connectionPolicy
+    ) {
+        if (!isActive()) {
+            return null;
+        }
+        return connectionPolicy.statusAt(
+                lastSeenAt,
+                now
+        );
+    }
+
     public void discard(Instant discardedAt) {
         if (status == RecordingStatus.DISCARDED) {
             return;

@@ -346,13 +346,10 @@ public class RecordingService {
     ) {
         if (session.isActive()) {
             return Optional.of(
-                    RecordingCurrentResult.of(
+                    RecordingCurrentResult.active(
                             session,
-                            CurrentRecordingStatus.valueOf(
-                                    session.getStatus()
-                                            .name()
-                            ),
-                            measuredAt
+                            measuredAt,
+                            connectionPolicy
                     )
             );
         }

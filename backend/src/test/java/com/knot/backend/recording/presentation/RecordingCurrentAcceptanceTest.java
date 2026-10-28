@@ -100,6 +100,7 @@ class RecordingCurrentAcceptanceTest {
                 .andExpect(jsonPath("$.status").value("RECORDING"))
                 .andExpect(jsonPath("$.startedAt").value(recording.startedAt()))
                 .andExpect(jsonPath("$.elapsedMillis").isNumber())
+                .andExpect(jsonPath("$.connectionStatus").value("CONNECTED"))
                 .andReturn()
                 .getResponse()
                 .getContentAsString();
@@ -148,6 +149,52 @@ class RecordingCurrentAcceptanceTest {
                                         .asLong()
                         )
                 );
+    }
+
+    @Test
+    @DisplayName("녹음 탭의 마지막 생존 뒤 30초가 지났으면 DISCONNECTED를 반환하고 조회는 마지막 생존 시각을 늘리지 않는다")
+    void findCurrent_success_disconnected() throws Exception {
+        // given
+        long memberId = saveMember("member");
+        long workspaceId = saveWorkspace("팀");
+        saveWorkspaceMember(
+                workspaceId,
+                memberId
+        );
+        StartedRecording recording = startRecording(
+                workspaceId,
+                memberId
+        );
+        jdbcClient.sql("""
+                UPDATE recording_sessions
+                SET started_at = started_at - INTERVAL '31 seconds',
+                    current_interval_started_at = current_interval_started_at - INTERVAL '31 seconds',
+                    last_seen_at = last_seen_at - INTERVAL '31 seconds'
+                WHERE id = :recordingId
+                """)
+                .param(
+                        "recordingId",
+                        recording.id()
+                )
+                .update();
+        String lastSeenAt = lastSeenAt(recording.id());
+
+        // when
+        ResultActions first = findCurrent(
+                workspaceId,
+                memberId
+        );
+        ResultActions second = findCurrent(
+                workspaceId,
+                memberId
+        );
+
+        // then
+        first.andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("RECORDING"))
+                .andExpect(jsonPath("$.connectionStatus").value("DISCONNECTED"));
+        second.andExpect(jsonPath("$.connectionStatus").value("DISCONNECTED"));
+        assertThat(lastSeenAt(recording.id())).isEqualTo(lastSeenAt);
     }
 
     @Test
@@ -203,7 +250,8 @@ class RecordingCurrentAcceptanceTest {
         result.andExpect(status().isOk())
                 .andExpect(jsonPath("$.recordingId").value(recording.id()))
                 .andExpect(jsonPath("$.status").value("PROCESSING"))
-                .andExpect(jsonPath("$.length()").value(6));
+                .andExpect(jsonPath("$.connectionStatus").isEmpty())
+                .andExpect(jsonPath("$.length()").value(7));
     }
 
     @Test
@@ -389,7 +437,7 @@ class RecordingCurrentAcceptanceTest {
                         jsonPath(currentPath + ".responses['404'].content['application/json'].schema['$ref']")
                                 .value(errorResponseRef)
                 )
-                .andExpect(jsonPath("$.components.schemas.RecordingCurrentResponse.properties.length()").value(6))
+                .andExpect(jsonPath("$.components.schemas.RecordingCurrentResponse.properties.length()").value(7))
                 .andExpect(
                         jsonPath("$.components.schemas.RecordingCurrentResponse.properties.status.enum").value(
                                 org.hamcrest.Matchers.contains(
@@ -403,6 +451,16 @@ class RecordingCurrentAcceptanceTest {
                 )
                 .andExpect(jsonPath(currentPath + ".security[*].accessTokenCookie").exists())
                 .andExpect(jsonPath(currentPath + ".parameters[?(@.name == 'X-XSRF-TOKEN')]").isEmpty());
+    }
+
+    private String lastSeenAt(long recordingId) {
+        return jdbcClient.sql("SELECT last_seen_at::text FROM recording_sessions WHERE id = :recordingId")
+                .param(
+                        "recordingId",
+                        recordingId
+                )
+                .query(String.class)
+                .single();
     }
 
     private void saveSucceededBatch(long recordingId) {

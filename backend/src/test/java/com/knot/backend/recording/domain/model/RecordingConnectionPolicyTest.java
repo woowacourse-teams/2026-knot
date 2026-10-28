@@ -42,6 +42,27 @@ class RecordingConnectionPolicyTest {
     }
 
     @Test
+    @DisplayName("끊김 표시 시간 직전은 CONNECTED, 그 시각부터는 DISCONNECTED다")
+    void statusAt_success_boundary() {
+        // given
+        Instant threshold = LAST_SEEN_AT.plusSeconds(30);
+
+        // when
+        RecordingConnectionStatus before = POLICY.statusAt(
+                LAST_SEEN_AT,
+                threshold.minusMillis(1)
+        );
+        RecordingConnectionStatus at = POLICY.statusAt(
+                LAST_SEEN_AT,
+                threshold
+        );
+
+        // then
+        assertThat(before).isEqualTo(RecordingConnectionStatus.CONNECTED);
+        assertThat(at).isEqualTo(RecordingConnectionStatus.DISCONNECTED);
+    }
+
+    @Test
     @DisplayName("끊김 표시 시간이 끊김 유예보다 짧지 않으면 설정을 거부한다")
     void create_failure_disconnectedAfterNotShorterThanGrace() {
         // given

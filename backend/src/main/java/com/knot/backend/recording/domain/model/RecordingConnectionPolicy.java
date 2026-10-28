@@ -33,6 +33,16 @@ public record RecordingConnectionPolicy(
         return now.minus(grace);
     }
 
+    public RecordingConnectionStatus statusAt(
+            Instant lastSeenAt,
+            Instant now
+    ) {
+        if (now.isBefore(lastSeenAt.plus(disconnectedAfter))) {
+            return RecordingConnectionStatus.CONNECTED;
+        }
+        return RecordingConnectionStatus.DISCONNECTED;
+    }
+
     private static boolean isPositive(Duration duration) {
         return duration != null && duration.isPositive();
     }

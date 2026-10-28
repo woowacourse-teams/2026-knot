@@ -29,6 +29,7 @@ public interface RecordingCurrentApi {
                     + "문서 실패는 마지막 실패 후 7일 표시 기한 안에서만 표시한다. "
                     + "retryableJobIds는 표시한 실패 Job 중 저장 원문을 사용할 수 있는 Job이며 사용자 재시도 횟수·경과 시간 제한은 없다. "
                     + "다른 탭·기기에서도 조회할 수 있지만 생존 신호를 갱신하거나 제어 권한을 넘기지 않고 제어 비밀값을 반환하지 않는다. "
+                    + "RECORDING·PAUSED는 녹음 탭 연결 상태(connectionStatus)를 함께 주고 나머지 상태는 null이다. "
                     + "다른 Workspace의 녹음과 완료·내용 없음·폐기는 제외한다"
     )
     @ApiResponses({

@@ -106,6 +106,7 @@ class RecordingHeartbeatAcceptanceTest {
                 .andExpect(jsonPath("$.elapsedMillis").isNumber())
                 .andExpect(jsonPath("$.endedAt").isEmpty())
                 .andExpect(jsonPath("$.endReason").isEmpty())
+                .andExpect(jsonPath("$.connectionStatus").value("CONNECTED"))
                 .andReturn()
                 .getResponse()
                 .getContentAsString();
@@ -147,7 +148,8 @@ class RecordingHeartbeatAcceptanceTest {
                 .andExpect(jsonPath("$.endReason").value("CONNECTION_EXPIRED"))
                 .andExpect(jsonPath("$.endedAt").value(lastSeenAt))
                 .andExpect(jsonPath("$.lastSeenAt").value(lastSeenAt))
-                .andExpect(jsonPath("$.expiresAt").isEmpty());
+                .andExpect(jsonPath("$.expiresAt").isEmpty())
+                .andExpect(jsonPath("$.connectionStatus").isEmpty());
         assertThat(recordingStatus(recording.id())).isEqualTo("ENDED");
     }
 
@@ -181,6 +183,7 @@ class RecordingHeartbeatAcceptanceTest {
         // then
         String body = result.andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("RECORDING"))
+                .andExpect(jsonPath("$.connectionStatus").value("CONNECTED"))
                 .andReturn()
                 .getResponse()
                 .getContentAsString();
@@ -386,6 +389,15 @@ class RecordingHeartbeatAcceptanceTest {
                                 .value(errorResponseRef)
                 )
                 .andExpect(jsonPath(heartbeatPath + ".responses['409']").doesNotExist())
+                .andExpect(
+                        jsonPath("$.components.schemas.RecordingHeartbeatResponse.properties.connectionStatus.enum")
+                                .value(
+                                        hasItems(
+                                                "CONNECTED",
+                                                "DISCONNECTED"
+                                        )
+                                )
+                )
                 .andExpect(
                         jsonPath("$.components.schemas.RecordingHeartbeatResponse.properties.endReason.enum").value(
                                 hasItems(

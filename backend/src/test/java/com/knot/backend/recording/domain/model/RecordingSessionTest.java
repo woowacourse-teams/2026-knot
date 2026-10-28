@@ -1169,6 +1169,87 @@ class RecordingSessionTest {
     }
 
     @Test
+    @DisplayName("마지막 생존 시각 뒤 30초 직전까지는 연결 상태가 CONNECTED다")
+    void connectionStatusAt_success_connectedBeforeThreshold() {
+        // given
+        RecordingSession session = startRecording();
+        Instant justBefore = STARTED_AT.plus(DISCONNECTED_AFTER)
+                .minusMillis(1);
+
+        // when
+        RecordingConnectionStatus status = session.connectionStatusAt(
+                justBefore,
+                CONNECTION_POLICY
+        );
+
+        // then
+        assertThat(status).isEqualTo(RecordingConnectionStatus.CONNECTED);
+    }
+
+    @Test
+    @DisplayName("마지막 생존 시각 뒤 30초가 되면 연결 상태가 DISCONNECTED다")
+    void connectionStatusAt_success_disconnectedAtThreshold() {
+        // given
+        RecordingSession session = startRecording();
+        session.pause(
+                STARTED_AT.plusSeconds(5),
+                CONNECTION_POLICY
+        );
+        Instant threshold = STARTED_AT.plusSeconds(5)
+                .plus(DISCONNECTED_AFTER);
+
+        // when
+        RecordingConnectionStatus status = session.connectionStatusAt(
+                threshold,
+                CONNECTION_POLICY
+        );
+
+        // then
+        assertThat(status).isEqualTo(RecordingConnectionStatus.DISCONNECTED);
+    }
+
+    @Test
+    @DisplayName("끊긴 녹음에 생존 신호가 오면 연결 상태가 바로 CONNECTED로 돌아온다")
+    void connectionStatusAt_success_reconnectedAfterSignal() {
+        // given
+        RecordingSession session = startRecording();
+        Instant returnedAt = STARTED_AT.plusSeconds(600);
+        session.recordAlive(
+                returnedAt,
+                CONNECTION_POLICY
+        );
+
+        // when
+        RecordingConnectionStatus status = session.connectionStatusAt(
+                returnedAt,
+                CONNECTION_POLICY
+        );
+
+        // then
+        assertThat(status).isEqualTo(RecordingConnectionStatus.CONNECTED);
+    }
+
+    @Test
+    @DisplayName("끝난 녹음은 연결 상태가 없다")
+    void connectionStatusAt_success_nullWhenEnded() {
+        // given
+        RecordingSession session = startRecording();
+        session.end(
+                STARTED_AT.plusSeconds(10),
+                CONNECTION_POLICY
+        );
+
+        // when
+        RecordingConnectionStatus status = session.connectionStatusAt(
+                STARTED_AT.plusSeconds(100),
+                CONNECTION_POLICY
+        );
+
+        // then
+        assertThat(status).isNull();
+    }
+
+    @Test
     @DisplayName("생존 신호가 이어지면 누적 2시간 직전에는 녹음을 유지한다")
     void expireIfDue_success_keepsBeforeMaxDuration() {
         // given
