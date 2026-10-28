@@ -87,7 +87,9 @@ class SearchFastPathDocumentRetrieverTest {
                         41,
                         "운영 로그 보관 기준",
                         "운영",
-                        "문서 본문"
+                        "문서 본문",
+                        document.recordingStartedAt(),
+                        document.createdAt()
                 )
         );
         assertThat(result.excludedCount()).isZero();
@@ -110,6 +112,61 @@ class SearchFastPathDocumentRetrieverTest {
         assertThat(result.excludedCount()).isZero();
         verify(access).validate(scope);
         verifyNoInteractions(query);
+    }
+
+    @Test
+    @DisplayName("날짜만 있는 질문은 회의 시작 날짜로 목록을 조회한다")
+    void retrieve_success_listsDocumentsOnRequestedDate() {
+        // when
+        retriever.retrieve(
+                scope,
+                "어제 회의 요약"
+        );
+        // then
+        ArgumentCaptor<SearchDocumentParameters> parameters = ArgumentCaptor.forClass(SearchDocumentParameters.class);
+        verify(query).listPage(
+                eq(scope),
+                parameters.capture(),
+                isNull()
+        );
+        assertThat(
+                parameters.getValue()
+                        .recordedFrom()
+        ).isEqualTo(Instant.parse("2026-10-16T15:00:00Z"));
+        assertThat(
+                parameters.getValue()
+                        .recordedBefore()
+        ).isEqualTo(Instant.parse("2026-10-17T15:00:00Z"));
+        assertThat(
+                parameters.getValue()
+                        .query()
+        ).isNull();
+    }
+
+    @Test
+    @DisplayName("날짜와 검색어를 함께 적용하고 일치 문서가 없으면 빈 결과를 반환한다")
+    void retrieve_success_returnsEmptyForDateAndKeywordWithoutMatches() {
+        // when
+        SearchRetrievalResult result = retriever.retrieve(
+                scope,
+                "10/17 데일리스크럼 요약"
+        );
+        // then
+        ArgumentCaptor<SearchDocumentParameters> parameters = ArgumentCaptor.forClass(SearchDocumentParameters.class);
+        verify(query).searchPage(
+                eq(scope),
+                parameters.capture(),
+                isNull()
+        );
+        assertThat(
+                parameters.getValue()
+                        .query()
+        ).isEqualTo("데일리스크럼");
+        assertThat(
+                parameters.getValue()
+                        .recordedFrom()
+        ).isEqualTo(Instant.parse("2026-10-16T15:00:00Z"));
+        assertThat(result.documents()).isEmpty();
     }
 
     private SearchDocumentRecord document(
