@@ -17,6 +17,7 @@ import static org.mockito.Mockito.when;
 import com.knot.backend.global.config.RecordingAudioChunksProperties;
 import com.knot.backend.member.domain.MemberRepository;
 import com.knot.backend.recording.application.dto.command.RecordingControlCommand;
+import com.knot.backend.recording.application.dto.command.RecordingReconnectCommand;
 import com.knot.backend.recording.application.dto.result.RecordingEndResult;
 import com.knot.backend.recording.application.dto.result.RecordingHeartbeatResult;
 import com.knot.backend.recording.application.dto.result.RecordingPauseResult;
@@ -59,6 +60,7 @@ class RecordingControlServiceTest {
     private static final long MEMBER_ID = 1L;
     private static final long RECORDING_ID = 7L;
     private static final UUID TAB_ID = UUID.fromString("22222222-2222-2222-2222-222222222222");
+    private static final UUID NEW_TAB_ID = UUID.fromString("33333333-3333-3333-3333-333333333333");
     private static final String CONTROL_TOKEN = "A".repeat(43);
     private static final String OTHER_CONTROL_TOKEN = "B".repeat(43);
     private static final String HASH = "a".repeat(64);
@@ -70,6 +72,7 @@ class RecordingControlServiceTest {
     private RecordingControlTokenHasher hasher;
     private RecordingAudioStreamRepository streams;
     private RecordingAudioFinalizationRepository finalizations;
+    private RecordingAudioChunkTransaction audioChunkTransaction;
     private RecordingService service;
 
     @BeforeEach
@@ -82,6 +85,7 @@ class RecordingControlServiceTest {
         when(hasher.hash(OTHER_CONTROL_TOKEN)).thenReturn(OTHER_HASH);
         streams = mock(RecordingAudioStreamRepository.class);
         finalizations = mock(RecordingAudioFinalizationRepository.class);
+        audioChunkTransaction = mock(RecordingAudioChunkTransaction.class);
         service = new RecordingService(
                 new RecordingAccess(
                         workspaceRepository,
@@ -104,7 +108,8 @@ class RecordingControlServiceTest {
                 mock(com.knot.backend.recording.domain.repository.RecordingAudioCleanupRepository.class),
                 mock(RecordingTranscriptionFailure.class),
                 mock(com.knot.backend.document.application.DocumentGenerationProgressService.class),
-                RecordingConnectionPolicyFixture.DEFAULT
+                RecordingConnectionPolicyFixture.DEFAULT,
+                audioChunkTransaction
         );
     }
 
@@ -910,6 +915,124 @@ class RecordingControlServiceTest {
         verifyNoInteractions(recordingSessionRepository);
     }
 
+    @Test
+    @DisplayName("이어 받기는 이전 증명을 새 증명으로 바꾸고 구간 업로드 녹음의 확인되지 않은 예약을 되돌린다")
+    void reconnect_success_handsOverAndRewindsChunks() {
+        // given
+        prepareAccess();
+        RecordingSession session = pcmRecordingSessionStartedAt(HEARTBEAT_STARTED_AT);
+        when(recordingSessionRepository.findByIdForUpdate(RECORDING_ID)).thenReturn(Optional.of(session));
+        when(recordingSessionRepository.save(session)).thenReturn(session);
+
+        // when
+        RecordingHeartbeatResult result = service.reconnect(
+                WORKSPACE_ID,
+                MEMBER_ID,
+                RECORDING_ID,
+                reconnectCommand()
+        );
+
+        // then
+        assertThat(result.status()).isEqualTo(RecordingStatus.RECORDING);
+        assertThat(result.lastSeenAt()).isEqualTo(NOW);
+        assertThat(result.expiresAt()).isEqualTo(NOW.plus(RecordingConnectionPolicyFixture.GRACE));
+        assertThat(result.connectionStatus()).isEqualTo(RecordingConnectionStatus.CONNECTED);
+        assertThat(session.getTabId()).isEqualTo(NEW_TAB_ID);
+        verify(audioChunkTransaction).rewindToVerifiedPrefix(RECORDING_ID);
+    }
+
+    @Test
+    @DisplayName("같은 새 증명의 이어 받기 재시도는 예약 조각을 다시 되돌리지 않는다")
+    void reconnect_success_retryKeepsChunks() {
+        // given
+        prepareAccess();
+        RecordingSession session = pcmRecordingSessionStartedAt(HEARTBEAT_STARTED_AT);
+        session.reconnect(
+                TAB_ID,
+                HASH,
+                NEW_TAB_ID,
+                OTHER_HASH,
+                HEARTBEAT_STARTED_AT.plusSeconds(1),
+                RecordingConnectionPolicyFixture.DEFAULT
+        );
+        when(recordingSessionRepository.findByIdForUpdate(RECORDING_ID)).thenReturn(Optional.of(session));
+        when(recordingSessionRepository.save(session)).thenReturn(session);
+
+        // when
+        RecordingHeartbeatResult result = service.reconnect(
+                WORKSPACE_ID,
+                MEMBER_ID,
+                RECORDING_ID,
+                reconnectCommand()
+        );
+
+        // then
+        assertThat(result.status()).isEqualTo(RecordingStatus.RECORDING);
+        assertThat(result.lastSeenAt()).isEqualTo(NOW);
+        verifyNoInteractions(audioChunkTransaction);
+    }
+
+    @Test
+    @DisplayName("끊김 유예가 지난 녹음의 이어 받기는 끝난 결과를 돌려주고 증명과 예약 조각을 바꾸지 않는다")
+    void reconnect_success_expiredReturnsEnded() {
+        // given
+        prepareAccess();
+        RecordingSession session = pcmRecordingSessionStartedAt(EXPIRED_STARTED_AT);
+        when(recordingSessionRepository.findByIdForUpdate(RECORDING_ID)).thenReturn(Optional.of(session));
+        when(recordingSessionRepository.save(session)).thenReturn(session);
+
+        // when
+        RecordingHeartbeatResult result = service.reconnect(
+                WORKSPACE_ID,
+                MEMBER_ID,
+                RECORDING_ID,
+                reconnectCommand()
+        );
+
+        // then
+        assertThat(result.status()).isEqualTo(RecordingStatus.ENDED);
+        assertThat(result.endReason()).isEqualTo(RecordingEndReason.CONNECTION_EXPIRED);
+        assertThat(result.endedAt()).isEqualTo(EXPIRED_STARTED_AT);
+        assertThat(result.connectionStatus()).isNull();
+        assertThat(session.getTabId()).isEqualTo(TAB_ID);
+        verifyNoInteractions(audioChunkTransaction);
+    }
+
+    @Test
+    @DisplayName("이전 증명이 현재 녹음 탭 증명이 아니면 이어 받기를 거절하고 저장하지 않는다")
+    void reconnect_failure_staleProof() {
+        // given
+        prepareAccess();
+        RecordingSession session = pcmRecordingSessionStartedAt(HEARTBEAT_STARTED_AT);
+        when(recordingSessionRepository.findByIdForUpdate(RECORDING_ID)).thenReturn(Optional.of(session));
+        RecordingReconnectCommand staleCommand = new RecordingReconnectCommand(
+                UUID.randomUUID(),
+                CONTROL_TOKEN,
+                NEW_TAB_ID,
+                OTHER_CONTROL_TOKEN
+        );
+
+        // when
+        Throwable failure = catchThrowable(
+                () -> service.reconnect(
+                        WORKSPACE_ID,
+                        MEMBER_ID,
+                        RECORDING_ID,
+                        staleCommand
+                )
+        );
+
+        // then
+        assertThat(failure).isInstanceOf(RecordingException.class)
+                .extracting("errorCode")
+                .isEqualTo(RecordingErrorCode.RECORDING_CONTROL_DENIED);
+        verify(
+                recordingSessionRepository,
+                never()
+        ).save(any());
+        verifyNoInteractions(audioChunkTransaction);
+    }
+
     @org.junit.jupiter.params.ParameterizedTest
     @org.junit.jupiter.params.provider.ValueSource(strings = {"READY", "FAILED"})
     void repeatedPcmEnd_returnsCurrentFinalizationState(String finalizationState) {
@@ -1012,6 +1135,32 @@ class RecordingControlServiceTest {
                     RecordingConnectionPolicyFixture.DEFAULT
             );
         }
+    }
+
+    private RecordingReconnectCommand reconnectCommand() {
+        return new RecordingReconnectCommand(
+                TAB_ID,
+                CONTROL_TOKEN,
+                NEW_TAB_ID,
+                OTHER_CONTROL_TOKEN
+        );
+    }
+
+    private RecordingSession pcmRecordingSessionStartedAt(Instant startedAt) {
+        RecordingSession session = spy(
+                RecordingSession.start(
+                        WORKSPACE_ID,
+                        MEMBER_ID,
+                        UUID.randomUUID(),
+                        TAB_ID,
+                        HASH,
+                        startedAt,
+                        RecordingAudioMode.PCM16_CHUNKS_V1
+                )
+        );
+        doReturn(RECORDING_ID).when(session)
+                .getId();
+        return session;
     }
 
     private RecordingSession recordingSessionStartedAt(Instant startedAt) {
