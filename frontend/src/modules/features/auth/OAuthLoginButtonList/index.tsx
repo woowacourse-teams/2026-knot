@@ -51,7 +51,7 @@ export default function OAuthLoginButtonList() {
   };
 
   return (
-    <Container gap={0.75}>
+    <Container gap={1}>
       <ButtonGroup>
         {OAUTH_PROVIDERS.map(({ provider, label, Icon }) => (
           <OAuthLoginButton

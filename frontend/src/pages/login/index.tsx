@@ -29,7 +29,7 @@ export default function LoginPage() {
       <Actions>
         <OAuthErrorNotice />
         <OAuthLoginButtonList />
-        <Spacing size={1} />
+        <Spacing size={0.75} />
         <Terms>
           로그인하면 서비스 이용약관과 개인정보 처리방침에 동의하게 됩니다.
         </Terms>
@@ -65,6 +65,6 @@ const Title = styled.h1`
 
 const Terms = styled.p`
   ${({ theme }) => theme.text.caption01};
-  color: ${({ theme }) => theme.neutral[400]};
+  color: ${({ theme }) => theme.neutral[600]};
   text-align: center;
 `;

@@ -13,7 +13,7 @@ import OAuthLoginButtonList from ".";
  * - 세 버튼 모두 지금 GitHub 버튼의 크기와 모양(`Shared/Button` lg, 가로 꽉 채움)을 그대로 써요. 순서는 GitHub이 맨 위예요.
  * - Google은 흰 바탕에 회색 테두리와 원래 색 「G」, 카카오는 노란 바탕에 검은 말풍선이에요. 각 사 로그인 버튼 가이드가 정한 색이라 서비스 색에 맞춰 바꾸지 않아요.
  * - 문구는 세 버튼 모두 「○○로 시작하기」예요.
- * - Figma에는 GitHub 버튼 하나만 있어요. Google · 카카오 버튼은 따로 디자인하지 않고 각 사 가이드대로 만들었어요(유월 동의, #1063).
+ * - 로그인 화면처럼 좁은 자리에서는 세로로 쌓고, 랜딩 데스크톱처럼 세 버튼이 한 줄에 들어가는 넓은 자리(720px 이상)에서는 가로로 놓아요.
  * - 버튼 아래에 「처음 가입한 방법으로 로그인해야 같은 계정이에요」를 둬요. 수단마다 다른 knot 계정이라, 다른 버튼을 누르면 빈 새 계정이 생기기 때문이에요.
  *
  * **동작 규칙**
@@ -39,9 +39,19 @@ const meta = {
         url: "https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=1788-4727",
       },
       {
-        name: "로그인/처리 중",
+        name: "Button/Social/L",
         type: "figma",
-        url: "https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=3812-39720",
+        url: "https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=5710-2229",
+      },
+      {
+        name: "LAND-01 · 시작 버튼 3개 가로",
+        type: "figma",
+        url: "https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=4308-42635",
+      },
+      {
+        name: "반응형/모바일 390 로그인",
+        type: "figma",
+        url: "https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=4710-20190",
       },
     ],
   },
@@ -68,6 +78,12 @@ export const Default: Story = {};
  * 실제 버튼은 누르면 페이지가 넘어가서, 버튼을 같은 상태로 나란히 놓아 보여 줘요.
  */
 export const Redirecting: Story = {
+  parameters: {
+    design: {
+      type: "figma",
+      url: "https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=3812-39720",
+    },
+  },
   render: () => (
     <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
       {OAUTH_PROVIDERS.map(({ provider, label, Icon }) => (
