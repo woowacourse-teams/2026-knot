@@ -100,12 +100,19 @@ test.describe("로그인 화면", () => {
     await expect(page.getByRole("alert")).toHaveCount(0);
   });
 
-  test("[AUTH-R7] 취소가 아닌 로그인 실패로 돌아오면 버튼 위에 실패 안내를 띄운다", async ({
+  test("[AUTH-R7, AUTH-R8] 취소가 아닌 로그인 실패로 돌아오면 ERR-15를 보여 주고, 「로그인 화면으로」로 로그인 수단을 다시 고른다", async ({
     page,
   }) => {
     await page.goto(`${LOGIN_PATH}?error=oauth2`);
 
-    await expect(page.getByRole("alert")).toBeVisible();
+    await expect(page).toHaveURL(/\/login\/failed$/);
+    await expect(
+      page.getByRole("heading", { name: "로그인하지 못했어요" }),
+    ).toBeVisible();
+
+    await page.getByRole("button", { name: "로그인 화면으로" }).click();
+
+    await expect(page).toHaveURL(new RegExp(`${LOGIN_PATH}$`));
     await expect(getLoginButtons(page)).toHaveText(PROVIDER_LABELS);
   });
 });

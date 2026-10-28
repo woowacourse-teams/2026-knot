@@ -7,13 +7,13 @@ import OAuthLoginButtonList from ".";
 
 /**
  * GitHub, Google, 카카오 계정으로 로그인을 시작하는 버튼 묶음이에요.
- * 로그인 화면(`/login`)의 가운데와 랜딩의 첫 장면 · 마지막 장면의 시작 버튼 자리에 둡니다.
+ * 로그인 화면(`/login`)의 가운데에 둡니다. 랜딩에는 이 묶음 대신 로그인 화면으로 가는 「시작하기」만 둬요.
  *
  * **모양**
  * - 세 버튼 모두 지금 GitHub 버튼의 크기와 모양(`Shared/Button` lg, 가로 꽉 채움)을 그대로 써요. 순서는 GitHub이 맨 위예요.
  * - Google은 흰 바탕에 회색 테두리와 원래 색 「G」, 카카오는 노란 바탕에 검은 말풍선이에요. 각 사 로그인 버튼 가이드가 정한 색이라 서비스 색에 맞춰 바꾸지 않아요.
  * - 문구는 세 버튼 모두 「○○로 시작하기」예요.
- * - 로그인 화면처럼 좁은 자리에서는 세로로 쌓고, 랜딩 데스크톱처럼 세 버튼이 한 줄에 들어가는 넓은 자리(720px 이상)에서는 가로로 놓아요.
+ * - 세 버튼을 세로로 쌓아요.
  * - 버튼 아래에 「처음 가입한 방법으로 로그인해야 같은 계정이에요」를 둬요. 수단마다 다른 knot 계정이라, 다른 버튼을 누르면 빈 새 계정이 생기기 때문이에요.
  *
  * **동작 규칙**
@@ -26,7 +26,7 @@ import OAuthLoginButtonList from ".";
  * - 이동 뒤의 흐름은 백엔드가 정해요. 기존 회원은 접근 토큰 쿠키를 받고,
  *   신규 사용자는 온보딩 토큰 쿠키를 받아 닉네임 입력 화면(`/onboarding`)으로 돌아옵니다.
  * - 서버가 허용한 출처에서만 동작해요. 스토리북과 `localhost`에서는 눌러도 로그인되지 않으니 배포된 주소에서 확인해야 합니다.
- * - 로그인이 실패해 돌아오면 버튼 바로 위에 `Auth/OAuthErrorNotice`가 실패 문구를 띄우고, 이 버튼들로 다시 시도해요. 승인 화면에서 취소하고 돌아오면 아무것도 띄우지 않아요.
+ * - 로그인이 실패해 돌아오면 로그인 실패 화면(`/login/failed`, `Shared/PageErrorNotice`의 ERR-15)으로 가고, 「로그인 화면으로」를 눌러 이 버튼들로 다시 시도해요. 승인 화면에서 취소하고 돌아오면 아무것도 띄우지 않아요.
  */
 const meta = {
   title: "Auth/OAuthLoginButtonList",
@@ -42,11 +42,6 @@ const meta = {
         name: "Button/Social/L",
         type: "figma",
         url: "https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=5710-2229",
-      },
-      {
-        name: "LAND-01 · 시작 버튼 3개 가로",
-        type: "figma",
-        url: "https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=4308-42635",
       },
       {
         name: "반응형/모바일 390 로그인",

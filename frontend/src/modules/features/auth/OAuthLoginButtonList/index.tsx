@@ -71,24 +71,14 @@ export default function OAuthLoginButtonList() {
   );
 }
 
-/** 놓인 자리의 너비로 버튼 배치를 정하려고, 이 묶음을 컨테이너 쿼리의 기준으로 삼아요 */
 const Container = styled(Stack)`
   width: 100%;
-  container-type: inline-size;
 `;
 
-/**
- * 좁은 자리(로그인 화면 360px, 모바일)에서는 세로로 쌓고, 세 버튼이 한 줄에 들어가는 넓은 자리(랜딩 데스크톱)에서는 가로로 놓아요.
- * 랜딩 첫 장면은 아래에 스크롤 안내가 있어, 세로로 쌓으면 노트북 높이(720~800px)에서 안내와 겹쳐요.
- * 한 줄 기준은 가장 긴 「GitHub으로 시작하기」 버튼(약 211px)이 셋 들어가는 너비예요.
- */
+/** 로그인 화면(360px)과 모바일 모두 세로로 쌓아요. 랜딩에는 이 묶음 대신 로그인 화면으로 가는 링크만 둬요. */
 const ButtonGroup = styled.div`
   display: grid;
   gap: 0.75rem; /* 12px */
-
-  @container (min-width: 45rem) {
-    grid-template-columns: repeat(3, 1fr);
-  }
 `;
 
 const Guide = styled.p`

@@ -1,14 +1,14 @@
 import styled from "@emotion/styled";
-import OAuthLoginButtonList from "@features/auth/OAuthLoginButtonList";
 
+import StartLink from "./StartLink";
 import { Lead } from "./ScenePanel";
-import { interactive, mobile, sceneFade } from "./SceneLayer";
+import { mobile, sceneFade } from "./SceneLayer";
 
 interface StartSceneProps {
   isOn: boolean;
 }
 
-/** 마지막 장면. 입자가 새 심볼로 모이고, 그 아래에서 바로 시작할 수 있어요. */
+/** 마지막 장면. 입자가 새 심볼로 모이고, 그 아래 「시작하기」로 로그인 화면에 가요. */
 export default function StartScene({ isOn }: StartSceneProps) {
   return (
     <Container $isOn={isOn} aria-hidden={!isOn} inert={!isOn}>
@@ -17,9 +17,7 @@ export default function StartScene({ isOn }: StartSceneProps) {
         <MobileBreak /> 모두의 기억으로.
       </Title>
       <Lead>흩어지던 말은 문서로, 문서는 모두의 기억으로.</Lead>
-      <StartWrapper $isOn={isOn}>
-        <OAuthLoginButtonList />
-      </StartWrapper>
+      <StartLink isOn={isOn} />
     </Container>
   );
 }
@@ -57,12 +55,4 @@ const MobileBreak = styled.br`
   ${mobile} {
     display: inline;
   }
-`;
-
-/** 시작 버튼의 너비. 첫 장면과 같이 데스크톱에서는 세 로그인 버튼이 한 줄에 들어가는 너비를 줘요. */
-const StartWrapper = styled.div<{ $isOn: boolean }>`
-  ${({ $isOn }) => interactive({ isOn: $isOn })};
-  width: 100%;
-  max-width: 45rem; /* 720px */
-  margin-top: 0.875rem; /* 14px */
 `;
