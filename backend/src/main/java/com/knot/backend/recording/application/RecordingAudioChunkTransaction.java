@@ -301,6 +301,10 @@ public class RecordingAudioChunkTransaction {
                 receivedAt,
                 connectionPolicy
         );
+        session.recordAlive(
+                receivedAt,
+                connectionPolicy
+        );
         if (session.getStatus() == RecordingStatus.ENDED) {
             RecordingAudioSealKind kind = switch (session.getEndReason()) {
                 case CONNECTION_EXPIRED -> RecordingAudioSealKind.TIMEOUT;
@@ -313,9 +317,7 @@ public class RecordingAudioChunkTransaction {
             );
             streams.save(stream);
         }
-        if (expired) {
-            sessions.save(session);
-        }
+        sessions.save(session);
         return new ControlledAudio(
                 session,
                 stream,
