@@ -19,6 +19,7 @@ import com.knot.backend.recording.domain.model.RecordingAudioMode;
 import com.knot.backend.recording.domain.model.RecordingAudioStream;
 import com.knot.backend.recording.domain.repository.RecordingAudioStreamRepository;
 import com.knot.backend.recording.application.dto.command.RecordingControlCommand;
+import com.knot.backend.recording.application.dto.command.RecordingReconnectCommand;
 import com.knot.backend.recording.application.dto.command.RecordingStartCommand;
 import com.knot.backend.recording.application.dto.result.RecordingCurrentResult;
 import com.knot.backend.recording.application.dto.result.RecordingEndResult;
@@ -61,6 +62,7 @@ public class RecordingService {
     private final RecordingTranscriptionFailure transcriptionFailure;
     private final DocumentGenerationProgressService documentProgress;
     private final RecordingConnectionPolicy connectionPolicy;
+    private final RecordingAudioChunkTransaction audioChunkTransaction;
 
     @Transactional
     public RecordingStartResult start(
@@ -606,6 +608,72 @@ public class RecordingService {
                 now,
                 connectionPolicy
         );
+    }
+
+    @Transactional
+    public RecordingHeartbeatResult reconnect(
+            long workspaceId,
+            long memberId,
+            long recordingId,
+            RecordingReconnectCommand command
+    ) {
+        RecordingLog.Scope trace = RecordingLog.begin(
+                "recording.reconnect",
+                workspaceId,
+                recordingId,
+                null,
+                null
+        );
+        return trace.call(() -> {
+            RecordingSession session = recordingAccess.loadOwnedForUpdate(
+                    workspaceId,
+                    memberId,
+                    recordingId
+            );
+            Instant now = now();
+            RecordingStatus previous = session.getStatus();
+            boolean handedOver = session.reconnect(
+                    command.previousTabId(),
+                    recordingControlTokenHasher.hash(command.previousControlToken()),
+                    command.tabId(),
+                    recordingControlTokenHasher.hash(command.controlToken()),
+                    now,
+                    connectionPolicy
+            );
+            audioSealing.sealEnded(session);
+            logAutoEnded(
+                    session,
+                    previous
+            );
+            RecordingSession saved = recordingSessionRepository.save(session);
+            if (handedOver && saved.getAudioMode() == RecordingAudioMode.PCM16_CHUNKS_V1) {
+                audioChunkTransaction.rewindToVerifiedPrefix(recordingId);
+            }
+            trace.outcome(
+                    reconnectOutcome(
+                            saved,
+                            handedOver
+                    )
+            );
+            return RecordingHeartbeatResult.of(
+                    saved,
+                    now,
+                    connectionPolicy
+            );
+        });
+    }
+
+    private String reconnectOutcome(
+            RecordingSession session,
+            boolean handedOver
+    ) {
+        if (handedOver) {
+            return "changed";
+        }
+        if (!session.isActive()) {
+            return "ignored";
+        }
+        return "replayed";
     }
 
     private RecordingStartResult replay(

@@ -104,7 +104,8 @@ class RecordingCurrentServiceTest {
                         transcriptionProperties
                 ),
                 documentProgress,
-                RecordingConnectionPolicyFixture.DEFAULT
+                RecordingConnectionPolicyFixture.DEFAULT,
+                mock(RecordingAudioChunkTransaction.class)
         );
     }
 
@@ -259,7 +260,8 @@ class RecordingCurrentServiceTest {
                         transcriptionProperties
                 ),
                 documentProgress,
-                RecordingConnectionPolicyFixture.DEFAULT
+                RecordingConnectionPolicyFixture.DEFAULT,
+                mock(RecordingAudioChunkTransaction.class)
         );
 
         // when

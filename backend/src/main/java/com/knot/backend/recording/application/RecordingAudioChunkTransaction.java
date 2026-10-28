@@ -252,6 +252,27 @@ public class RecordingAudioChunkTransaction {
         return completion(chunk);
     }
 
+    /**
+     * 이어 받기 때 확인된 조각이 끊김 없이 이어진 곳 뒤의 예약을 지우고 다음 예약 위치를 그 바로 뒤로 되돌린다. 지운 예약의 저장소 객체는
+     * 같은 키로 다시 올라오거나 녹음 단위 정리에서 함께 지운다.
+     */
+    @Transactional
+    public void rewindToVerifiedPrefix(long recordingId) {
+        RecordingAudioStream stream = streams.findByRecordingIdForUpdate(recordingId)
+                .orElseThrow(() -> new RecordingException(RecordingErrorCode.RECORDING_NOT_FOUND));
+        List<RecordingAudioChunk> all = chunks.findAllByRecordingIdOrderBySequence(recordingId);
+        Progress progress = progress(all);
+        List<RecordingAudioChunk> unverifiedTail = all.stream()
+                .filter(chunk -> chunk.getSequence() > progress.sequence())
+                .toList();
+        chunks.deleteAll(unverifiedTail);
+        stream.rewindTo(
+                progress.sequence(),
+                progress.frames()
+        );
+        streams.save(stream);
+    }
+
     @Transactional(readOnly = true)
     public RecordingAudioSaveResult findState(
             long workspaceId,
