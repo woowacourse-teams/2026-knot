@@ -1,4 +1,4 @@
-package com.knot.backend.auth.infrastructure.github;
+package com.knot.backend.auth.infrastructure.oauth;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowable;
