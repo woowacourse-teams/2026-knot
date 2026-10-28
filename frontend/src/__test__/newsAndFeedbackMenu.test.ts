@@ -37,12 +37,12 @@ test.describe("소식과 피드백", () => {
 
     await getMenuButton(page).click();
 
-    await expect(page.getByRole("button", { name: "새 소식" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "새 소식", exact: true })).toBeVisible();
     await expect(
       page.getByRole("button", { name: "피드백 보내기" }),
     ).toBeVisible();
 
-    await page.getByRole("button", { name: "새 소식" }).click();
+    await page.getByRole("button", { name: "새 소식", exact: true }).click();
 
     await expect(
       page.getByText("새로 생기거나 달라진 점을 모아 둬요"),
