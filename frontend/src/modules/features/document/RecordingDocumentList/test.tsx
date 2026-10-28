@@ -127,6 +127,8 @@ const renderRecordingDocumentList = (workspaceId = WORKSPACE_ID) => {
       </QueryClientProvider>
     </ThemeProvider>,
   );
+
+  return { router, queryClient };
 };
 
 const respondWith = (response: DocumentRecordingsResponse) =>
@@ -547,4 +549,55 @@ describe("RecordingDocumentList", () => {
     );
     expect(requestCount).toBe(1);
   });
+
+  describe("신규 목록 경로 미지원 (DOC-R24 · ERR-QA-005 · ERR-QA-006)", () => {
+    it("다음 페이지가 미지원이면 캐시된 첫 페이지의 신규 링크도 제한한다", async () => {
+      const { firstPage } = twoPages();
+      mockServer.use(http.get(DOCUMENT_RECORDINGS_REQUEST, ({ request }) =>
+        new URL(request.url).searchParams.has("cursor")
+          ? HttpResponse.json({ code: "REQUEST_PATH_NOT_FOUND" }, { status: 404 })
+          : HttpResponse.json(firstPage),
+      ));
+      const { router } = renderRecordingDocumentList();
+      await findGroup(expected.items[0].title);
+      reachEnd();
+      expect(await screen.findByText("업데이트 준비 중")).toBeInTheDocument();
+      expect(screen.queryByRole("region", { name: expected.items[0].title })).not.toBeInTheDocument();
+      expect(router.state.location.pathname).toBe("/workspace/1/documents/recordings");
+    });
+
+    it("경로 미지원은 워크스페이스에서 이동하지 않고 준비 안내로 표시한다", async () => {
+      mockServer.use(http.get(DOCUMENT_RECORDINGS_REQUEST, () => HttpResponse.json(
+        { code: "REQUEST_PATH_NOT_FOUND" }, { status: 404 },
+      )));
+      const { router } = renderRecordingDocumentList();
+      expect(await screen.findByText("업데이트 준비 중")).toHaveAttribute("role", "status");
+      expect(router.state.location.pathname).toBe("/workspace/1/documents/recordings");
+      expect(screen.queryByText("워크스페이스 선택 화면")).not.toBeInTheDocument();
+    });
+
+    it("정상 캐시 뒤 미지원이면 링크를 숨기고, 다시 확인해 지원되면 목록으로 복구한다", async () => {
+      const { queryClient, router } = renderRecordingDocumentList();
+      await findGroup(expected.items[0].title);
+      mockServer.use(http.get(DOCUMENT_RECORDINGS_REQUEST, () => HttpResponse.json(
+        { code: "REQUEST_PATH_NOT_FOUND" }, { status: 404 },
+      )));
+      await act(async () => { await queryClient.invalidateQueries(); });
+      expect(await screen.findByRole("status")).toHaveTextContent("업데이트 준비 중");
+      expect(screen.queryByRole("link")).not.toBeInTheDocument();
+      expect(router.state.location.pathname).toBe("/workspace/1/documents/recordings");
+      for (const status of [500, 0]) {
+        mockServer.use(http.get(DOCUMENT_RECORDINGS_REQUEST, () => status === 0 ? HttpResponse.error() : new HttpResponse(null, { status })));
+        await act(async () => { await queryClient.invalidateQueries(); });
+        expect(await screen.findByRole("alert")).toHaveTextContent(LOAD_FAILED_NOTICE);
+        expect(screen.queryByRole("link")).not.toBeInTheDocument();
+        expect(screen.queryByText("업데이트 준비 중")).not.toBeInTheDocument();
+      }
+      respondWith(documentRecordingsResponse);
+      fireEvent.click(screen.getByRole("button", { name: "다시 시도" }));
+      expect(await findGroup(expected.items[0].title)).toBeInTheDocument();
+      expect(screen.queryByText("업데이트 준비 중")).not.toBeInTheDocument();
+    });
+  });
+
 });

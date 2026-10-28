@@ -28,8 +28,8 @@ interface AudioPlaybackBarProps {
   expiresAt: string | null;
   /** 전체 길이(ms). 일시정지를 뺀 녹음 길이예요 */
   durationMillis: number;
-  /** 새 서명 URL을 받아요 */
-  refreshPlaybackUrl: () => Promise<unknown>;
+  /** 새 서명 URL을 받았으면 true예요 */
+  refreshPlaybackUrl: () => Promise<boolean>;
 }
 
 /**

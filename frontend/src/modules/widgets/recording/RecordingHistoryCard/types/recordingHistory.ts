@@ -6,5 +6,6 @@ export type RecordingHistoryItem = NonNullable<
 >["pages"][number]["items"][number];
 
 /** 끝난 녹음의 처리 상태 */
-export type RecordingProcessingStatus =
-  RecordingHistoryItem["processingStatus"];
+export type RecordingProcessingStatus = NonNullable<
+  RecordingHistoryItem["processingStatus"]
+>;

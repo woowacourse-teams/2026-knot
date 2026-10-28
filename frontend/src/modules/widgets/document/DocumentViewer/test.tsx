@@ -172,7 +172,7 @@ const renderViewerAt = (initialEntry: string) => {
     </ThemeProvider>,
   );
 
-  return { router };
+  return { router, queryClient };
 };
 
 /** 문서 탭 · 홈 · 탐색에서 연 것처럼 쿼리 없이 문서를 열어요 */
@@ -1300,4 +1300,41 @@ describe("DocumentViewer", () => {
 
     expect(await screen.findByText("로그인 화면")).toBeInTheDocument();
   });
+
+  describe("출처 녹음 미지원 (DOC-R25 · ERR-QA-005 · ERR-QA-006)", () => {
+    const unsupported = () => HttpResponse.json({ code: "REQUEST_PATH_NOT_FOUND" }, { status: 404 });
+    it("출처 경로가 미지원이어도 기존 문서 본문과 확인·복사를 유지한다", async () => {
+      mockServer.use(http.get(RECORDING_DOCUMENT_REQUEST, unsupported));
+      renderViewer(String(expected.id));
+      expect(await screen.findByRole("heading", { name: expected.title })).toBeInTheDocument();
+      const source = within(await screen.findByRole("region", { name: SOURCE_RECORDING_NAME }));
+      expect(await source.findByText("업데이트 준비 중")).toBeInTheDocument();
+      expect(source.queryByRole("link")).not.toBeInTheDocument();
+      expect(screen.getByRole("button", { name: CONFIRM_BUTTON_NAME })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "복사" })).toBeInTheDocument();
+      fireEvent.click(screen.getByRole("button", { name: CONFIRM_BUTTON_NAME }));
+      expect(await screen.findByRole("button", { name: CONFIRMED_BUTTON_NAME })).toBeInTheDocument();
+    });
+    it("출처 정상 캐시 뒤 미지원이면 링크를 제한하고 지원 회복 후 다시 연다", async () => {
+      const { queryClient } = renderViewer(String(expected.id));
+      const source = within(await screen.findByRole("region", { name: SOURCE_RECORDING_NAME }));
+      await source.findByRole("link", { name: new RegExp(expectedSourceRecording.title) });
+      mockServer.use(http.get(RECORDING_DOCUMENT_REQUEST, unsupported));
+      await act(async () => { await queryClient.invalidateQueries(); });
+      expect(await source.findByText("업데이트 준비 중")).toBeInTheDocument();
+      expect(source.queryByRole("link")).not.toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: expected.title })).toBeInTheDocument();
+      for (const status of [500, 0]) {
+        mockServer.use(http.get(RECORDING_DOCUMENT_REQUEST, () => status === 0 ? HttpResponse.error() : new HttpResponse(null, { status })));
+        await act(async () => { await queryClient.invalidateQueries(); });
+        expect(await source.findByRole("alert")).toHaveTextContent("녹음을 불러오지 못했어요");
+        expect(source.queryByRole("link")).not.toBeInTheDocument();
+        expect(source.queryByText("업데이트 준비 중")).not.toBeInTheDocument();
+      }
+      mockServer.resetHandlers();
+      fireEvent.click(source.getByRole("button", { name: "다시 시도" }));
+      expect(await source.findByRole("link")).toHaveAttribute("href");
+    });
+  });
+
 });

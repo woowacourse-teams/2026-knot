@@ -2,6 +2,8 @@ import useDocumentQuery from "@api/queries/useDocumentQuery";
 import useDocumentTranscriptQuery from "@api/queries/useDocumentTranscriptQuery";
 import useRecordingDocumentQuery from "@api/queries/useRecordingDocumentQuery";
 import useRecordingTranscriptQuery from "@api/queries/useRecordingTranscriptQuery";
+import { recordingDocumentKeys } from "@api/queryKey/recordingDocument";
+import useApiSupportState from "@hooks/common/useApiSupportState";
 import { PATH_ROUTE } from "@routes/PATH_ROUTE";
 import { useMatch, useParams } from "react-router";
 
@@ -53,14 +55,20 @@ export const useTranscriptSource = () => {
     isEnabled: isRecordingDocument,
   });
 
+  const { isUnsupported, isUnavailable } = useApiSupportState({
+    queryKey: recordingDocumentKeys.transcript({ workspaceId, recordingId }),
+    error: recordingTranscriptError,
+  });
+
   if (isRecordingDocument) {
     return {
-      segments: recordingTranscript?.segments,
+      segments: isUnavailable ? undefined : recordingTranscript?.segments,
       date: recordingDocument?.startedAt,
       durationSeconds: recordingDocument?.recordingDurationSeconds,
       footerNotice: "이 녹음의 전사 전체예요.",
       error: recordingTranscriptError,
       isError: isRecordingTranscriptError,
+      isUnsupported,
       refetch: refetchRecordingTranscript,
     };
   }
@@ -72,6 +80,8 @@ export const useTranscriptSource = () => {
     footerNotice: "이 문서를 만든 원본이에요. 전사 전체를 그대로 볼 수 있어요",
     error: documentTranscriptError,
     isError: isDocumentTranscriptError,
+    // 기존 문서 원문은 신규 기능이 아니므로 같은 경로 오류도 기존 실패 안내로 처리해요.
+    isUnsupported: false,
     refetch: refetchDocumentTranscript,
   };
 };

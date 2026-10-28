@@ -70,6 +70,16 @@ type Story = StoryObj<typeof meta>;
 /** 들을 수 있는 녹음이에요. 처음에는 멈춰 있고 0초부터 시작해요. 이 스토리의 음성은 10초짜리 무음이에요 */
 export const Default: Story = {};
 
+/** 음성 API만 미지원일 때예요. 녹음 제목·요약·원문은 계속 읽고, 지원 여부를 다시 확인할 수 있어요. */
+export const UnsupportedApi: Story = {
+  parameters: {
+    docs: { story: { inline: false, iframeHeight: 300 } },
+    msw: { handlers: { audioPlayback: http.get(AUDIO_PLAYBACK_REQUEST, () =>
+      HttpResponse.json({ code: "REQUEST_PATH_NOT_FOUND" }, { status: 404 }),
+    ) } },
+  },
+};
+
 /** 지난 정리 정책으로 음성 파일이 지워진 녹음이에요. 다시 시도 없이 회색 안내만 있어요 */
 export const NoAudio: Story = {
   parameters: {
