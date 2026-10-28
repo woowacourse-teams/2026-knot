@@ -91,7 +91,7 @@ class RecordingAudioChunkTransactionTest {
     }
 
     @Test
-    @DisplayName("새 조각 예약은 고정 키와 다음 위치를 저장하고 heartbeat를 변경하지 않는다")
+    @DisplayName("새 조각 예약은 고정 키와 다음 위치를 저장하고 마지막 생존 시각을 접수 시각으로 갱신한다")
     void reserve_success_newChunk() {
         // given
         controlled();
@@ -101,7 +101,6 @@ class RecordingAudioChunkTransactionTest {
                         1
                 )
         ).thenReturn(Optional.empty());
-        Instant lastSeen = session.getLastSeenAt();
 
         // when
         RecordingAudioChunkReservation result = transaction.reserve(
@@ -117,7 +116,8 @@ class RecordingAudioChunkTransactionTest {
         assertThat(result.storageKey()).isEqualTo("recordings/3/chunks/1");
         assertThat(result.expiresAt()).isEqualTo(EXPIRES);
         assertThat(stream.getNextSequence()).isEqualTo(2);
-        assertThat(session.getLastSeenAt()).isEqualTo(lastSeen);
+        assertThat(session.getLastSeenAt()).isEqualTo(NOW);
+        verify(sessions).save(session);
         verify(chunks).save(any(RecordingAudioChunk.class));
         verify(streams).save(stream);
     }
@@ -355,6 +355,7 @@ class RecordingAudioChunkTransactionTest {
         assertThat(result.verifiedThroughFrame()).isEqualTo(80000);
         assertThat(result.verifiedAudioMillis()).isEqualTo(5000);
         assertThat(result.confirmedAt()).isEqualTo(NOW);
+        assertThat(session.getLastSeenAt()).isEqualTo(NOW);
         verify(chunks).save(chunk);
     }
 

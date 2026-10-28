@@ -191,7 +191,7 @@ class RecordingAudioChunkServiceIntegrationTest {
         ).isEqualTo(1);
         assertThat(countChunks()).isEqualTo(1);
         assertThat(nextSequence()).isEqualTo(2);
-        assertThat(lastSeenAt()).isEqualTo(NOW.minusSeconds(10));
+        assertThat(lastSeenAt()).isEqualTo(NOW);
     }
 
     @Test
@@ -278,7 +278,7 @@ class RecordingAudioChunkServiceIntegrationTest {
         assertThat(first.verifiedThroughSequence()).isEqualTo(2);
         assertThat(first.verifiedThroughFrame()).isEqualTo(160000);
         assertThat(first.verifiedAudioMillis()).isEqualTo(10000);
-        assertThat(lastSeenAt()).isEqualTo(NOW.minusSeconds(10));
+        assertThat(lastSeenAt()).isEqualTo(NOW);
     }
 
     @ParameterizedTest

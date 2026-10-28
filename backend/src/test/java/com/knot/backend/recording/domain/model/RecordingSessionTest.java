@@ -1168,8 +1168,6 @@ class RecordingSessionTest {
         ).isTrue();
     }
 
-
-
     @Test
     @DisplayName("생존 신호가 이어지면 누적 2시간 직전에는 녹음을 유지한다")
     void expireIfDue_success_keepsBeforeMaxDuration() {
