@@ -19,6 +19,7 @@ import {
 } from "@utils/particleMotion";
 
 import { clamp, gaussian, seededRandom } from "../utils/particleMath";
+import { canScrollContent } from "../utils/scrollableContent";
 import {
   buildCardTargets,
   buildDocumentTargets,
@@ -174,8 +175,16 @@ export const createLandingEngine = ({ elements, listeners, palette }: CreateLand
 
   const handleWheel = (event: WheelEvent) => {
     if (event.ctrlKey) return;
-    event.preventDefault();
     const timestamp = event.timeStamp || performance.now();
+    if (canScrollContent({ target: event.target, delta: event.deltaY })) {
+      // 기술 소개 안쪽을 읽는 동안의 휠도 제스처로 기록해 둬요. 끝에 닿은 뒤 같은 제스처의 관성으로는
+      // 장면이 넘어가지 않고, 아래 규칙대로 새로 굴린 휠(잠깐 멈춤이나 다시 세게 굴림)에서 넘어가요.
+      lastWheelAt = timestamp;
+      lastWheelDelta = Math.abs(event.deltaY);
+      isArmed = false;
+      return;
+    }
+    event.preventDefault();
     const delta =
       event.deltaMode === 1 ? event.deltaY * 16 : event.deltaMode === 2 ? event.deltaY * size.height : event.deltaY;
     const absolute = Math.abs(delta);
@@ -200,15 +209,23 @@ export const createLandingEngine = ({ elements, listeners, palette }: CreateLand
   };
 
   let touchStartY: number | null = null;
+  let isContentTouch = false;
   const handleTouchStart = (event: TouchEvent) => {
     touchStartY = event.touches[0].clientY;
+    isContentTouch = false;
   };
-  const handleTouchMove = (event: TouchEvent) => event.preventDefault();
+  const handleTouchMove = (event: TouchEvent) => {
+    const delta = (touchStartY ?? event.touches[0].clientY) - event.touches[0].clientY;
+    if (canScrollContent({ target: event.target, delta })) isContentTouch = true;
+    if (isContentTouch) return;
+    event.preventDefault();
+  };
   const handleTouchEnd = (event: TouchEvent) => {
     if (touchStartY === null) return;
     const touch = event.changedTouches[0];
     const distance = touchStartY - (touch ? touch.clientY : touchStartY);
     touchStartY = null;
+    if (isContentTouch) return;
     if (Math.abs(distance) > 30 && !isBusy()) move(distance > 0 ? 1 : -1);
   };
 
@@ -224,6 +241,7 @@ export const createLandingEngine = ({ elements, listeners, palette }: CreateLand
       return;
     }
     if (!isNext && !isPrevious) return;
+    if (canScrollContent({ target: event.target, delta: isNext ? 1 : -1 })) return;
     event.preventDefault();
     if (!event.repeat && !isBusy()) move(isNext ? 1 : -1);
   };
