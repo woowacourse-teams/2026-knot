@@ -72,7 +72,7 @@ test.describe("랜딩 화면", () => {
     ).toBeVisible();
   });
 
-  test("[LAND-R1][LAND-R2][LAND-R4][LAND-R5][LAND-R6] 비로그인 방문자가 녹음과 탐색 기술을 순서대로 읽고 검증 조건과 근거를 확인한다", async ({
+  test("[LAND-R1, LAND-R2, LAND-R4, LAND-R5, LAND-R6] 비로그인 방문자가 녹음과 탐색 기술을 순서대로 읽고 검증 조건과 근거를 확인한다", async ({
     page,
   }) => {
     await page.goto("/");
@@ -144,7 +144,7 @@ test.describe("랜딩 화면", () => {
     );
   });
 
-  test("[LAND-R7][LAND-R8] 움직임 줄이기와 키보드로 두 기술 장면을 지나 시작하기에서 로그인한다", async ({
+  test("[LAND-R7, LAND-R8] 움직임 줄이기와 키보드로 두 기술 장면을 지나 시작하기에서 로그인한다", async ({
     page,
   }) => {
     await page.emulateMedia({ reducedMotion: "reduce" });
@@ -175,7 +175,7 @@ test.describe("랜딩 화면", () => {
     await expect(page).toHaveURL(/\/login$/);
   });
 
-  test("[LAND-R3][LAND-R7][LAND-R8] 좁은 화면에서 본문을 스크롤해 읽고 다음 장면으로 나간다", async ({
+  test("[LAND-R3, LAND-R7, LAND-R8] 좁은 화면에서 본문을 스크롤해 읽고 다음 장면으로 나간다", async ({
     page,
   }) => {
     await page.setViewportSize({ width: 360, height: 640 });
