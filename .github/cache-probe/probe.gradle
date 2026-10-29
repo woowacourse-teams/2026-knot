@@ -1,0 +1,47 @@
+sourceSets {
+    recordingProbe {
+        java {
+            srcDir 'src/test/java'
+            include 'com/knot/backend/recording/**'
+            include 'com/knot/backend/testsupport/**'
+            include 'com/knot/backend/document/DocumentFixtures.java'
+        }
+        resources.srcDir 'src/test/resources'
+        compileClasspath += sourceSets.main.output
+        runtimeClasspath += sourceSets.main.output
+    }
+}
+configurations {
+    recordingProbeImplementation.extendsFrom testImplementation
+    recordingProbeCompileOnly.extendsFrom testCompileOnly
+    recordingProbeAnnotationProcessor.extendsFrom testAnnotationProcessor
+    recordingProbeRuntimeOnly.extendsFrom testRuntimeOnly
+}
+tasks.named('processRecordingProbeResources') {
+    from('src/main/resources/db/migration') {
+        exclude 'V49__*.sql', 'V50__*.sql'
+        into 'db/transcription-queue-history'
+    }
+}
+tasks.register('recordingProbeIntegration', Test) {
+    testClassesDirs = sourceSets.recordingProbe.output.classesDirs
+    classpath = sourceSets.recordingProbe.runtimeClasspath
+    useJUnitPlatform { includeTags 'integration' }
+    filter { includeTestsMatching 'com.knot.backend.recording.*' }
+}
+
+tasks.register('recordingOriginalIntegration', Test) {
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+    useJUnitPlatform { includeTags 'integration' }
+    filter { includeTestsMatching 'com.knot.backend.recording.*' }
+}
+
+tasks.register('showProbeExperimentInputs') {
+    doLast {
+        def t = tasks.named('recordingProbeIntegration').get()
+        println('PROBE_TEST_CLASSES=' + t.testClassesDirs.files.collect { it.absolutePath }.sort())
+        println('PROBE_PROJECT_CLASSPATH=' + t.classpath.files.findAll { it.absolutePath.startsWith(project.layout.buildDirectory.get().asFile.absolutePath) }.collect { it.absolutePath }.sort())
+        println('PROBE_SOURCE_DIRS=' + sourceSets.recordingProbe.java.srcDirs.collect { it.absolutePath }.sort())
+    }
+}

@@ -1,0 +1,54 @@
+name: Isolated integration cache experiment
+on:
+  push:
+    branches:
+      - 'be/chore/#1070'
+permissions:
+  contents: read
+jobs:
+  cases:
+    strategy:
+      fail-fast: false
+      matrix:
+        case: [document, fixture, application]
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      CASE: ${{ matrix.case }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+      - name: Compare historical revisions
+        run: bash .github/cache-probe/cases.sh
+      - name: Preserve logs and XML
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cache-experiment-${{ matrix.case }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/cache-probe-results
+          if-no-files-found: error
+  external-inputs:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+      - name: Compare environment and container image inputs
+        run: bash .github/cache-probe/environment.sh
+      - name: Preserve input and execution evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cache-experiment-external-inputs-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/environment-probe-results
+          if-no-files-found: error
