@@ -45,7 +45,7 @@ test.describe("랜딩 화면", () => {
       page.getByRole("navigation", { name: "섹션", exact: true }),
     ).toHaveCount(0);
     await expect(
-      page.getByRole("region", { name: "회의는 흘러가도, 기록은 남도록." }),
+      page.getByRole("region", { name: "녹음은 정확하게, 기록은 이어지게." }),
     ).toHaveCount(0);
   });
 
@@ -102,18 +102,18 @@ test.describe("랜딩 화면", () => {
     await page.waitForTimeout(1000);
     await page.keyboard.press("PageDown");
     const recording = page.getByRole("region", {
-      name: "회의는 흘러가도, 기록은 남도록.",
+      name: "녹음은 정확하게, 기록은 이어지게.",
     });
     await expect(recording).toBeVisible();
     await expect(
-      recording.getByText("5초마다 저장", { exact: true }),
+      recording.getByText("녹음을 5초마다 저장", { exact: true }),
     ).toBeVisible();
     await expect(
-      recording.getByText("2분 구간 AI 전사", { exact: true }),
+      recording.getByText("평균 20분 → 평균 26초", { exact: true }),
     ).toBeVisible();
-    await expect(recording.getByText(/사람이 공간을 확보한 뒤/)).toBeVisible();
-    await expect(recording.getByText(/39/)).toBeVisible();
-    await expect(recording.getByText(/189/)).toBeVisible();
+    await expect(recording.getByText(/보관한 음성을 재전송합니다/)).toBeVisible();
+    await expect(recording.getByText("약 89%", { exact: true })).toBeVisible();
+    await expect(recording.getByText("약 69%", { exact: true })).toBeVisible();
     await expect(recording.getByRole("link")).toHaveAttribute(
       "href",
       "https://app.notion.com/p/404b43517522818bad7dff7cdfdcec87",
@@ -122,22 +122,22 @@ test.describe("랜딩 화면", () => {
       .getByRole("button", { name: "탐색 기술 →", exact: true })
       .click();
     const search = page.getByRole("region", {
-      name: "답을 찾는 동안, 대화가 멈추지 않도록.",
+      name: "찾는 건 빠르게, 답은 근거 있게.",
     });
     await expect(search).toBeVisible();
     await expect(recording).toHaveCount(0);
-    await expect(search.getByText("24.337초", { exact: true })).toBeVisible();
-    await expect(search.getByText("3.496초", { exact: true })).toBeVisible();
+    await expect(search.getByText("3.5초", { exact: true })).toBeVisible();
+    await expect(search.getByText("233회 → 0회", { exact: true })).toBeVisible();
     await expect(
       search.getByText(
         /고정 질문 30개.*Docker·PostgreSQL.*Qwen API.*순차 짝비교/,
       ),
     ).toBeVisible();
     await expect(
-      search.getByText(/사실 정합은 29\/30.*저장 근거 정합은 28\/30/),
+      search.getByText(/첫 비교 실행은 29\/30, 28\/30/),
     ).toBeVisible();
     await expect(
-      search.getByRole("link", { name: /실험 기록 보기/ }),
+      search.getByRole("link", { name: /탐색 속도 실험 자세히 보기/ }),
     ).toHaveAttribute(
       "href",
       "https://app.notion.com/p/3fc0691a002381899022e9a2f7e320d7",
@@ -157,13 +157,13 @@ test.describe("랜딩 화면", () => {
     await page.waitForTimeout(300);
     await page.keyboard.press("PageUp");
     const search = page.getByRole("region", {
-      name: "답을 찾는 동안, 대화가 멈추지 않도록.",
+      name: "찾는 건 빠르게, 답은 근거 있게.",
     });
     await expect(search).toBeVisible();
     await page.waitForTimeout(300);
     await page.keyboard.press("PageUp");
     await expect(
-      page.getByRole("region", { name: "회의는 흘러가도, 기록은 남도록." }),
+      page.getByRole("region", { name: "녹음은 정확하게, 기록은 이어지게." }),
     ).toBeVisible();
     await page.waitForTimeout(300);
     await page.keyboard.press("PageDown");
@@ -189,7 +189,7 @@ test.describe("랜딩 화면", () => {
     await page.waitForTimeout(300);
     await page.keyboard.press("PageUp");
     const search = page.getByRole("region", {
-      name: "답을 찾는 동안, 대화가 멈추지 않도록.",
+      name: "찾는 건 빠르게, 답은 근거 있게.",
     });
     await expect(search).toBeVisible();
     await expect
@@ -206,16 +206,16 @@ test.describe("랜딩 화면", () => {
       .toBeGreaterThan(0);
     await expect(search).toBeVisible();
     await search
-      .getByRole("link", { name: /실험 기록 보기/ })
+      .getByRole("link", { name: /탐색 속도 실험 자세히 보기/ })
       .scrollIntoViewIfNeeded();
     await expect(
-      search.getByText(/사실 정합은 29\/30.*저장 근거 정합은 28\/30/),
+      search.getByText(/첫 비교 실행은 29\/30, 28\/30/),
     ).toBeVisible();
     await search
       .getByRole("button", { name: "← 녹음 기술", exact: true })
       .click();
     const recording = page.getByRole("region", {
-      name: "회의는 흘러가도, 기록은 남도록.",
+      name: "녹음은 정확하게, 기록은 이어지게.",
     });
     await expect(recording).toBeVisible();
     await expect
@@ -226,7 +226,7 @@ test.describe("랜딩 화면", () => {
       )
       .toBe(true);
     await recording.getByRole("link").scrollIntoViewIfNeeded();
-    await expect(recording.getByText(/사람이 공간을 확보한 뒤/)).toBeVisible();
+    await expect(recording.getByText(/보관한 음성을 재전송합니다/)).toBeVisible();
     await recording
       .getByRole("button", { name: "탐색 기술 →", exact: true })
       .click();
