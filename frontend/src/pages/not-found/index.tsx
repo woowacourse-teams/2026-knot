@@ -17,9 +17,12 @@ export default function NotFoundPage() {
   const navigate = useNavigate();
 
   return (
-    <PageErrorNotice
-      variant="badRequest"
-      onAction={() => navigate(PATH_ROUTE.HOME)}
-    />
+    <>
+      <title>요청을 처리할 수 없어요 - knot</title>
+      <PageErrorNotice
+        variant="badRequest"
+        onAction={() => navigate(PATH_ROUTE.HOME)}
+      />
+    </>
   );
 }

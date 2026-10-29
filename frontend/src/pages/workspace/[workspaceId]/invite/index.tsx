@@ -14,5 +14,10 @@ import WorkspaceInviteCard from "@widgets/workspace/WorkspaceInviteCard";
  * @see https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=704-3182 새 워크스페이스 생성/참여 코드 복사 완료
  */
 export default function WorkspaceInvitePage() {
-  return <WorkspaceInviteCard />;
+  return (
+    <>
+      <title>팀원 초대 - knot</title>
+      <WorkspaceInviteCard />
+    </>
+  );
 }

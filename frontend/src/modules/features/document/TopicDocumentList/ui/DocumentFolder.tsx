@@ -55,7 +55,7 @@ const Topic = styled.h3`
 const DocumentCount = styled.span`
   ${({ theme }) => theme.text.caption02};
   flex-shrink: 0;
-  color: ${({ theme }) => theme.neutral[500]};
+  color: ${({ theme }) => theme.neutral[600]};
 `;
 
 /** 피그마 Card/DocGroup: 흰 바탕, 모서리 20px, Shadow02. 행의 모서리가 카드 밖으로 나가지 않게 잘라요 */

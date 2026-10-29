@@ -15,5 +15,10 @@ import WorkspaceCodeCard from "@widgets/workspace/WorkspaceCodeCard";
  * @see https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=600-10172 초대 코드 입력/입력 에러
  */
 export default function WorkspaceCodePage() {
-  return <WorkspaceCodeCard />;
+  return (
+    <>
+      <title>초대 코드 입력 - knot</title>
+      <WorkspaceCodeCard />
+    </>
+  );
 }

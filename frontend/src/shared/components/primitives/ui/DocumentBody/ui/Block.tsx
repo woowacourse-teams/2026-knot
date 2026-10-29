@@ -13,11 +13,12 @@ interface BlockProps {
   block: MarkdownBlock;
 }
 
-// 본문 제목은 문서 제목(h2) 아래 단계라 `#`을 h3부터 붙여, 화면 낭독기가 제목 단계를 건너뛰지 않게 해요
+// 본문은 `##`부터 쓰고, 본문을 감싼 제목(문서 제목, 녹음 문서의 「회의 전체 요약」)은 h2예요.
+// 그래서 `##`을 h3로 붙여, 화면 낭독기가 제목 단계를 건너뛰지 않게 해요
 const HEADING_TAG = {
-  1: "h3",
-  2: "h4",
-  3: "h5",
+  1: "h2",
+  2: "h3",
+  3: "h4",
 } as const satisfies Record<MarkdownHeadingLevel, string>;
 
 // 피그마 Fonts 표의 문서 본문 제목 1 · 2. `###`는 피그마에 없어 Label01로 그려요
@@ -88,7 +89,7 @@ const Heading = styled.h3<{ $level: MarkdownHeadingLevel }>`
 const Paragraph = styled.p<{ $isMuted: boolean }>`
   ${({ theme }) => theme.text.body01};
   color: ${({ theme, $isMuted }) =>
-    $isMuted ? theme.neutral[500] : theme.neutral[700]};
+    $isMuted ? theme.neutral[600] : theme.neutral[700]};
 `;
 
 const listLayout = css`
@@ -125,7 +126,7 @@ const BulletItem = styled(ListItem)`
 const ItemNumber = styled.span`
   flex-shrink: 0;
   min-width: 1rem; /* 16px */
-  color: ${({ theme }) => theme.neutral[500]};
+  color: ${({ theme }) => theme.neutral[600]};
 `;
 
 const ItemText = styled.span`

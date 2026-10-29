@@ -279,8 +279,8 @@ describe("DocumentViewer", () => {
     expect(
       await screen.findByRole("heading", { level: 2, name: expected.title }),
     ).toBeInTheDocument();
-    // 결정 있는 문서: 구역 제목(##) 4개와 미결정 항목 2개
-    expect(screen.getAllByRole("heading", { level: 4 })).toHaveLength(4);
+    // 결정 있는 문서: 구역 제목(##) 4개와 같은 단계의 출처 녹음 제목, 미결정 항목 2개
+    expect(screen.getAllByRole("heading", { level: 3 })).toHaveLength(5);
     expect(screen.getAllByRole("listitem")).toHaveLength(2);
   });
 

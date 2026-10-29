@@ -105,5 +105,5 @@ const Root = styled.div`
 /** 피그마 Player 상태=음성 없음: 회색 작은 안내 한 줄 */
 const Notice = styled.p`
   ${({ theme }) => theme.text.caption02};
-  color: ${({ theme }) => theme.neutral[500]};
+  color: ${({ theme }) => theme.neutral[600]};
 `;

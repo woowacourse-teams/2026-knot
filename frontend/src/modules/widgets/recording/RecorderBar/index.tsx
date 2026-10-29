@@ -1,6 +1,7 @@
 import { MEDIA_QUERY } from "@constants/breakpoint";
 import styled from "@emotion/styled";
 import Button from "@primitives/ui/Button";
+import VisuallyHidden from "@primitives/ui/VisuallyHidden";
 
 import PauseIcon from "@/assets/icons/pause.svg";
 import PlayIcon from "@/assets/icons/play.svg";
@@ -14,6 +15,7 @@ import Waveform from "./ui/Waveform";
  * 왼쪽에 녹음 상태·녹음한 시간·파형을, 오른쪽에 일시정지(이어서 녹음)와 녹음 끝내기 버튼을 둬요.
  * 녹음을 시작한 사람 혼자 쓰는 화면이라 권한에 따른 구분은 없어요.
  * 파형은 마이크 소리 크기를 따라 움직이고, 녹음 파일 업로드는 아직 연결하지 않았어요.
+ * 상태 글자는 바뀔 때 낭독기가 읽도록 상태 영역에 두고, 녹음한 시간은 매초 바뀌어 계속 읽지 않도록 그 밖에 둬요.
  */
 export default function RecorderBar() {
   const {
@@ -28,12 +30,16 @@ export default function RecorderBar() {
   return (
     <Container aria-label="녹음 조작">
       <Info>
-        <Status $isPaused={isPaused}>
+        <Status role="status" $isPaused={isPaused}>
           <RecDot aria-hidden="true" $isPaused={isPaused} />
           {isPaused ? "일시정지" : "녹음 중"}
         </Status>
 
-        <ElapsedTime aria-label="녹음한 시간">{elapsedTime}</ElapsedTime>
+        {/* 문단(p)의 aria-label은 낭독기가 읽지 않을 수 있어, 이름을 숨긴 글자로 시간 앞에 둬요 */}
+        <ElapsedTime>
+          <VisuallyHidden>녹음한 시간 </VisuallyHidden>
+          {elapsedTime}
+        </ElapsedTime>
 
         <Waveform analyser={analyser} isActive={!isPaused} />
       </Info>
@@ -103,7 +109,7 @@ const Status = styled.p<{ $isPaused: boolean }>`
   gap: 0.5rem; /* 8px */
   width: 6rem; /* 96px */
   color: ${({ theme, $isPaused }) =>
-    $isPaused ? theme.neutral[500] : theme.sub.warning[600]};
+    $isPaused ? theme.neutral[600] : theme.sub.warning[600]};
   white-space: nowrap;
   ${({ theme }) => theme.text.label01};
 `;

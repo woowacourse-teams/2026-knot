@@ -168,7 +168,7 @@ const Trail = styled.div`
 
 const TabName = styled.span`
   flex-shrink: 0;
-  color: ${({ theme }) => theme.neutral[500]};
+  color: ${({ theme }) => theme.neutral[600]};
 `;
 
 const DocumentTitle = styled.span`

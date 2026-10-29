@@ -14,5 +14,10 @@ import CreateWorkspaceCard from "@widgets/workspace/CreateWorkspaceCard";
  * @see https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=432-1594 새 워크스페이스 생성/입력 에러
  */
 export default function WorkspaceCreatePage() {
-  return <CreateWorkspaceCard />;
+  return (
+    <>
+      <title>워크스페이스 만들기 - knot</title>
+      <CreateWorkspaceCard />
+    </>
+  );
 }

@@ -15,6 +15,7 @@ import RecordingDocuments from "@widgets/document/RecordingDocuments";
 export default function RecordingDocumentsPage() {
   return (
     <Root>
+      <title>문서 정리 - knot</title>
       <RecordingDocuments />
     </Root>
   );

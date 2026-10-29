@@ -32,6 +32,6 @@ const Message = styled.p`
 `;
 
 const Description = styled.p`
-  color: ${({ theme }) => theme.neutral[500]};
+  color: ${({ theme }) => theme.neutral[600]};
   ${({ theme }) => theme.text.caption02};
 `;

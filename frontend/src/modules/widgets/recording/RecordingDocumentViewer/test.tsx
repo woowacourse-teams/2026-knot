@@ -166,7 +166,7 @@ const renderViewer = () => {
 
 /** 녹음 제목. 녹음 문서를 받은 뒤에 보여요 */
 const findTitle = () =>
-  screen.findByRole("heading", { level: 2, name: expectedRecording.title });
+  screen.findByRole("heading", { level: 1, name: expectedRecording.title });
 
 const getRelatedSection = () =>
   screen.getByRole("region", { name: RELATED_HEADING });
@@ -218,7 +218,25 @@ describe("RecordingDocumentViewer", () => {
         await screen.findByRole("heading", { name: "한눈에 보기" }),
       ).toBeInTheDocument();
       expect(
-        screen.getByRole("heading", { level: 3, name: RELATED_HEADING }),
+        screen.getByRole("heading", { level: 2, name: RELATED_HEADING }),
+      ).toBeInTheDocument();
+    });
+
+    it("헤딩 단계를 건너뛰지 않도록 녹음 제목은 h1, 회의 전체 요약과 이 회의에서 나온 문서는 h2, 요약의 구역은 그 아래로 둔다", async () => {
+      renderViewer();
+
+      expect(await findTitle()).toBeInTheDocument();
+      expect(
+        screen.getByRole("heading", { level: 2, name: "회의 전체 요약" }),
+      ).toBeInTheDocument();
+      expect(
+        await screen.findByRole("heading", { level: 3, name: "한눈에 보기" }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole("heading", { level: 4, name: "정한 방향" }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole("heading", { level: 2, name: RELATED_HEADING }),
       ).toBeInTheDocument();
     });
   });
@@ -432,6 +450,7 @@ describe("RecordingDocumentViewer", () => {
 
       expect(
         await screen.findByRole("heading", {
+          level: 2,
           name: "회의 내용을 바탕으로 문서를 정리하고 있어요",
         }),
       ).toBeInTheDocument();
@@ -969,6 +988,9 @@ describe("RecordingDocumentViewer", () => {
       expect(await screen.findByRole("alert")).toHaveTextContent(
         "녹음을 불러오지 못했어요",
       );
+      expect(
+        screen.getByRole("heading", { level: 1, name: "녹음을 불러오지 못했어요" }),
+      ).toBeInTheDocument();
 
       fireEvent.click(screen.getByRole("button", { name: "다시 시도" }));
 

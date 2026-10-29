@@ -43,5 +43,5 @@ const NoticeTitle = styled.p`
 
 const NoticeDescription = styled.p`
   ${({ theme }) => theme.text.caption02};
-  color: ${({ theme }) => theme.neutral[500]};
+  color: ${({ theme }) => theme.neutral[600]};
 `;

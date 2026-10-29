@@ -53,7 +53,7 @@ const Root = styled.div`
   padding: 2rem 0; /* 32px */
 `;
 
-const Title = styled.h3`
+const Title = styled.h2`
   ${({ theme }) => theme.text.heading02};
   color: ${({ theme }) => theme.primary};
 `;

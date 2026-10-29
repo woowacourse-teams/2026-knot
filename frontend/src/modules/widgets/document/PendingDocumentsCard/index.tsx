@@ -111,7 +111,7 @@ const Title = styled.h2`
 `;
 
 const Count = styled.span`
-  color: ${({ theme }) => theme.neutral[500]};
+  color: ${({ theme }) => theme.neutral[600]};
   ${({ theme }) => theme.text.label01};
 `;
 

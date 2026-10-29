@@ -95,7 +95,7 @@ const Title = styled.h2`
 
 const Description = styled.p`
   margin: 0;
-  color: ${({ theme }) => theme.neutral[500]};
+  color: ${({ theme }) => theme.neutral[600]};
   ${({ theme }) => theme.text.caption01};
 `;
 
@@ -115,7 +115,7 @@ const DateGroup = styled.section`
 
 const DateHeading = styled.h3`
   margin: 0;
-  color: ${({ theme }) => theme.neutral[500]};
+  color: ${({ theme }) => theme.neutral[600]};
   ${({ theme }) => theme.text.caption01};
 `;
 
@@ -156,6 +156,6 @@ const EmptyTitle = styled.p`
 
 const EmptyDescription = styled.p`
   margin: 0;
-  color: ${({ theme }) => theme.neutral[500]};
+  color: ${({ theme }) => theme.neutral[600]};
   ${({ theme }) => theme.text.caption01};
 `;

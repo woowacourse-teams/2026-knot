@@ -14,5 +14,10 @@ import WorkspaceInviteLinkGate from "@widgets/workspace/WorkspaceInviteLinkGate"
  * @see https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=600-10148 올바르지 않은 초대 링크 접근
  */
 export default function InvitePage() {
-  return <WorkspaceInviteLinkGate />;
+  return (
+    <>
+      <title>초대 링크 확인 - knot</title>
+      <WorkspaceInviteLinkGate />
+    </>
+  );
 }

@@ -19,6 +19,7 @@ export default function LoginPage() {
 
   return (
     <Container align="center">
+      <title>로그인 - knot</title>
       <Title>
         {/* 줄을 나눠도 글로는 띄어 쓴 한 문장이 되도록 줄바꿈 앞에 빈칸을 둬요 */}
         팀의 결정을 <br />

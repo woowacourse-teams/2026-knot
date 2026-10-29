@@ -148,7 +148,7 @@ const Badge = styled.span<{ $isCompleted: boolean }>`
   border-radius: 50%;
   background-color: ${({ theme }) => theme.neutral[100]};
   color: ${({ theme, $isCompleted }) =>
-    $isCompleted ? theme.neutral[700] : theme.neutral[500]};
+    $isCompleted ? theme.neutral[700] : theme.neutral[600]};
 `;
 
 /** 피그마 Info: 제목과 아래 줄 사이 4px. 남는 폭을 모두 써요 */
@@ -179,7 +179,7 @@ const Meta = styled.div`
 
 const StartedDate = styled.time`
   ${({ theme }) => theme.text.caption01};
-  color: ${({ theme }) => theme.neutral[500]};
+  color: ${({ theme }) => theme.neutral[600]};
 `;
 
 /** 피그마 Status: 점과 글자 사이 6px */

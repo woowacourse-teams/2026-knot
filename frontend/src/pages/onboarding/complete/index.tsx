@@ -44,6 +44,7 @@ export default function OnboardingCompletePage() {
 
   return (
     <Container align="center">
+      <title>가입 완료 - knot</title>
       <Clap />
       <Spacing size={1.25} />
 

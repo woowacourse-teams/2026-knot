@@ -12,5 +12,10 @@ import WorkspaceEntryCard from "@widgets/workspace/WorkspaceEntryCard";
  * @see https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=600-10188
  */
 export default function WorkspacePage() {
-  return <WorkspaceEntryCard />;
+  return (
+    <>
+      <title>워크스페이스 생성 및 참여 - knot</title>
+      <WorkspaceEntryCard />
+    </>
+  );
 }

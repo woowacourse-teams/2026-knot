@@ -107,7 +107,7 @@ const Container = styled(Unfold)`
 
 const SectionLabel = styled.span`
   padding: 0.375rem 0.625rem 0.25rem; /* 6px 10px 4px */
-  color: ${({ theme }) => theme.neutral[500]};
+  color: ${({ theme }) => theme.neutral[600]};
   ${({ theme }) => theme.text.caption01};
 `;
 

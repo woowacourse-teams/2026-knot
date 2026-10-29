@@ -180,6 +180,6 @@ const FeatureTitle = styled.p`
 `;
 
 const FeatureDescription = styled.p`
-  color: ${({ theme }) => theme.neutral[500]};
+  color: ${({ theme }) => theme.neutral[600]};
   ${({ theme }) => theme.text.caption01};
 `;

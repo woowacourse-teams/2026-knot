@@ -1,9 +1,10 @@
 import styled from "@emotion/styled";
 import GithubLoginButton from "@features/auth/GithubLoginButton";
+import VisuallyHidden from "@primitives/ui/VisuallyHidden";
 import type { Ref } from "react";
 
 import { DesktopOnly, Lead, Phrase } from "./ScenePanel";
-import { focusRing, interactive, mobile, sceneFade, visuallyHidden } from "./SceneLayer";
+import { focusRing, interactive, mobile, sceneFade } from "./SceneLayer";
 
 interface IntroSceneProps {
   isOn: boolean;
@@ -25,7 +26,7 @@ export default function IntroScene({ isOn, scrollCueRef, onNext }: IntroScenePro
   return (
     <>
       <Container $isOn={isOn} aria-hidden={!isOn} inert={!isOn}>
-        <ServiceName>knot</ServiceName>
+        <VisuallyHidden as="h1">knot</VisuallyHidden>
         <Slogan>팀의 결정을 모두의 기억으로</Slogan>
         <Lead>
           <Phrase>회의를 녹음하면</Phrase> <Phrase>결정만 골라</Phrase> <Phrase>주제별 문서로 정리해요.</Phrase>
@@ -62,10 +63,6 @@ const Container = styled.section<{ $isOn: boolean }>`
   ${mobile} {
     top: 33%;
   }
-`;
-
-const ServiceName = styled.h1`
-  ${visuallyHidden};
 `;
 
 const Slogan = styled.p`

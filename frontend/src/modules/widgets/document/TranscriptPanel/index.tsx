@@ -163,7 +163,7 @@ const Meta = styled.div`
 
 const CreatedDate = styled.time`
   ${({ theme }) => theme.text.caption01};
-  color: ${({ theme }) => theme.neutral[500]};
+  color: ${({ theme }) => theme.neutral[600]};
 `;
 
 /** 피그마 Transcript: 발화 줄 사이 10px. 패널이 자리보다 길어지면 이 목록만 스크롤해요 */
@@ -177,5 +177,5 @@ const LineList = styled.ol`
 
 const FooterNotice = styled.p`
   ${({ theme }) => theme.text.caption01};
-  color: ${({ theme }) => theme.neutral[500]};
+  color: ${({ theme }) => theme.neutral[600]};
 `;

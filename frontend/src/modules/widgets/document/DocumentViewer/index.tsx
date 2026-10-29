@@ -192,7 +192,7 @@ const Meta = styled.div`
 
 const CreatedDate = styled.time`
   ${({ theme }) => theme.text.caption02};
-  color: ${({ theme }) => theme.neutral[500]};
+  color: ${({ theme }) => theme.neutral[600]};
 `;
 
 /** 피그마 Confirm/하단 바: 본문 아래 구분선과 위아래 12px, 왼쪽에 스테퍼 · 오른쪽에 확인 버튼 */

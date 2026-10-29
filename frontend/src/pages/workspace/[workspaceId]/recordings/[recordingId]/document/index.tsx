@@ -15,6 +15,7 @@ import RecordingDocumentViewer from "@widgets/recording/RecordingDocumentViewer"
 export default function RecordingDocumentPage() {
   return (
     <Root>
+      <title>녹음 문서 - knot</title>
       <RecordingDocumentViewer />
     </Root>
   );

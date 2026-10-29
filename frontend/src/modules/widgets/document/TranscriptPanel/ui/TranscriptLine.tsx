@@ -47,7 +47,7 @@ const Time = styled.span`
   flex-shrink: 0;
   min-width: 2rem; /* 32px */
   ${({ theme }) => theme.text.caption01};
-  color: ${({ theme }) => theme.neutral[500]};
+  color: ${({ theme }) => theme.neutral[600]};
   font-variant-numeric: tabular-nums;
 `;
 

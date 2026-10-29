@@ -133,7 +133,8 @@ const CLOSE_MIC_ALERT: [string, () => void][] = [
   ],
 ];
 
-const getElapsedTime = () => screen.getByLabelText("녹음한 시간");
+/** 녹음한 시간. 화면에는 시간만 보이고, 낭독기는 앞에 숨긴 「녹음한 시간」과 함께 읽어요 */
+const getElapsedTime = () => screen.getByText("녹음한 시간").parentElement!;
 
 const clickEndRecording = async () => {
   await act(async () => {
@@ -222,6 +223,27 @@ describe("RecorderBar", () => {
 
     expect(screen.getByText("녹음 중")).toBeInTheDocument();
     expect(getElapsedTime()).toHaveTextContent("00:07");
+  });
+
+  it("녹음한 시간은 낭독기가 무엇의 시간인지 함께 읽도록 숨긴 이름을 시간 앞에 둔다", async () => {
+    await startRecording();
+    renderRecorderBar();
+
+    expect(getElapsedTime()).toHaveTextContent("녹음한 시간 00:00");
+    expect(getElapsedTime()).not.toHaveAttribute("aria-label");
+  });
+
+  it("녹음 상태가 바뀌면 낭독기가 읽도록 같은 상태 영역의 글자를 바꾸고, 녹음한 시간은 영역 밖에 둔다", async () => {
+    await startRecording();
+    renderRecorderBar();
+
+    const status = screen.getByRole("status");
+    expect(status).toHaveTextContent("녹음 중");
+    expect(status).not.toContainElement(getElapsedTime());
+
+    fireEvent.click(screen.getByRole("button", { name: "일시정지" }));
+
+    expect(status).toHaveTextContent("일시정지");
   });
 
   it("다른 화면에 다녀와도 이어지던 녹음을 보여준다", async () => {

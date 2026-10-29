@@ -132,7 +132,7 @@ const StyledInput = styled.input<{
   transition: all 0.3s ease-in;
 
   &::placeholder {
-    color: ${({ theme }) => theme.neutral[500]};
+    color: ${({ theme }) => theme.neutral[600]};
   }
 
   ${({ variant, theme }) => VARIANT_STYLE[variant](theme)};

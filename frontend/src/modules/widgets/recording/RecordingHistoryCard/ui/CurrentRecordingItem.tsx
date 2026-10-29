@@ -152,7 +152,7 @@ const StatusText = styled.span`
 
 const Hint = styled.p`
   overflow: hidden;
-  color: ${({ theme }) => theme.neutral[500]};
+  color: ${({ theme }) => theme.neutral[600]};
   text-overflow: ellipsis;
   white-space: nowrap;
   ${({ theme }) => theme.text.caption01};

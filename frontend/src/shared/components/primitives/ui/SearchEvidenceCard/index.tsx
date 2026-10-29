@@ -55,5 +55,5 @@ const Meta = styled.p`
   display: flex;
   gap: 0.75rem; /* 12px */
   ${({ theme }) => theme.text.caption01};
-  color: ${({ theme }) => theme.neutral[500]};
+  color: ${({ theme }) => theme.neutral[600]};
 `;

@@ -62,7 +62,7 @@ const Title = styled.h1`
 `;
 
 const Help = styled.p`
-  color: ${({ theme }) => theme.neutral[500]};
+  color: ${({ theme }) => theme.neutral[600]};
   ${({ theme }) => theme.text.caption02};
 `;
 

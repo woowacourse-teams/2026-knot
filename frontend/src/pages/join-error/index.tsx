@@ -12,5 +12,10 @@ import WorkspaceJoinErrorNotice from "@widgets/workspace/WorkspaceJoinErrorNotic
  * @see https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=600-10148
  */
 export default function JoinErrorPage() {
-  return <WorkspaceJoinErrorNotice />;
+  return (
+    <>
+      <title>초대장을 열 수 없어요 - knot</title>
+      <WorkspaceJoinErrorNotice />
+    </>
+  );
 }

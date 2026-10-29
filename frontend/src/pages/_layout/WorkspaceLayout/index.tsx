@@ -41,6 +41,9 @@ import { useTabScreenMotion } from "./model/useTabScreenMotion";
 import { useTranscriptScrollAnalytics } from "./model/useTranscriptScrollAnalytics";
 import type { DockedPanelName } from "./types/dockedPanel";
 
+/** 본문으로 바로가기가 가리키는 본문의 id */
+const MAIN_ID = "main";
+
 /**
  * GNB 레이아웃
  *
@@ -72,6 +75,8 @@ import type { DockedPanelName } from "./types/dockedPanel";
  * 두 화면의 `다시 시도`는 페이지를 새로고침한다. 새로고침 경고는 녹음 중이면 그대로 뜬다.
  *
  * 녹음은 레이아웃 안의 어느 화면에서나 이어지므로, 녹음 중 새로고침·탭 닫기 경고도 이 범위에서 건다.
+ *
+ * GNB 앞에는 키보드로 닿았을 때만 보이는 「본문으로 바로가기」를 둬, 화면마다 GNB를 지나지 않고 본문으로 갈 수 있게 한다.
  *
  * 탐색 답변도 독에서 보내 대화 화면에 그리므로 이 범위에서 이어지고, 다른 대화로 옮기거나 레이아웃을 나가면 끊는다.
  *
@@ -160,6 +165,8 @@ export default function WorkspaceLayout() {
 
   return (
     <Container>
+      <SkipLink href={`#${MAIN_ID}`}>본문으로 바로가기</SkipLink>
+
       <GnbSlot>
         <WorkspaceGnb
           left={
@@ -211,7 +218,12 @@ export default function WorkspaceLayout() {
 
         <Content>
           {/* 사용 기록의 스크롤 깊이는 창이 아니라 이 본문을 재요(ANALYTICS_SCROLL_ROOT_ATTRIBUTE) */}
-          <Main ref={mainRef} data-analytics-scroll-root aria-busy={!isReady}>
+          <Main
+            ref={mainRef}
+            id={MAIN_ID}
+            data-analytics-scroll-root
+            aria-busy={!isReady}
+          >
             {isReady ? (
               <Outlet />
             ) : (
@@ -252,6 +264,27 @@ const Container = styled.div`
   flex-direction: column;
   height: 100%;
   background-color: ${({ theme }) => theme.neutral[50]};
+`;
+
+/**
+ * 평소에는 화면 위로 밀어 두고, 키보드로 닿으면 왼쪽 위에 내려와 보인다.
+ * 숨기지 않고 밀어 두기만 해서 낭독기와 탭 순서에는 그대로 남는다.
+ */
+const SkipLink = styled.a`
+  position: absolute;
+  top: 0.5rem; /* 8px */
+  left: 0.5rem;
+  z-index: 40; /* 모달(30) 위 */
+  padding: 0.5rem 1rem; /* 8px 16px */
+  border-radius: 0.5rem; /* 8px */
+  background-color: ${({ theme }) => theme.neutral[900]};
+  color: ${({ theme }) => theme.neutral[0]};
+  ${({ theme }) => theme.text.label01};
+  transform: translateY(-200%);
+
+  &:focus {
+    transform: none;
+  }
 `;
 
 /** 레일·본문보다 위 칸이라, 패널을 고정해도 화면 전체 폭을 그대로 쓴다. */

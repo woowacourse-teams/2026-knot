@@ -237,7 +237,7 @@ const OptionLabel = styled.span`
 
 const OptionDescription = styled.span`
   ${({ theme }) => theme.text.caption02};
-  color: ${({ theme }) => theme.neutral[500]};
+  color: ${({ theme }) => theme.neutral[600]};
 `;
 
 const Steps = styled.div`

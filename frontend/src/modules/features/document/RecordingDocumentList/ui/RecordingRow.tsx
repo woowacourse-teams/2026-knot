@@ -109,7 +109,7 @@ const Meta = styled.span`
 
 const StartedDate = styled.time`
   ${({ theme }) => theme.text.caption01};
-  color: ${({ theme }) => theme.neutral[500]};
+  color: ${({ theme }) => theme.neutral[600]};
 `;
 
 /** 피그마 Link/녹음 보기: 글자와 화살표 사이 2px */

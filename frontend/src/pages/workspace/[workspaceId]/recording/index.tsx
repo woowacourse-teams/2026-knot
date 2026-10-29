@@ -29,6 +29,7 @@ export default function RecordingPage() {
 
   return (
     <Container>
+      <title>녹음 - knot</title>
       <PageColumn>
         <RecorderBar />
         <MeetingAudioOption />

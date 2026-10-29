@@ -111,5 +111,5 @@ const Meta = styled.div`
 
 const CreatedDate = styled.time`
   ${({ theme }) => theme.text.caption01};
-  color: ${({ theme }) => theme.neutral[500]};
+  color: ${({ theme }) => theme.neutral[600]};
 `;

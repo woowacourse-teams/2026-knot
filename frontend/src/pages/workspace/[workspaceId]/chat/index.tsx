@@ -24,6 +24,7 @@ import SearchConversation from "@widgets/search/SearchConversation";
 export default function ChatPage() {
   return (
     <Root>
+      <title>탐색 - knot</title>
       <DockColumn>
         <SearchConversation />
       </DockColumn>

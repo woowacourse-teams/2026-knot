@@ -14,6 +14,7 @@ import DocumentArchive from "@widgets/document/DocumentArchive";
 export default function DocumentsPage() {
   return (
     <Root>
+      <title>문서 - knot</title>
       <DocumentArchive />
     </Root>
   );

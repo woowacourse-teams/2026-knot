@@ -93,7 +93,7 @@ const Paragraph = styled.p`
 
 const SearchingText = styled.p`
   ${({ theme }) => theme.text.body01};
-  color: ${({ theme }) => theme.neutral[500]};
+  color: ${({ theme }) => theme.neutral[600]};
 `;
 
 /** 버튼이 답변 폭만큼 늘어나지 않고 문구 길이에 맞도록 감싸요 */

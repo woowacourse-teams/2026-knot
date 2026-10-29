@@ -102,7 +102,7 @@ test.describe("녹음 문서 열기", () => {
     await expect(page).toHaveURL(RECORDING_DOCUMENT_PATH);
     const viewer = getViewer(page);
     await expect(
-      viewer.getByRole("heading", { level: 2, name: expectedRecording.title }),
+      viewer.getByRole("heading", { level: 1, name: expectedRecording.title }),
     ).toBeVisible();
     await expect(
       viewer.getByText(formatDate(expectedRecording.startedAt)),

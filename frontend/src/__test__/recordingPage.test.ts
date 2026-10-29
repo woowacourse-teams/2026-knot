@@ -131,7 +131,8 @@ async function shareMeetingAudio(page: Page) {
 
 /** 녹음한 시간이 흘러가는지 봐요. 녹음이 끝나거나 멈추지 않았다는 뜻이에요 */
 async function expectRecordingContinues(page: Page) {
-  const elapsed = recorderBar(page).getByLabel("녹음한 시간");
+  // 앞에 숨긴 「녹음한 시간」 이름과 시간이 함께 든 줄이에요
+  const elapsed = recorderBar(page).getByText(/녹음한 시간 \d{2}:\d{2}/);
   const before = await elapsed.textContent();
 
   await expect(elapsed).not.toHaveText(before ?? "", { timeout: 3_000 });

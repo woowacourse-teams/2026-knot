@@ -45,15 +45,6 @@ export const interactive = ({ isOn }: { isOn: boolean }) => css`
   pointer-events: ${isOn ? "auto" : "none"};
 `;
 
-export const visuallyHidden = css`
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip: rect(0 0 0 0);
-  white-space: nowrap;
-`;
-
 /** 모바일 배치로 바뀌는 너비 */
 export const mobile = "@media (max-width: 759px)";
 

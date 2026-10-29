@@ -14,6 +14,7 @@ import DocumentViewer from "@widgets/document/DocumentViewer";
 export default function DocumentPage() {
   return (
     <Root>
+      <title>문서 보기 - knot</title>
       <DocumentViewer />
     </Root>
   );

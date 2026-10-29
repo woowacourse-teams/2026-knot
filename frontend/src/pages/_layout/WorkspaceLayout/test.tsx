@@ -300,6 +300,20 @@ describe("WorkspaceLayout", () => {
     expect(bodies).toHaveLength(1);
   });
 
+  it("GNB보다 먼저 본문으로 바로가기 링크를 두어, 키보드로 GNB를 건너뛰고 본문으로 갈 수 있다", async () => {
+    renderLayout();
+    await screen.findByText(HOME_TEXT);
+
+    const skipLink = screen.getByRole("link", { name: "본문으로 바로가기" });
+    const main = screen.getByRole("main");
+
+    expect(skipLink).toHaveAttribute("href", `#${main.id}`);
+    expect(
+      skipLink.compareDocumentPosition(screen.getByRole("banner")) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
   it("하위 라우트(탐색)로 들어와도 같은 판정을 거쳐 갱신한다", async () => {
     const bodies = captureLastViewedRequests();
     renderLayout(CHAT_PATH);

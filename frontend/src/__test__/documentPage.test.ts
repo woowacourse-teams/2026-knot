@@ -93,7 +93,7 @@ test.describe("이 문서가 나온 녹음 (DOC-R25)", () => {
 
     await expect(page).toHaveURL(RECORDING_DOCUMENT_PATH);
     await expect(
-      page.getByRole("heading", { level: 2, name: expectedRecording.title }),
+      page.getByRole("heading", { level: 1, name: expectedRecording.title }),
     ).toBeVisible();
   });
 

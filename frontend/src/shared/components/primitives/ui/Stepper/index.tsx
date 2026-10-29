@@ -83,7 +83,7 @@ const CurrentNumber = styled.span`
 `;
 
 const Total = styled.span`
-  color: ${({ theme }) => theme.neutral[500]};
+  color: ${({ theme }) => theme.neutral[600]};
   /* 피그마 글자가 " / 3"처럼 앞 공백을 품고 있어요. flex 항목의 앞 공백은 지워지므로 살려 둡니다 */
   white-space: pre;
 `;

@@ -16,6 +16,7 @@ import NicknameCard from "@widgets/member/NicknameCard";
 export default function OnboardingPage() {
   return (
     <Root align="center">
+      <title>닉네임 정하기 - knot</title>
       <NicknameCard />
     </Root>
   );

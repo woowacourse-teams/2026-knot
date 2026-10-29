@@ -14,5 +14,10 @@ import WorkspaceJoinCard from "@widgets/workspace/WorkspaceJoinCard";
  * @see https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=600-10180 초대 링크로 워크스페이스 입장
  */
 export default function WorkspaceJoinPage() {
-  return <WorkspaceJoinCard />;
+  return (
+    <>
+      <title>워크스페이스 참여 - knot</title>
+      <WorkspaceJoinCard />
+    </>
+  );
 }

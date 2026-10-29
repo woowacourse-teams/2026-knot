@@ -160,7 +160,7 @@ const CopyButton = styled(Button)`
 const CopyCodeButton = styled.button`
   width: 100%;
   border-radius: 0.5rem;
-  color: ${({ theme }) => theme.neutral[500]};
+  color: ${({ theme }) => theme.neutral[600]};
   text-align: center;
   ${({ theme }) => theme.text.body01};
 

@@ -142,14 +142,14 @@ const Heading = styled.div`
   gap: 0.375rem; /* 6px */
 `;
 
-const Title = styled.h3`
+const Title = styled.h2`
   ${({ theme }) => theme.text.heading04};
   color: ${({ theme }) => theme.neutral[900]};
 `;
 
 const Count = styled.span`
   ${({ theme }) => theme.text.caption02};
-  color: ${({ theme }) => theme.neutral[500]};
+  color: ${({ theme }) => theme.neutral[600]};
 `;
 
 /** 피그마 Grid: 두 열, 열 사이 20px, 줄 사이 16px. 좁은 화면에서는 한 열로 쌓아요 */

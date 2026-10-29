@@ -51,7 +51,7 @@ const Illustration = styled(DocumentFailedIllustration)`
   color: ${({ theme }) => theme.primary};
 `;
 
-const Title = styled.h2`
+const Title = styled.h1`
   ${({ theme }) => theme.text.heading02};
   color: ${({ theme }) => theme.primary};
 `;

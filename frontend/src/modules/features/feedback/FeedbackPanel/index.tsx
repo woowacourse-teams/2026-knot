@@ -259,7 +259,7 @@ const ContentField = styled(Textarea)`
   ${({ theme }) => theme.text.body01};
 
   &::placeholder {
-    color: ${({ theme }) => theme.neutral[500]};
+    color: ${({ theme }) => theme.neutral[600]};
   }
 
   &:focus {

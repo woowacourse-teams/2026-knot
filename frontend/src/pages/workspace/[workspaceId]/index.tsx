@@ -24,6 +24,7 @@ import WorkspaceInviteMemberCard from "@widgets/workspace/WorkspaceInviteMemberC
 export default function WorkspaceHomePage() {
   return (
     <Root>
+      <title>홈 - knot</title>
       <PageColumn>
         <MemberGreeting />
         <CardGrid>

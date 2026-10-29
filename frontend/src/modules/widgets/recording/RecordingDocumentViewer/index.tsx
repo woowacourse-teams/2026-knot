@@ -6,6 +6,7 @@ import useRecordingDocumentStatus from "@hooks/domain/recording/useRecordingDocu
 import useRetryFailedRecording from "@hooks/domain/recording/useRetryFailedRecording";
 import Chip from "@primitives/ui/Chip";
 import Divider from "@primitives/ui/Divider";
+import VisuallyHidden from "@primitives/ui/VisuallyHidden";
 import { formatDate } from "@utils/formatDate";
 import { formatDurationFromSeconds } from "@utils/formatDurationFromSeconds";
 import { useId } from "react";
@@ -139,6 +140,8 @@ export default function RecordingDocumentViewer() {
 
       {hasDocuments && (
         <>
+          {/* 시안에는 요약 제목이 없지만, 요약 본문의 구역 제목이 녹음 제목(h1) 아래에서 단계를 건너뛰지 않게 낭독기용 제목을 둬요 */}
+          <VisuallyHidden as="h2">회의 전체 요약</VisuallyHidden>
           <MeetingSummary
             meetingSummary={meetingSummary}
             onRetry={retryMeetingSummary}
@@ -177,8 +180,8 @@ const TitleRow = styled.div`
   min-height: 2.5rem; /* 40px, 복사 버튼이 없어도 같은 높이 */
 `;
 
-/** 제목이 길면 버튼 자리를 남기고 줄을 바꿔요 */
-const Title = styled.h2`
+/** 녹음 문서 화면의 대표 제목이라 h1이에요. 제목이 길면 버튼 자리를 남기고 줄을 바꿔요 */
+const Title = styled.h1`
   flex: 1;
   min-width: 0;
   ${({ theme }) => theme.text.heading02};
@@ -195,5 +198,5 @@ const Meta = styled.div`
 
 const StartedDate = styled.time`
   ${({ theme }) => theme.text.caption02};
-  color: ${({ theme }) => theme.neutral[500]};
+  color: ${({ theme }) => theme.neutral[600]};
 `;
