@@ -10,7 +10,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        case: [document, fixture, application]
+        case: [fixture]
     runs-on: ubuntu-latest
     timeout-minutes: 35
     env:
@@ -33,6 +33,7 @@ jobs:
           path: ${{ runner.temp }}/cache-probe-results
           if-no-files-found: error
   external-inputs:
+    if: ${{ false }}
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:

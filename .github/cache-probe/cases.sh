@@ -6,7 +6,7 @@ project="$RUNNER_TEMP/cache-probe-project"
 mkdir -p "$output"
 case "$CASE" in
  document) head=941dbb4fb80b5a79200fcfa2a7ebeaf1af97d33c ; expected=FROM-CACHE ;;
- fixture) head=301c586592d84f679c5d7079fc447161e18a05a8 ; expected=EXECUTED ;;
+ fixture) head=84ce514c993d49a7833fd044e9f7565b908d1289 ; expected=EXECUTED ;;
  application) head=7b0ee2865d0035fc073e1f84804e0acac39952b4 ; expected=EXECUTED ;;
  *) exit 2 ;;
 esac
