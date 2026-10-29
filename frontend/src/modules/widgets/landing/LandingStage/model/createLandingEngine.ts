@@ -19,6 +19,7 @@ import {
 } from "@utils/particleMotion";
 
 import { clamp, gaussian, seededRandom } from "../utils/particleMath";
+import { canScrollContent } from "../utils/scrollableContent";
 import {
   buildCardTargets,
   buildDocumentTargets,
@@ -174,6 +175,7 @@ export const createLandingEngine = ({ elements, listeners, palette }: CreateLand
 
   const handleWheel = (event: WheelEvent) => {
     if (event.ctrlKey) return;
+    if (canScrollContent({ target: event.target, delta: event.deltaY })) return;
     event.preventDefault();
     const timestamp = event.timeStamp || performance.now();
     const delta =
@@ -200,15 +202,23 @@ export const createLandingEngine = ({ elements, listeners, palette }: CreateLand
   };
 
   let touchStartY: number | null = null;
+  let isContentTouch = false;
   const handleTouchStart = (event: TouchEvent) => {
     touchStartY = event.touches[0].clientY;
+    isContentTouch = false;
   };
-  const handleTouchMove = (event: TouchEvent) => event.preventDefault();
+  const handleTouchMove = (event: TouchEvent) => {
+    const delta = (touchStartY ?? event.touches[0].clientY) - event.touches[0].clientY;
+    if (canScrollContent({ target: event.target, delta })) isContentTouch = true;
+    if (isContentTouch) return;
+    event.preventDefault();
+  };
   const handleTouchEnd = (event: TouchEvent) => {
     if (touchStartY === null) return;
     const touch = event.changedTouches[0];
     const distance = touchStartY - (touch ? touch.clientY : touchStartY);
     touchStartY = null;
+    if (isContentTouch) return;
     if (Math.abs(distance) > 30 && !isBusy()) move(distance > 0 ? 1 : -1);
   };
 
@@ -224,6 +234,7 @@ export const createLandingEngine = ({ elements, listeners, palette }: CreateLand
       return;
     }
     if (!isNext && !isPrevious) return;
+    if (canScrollContent({ target: event.target, delta: isNext ? 1 : -1 })) return;
     event.preventDefault();
     if (!event.repeat && !isBusy()) move(isNext ? 1 : -1);
   };

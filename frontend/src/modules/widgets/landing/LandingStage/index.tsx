@@ -12,22 +12,39 @@ import { focusRing, interactive, mobile, sceneFade } from "./ui/SceneLayer";
 import SceneSteps from "./ui/SceneSteps";
 import SearchScene from "./ui/SearchScene";
 import StartScene from "./ui/StartScene";
+import TechnologyScene from "./ui/TechnologyScene";
 
 /**
  * 서비스를 처음 만난 사람에게 knot이 무엇이고 어떻게 쓰는지 보여 주는 랜딩 무대.
  *
- * 스크롤 한 번에 한 장면씩 넘어가며 소개 → 문제 → 녹음 → 정리 → 확인 → 탐색 → 시작 순서로 보여 줘요.
+ * 소개 → 문제 → 녹음 → 정리 → 확인 → 탐색 → 녹음 기술 → 탐색 기술 → 시작 순서로 보여 줘요.
  * 입자 수천 개가 장면마다 워드마크, 말 조각, 파형, 문서 카드, 연결망, 새 심볼로 모양을 바꾸고,
  * 포인터를 가져가면 비켜나고 누르면 물결이 퍼져요. 소개와 시작 장면의 「시작하기」로 로그인 화면에 가요.
  */
 export default function LandingStage() {
-  const { refs, scene, isSettled, recordingSeconds, search, questionIndex, labels, selectQuestion, goToScene } =
-    useLandingStage();
+  const {
+    refs,
+    scene,
+    isSettled,
+    recordingSeconds,
+    search,
+    questionIndex,
+    labels,
+    selectQuestion,
+    goToScene,
+  } = useLandingStage();
 
   return (
     <Scroller ref={refs.scrollerRef}>
       <Stage ref={refs.stageRef}>
-        <Canvas ref={refs.canvasRef} aria-hidden />
+        <Canvas
+          ref={refs.canvasRef}
+          aria-hidden
+          $isOn={
+            scene !== SCENE.RECORDING_TECHNOLOGY &&
+            scene !== SCENE.SEARCH_TECHNOLOGY
+          }
+        />
 
         <Header>
           <HomeLink
@@ -53,7 +70,10 @@ export default function LandingStage() {
           onNext={() => goToScene(SCENE.PROBLEM)}
         />
         <ProblemScene isOn={scene === SCENE.PROBLEM} />
-        <RecordingScene isOn={scene === SCENE.RECORDING} recordingSeconds={recordingSeconds} />
+        <RecordingScene
+          isOn={scene === SCENE.RECORDING}
+          recordingSeconds={recordingSeconds}
+        />
         <DocumentsScene
           isOn={scene === SCENE.DOCUMENTS}
           isRevealed={isSettled}
@@ -72,6 +92,18 @@ export default function LandingStage() {
           labels={labels}
           questionInputRef={refs.questionInputRef}
           onQuestionSelect={selectQuestion}
+        />
+        <TechnologyScene
+          isOn={scene === SCENE.RECORDING_TECHNOLOGY}
+          technology="recording"
+          onPrevious={() => goToScene(SCENE.SEARCH)}
+          onNext={() => goToScene(SCENE.SEARCH_TECHNOLOGY)}
+        />
+        <TechnologyScene
+          isOn={scene === SCENE.SEARCH_TECHNOLOGY}
+          technology="search"
+          onPrevious={() => goToScene(SCENE.RECORDING_TECHNOLOGY)}
+          onNext={() => goToScene(SCENE.START)}
         />
         <StartScene isOn={scene === SCENE.START} />
       </Stage>
@@ -96,18 +128,25 @@ const Stage = styled.div`
   position: sticky;
   top: env(safe-area-inset-top, 0px);
   width: 100%;
-  height: calc(100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+  height: calc(
+    100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)
+  );
   min-height: 32.5rem; /* 520px */
   overflow: hidden;
 `;
 
-const Canvas = styled.canvas`
+const Canvas = styled.canvas<{ $isOn: boolean }>`
   position: absolute;
   inset: 0;
   display: block;
   width: 100%;
   height: 100%;
   pointer-events: none;
+  opacity: ${({ $isOn }) => ($isOn ? 1 : 0)};
+  transition: opacity 0.7s ease;
+  @media (prefers-reduced-motion: reduce) {
+    transition: none;
+  }
 `;
 
 const Header = styled.header`
