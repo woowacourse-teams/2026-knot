@@ -3,6 +3,8 @@ on:
   push:
     branches:
       - 'be/chore/#1070'
+    paths:
+      - '.github/cache-probe/phase.txt'
 permissions:
   contents: read
 jobs:
