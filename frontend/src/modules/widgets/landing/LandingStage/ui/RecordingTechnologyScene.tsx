@@ -12,7 +12,7 @@ interface RecordingTechnologySceneProps {
   onNext: () => void;
 }
 
-const SOURCE = "https://app.notion.com/p/404b43517522818bad7dff7cdfdcec87";
+const SOURCE = "https://ajar-relish-001.notion.site/408b435175228079972bc3b739681859";
 
 const ACCURACY = [
   { name: "Knot", value: "약 94%", isHighlighted: true },

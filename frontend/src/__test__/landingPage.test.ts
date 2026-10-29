@@ -116,7 +116,7 @@ test.describe("랜딩 화면", () => {
     await expect(recording.getByText("약 69%", { exact: true })).toBeVisible();
     await expect(recording.getByRole("link")).toHaveAttribute(
       "href",
-      "https://app.notion.com/p/404b43517522818bad7dff7cdfdcec87",
+      "https://ajar-relish-001.notion.site/408b435175228079972bc3b739681859",
     );
     await recording
       .getByRole("button", { name: "탐색 기술 →", exact: true })
