@@ -43,6 +43,7 @@ export class ReleaseNoteItemDto {
 export interface ReleaseNoteRaw {
   id: string;
   releasedAt: string;
+  /** 패널에 보일 항목만 와요. 3일이 지났거나 「숨기기」라 보이지 않는 노트는 글 없이 빈 배열이에요(NEWS-R15, R16) */
   items: ReleaseNoteItemRaw[];
 }
 
@@ -52,7 +53,7 @@ export class ReleaseNoteDto {
   id: string;
   /** 배포 날짜(YYYY-MM-DD). 예: `2026-10-21` */
   releasedAt: string;
-  /** 항목 목록. 하나 이상이에요 */
+  /** 패널에 보일 항목 목록. 하나 이상이에요 */
   items: ReleaseNoteItemDto[];
 
   constructor(raw: ReleaseNoteRaw) {
@@ -64,15 +65,20 @@ export class ReleaseNoteDto {
 
 // GET /relay/n
 
-/** 새 소식 노트 목록의 Worker 응답 모양. 객체로 감싸지 않은 노트 배열이에요 */
+/** 새 소식 노트 목록의 Worker 응답 모양. 객체로 감싸지 않은 노트 배열이고, 패널에 보이지 않는 노트도 순서대로 들어 있어요 */
 export type GetReleaseNotesResponseRaw = ReleaseNoteRaw[];
 
 /** 새 소식 노트 목록 응답 */
 export class GetReleaseNotesResponseDto {
-  /** 노트 목록. 최신 노트가 맨 앞이고, 노트가 없으면 빈 배열이에요. Worker의 배열 응답을 `notes`로 감쌌어요 */
+  /** 패널에 보여 줄 노트. 최신 노트가 맨 앞이고, 보이는 노트가 없으면 빈 배열이에요. Worker 응답에서 항목이 빈 노트를 뺐어요(NEWS-R15) */
   notes: ReleaseNoteDto[];
+  /** 안 읽은 노트를 가릴 노트 id 순서. 최신이 맨 앞이고, 패널에 보이지 않는 노트도 들어 있어요(NEWS-R16). Worker 응답의 노트 id 그대로예요 */
+  noteIds: string[];
 
   constructor(raw: GetReleaseNotesResponseRaw) {
-    this.notes = raw.map((note) => new ReleaseNoteDto(note));
+    this.notes = raw
+      .filter(({ items }) => items.length > 0)
+      .map((note) => new ReleaseNoteDto(note));
+    this.noteIds = raw.map(({ id }) => id);
   }
 }
