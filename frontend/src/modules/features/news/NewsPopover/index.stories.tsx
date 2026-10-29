@@ -1,5 +1,6 @@
 import { RELEASE_NOTES_RELAY_PATH } from "@api/fetch/relay/n";
 import {
+  hiddenReleaseNote,
   imageReleaseNoteItems,
   releaseNotesResponse,
 } from "@api/mock/responses/releaseNote";
@@ -69,9 +70,9 @@ const IMAGE_CASES_DESIGN = {
   url: "https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=5674-70369",
 } as const;
 
-/** 맨 위 노트 하나만 아직 보지 않은 사용자로 둬요 */
+/** 맨 위 노트 하나만 아직 보지 않은 사용자로 둬요. 두 번째 노트는 패널에서 빠진 노트라 그다음 노트까지 본 사용자예요 */
 const leaveLatestNoteUnread = () => {
-  localStorage.setItem(LAST_SEEN_NOTE_ID_KEY, releaseNotesResponse[1].id);
+  localStorage.setItem(LAST_SEEN_NOTE_ID_KEY, releaseNotesResponse[2].id);
 };
 
 /**
@@ -83,7 +84,7 @@ const leaveLatestNoteUnread = () => {
  * - 피드백을 보내는 동안에는 바깥 · ESC · 버튼으로 닫히지 않아요.
  * - 열려 있는 동안 버튼은 채워진 모양이에요. 닫혀 있을 때 마우스를 올리거나 키보드로 포커스하면 툴팁 「새 소식과 피드백」이 떠요.
  * - 노트를 받기 전에는 버튼을 그리지 않아요. 저절로 열지는 노트를 받은 뒤에 정해요.
- * - 이 기기에서 새 소식을 한 번도 열지 않았으면 노트를 받은 뒤 메뉴 없이 새 소식 패널을 저절로 열어요. 녹음 중이거나 노트가 없거나 받지 못하면 열지 않아요.
+ * - 이 기기에서 새 소식을 한 번도 열지 않았으면 노트를 받은 뒤 메뉴 없이 새 소식 패널을 저절로 열어요. 녹음 중이거나 보일 노트가 없거나 받지 못하면 열지 않아요.
  * - 새 소식 패널이 열리면(저절로든 메뉴에서 골라서든) 맨 위 노트를 읽음으로 남겨 다음부터는 저절로 열지 않아요.
  * - 휴대폰에서는 피드백을 사이드바에서 열어서, 버튼을 누르면 메뉴 없이 새 소식 패널을 바로 열어요.
  *
@@ -95,6 +96,8 @@ const leaveLatestNoteUnread = () => {
  *
  * **패널 내용**
  * - 노트는 main 머지마다 GitHub Actions의 Claude가 Notion 새 소식 DB에 쓰고, 프론트 Worker(`/relay/n`)가 그 DB에서 읽어 와요. 받지 못하면 빈 상태를 보여 줘요.
+ * - 최근 3일(오늘 포함, 한국 날짜) 안에 배포한 노트만 보여요. 팀이 Notion 「보이기」 칸에서 「항상 보이기」로 남긴 노트는 계속 보이고, 「숨기기」로 내린 노트는 보이지 않아요. 보일 노트가 없으면 빈 상태예요.
+ * - 버튼의 점, NEW, 저절로 열기도 보이는 노트만 봐요. 다만 노트 앞뒤는 패널에서 빠진 노트까지 넣어 가려, 마지막으로 연 노트가 빠져도 그 뒤 노트는 안 읽음이에요.
  * - 노트를 배포 날짜별(「10월 20일」)로 묶고 최신 날짜를 맨 위에 둬요. 같은 날 두 번 릴리즈하면 한 묶음에 모아요.
  * - 항목은 제목과 설명을 보여 주고, 사진과 「바로 가보기」는 노트에 있을 때만 보여 줘요. 「바로 가보기」는 지금 보고 있는 워크스페이스의 그 화면으로 옮겨요.
  * - 사진은 Actions의 Claude가 머지 PR 본문에서 고른 GitHub 첨부 사진(`https://github.com/user-attachments/assets/…`)만 그려요. 다른 주소면 사진 칸 없이 글만 보여요.
@@ -220,6 +223,22 @@ export const UnreadNoteList: Story = {
   },
 };
 
+/** 마지막으로 연 노트가 3일이 지나 패널에서 빠진 뒤 새 노트가 올라온 사용자예요. 버튼에 점이 켜져 있고, 패널을 열면 새로 올라온 10월 20일 항목에만 NEW가 붙어요. 빠진 노트보다 앞선 노트는 읽음이에요 */
+export const UnreadAfterHiddenNote: Story = {
+  beforeEach: () => {
+    localStorage.setItem(LAST_SEEN_NOTE_ID_KEY, hiddenReleaseNote.id);
+  },
+  parameters: {
+    design: {
+      type: "figma",
+      url: "https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=4892-55099",
+    },
+  },
+  play: async ({ canvasElement }) => {
+    await selectMenuItem(canvasElement, "새 소식");
+  },
+};
+
 /** 이 기기에서 새 소식을 처음 확인하는 사용자예요. 누르지 않아도 메뉴 없이 새 소식 패널이 열려 있고, 모든 항목에 NEW가 붙어 있어요 */
 export const FirstVisit: Story = {
   beforeEach: () => {
@@ -294,6 +313,32 @@ export const Empty: Story = {
       handlers: {
         releaseNotes: http.get(`*${RELEASE_NOTES_RELAY_PATH}`, () =>
           HttpResponse.json([]),
+        ),
+      },
+    },
+    design: {
+      type: "figma",
+      url: "https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=4892-55258",
+    },
+  },
+  play: async ({ canvasElement }) => {
+    await selectMenuItem(canvasElement, "새 소식");
+  },
+};
+
+/** 노트는 있지만 모두 3일이 지났거나 「숨기기」라 패널에 보일 노트가 없을 때예요. 마지막으로 본 뒤 숨긴 노트가 새로 올라와도 버튼에 점을 켜지 않고, 패널은 빈 상태예요 */
+export const NoVisibleNote: Story = {
+  beforeEach: () => {
+    localStorage.setItem(LAST_SEEN_NOTE_ID_KEY, hiddenReleaseNote.id);
+  },
+  parameters: {
+    msw: {
+      handlers: {
+        releaseNotes: http.get(`*${RELEASE_NOTES_RELAY_PATH}`, () =>
+          HttpResponse.json([
+            { ...hiddenReleaseNote, id: "pr-1070", releasedAt: "2026-10-29" },
+            hiddenReleaseNote,
+          ]),
         ),
       },
     },

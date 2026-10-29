@@ -12,5 +12,6 @@ export interface ReleaseNote {
   id: string;
   /** YYYY-MM-DD */
   releasedAt: string;
+  /** 패널에 보일 항목. 패널에서 빠진 노트(3일 지남, 「숨기기」)는 빈 배열이에요 */
   items: ReleaseNoteItem[];
 }

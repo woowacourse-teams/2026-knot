@@ -4,6 +4,7 @@ import {
 } from "@api/dto/releaseNote";
 import { GetWorkspacesResponseDto } from "@api/dto/workspace";
 import {
+  hiddenReleaseNote,
   imageReleaseNoteItems,
   releaseNotesResponse,
 } from "@api/mock/responses/releaseNote";
@@ -50,12 +51,18 @@ const getNewsMenuItem = (page: Page) =>
     .getByRole("navigation", { name: "새 소식과 피드백" })
     .getByRole("button", { name: /^새 소식/ });
 
-/** 맨 위 노트 하나만 아직 보지 않은 사용자로 홈에 들어가요. 읽음은 이 기기에만 남아 남겨 두고 다시 불러요 */
-const visitHomeWithLatestNoteUnread = async (page: Page) => {
+/**
+ * 맨 위 노트 하나만 아직 보지 않은 사용자로 홈에 들어가요. 읽음은 이 기기에만 남아 남겨 두고 다시 불러요.
+ * `lastSeenId`는 마지막으로 연 노트이고, 기본은 패널의 두 번째 노트예요
+ */
+const visitHomeWithLatestNoteUnread = async (
+  page: Page,
+  lastSeenId = NOTES[1].id,
+) => {
   await page.goto(HOME_PATH);
   await page.evaluate(
     ([key, id]) => localStorage.setItem(key, id),
-    [LAST_SEEN_NOTE_ID_KEY, NOTES[1].id],
+    [LAST_SEEN_NOTE_ID_KEY, lastSeenId],
   );
   await page.reload();
 };
@@ -194,6 +201,28 @@ test.describe("소식과 피드백", () => {
 
     await expect(page.getByText(PANEL_DESCRIPTION)).toBeVisible();
     await expect(page.getByText("NEW", { exact: true })).toHaveCount(0);
+  });
+
+  test("[NEWS-R16, NEWS-R7] 마지막으로 연 노트가 패널에서 빠져도 그 뒤에 나온 노트는 안 읽음으로 알리고, 그보다 앞선 노트는 패널에 남아도 읽음으로 본다", async ({
+    page,
+  }) => {
+    // 기본 mock에서 맨 위 노트 바로 아래 노트는 3일이 지나 패널에서 빠진 노트예요
+    await visitHomeWithLatestNoteUnread(page, hiddenReleaseNote.id);
+
+    await expect(getMenuButton(page)).toHaveAccessibleName(UNREAD_BUTTON_NAME);
+
+    await getMenuButton(page).click();
+    await getNewsMenuItem(page).click();
+
+    await expect(page.getByText(PANEL_DESCRIPTION)).toBeVisible();
+    await expect(page.getByText("NEW", { exact: true })).toHaveCount(
+      NOTES[0].items.length,
+    );
+    // 빠진 노트보다 앞선 노트(「항상 보이기」로 남긴 옛 노트)는 보이지만 NEW가 없어요
+    const olderItem = getNewsItem(page, NOTES[1].items[0].title);
+    await expect(olderItem).toBeVisible();
+    await expect(olderItem.getByText("NEW", { exact: true })).toHaveCount(0);
+    await expect(getMenuButton(page)).toHaveAccessibleName(READ_BUTTON_NAME);
   });
 
   test("[NEWS-R13] 항목 사진을 자르지 않고 원래 비율로, 항목 폭에 맞춰 보여 준다", async ({
