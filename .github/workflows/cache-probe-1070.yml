@@ -1,4 +1,4 @@
-name: Isolated integration cache experiment
+name: Cross-run integration cache experiment
 on:
   push:
     branches:
@@ -6,11 +6,11 @@ on:
 permissions:
   contents: read
 jobs:
-  cases:
+  crossrun:
     strategy:
       fail-fast: false
       matrix:
-        case: [fixture]
+        case: [document, application, fixture, negative, environment, image]
     runs-on: ubuntu-latest
     timeout-minutes: 35
     env:
@@ -23,33 +23,26 @@ jobs:
         with:
           distribution: temurin
           java-version: '25'
-      - name: Compare historical revisions
-        run: bash .github/cache-probe/cases.sh
-      - name: Preserve logs and XML
+      - name: Restore previous-run build cache
+        id: restore
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.gradle/caches/build-cache-1
+          key: crossrun-knot-20261029-1717-${{ matrix.case }}
+      - name: Run comparison phase
+        env:
+          CACHE_HIT: ${{ steps.restore.outputs.cache-hit }}
+        run: bash .github/cache-probe/crossrun.sh
+      - name: Save seed cache
+        if: success() && hashFiles('.github/cache-probe/phase.txt') == hashFiles('.github/cache-probe/seed-marker.txt')
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.gradle/caches/build-cache-1
+          key: crossrun-knot-20261029-1717-${{ matrix.case }}
+      - name: Preserve evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: cache-experiment-${{ matrix.case }}-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/cache-probe-results
-          if-no-files-found: error
-  external-inputs:
-    if: ${{ false }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 25
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          fetch-depth: 0
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '25'
-      - name: Compare environment and container image inputs
-        run: bash .github/cache-probe/environment.sh
-      - name: Preserve input and execution evidence
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: cache-experiment-external-inputs-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/environment-probe-results
+          name: crossrun-${{ matrix.case }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/crossrun-results
           if-no-files-found: error
