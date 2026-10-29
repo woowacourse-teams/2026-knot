@@ -8,11 +8,12 @@ import DocumentsScene from "./ui/DocumentsScene";
 import IntroScene from "./ui/IntroScene";
 import ProblemScene from "./ui/ProblemScene";
 import RecordingScene from "./ui/RecordingScene";
+import RecordingTechnologyScene from "./ui/RecordingTechnologyScene";
 import { focusRing, interactive, mobile, sceneFade } from "./ui/SceneLayer";
 import SceneSteps from "./ui/SceneSteps";
 import SearchScene from "./ui/SearchScene";
+import SearchTechnologyScene from "./ui/SearchTechnologyScene";
 import StartScene from "./ui/StartScene";
-import TechnologyScene from "./ui/TechnologyScene";
 
 /**
  * 서비스를 처음 만난 사람에게 knot이 무엇이고 어떻게 쓰는지 보여 주는 랜딩 무대.
@@ -93,15 +94,13 @@ export default function LandingStage() {
           questionInputRef={refs.questionInputRef}
           onQuestionSelect={selectQuestion}
         />
-        <TechnologyScene
+        <RecordingTechnologyScene
           isOn={scene === SCENE.RECORDING_TECHNOLOGY}
-          technology="recording"
           onPrevious={() => goToScene(SCENE.SEARCH)}
           onNext={() => goToScene(SCENE.SEARCH_TECHNOLOGY)}
         />
-        <TechnologyScene
+        <SearchTechnologyScene
           isOn={scene === SCENE.SEARCH_TECHNOLOGY}
-          technology="search"
           onPrevious={() => goToScene(SCENE.RECORDING_TECHNOLOGY)}
           onNext={() => goToScene(SCENE.START)}
         />

@@ -1,511 +1,618 @@
+import { keyframes } from "@emotion/react";
 import styled from "@emotion/styled";
+import { type CSSProperties, type ReactNode, useEffect, useRef } from "react";
 
 import SceneLayer, { focusRing, interactive, mobile } from "./SceneLayer";
 
-interface TechnologySceneProps {
-  isOn: boolean;
-  technology: "recording" | "search";
-  onPrevious: () => void;
-  onNext: () => void;
+interface SceneMove {
+  label: string;
+  onClick: () => void;
 }
 
-const RECORDING_SOURCE =
-  "https://app.notion.com/p/404b43517522818bad7dff7cdfdcec87";
-const SEARCH_SOURCE =
-  "https://app.notion.com/p/3fc0691a002381899022e9a2f7e320d7";
+interface TechnologySceneProps {
+  isOn: boolean;
+  /** 제목 요소의 id. 장면 영역의 이름이 돼요. */
+  titleId: string;
+  /** 머리말의 번호와 이름. 「기술 소개 01 / 녹음과 전사」처럼 보여요. */
+  eyebrow: { number: string; name: string };
+  title: ReactNode;
+  /** 제목 아래 수치 비교 묶음 */
+  board: ReactNode;
+  /** 개선 카드 묶음의 제목 */
+  sectionTitle: string;
+  /** 개선 카드 네 장 */
+  children: ReactNode;
+  source: { href: string; label: string };
+  previous: SceneMove;
+  next: SceneMove;
+}
 
-/** 녹음의 보존·복구와 탐색의 응답 개선을 사용자 가치, 처리 흐름, 확인한 결과로 소개해요. */
+/**
+ * 기술 소개 장면의 틀. 큰 제목, 수치 비교, 개선 카드 네 장 순서로 놓아요.
+ *
+ * 한 화면에 다 들어가지 않으면 안쪽을 먼저 스크롤하고, 끝에 닿으면 기존처럼 장면을 넘겨요(`data-landing-scroll`).
+ * 입자는 이 장면에서 숨겨서 글과 도식을 읽기 쉽게 해요.
+ */
 export default function TechnologyScene({
   isOn,
-  technology,
-  onPrevious,
-  onNext,
+  titleId,
+  eyebrow,
+  title,
+  board,
+  sectionTitle,
+  children,
+  source,
+  previous,
+  next,
 }: TechnologySceneProps) {
-  const isRecording = technology === "recording";
-  const titleId = `technology-${technology}-title`;
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // 장면에 다시 들어오면 제목부터 읽도록 안쪽 스크롤을 맨 위로 돌려요.
+  useEffect(() => {
+    if (isOn && containerRef.current) containerRef.current.scrollTop = 0;
+  }, [isOn]);
 
   return (
-    <Container
-      isOn={isOn}
-      role="region"
-      aria-labelledby={titleId}
-      data-landing-scroll
-      tabIndex={isOn ? 0 : -1}
-    >
-      <Copy>
-        <Eyebrow>
-          기술 소개 {isRecording ? "01" : "02"}
-          <span>{isRecording ? "녹음의 신뢰성" : "탐색의 응답성"}</span>
-        </Eyebrow>
-        <Title id={titleId}>
-          {isRecording ? (
-            <>
-              회의는 흘러가도,
-              <br />
-              기록은 남도록.
-            </>
-          ) : (
-            <>
-              답을 찾는 동안,
-              <br />
-              대화가 멈추지 않도록.
-            </>
-          )}
-        </Title>
-        <Lead>
-          {isRecording
-            ? "회의가 끝나기 전부터 소리를 저장하고, 이미 남긴 기록으로 실패한 처리를 이어가요."
-            : "팀 문서를 빠르게 찾고, 근거와 함께 답해요. 기다림 때문에 대화가 끊기지 않도록요."}
-        </Lead>
-        <Explanation>
-          <SmallLabel>어떤 문제를 풀었나요?</SmallLabel>
-          <p>
-            {isRecording
-              ? "녹음이 끝난 뒤 한꺼번에 저장하면, 창이 닫힐 때 회의 전체를 잃을 수 있었어요."
-              : "문서를 찾을 때마다 AI가 탐색 계획과 검색을 반복하면서, 답변을 받기까지 오래 기다려야 했어요."}
-          </p>
-          <SmallLabel>어떻게 바꿨나요?</SmallLabel>
-          <p>
-            {isRecording
-              ? "5초마다 원본을 저장하고 2분 구간으로 AI 전사를 진행해요. DB 대기열에 진행 상태를 남겨, 실패하면 저장된 입력으로 다시 시도해요."
-              : "워크스페이스의 문서를 PostgreSQL로 직접 찾는 Fast Path를 만들었어요. 반복 탐색은 줄이고, AI의 답변 생성과 근거 검증은 이어가요."}
-          </p>
-        </Explanation>
-      </Copy>
+    <Container ref={containerRef} isOn={isOn} role="region" aria-labelledby={titleId} data-landing-scroll tabIndex={isOn ? 0 : -1}>
+      <Inner>
+        <Head $isOn={isOn}>
+          <Eyebrow>
+            기술 소개 {eyebrow.number}
+            <span aria-hidden>/</span>
+            <strong>{eyebrow.name}</strong>
+          </Eyebrow>
+          <Title id={titleId}>{title}</Title>
+        </Head>
 
-      <Evidence>
-        {isRecording ? (
-          <>
-            <Flow aria-label="녹음 처리 흐름">
-              <FlowStep>
-                <StepNumber>01</StepNumber>
-                <div>
-                  <strong>5초마다 저장</strong>
-                  <p>원본 조각과 저장한 위치를 확인해요.</p>
-                </div>
-                <Chunks aria-hidden>
-                  {Array.from({ length: 12 }, (_, index) => (
-                    <i key={index} />
-                  ))}
-                </Chunks>
-              </FlowStep>
-              <FlowStep>
-                <StepNumber>02</StepNumber>
-                <div>
-                  <strong>2분 구간 AI 전사</strong>
-                  <p>회의 중에도 말을 글로 바꿔요.</p>
-                </div>
-                <Wave aria-hidden>
-                  {[9, 18, 28, 14, 22, 34, 19, 11].map((height, index) => (
-                    <i key={index} style={{ height }} />
-                  ))}
-                </Wave>
-              </FlowStep>
-              <FlowStep>
-                <StepNumber>03</StepNumber>
-                <div>
-                  <strong>결과 연결·재시도</strong>
-                  <p>구간을 잇고, 실패한 처리를 이어가요.</p>
-                </div>
-                <FlowMark aria-hidden>↗</FlowMark>
-              </FlowStep>
-            </Flow>
-            <Recovery>
-              <SmallLabel>실제로 복구한 기록</SmallLabel>
-              <Metrics>
-                <div>
-                  <strong>
-                    39<span>개</span>
-                  </strong>
-                  <p>저장된 조각</p>
-                </div>
-                <b aria-hidden>→</b>
-                <div>
-                  <strong>
-                    189<span>초</span>
-                  </strong>
-                  <p>약 3분의 녹음</p>
-                </div>
-                <b aria-hidden>→</b>
-                <div>
-                  <strong>
-                    2<span>개</span>
-                  </strong>
-                  <p>생성된 문서</p>
-                </div>
-              </Metrics>
-              <Footnote>
-                임시 디스크 부족으로 실패한 녹음에서, 사람이 공간을 확보한 뒤
-                재시도해 전사와 문서 2개를 생성했어요.
-              </Footnote>
-            </Recovery>
-            <Source href={RECORDING_SOURCE} target="_blank" rel="noreferrer">
-              녹음 개선 과정 보기 <span aria-hidden>↗</span>
-            </Source>
-          </>
-        ) : (
-          <>
-            <Comparison>
-              <SmallLabel>첫 답변 조각을 받기까지 · 중앙값</SmallLabel>
-              <Timing>
-                <span>
-                  24.337<small>초</small>
-                </span>
-                <b aria-hidden>→</b>
-                <strong>
-                  3.496<small>초</small>
-                </strong>
-              </Timing>
-              <Chart aria-label="첫 답변 조각 중앙값: 기존 24.337초, Fast Path 3.496초">
-                <ChartRow>
-                  <span>기존</span>
-                  <Track>
-                    <Bar $percent={100} />
-                  </Track>
-                </ChartRow>
-                <ChartRow>
-                  <span>Fast Path</span>
-                  <Track>
-                    <Bar $percent={(3.496 / 24.337) * 100} $isAccent />
-                  </Track>
-                </ChartRow>
-              </Chart>
-            </Comparison>
-            <SearchFlow aria-label="탐색 처리 흐름">
-              <span>질문</span>
-              <b aria-hidden>→</b>
-              <span>
-                팀 문서 바로 찾기<small>PostgreSQL</small>
-              </span>
-              <b aria-hidden>→</b>
-              <span>
-                AI 답변<small>근거 확인</small>
-              </span>
-            </SearchFlow>
-            <Experiment>
-              <SmallLabel>이렇게 비교했어요</SmallLabel>
-              <Footnote>
-                같은 고정 질문 30개를 로컬 Docker·PostgreSQL과 실제 Qwen API로
-                순차 짝비교했어요.
-              </Footnote>
-              <Footnote>
-                이 실행의 사실 정합은 29/30, 저장 근거 정합은 28/30이에요. 운영
-                환경 전체의 속도를 보장하는 수치는 아니에요.
-              </Footnote>
-            </Experiment>
-            <Source href={SEARCH_SOURCE} target="_blank" rel="noreferrer">
-              실험 기록 보기 <span aria-hidden>↗</span>
-            </Source>
-          </>
-        )}
-      </Evidence>
+        {board}
 
-      <Navigation
-        aria-label={`${isRecording ? "녹음" : "탐색"} 기술 장면 이동`}
-      >
-        <button type="button" onClick={onPrevious}>
-          ← {isRecording ? "사용법으로" : "녹음 기술"}
-        </button>
-        <button type="button" onClick={onNext}>
-          {isRecording ? "탐색 기술" : "시작하기로"} →
-        </button>
-      </Navigation>
+        <Divider />
+
+        <SectionTitle>{sectionTitle}</SectionTitle>
+        <Cards>{children}</Cards>
+
+        <Footer>
+          <Source href={source.href} target="_blank" rel="noreferrer">
+            {source.label} <span aria-hidden>↗</span>
+          </Source>
+          <Navigation aria-label={`${eyebrow.name} 장면 이동`}>
+            <MoveButton type="button" onClick={previous.onClick}>
+              ← {previous.label}
+            </MoveButton>
+            <MoveButton type="button" onClick={next.onClick}>
+              {next.label} →
+            </MoveButton>
+          </Navigation>
+        </Footer>
+        <ScrollCue type="button" tabIndex={-1} aria-hidden onClick={next.onClick}>
+          계속 스크롤하면 다음 장으로 넘어가요
+          <Mouse viewBox="0 0 32 44">
+            <rect x="2" y="2" width="28" height="40" rx="14" />
+            <circle cx="16" cy="13" r="2.5" />
+          </Mouse>
+        </ScrollCue>
+      </Inner>
     </Container>
   );
 }
 
+interface StatItem {
+  name: string;
+  value: ReactNode;
+  /** 값 아래의 작은 비교 글 */
+  sub?: string;
+  isHighlighted?: boolean;
+}
+
+interface StatBoardProps {
+  isOn: boolean;
+  heading: string;
+  note: string;
+  items: StatItem[];
+  footnote: ReactNode;
+}
+
+/** 제목 아래의 수치 비교. 강조할 칸 하나만 「시작하기」 버튼과 같은 짙은 바탕으로 채워요. */
+export function StatBoard({ isOn, heading, note, items, footnote }: StatBoardProps) {
+  return (
+    <Board $isOn={isOn}>
+      <BoardHead>
+        <h3>{heading}</h3>
+        <span>{note}</span>
+      </BoardHead>
+      <Stats style={{ "--columns": items.length } as CSSProperties}>
+        {items.map(({ name, value, sub, isHighlighted }) => (
+          <Stat key={name} $isHighlighted={isHighlighted}>
+            <dt>{name}</dt>
+            <dd>
+              <StatValue>{value}</StatValue>
+              {sub && <StatSub>{sub}</StatSub>}
+            </dd>
+          </Stat>
+        ))}
+      </Stats>
+      <BoardNote>{footnote}</BoardNote>
+    </Board>
+  );
+}
+
+interface TechCardProps {
+  isOn: boolean;
+  /** 카드 순서. 번호가 되고, 나타나는 시점을 차례로 늦춰요. */
+  order: number;
+  title: string;
+  lead: string;
+  figure: ReactNode;
+  children?: ReactNode;
+}
+
+/** 개선 카드 한 장. 번호, 제목, 한 줄 설명, 도식, 결과 순서로 놓아요. */
+export function TechCard({ isOn, order, title, lead, figure, children }: TechCardProps) {
+  return (
+    <Card $isOn={isOn} style={{ "--order": order + 2 } as CSSProperties}>
+      <CardNumber>{String(order + 1).padStart(2, "0")}</CardNumber>
+      <CardTitle>{title}</CardTitle>
+      <CardLead>{lead}</CardLead>
+      <CardFigure>{figure}</CardFigure>
+      {children && <CardBody>{children}</CardBody>}
+    </Card>
+  );
+}
+
+/** 카드 도식 아래 굵은 한 줄 */
+export const CardPoint = styled.p`
+  ${({ theme }) => theme.text.heading04};
+  color: ${({ theme }) => theme.neutral[900]};
+`;
+
+/** 카드 도식 아래 설명 글 */
+export const CardText = styled.p`
+  ${({ theme }) => theme.text.body01};
+  line-height: 1.7;
+  color: ${({ theme }) => theme.neutral[700]};
+`;
+
+/** 카드 맨 아래 굵은 결과 한 줄 */
+export const CardOutcome = styled.p`
+  ${({ theme }) => theme.text.body01};
+  font-weight: 600;
+  color: ${({ theme }) => theme.neutral[800]};
+`;
+
+/** 카드 안의 수치 결과 상자. 기준을 작게 적고 수치를 크게 적어요. */
+export function CardResult({ basis, children }: { basis: string; children: ReactNode }) {
+  return (
+    <Result>
+      <span>{basis}</span>
+      <strong>{children}</strong>
+    </Result>
+  );
+}
+
+/** 장면에 들어설 때 아래에서 살짝 떠오르며 차례로 나타나요. `--order`만큼 늦게 시작해요. */
+const reveal = ({ isOn }: { isOn: boolean }) => `
+  opacity: ${isOn ? 1 : 0};
+  transform: translateY(${isOn ? "0" : "1rem"});
+  transition:
+    opacity 0.6s ease calc(var(--order, 0) * 80ms + 120ms),
+    transform 0.7s cubic-bezier(0.2, 0.8, 0.2, 1) calc(var(--order, 0) * 80ms + 120ms),
+    border-color 0.3s,
+    box-shadow 0.3s;
+
+  @media (prefers-reduced-motion: reduce) {
+    transform: none;
+    transition: opacity 0.2s;
+  }
+`;
+
 const Container = styled(SceneLayer)`
   position: absolute;
-  inset: 5.5rem 13% 2rem 7%;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
-  align-content: safe center;
-  align-items: center;
-  column-gap: clamp(2rem, 7vw, 8rem);
-  row-gap: 2rem;
+  inset: 4.75rem 0 0;
   overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  mask-image: linear-gradient(to bottom, transparent 0, #000 1.5rem, #000 calc(100% - 2rem), transparent 100%);
   ${({ isOn }) => interactive({ isOn })};
   ${({ theme }) => focusRing(theme)};
 
+  &:focus-visible {
+    outline-offset: -3px;
+  }
+
   ${mobile} {
-    inset: 4.75rem 6% 1rem;
-    display: flex;
-    flex-direction: column;
-    align-items: stretch;
-    gap: 1.75rem;
-    padding: 0.75rem 0.125rem 1rem;
+    inset: 4rem 0 0;
     touch-action: pan-y;
   }
 `;
-const Copy = styled.div`
+
+const Inner = styled.div`
+  display: flex;
+  flex-direction: column;
+  width: min(72rem, 100% - 14rem); /* 1152px. 오른쪽 장면 목록 자리를 비워요. */
+  margin: 0 auto;
+  /* 끝에 여유를 둬서 마지막 카드를 화면 가운데쯤에서 읽고, 다음 장면 안내를 볼 수 있게 해요. */
+  padding: 1.5rem 0 8rem; /* 128px */
+
+  ${mobile} {
+    width: auto;
+    margin: 0 1.25rem; /* 20px */
+    padding: 1rem 0 5rem; /* 80px */
+  }
+`;
+
+const Head = styled.div<{ $isOn: boolean }>`
+  ${({ $isOn }) => reveal({ isOn: $isOn })};
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem; /* 20px */
+  margin-bottom: 3rem; /* 48px */
+
+  ${mobile} {
+    gap: 0.875rem;
+    margin-bottom: 2rem;
+  }
+`;
+
+const Eyebrow = styled.p`
+  display: flex;
+  align-items: center;
+  gap: 0.5rem; /* 8px */
+  ${({ theme }) => theme.text.caption02};
+  font-weight: 600;
+  color: ${({ theme }) => theme.sub.accent[500]};
+
+  &::before {
+    content: "";
+    width: 1.125rem; /* 18px */
+    height: 1.5px;
+    margin-right: 0.125rem;
+    background-color: currentColor;
+  }
+
+  strong {
+    font-weight: 600;
+  }
+`;
+
+const Title = styled.h2`
+  font-size: clamp(2.5rem, 4.4vw, 3.75rem); /* 40~60px */
+  font-weight: 700;
+  line-height: 1.25;
+  letter-spacing: -0.03em;
+  color: ${({ theme }) => theme.neutral[900]};
+
+  ${mobile} {
+    font-size: 2rem; /* 32px */
+  }
+`;
+
+const Board = styled.section<{ $isOn: boolean }>`
+  ${({ $isOn }) => reveal({ isOn: $isOn })};
+  --order: 1;
   display: flex;
   flex-direction: column;
   gap: 1.25rem;
 `;
-const Eyebrow = styled.p`
+
+const BoardHead = styled.div`
   display: flex;
-  align-items: center;
-  gap: 0.625rem;
-  ${({ theme }) => theme.text.caption02};
-  font-weight: 600;
-  color: ${({ theme }) => theme.sub.accent[500]};
-  &::before {
-    content: "";
-    width: 1.125rem;
-    height: 1.5px;
-    background: currentColor;
-  }
-  span {
-    margin-left: 0.25rem;
-    color: ${({ theme }) => theme.neutral[800]};
-  }
-`;
-const Title = styled.h2`
-  ${({ theme }) => theme.text.title02};
-  color: ${({ theme }) => theme.neutral[900]};
-  font-size: clamp(1.75rem, 2.8vw, 2.5rem);
-  ${mobile} {
-    font-size: 1.75rem;
-  }
-`;
-const Lead = styled.p`
-  ${({ theme }) => theme.text.body02};
-  line-height: 1.6;
-  color: ${({ theme }) => theme.neutral[700]};
-  text-wrap: pretty;
-  ${mobile} {
-    font-size: 1rem;
-  }
-`;
-const Explanation = styled.div`
-  display: grid;
-  gap: 0.5rem;
-  ${({ theme }) => theme.text.body01};
-  color: ${({ theme }) => theme.neutral[600]};
-  > p + p {
-    margin-top: 0.5rem;
-  }
-  ${mobile} {
-    font-size: 0.9375rem;
-  }
-`;
-const SmallLabel = styled.p`
-  ${({ theme }) => theme.text.caption02};
-  font-weight: 600;
-  color: ${({ theme }) => theme.neutral[800]};
-`;
-const Evidence = styled.div`
-  display: flex;
-  flex-direction: column;
-  gap: 1.5rem;
-  min-width: 0;
-`;
-const Flow = styled.ol`
-  list-style: none;
-  padding: 0;
-  margin: 0;
-`;
-const FlowStep = styled.li`
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  padding: 1.125rem 0;
-  border-bottom: 1px solid ${({ theme }) => theme.neutral[200]};
-  strong {
-    ${({ theme }) => theme.text.label01};
-    color: ${({ theme }) => theme.neutral[800]};
-  }
-  p {
-    margin-top: 0.25rem;
-    ${({ theme }) => theme.text.caption02};
-    color: ${({ theme }) => theme.neutral[600]};
-  }
-  ${mobile} {
-    gap: 0.75rem;
-  }
-`;
-const StepNumber = styled.span`
-  ${({ theme }) => theme.text.caption01};
-  color: ${({ theme }) => theme.sub.accent[500]};
-  font-variant-numeric: tabular-nums;
-`;
-const Chunks = styled.span`
-  display: grid;
-  grid-template-columns: repeat(6, 5px);
-  gap: 3px;
-  margin-left: auto;
-  i {
-    width: 5px;
-    height: 9px;
-    border-radius: 1px;
-    background: ${({ theme }) => theme.sub.accent[500]};
-  }
-  i:nth-of-type(n + 7) {
-    opacity: 0.35;
-  }
-`;
-const Wave = styled.span`
-  display: flex;
-  align-items: center;
-  gap: 3px;
-  margin-left: auto;
-  i {
-    width: 3px;
-    border-radius: 2px;
-    background: ${({ theme }) => theme.sub.accent[500]};
-  }
-`;
-const FlowMark = styled.span`
-  margin-left: auto;
-  font-size: 2rem;
-  color: ${({ theme }) => theme.sub.accent[500]};
-`;
-const Recovery = styled.div`
-  padding: 1.5rem;
-  border-radius: 1rem;
-  background: ${({ theme }) => theme.neutral[100]};
-  ${mobile} {
-    padding: 1.25rem;
-  }
-`;
-const Metrics = styled.div`
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem;
-  margin: 1rem 0;
-  strong {
-    font-size: clamp(1.75rem, 3vw, 2.5rem);
-    font-weight: 600;
-    letter-spacing: -0.04em;
-    color: ${({ theme }) => theme.sub.accent[700]};
-  }
-  strong span {
-    margin-left: 0.125rem;
-    ${({ theme }) => theme.text.caption02};
-  }
-  p {
-    ${({ theme }) => theme.text.caption01};
-    color: ${({ theme }) => theme.neutral[600]};
-  }
-  > b {
-    font-weight: 400;
-    color: ${({ theme }) => theme.neutral[400]};
-  }
-`;
-const Footnote = styled.p`
-  ${({ theme }) => theme.text.caption02};
-  line-height: 1.65;
-  color: ${({ theme }) => theme.neutral[600]};
-`;
-const Source = styled.a`
-  align-self: flex-start;
-  display: inline-flex;
-  align-items: center;
-  gap: 0.75rem;
-  min-height: 2.75rem;
-  ${({ theme }) => theme.text.caption02};
-  color: ${({ theme }) => theme.sub.accent[700]};
-  text-decoration: underline;
-  text-underline-offset: 4px;
-  ${({ theme }) => focusRing(theme)};
-`;
-const Comparison = styled.div`
-  display: grid;
-  gap: 1.5rem;
-`;
-const Timing = styled.div`
-  display: flex;
+  flex-wrap: wrap;
   align-items: baseline;
   justify-content: space-between;
-  gap: 0.5rem;
-  font-size: clamp(2rem, 3.5vw, 3.125rem);
-  letter-spacing: -0.04em;
-  font-variant-numeric: tabular-nums;
-  > span {
-    color: ${({ theme }) => theme.neutral[400]};
+  gap: 0.5rem 1.5rem;
+
+  h3 {
+    ${({ theme }) => theme.text.heading02};
+    color: ${({ theme }) => theme.neutral[800]};
   }
-  > strong {
-    color: ${({ theme }) => theme.sub.accent[700]};
-    font-weight: 600;
-  }
-  > b {
-    font-size: 1.5rem;
-    font-weight: 400;
-    color: ${({ theme }) => theme.neutral[400]};
-  }
-  small {
-    margin-left: 0.25rem;
+
+  span {
     ${({ theme }) => theme.text.caption02};
+    color: ${({ theme }) => theme.neutral[600]};
   }
+
   ${mobile} {
-    font-size: clamp(1.625rem, 7vw, 2.5rem);
+    h3 {
+      font-size: 1.25rem; /* 20px */
+    }
   }
 `;
-const Chart = styled.div`
+
+const Stats = styled.dl`
   display: grid;
-  gap: 1rem;
-`;
-const ChartRow = styled.div`
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  > span {
-    flex-shrink: 0;
-    width: 4.5rem;
-    ${({ theme }) => theme.text.caption02};
-    color: ${({ theme }) => theme.neutral[600]};
-  }
-`;
-const Track = styled.div`
-  flex: 1;
-  height: 0.5rem;
+  grid-template-columns: repeat(var(--columns), minmax(0, 1fr));
+  gap: 0.25rem;
+  padding: 1rem; /* 16px */
   border-radius: 1rem;
-  background: ${({ theme }) => theme.neutral[100]};
+  background-color: ${({ theme }) => theme.neutral[100]};
+
+  @media (max-width: 1023px) {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  ${mobile} {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    padding: 0.5rem;
+  }
 `;
-const Bar = styled.div<{ $percent: number; $isAccent?: boolean }>`
-  width: ${({ $percent }) => $percent}%;
-  height: 100%;
-  border-radius: inherit;
-  background: ${({ theme, $isAccent }) =>
-    $isAccent ? theme.sub.accent[500] : theme.neutral[300]};
+
+const Stat = styled.div<{ $isHighlighted?: boolean }>`
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 1.5rem 1.25rem; /* 24px 20px */
+  border-radius: 0.625rem; /* 10px */
+  background-color: ${({ theme, $isHighlighted }) => ($isHighlighted ? theme.neutral[800] : "transparent")};
+  color: ${({ theme, $isHighlighted }) => ($isHighlighted ? theme.neutral[0] : theme.neutral[900])};
+
+  dt {
+    ${({ theme }) => theme.text.body01};
+    color: ${({ theme, $isHighlighted }) => ($isHighlighted ? theme.neutral[0] : theme.neutral[600])};
+  }
+
+  dd {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    margin: 0;
+  }
+
+  span {
+    color: ${({ theme, $isHighlighted }) => ($isHighlighted ? theme.neutral[300] : theme.neutral[500])};
+  }
+
+  ${mobile} {
+    padding: 1rem 0.875rem;
+
+    &:first-of-type {
+      grid-column: 1 / -1;
+    }
+  }
 `;
-const SearchFlow = styled.div`
+
+const StatValue = styled.strong`
+  font-size: clamp(1.75rem, 2.8vw, 2.5rem); /* 28~40px */
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+`;
+
+const StatSub = styled.span`
+  ${({ theme }) => theme.text.caption02};
+`;
+
+const BoardNote = styled.p`
+  ${({ theme }) => theme.text.caption02};
+  line-height: 1.6;
+  color: ${({ theme }) => theme.neutral[600]};
+`;
+
+const Divider = styled.hr`
+  height: 1px;
+  margin: 3rem 0; /* 48px */
+  border: 0;
+  background-color: ${({ theme }) => theme.neutral[200]};
+
+  ${mobile} {
+    margin: 2rem 0;
+  }
+`;
+
+const SectionTitle = styled.h3`
+  margin-bottom: 1.75rem; /* 28px */
+  font-size: clamp(1.5rem, 2.3vw, 2rem); /* 24~32px */
+  font-weight: 700;
+  line-height: 1.4;
+  letter-spacing: -0.02em;
+  color: ${({ theme }) => theme.neutral[900]};
+
+  ${mobile} {
+    margin-bottom: 1.25rem;
+  }
+`;
+
+const Cards = styled.div`
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1.5rem; /* 24px */
+
+  ${mobile} {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 1rem;
+  }
+`;
+
+const Card = styled.article<{ $isOn: boolean }>`
+  ${({ $isOn }) => reveal({ isOn: $isOn })};
+  display: flex;
+  flex-direction: column;
+  padding: 2rem; /* 32px */
+  border: 1px solid ${({ theme }) => theme.neutral[200]};
+  border-radius: 1rem;
+  background-color: ${({ theme }) => theme.neutral[0]};
+
+  &:hover {
+    border-color: ${({ theme }) => theme.neutral[300]};
+    box-shadow: ${({ theme }) => theme.shadow03};
+  }
+
+  ${mobile} {
+    padding: 1.5rem 1.25rem;
+  }
+`;
+
+const CardNumber = styled.span`
+  ${({ theme }) => theme.text.label01};
+  color: ${({ theme }) => theme.neutral[500]};
+`;
+
+const CardTitle = styled.h4`
+  margin-top: 1rem;
+  font-size: 1.5rem; /* 24px */
+  font-weight: 700;
+  line-height: 1.4;
+  letter-spacing: -0.02em;
+  color: ${({ theme }) => theme.neutral[900]};
+
+  ${mobile} {
+    font-size: 1.25rem;
+  }
+`;
+
+const CardLead = styled.p`
+  margin-top: 0.75rem;
+  ${({ theme }) => theme.text.body01};
+  color: ${({ theme }) => theme.neutral[600]};
+`;
+
+const CardFigure = styled.div`
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem;
-  padding: 1.25rem 0;
-  border-block: 1px solid ${({ theme }) => theme.neutral[200]};
-  ${({ theme }) => theme.text.caption02};
-  color: ${({ theme }) => theme.neutral[800]};
-  > span {
-    text-align: center;
+  justify-content: center;
+  min-height: 10rem; /* 160px */
+  margin: 1.5rem 0;
+
+  svg {
+    width: 100%;
+    max-width: 30rem;
+    height: auto;
+    overflow: visible;
   }
-  small {
-    display: block;
-    margin-top: 0.25rem;
-    ${({ theme }) => theme.text.caption01};
+`;
+
+const CardBody = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-top: auto;
+`;
+
+const Result = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  padding: 1.25rem 1.5rem;
+  border-radius: 0.5rem;
+  background-color: ${({ theme }) => theme.neutral[100]};
+
+  span {
+    ${({ theme }) => theme.text.caption02};
     color: ${({ theme }) => theme.neutral[600]};
   }
-  > b {
-    color: ${({ theme }) => theme.sub.accent[500]};
-    font-weight: 400;
+
+  strong {
+    font-size: 1.75rem; /* 28px */
+    font-weight: 700;
+    line-height: 1.3;
+    letter-spacing: -0.02em;
+    color: ${({ theme }) => theme.neutral[900]};
+    font-variant-numeric: tabular-nums;
+  }
+
+  ${mobile} {
+    padding: 1rem 1.125rem;
+
+    strong {
+      font-size: 1.375rem;
+    }
   }
 `;
-const Experiment = styled.div`
-  display: grid;
-  gap: 0.5rem;
-`;
-const Navigation = styled.nav`
-  grid-column: 1 / -1;
+
+const Footer = styled.div`
   display: flex;
+  flex-wrap: wrap;
+  align-items: center;
   justify-content: space-between;
   gap: 1rem;
-  button {
-    min-height: 2.75rem;
-    ${({ theme }) => theme.text.caption02};
-    color: ${({ theme }) => theme.neutral[700]};
-    ${({ theme }) => focusRing(theme)};
+  margin-top: 2.5rem;
+`;
+
+/**
+ * 본문 끝의 스크롤 안내. 첫 장면의 「스크롤하면 한 장씩 넘어가요」와 같은 모양으로, 마우스의 휠 점이 아래로 굴러가요.
+ * 첫 장면의 마우스는 입자로 그리지만 기술 소개에서는 입자를 숨기므로 선으로 그려요. 누르면 다음 장면으로 넘어가요.
+ */
+const ScrollCue = styled.button`
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  align-self: center;
+  gap: 0.5rem; /* 8px */
+  margin-top: 4rem; /* 64px */
+  padding: 0.5rem 1rem 0;
+  ${({ theme }) => theme.text.caption02};
+  color: ${({ theme }) => theme.neutral[600]};
+  white-space: nowrap;
+  transition: color 0.2s;
+
+  &:hover {
+    color: ${({ theme }) => theme.neutral[800]};
+  }
+
+  ${mobile} {
+    margin-top: 2.5rem;
+  }
+`;
+
+const wheelRoll = keyframes`
+  0% { opacity: 0; transform: translateY(-2px); }
+  25% { opacity: 1; }
+  70% { opacity: 1; transform: translateY(9px); }
+  100% { opacity: 0; transform: translateY(11px); }
+`;
+
+const Mouse = styled.svg`
+  width: 2rem; /* 32px */
+  height: 2.75rem; /* 44px */
+
+  rect {
+    fill: none;
+    stroke: ${({ theme }) => theme.neutral[700]};
+    stroke-width: 2.5;
+  }
+
+  circle {
+    fill: ${({ theme }) => theme.neutral[800]};
+    animation: ${wheelRoll} 1.6s ease-in-out infinite;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    circle {
+      animation: none;
+    }
+  }
+`;
+
+const Source = styled.a`
+  ${({ theme }) => theme.text.caption02};
+  font-weight: 500;
+  color: ${({ theme }) => theme.neutral[700]};
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+  ${({ theme }) => focusRing(theme)};
+`;
+
+const Navigation = styled.nav`
+  display: flex;
+  gap: 0.5rem;
+`;
+
+const MoveButton = styled.button`
+  min-height: 2.75rem; /* 44px */
+  padding: 0 1.125rem;
+  border: 1px solid ${({ theme }) => theme.neutral[300]};
+  border-radius: 1.375rem;
+  ${({ theme }) => theme.text.caption02};
+  font-weight: 500;
+  color: ${({ theme }) => theme.neutral[800]};
+  transition:
+    border-color 0.2s,
+    color 0.2s;
+  ${({ theme }) => focusRing(theme)};
+
+  &:hover {
+    border-color: ${({ theme }) => theme.neutral[800]};
+    color: ${({ theme }) => theme.neutral[900]};
   }
 `;
