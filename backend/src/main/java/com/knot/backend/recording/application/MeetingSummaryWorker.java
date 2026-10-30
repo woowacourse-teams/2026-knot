@@ -16,6 +16,7 @@ import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -32,12 +33,7 @@ public class MeetingSummaryWorker {
     private final MeetingSummaryGenerationService service;
     private final MeetingSummaryGenerator generator;
     private final AtomicBoolean running = new AtomicBoolean();
-    private final ScheduledExecutorService renewals = Executors.newSingleThreadScheduledExecutor(
-            Thread.ofPlatform()
-                    .daemon()
-                    .name("meeting-summary-lease")
-                    .factory()
-    );
+    private final ScheduledExecutorService renewals;
     private final ExecutorService executor = new ThreadPoolExecutor(
             1,
             1,
@@ -50,12 +46,31 @@ public class MeetingSummaryWorker {
                     .factory()
     );
 
+    @Autowired
     public MeetingSummaryWorker(
             MeetingSummaryGenerationService service,
             MeetingSummaryGenerator generator
     ) {
+        this(
+                service,
+                generator,
+                Executors.newSingleThreadScheduledExecutor(
+                        Thread.ofPlatform()
+                                .daemon()
+                                .name("meeting-summary-lease")
+                                .factory()
+                )
+        );
+    }
+
+    MeetingSummaryWorker(
+            MeetingSummaryGenerationService service,
+            MeetingSummaryGenerator generator,
+            ScheduledExecutorService renewals
+    ) {
         this.service = service;
         this.generator = generator;
+        this.renewals = renewals;
     }
 
     @Scheduled(fixedDelayString = "${knot.meeting-summary.worker.poll-interval:PT5S}")
