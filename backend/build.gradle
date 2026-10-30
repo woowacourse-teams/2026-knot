@@ -97,6 +97,7 @@ tasks.named('test') {
 tasks.register('integrationTest', Test) {
 	group = 'verification'
 	description = 'Runs integration tests.'
+	maxParallelForks = 2
 
 	testClassesDirs = sourceSets.test.output.classesDirs
 	classpath = sourceSets.test.runtimeClasspath
