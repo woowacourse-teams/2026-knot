@@ -1,0 +1,30 @@
+name: JVM fork AB gate negative
+on:
+  push:
+    branches:
+      - 'be/chore/#1070'
+    paths:
+      - '.github/cache-probe/fork2-gate-negative.txt'
+permissions:
+  contents: read
+jobs:
+  integration:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Simulate failed integration test
+        run: exit 1
+  remaining:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Simulate passed remaining tests
+        run: exit 0
+  verify:
+    needs: [integration, remaining]
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify both required jobs
+        env:
+          INTEGRATION_RESULT: ${{ needs.integration.result }}
+          REMAINING_RESULT: ${{ needs.remaining.result }}
+        run: test "$INTEGRATION_RESULT" = success && test "$REMAINING_RESULT" = success
