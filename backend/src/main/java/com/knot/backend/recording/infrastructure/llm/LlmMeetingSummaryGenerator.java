@@ -40,6 +40,14 @@ public class LlmMeetingSummaryGenerator implements MeetingSummaryGenerator {
 
     @Override
     public String generate(String transcriptText) {
+        String result = generateSummary(transcriptText);
+        return MeetingSummarySecretFilter.filter(
+                readTranscriptText(transcriptText),
+                result
+        );
+    }
+
+    private String generateSummary(String transcriptText) {
         Budget budget = new Budget();
         try {
             return finalSummary(

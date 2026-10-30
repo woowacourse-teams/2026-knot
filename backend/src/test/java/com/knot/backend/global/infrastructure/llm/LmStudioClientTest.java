@@ -216,6 +216,46 @@ class LmStudioClientTest {
         }
     }
 
+    @Test
+    @DisplayName("vLLM 컨텍스트 한도 초과 응답을 입력 한도 실패로 구분한다")
+    void complete_vllmContextLimit() throws Exception {
+        try (LlmHttpServer server = new LlmHttpServer()) {
+            server.respond(
+                    400,
+                    """
+                            {"error":{"message":"This model's maximum context length is 65536 tokens. However, you requested 4096 output tokens and your prompt contains at least 61441 input tokens, for a total of at least 65537 tokens. Please reduce the length of the input prompt or the number of requested output tokens. (parameter=input_tokens, value=61441)","type":"BadRequestError","param":"input_tokens","code":400}}
+                            """
+            );
+            LmStudioClient client = client(
+                    server,
+                    Duration.ofSeconds(2),
+                    4096
+            );
+            assertThatThrownBy(() -> client.complete(request()))
+                    .hasMessage(LlmErrorCode.LLM_INPUT_LIMIT_EXCEEDED.getMessage());
+        }
+    }
+
+    @Test
+    @DisplayName("다른 vLLM 잘못된 요청은 입력 한도 초과로 추측하지 않는다")
+    void complete_vllmOtherBadRequest() throws Exception {
+        try (LlmHttpServer server = new LlmHttpServer()) {
+            server.respond(
+                    400,
+                    """
+                            {"error":{"message":"Invalid input_tokens parameter","type":"BadRequestError","param":"input_tokens","code":400}}
+                            """
+            );
+            LmStudioClient client = client(
+                    server,
+                    Duration.ofSeconds(2),
+                    4096
+            );
+            assertThatThrownBy(() -> client.complete(request()))
+                    .hasMessage(LlmErrorCode.LLM_REQUEST_REJECTED.getMessage());
+        }
+    }
+
     @ParameterizedTest
     @CsvSource({"401, LLM_AUTHENTICATION_FAILED", "403, LLM_AUTHENTICATION_FAILED", "429, LLM_RATE_LIMITED",
             "503, LLM_UNAVAILABLE", "400, LLM_REQUEST_REJECTED", "302, LLM_REQUEST_REJECTED"})

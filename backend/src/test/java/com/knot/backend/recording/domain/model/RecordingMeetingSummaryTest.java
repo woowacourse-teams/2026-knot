@@ -321,8 +321,8 @@ class RecordingMeetingSummaryTest {
     }
 
     @Test
-    @DisplayName("마지막 회의 핵심 결론이 누락된 응답은 완료 요약으로 저장하지 않는다")
-    void succeed_failure_missingConclusion() {
+    @DisplayName("마지막 결론 라벨이 없어도 실제 본문이 있으면 저장한다")
+    void succeed_withoutConclusionLabel() {
         // given
         RecordingMeetingSummary summary = RecordingMeetingSummary.queue(
                 1,
@@ -335,14 +335,13 @@ class RecordingMeetingSummaryTest {
         )
                 .orElseThrow();
         // when & then
-        assertThatThrownBy(
-                () -> summary.succeed(
-                        token,
-                        "## 한눈에 보기\n\n정리: 논의만 남았다.",
-                        NOW.plusSeconds(1)
-                )
-        ).isInstanceOf(RecordingException.class);
-        assertThat(summary.getStatus()).isEqualTo(MeetingSummaryStatus.RUNNING);
+        summary.succeed(
+                token,
+                "## 한눈에 보기\n\n정리: 논의만 남았다.",
+                NOW.plusSeconds(1)
+        );
+        assertThat(summary.getStatus()).isEqualTo(MeetingSummaryStatus.SUCCEEDED);
+        assertThat(summary.getContent()).contains("정리: 논의만 남았다.");
     }
 
     @Test

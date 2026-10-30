@@ -1142,10 +1142,11 @@ class SearchDocumentToolServiceIntegrationTest {
             java.util.concurrent.atomic.AtomicInteger turns = new java.util.concurrent.atomic.AtomicInteger();
             List<JsonNode> captured = new ArrayList<>();
             server.respond(exchange -> {
-                captured.add(mapper.readTree(server.requestBody()));
+                JsonNode request = mapper.readTree(server.requestBody());
+                captured.add(request);
                 String body = "{\"choices\":[{\"finish_reason\":\"stop\",\"message\":{\"role\":\"assistant\",\"content\":\"{\\\"intent\\\":\\\"MEETING_SEARCH\\\"}\"}}]}";
-                if (!mapper.readTree(server.requestBody())
-                        .has("response_format")) {
+                if (request.path("stream")
+                        .asBoolean() || !request.has("response_format")) {
                     body = response(
                             turns.incrementAndGet(),
                             document
