@@ -25,7 +25,8 @@ jobs:
           git -C source apply --check /tmp/fork2-reviewed.patch
           git -C source apply /tmp/fork2-reviewed.patch
           git -C source diff -- backend/build.gradle > /tmp/applied.diff
-          cmp /tmp/applied.diff /tmp/fork2-reviewed.patch
+          test "$(git -C source diff --name-only)" = backend/build.gradle
+          printf '%s  %s\n' 73f66d5a8e279ef8f6f4947aeddd7f89525ba21308029b5a6c6ef2374a3c44c8 source/backend/build.gradle | sha256sum -c -
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -78,7 +79,8 @@ jobs:
           git -C source apply --check /tmp/fork2-reviewed.patch
           git -C source apply /tmp/fork2-reviewed.patch
           git -C source diff -- backend/build.gradle > /tmp/applied.diff
-          cmp /tmp/applied.diff /tmp/fork2-reviewed.patch
+          test "$(git -C source diff --name-only)" = backend/build.gradle
+          printf '%s  %s\n' 73f66d5a8e279ef8f6f4947aeddd7f89525ba21308029b5a6c6ef2374a3c44c8 source/backend/build.gradle | sha256sum -c -
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
