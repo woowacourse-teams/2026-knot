@@ -1,0 +1,98 @@
+name: JVM fork search AB A 1
+on:
+  push:
+    branches:
+      - 'be/chore/#1070'
+    paths:
+      - '.github/cache-probe/fork2-search-trigger.txt'
+permissions:
+  contents: read
+jobs:
+  integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          path: harness
+      - uses: actions/checkout@v6
+        with:
+          ref: 8689faaaa977827f81b92eab1256eae31f8b6273
+          path: source
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-read-only: true
+      - name: Run full integration
+        env:
+          FORK_COUNT: '1'
+        run: |
+          set -o pipefail
+          mkdir -p "$GITHUB_WORKSPACE/observe"
+          printf 'source=' > "$GITHUB_WORKSPACE/observe/source.txt"
+          git -C source rev-parse HEAD >> "$GITHUB_WORKSPACE/observe/source.txt"
+          nproc > "$GITHUB_WORKSPACE/observe/cores.txt"
+          export OBSERVE_METRICS="$GITHUB_WORKSPACE/observe/resources.csv"
+          python3 harness/.github/cache-probe/runner-sample.py &
+          sampler=$!
+          trap 'kill "$sampler" 2>/dev/null || true; wait "$sampler" 2>/dev/null || true' EXIT
+          cd source/backend
+          ./gradlew --init-script "$GITHUB_WORKSPACE/harness/.github/cache-probe/fork2.init.gradle" --max-workers=2 --info --profile --no-build-cache integrationTest --rerun 2>&1 | tee "$GITHUB_WORKSPACE/observe/integration.log"
+      - name: Preserve integration results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fork-search-A-1-integration-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            source/backend/build/test-results/integrationTest/TEST-*.xml
+            source/backend/build/reports/profile/
+            observe/
+          if-no-files-found: warn
+  remaining:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: source/backend
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: 8689faaaa977827f81b92eab1256eae31f8b6273
+          path: source
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-read-only: true
+      - name: Check formatting
+        run: ./gradlew --no-build-cache spotlessCheck
+      - name: Run unit tests
+        run: ./gradlew --no-build-cache test --rerun
+      - name: Run acceptance tests
+        run: ./gradlew --no-build-cache acceptanceTest --rerun
+      - name: Build JAR
+        run: ./gradlew --no-build-cache bootJar
+      - name: Preserve remaining test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fork-search-A-1-remaining-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            source/backend/build/test-results/test/TEST-*.xml
+            source/backend/build/test-results/acceptanceTest/TEST-*.xml
+          if-no-files-found: warn
+  verify:
+    needs: [integration, remaining]
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify both required jobs
+        env:
+          INTEGRATION_RESULT: ${{ needs.integration.result }}
+          REMAINING_RESULT: ${{ needs.remaining.result }}
+        run: test "$INTEGRATION_RESULT" = success && test "$REMAINING_RESULT" = success
