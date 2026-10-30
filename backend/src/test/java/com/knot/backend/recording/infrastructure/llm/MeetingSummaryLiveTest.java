@@ -1,6 +1,7 @@
 package com.knot.backend.recording.infrastructure.llm;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.knot.backend.global.config.LlmProperties;
 import com.knot.backend.global.infrastructure.llm.LmStudioClient;
@@ -20,6 +21,53 @@ import tools.jackson.databind.ObjectMapper;
 
 @EnabledIfEnvironmentVariable(named = "KNOT_LIVE_SUMMARY_TEST", matches = "true")
 class MeetingSummaryLiveTest {
+    @Test
+    void detectsRealServerTimeout() {
+        LlmProperties properties = new LlmProperties();
+        properties.setBaseUrl(URI.create(System.getenv("LLM_BASE_URL")));
+        properties.setApiToken(System.getenv("LLM_API_TOKEN"));
+        properties.setModel(System.getenv("LLM_MODEL"));
+        properties.setRequestTimeout(Duration.ofMillis(10));
+        LlmClient client = new LmStudioClient(
+                HttpClient.newHttpClient(),
+                new ObjectMapper(),
+                properties
+        );
+        LlmMeetingSummaryGenerator generator = new LlmMeetingSummaryGenerator(
+                client,
+                new ObjectMapper()
+        );
+        assertThatThrownBy(() -> generator.generate("회의에서는 녹음 품질을 먼저 확인하기로 했다.")).isInstanceOf(LlmException.class)
+                .hasMessage(LlmErrorCode.LLM_TIMEOUT.getMessage());
+    }
+
+    @Test
+    void summarizesShortSyntheticMeeting() {
+        LlmProperties properties = new LlmProperties();
+        properties.setBaseUrl(URI.create(System.getenv("LLM_BASE_URL")));
+        properties.setApiToken(System.getenv("LLM_API_TOKEN"));
+        properties.setModel(System.getenv("LLM_MODEL"));
+        properties.setRequestTimeout(Duration.ofSeconds(150));
+        LmStudioClient client = new LmStudioClient(
+                HttpClient.newHttpClient(),
+                new ObjectMapper(),
+                properties
+        );
+        LlmClient observed = request -> {
+            String response = client.complete(request);
+            System.out.println("synthetic_raw_response=" + response);
+            return response;
+        };
+        LlmMeetingSummaryGenerator generator = new LlmMeetingSummaryGenerator(
+                observed,
+                new ObjectMapper()
+        );
+        String result = generator.generate("녹음 품질을 먼저 측정하기로 합의했다. 검색 기능은 사용자 수가 1,200명을 넘으면 개발하기로 했다.");
+        assertThat(result).startsWith("## 한눈에 보기")
+                .contains("회의 핵심 결론:");
+        System.out.println("synthetic_live_result=" + result);
+    }
+
     @Test
     void summarizesLongSyntheticMeeting() {
         LlmProperties properties = new LlmProperties();

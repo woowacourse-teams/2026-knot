@@ -260,6 +260,58 @@ class SearchLlmClientTest {
     }
 
     @Test
+    @DisplayName("답변 스트림 요청에 근거 개수와 상태를 제한하는 JSON Schema를 포함한다")
+    void stream_success_requestsAnswerSchema() throws Exception {
+        try (LlmHttpServer server = new LlmHttpServer(); SearchAgentHttp http = transport()) {
+            server.respond(
+                    200,
+                    "data: {\"choices\":[{\"delta\":{\"content\":\"ok\"}}]}\n\ndata: [DONE]\n\n"
+            );
+            client(
+                    server,
+                    http
+            ).stream(
+                    scope(),
+                    List.of(),
+                    text -> {
+                    }
+            );
+            JsonNode format = JsonMapper.builder()
+                    .build()
+                    .readTree(server.requestBody())
+                    .path("response_format");
+            JsonNode schema = format.path("json_schema")
+                    .path("schema");
+            assertThat(
+                    format.path("type")
+                            .asString()
+            ).isEqualTo("json_schema");
+            assertThat(
+                    format.path("json_schema")
+                            .path("strict")
+                            .asBoolean()
+            ).isTrue();
+            assertThat(
+                    schema.path("additionalProperties")
+                            .asBoolean(true)
+            ).isFalse();
+            assertThat(schema.path("required")).hasSize(5);
+            assertThat(
+                    schema.path("properties")
+                            .path("evidenceIds")
+                            .path("maxItems")
+                            .asInt()
+            ).isEqualTo(3);
+            assertThat(
+                    schema.path("properties")
+                            .path("answer")
+                            .path("type")
+                            .asString()
+            ).isEqualTo("string");
+        }
+    }
+
+    @Test
     @DisplayName("스트림은 빈 청크를 제외하고 첫 모델 콘텐츠 시각과 provider 사용량을 한 번 기록한다")
     void stream_success_logsFirstContentAndUsage() throws Exception {
         try (LlmHttpServer server = new LlmHttpServer(); SearchAgentHttp http = transport()) {
