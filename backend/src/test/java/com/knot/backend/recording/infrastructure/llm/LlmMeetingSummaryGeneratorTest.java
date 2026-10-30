@@ -30,6 +30,14 @@ class LlmMeetingSummaryGeneratorTest {
     );
 
     @Test
+    void generate_masksCodeAlsoWhenOutputOmitsItsLabel() {
+        when(client.complete(any())).thenReturn("{\"content\":\"## 한눈에 보기\\n숫자 483921을 확인했다.\\n회의 핵심 결론: 확인했다.\"}");
+        String input = "{\"transcription\":[{\"text\":\"인증코드는 483921 입니다\"}]}";
+        assertThat(generator.generate(input)).doesNotContain("483921")
+                .contains("[인증 코드 제외]");
+    }
+
+    @Test
     void generate_splitsAfterContextLimitAndMerges() {
         String input = "첫 구간 논의입니다.\n".repeat(1000) + "마지막 결정입니다.";
         String finalResponse = "{\"content\":\"## 한눈에 보기\\n결정을 정리한다.\\n회의 핵심 결론: 합의했다.\"}";
@@ -258,8 +266,8 @@ class LlmMeetingSummaryGeneratorTest {
 
     @ParameterizedTest
     @ValueSource(strings = {"{}", "[]", "null", "{\"content\":null}", "{\"content\":123}", "{\"content\":\"\\u00a0\"}",
-            "{\"content\":\"요약\"}", "{\"content\":\"## 한눈에 보기\\n내용\",\"extra\":1}",
-            "{\"content\":\"## 한눈에 보기\\n내용\"} {}", "{\"content\":\"## 한눈에 보기\\n내용\",\"content\":\"다른 내용\"}"})
+            "{\"content\":\"## 한눈에 보기\\n내용\",\"extra\":1}", "{\"content\":\"## 한눈에 보기\\n내용\"} {}",
+            "{\"content\":\"## 한눈에 보기\\n내용\",\"content\":\"다른 내용\"}"})
     @DisplayName("잘못된 JSON이나 불완전한 요약은 성공 결과로 반환하지 않는다")
     void generate_failure_invalidResponse(String response) {
         // given
