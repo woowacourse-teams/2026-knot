@@ -1,0 +1,36 @@
+name: Develop gate negative skipped
+on:
+  push:
+    branches:
+      - 'be/chore/#1070'
+    paths:
+      - '.github/cache-probe/develop-gate-trigger.txt'
+permissions:
+  contents: read
+jobs:
+  integration:
+    if: ${{ false }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Simulate integration result
+        run: exit 0
+  remaining:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Simulate remaining result
+        run: exit 0
+  verify:
+    needs: [integration, remaining]
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify required jobs
+        if: ${{ always() }}
+        env:
+          INTEGRATION_RESULT: ${{ needs.integration.result }}
+          REMAINING_RESULT: ${{ needs.remaining.result }}
+        run: |
+          if [ "$INTEGRATION_RESULT" != "success" ] || [ "$REMAINING_RESULT" != "success" ]; then
+            echo "Required validation jobs did not both succeed (integration=$INTEGRATION_RESULT, remaining=$REMAINING_RESULT)."
+            exit 1
+          fi
