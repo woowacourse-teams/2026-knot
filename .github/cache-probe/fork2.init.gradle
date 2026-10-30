@@ -1,0 +1,5 @@
+gradle.projectsEvaluated {
+    gradle.rootProject.tasks.named('integrationTest').configure {
+        maxParallelForks = Integer.parseInt(System.getenv('FORK_COUNT'))
+    }
+}
