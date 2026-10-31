@@ -1,5 +1,5 @@
 /** 랜딩의 장면 이름. 오른쪽 장면 이동 버튼의 글자이고, 순서가 곧 장면 번호예요. */
-export const SCENE_NAMES = ["소개", "문제", "녹음", "정리", "확인", "탐색", "시작"];
+export const SCENE_NAMES = ["소개", "문제", "녹음", "정리", "확인", "탐색", "기술: 녹음", "기술: 탐색", "시작"];
 
 export const SCENE = {
   INTRO: 0,
@@ -8,7 +8,9 @@ export const SCENE = {
   DOCUMENTS: 3,
   CONFIRMATION: 4,
   SEARCH: 5,
-  START: 6,
+  RECORDING_TECHNOLOGY: 6,
+  SEARCH_TECHNOLOGY: 7,
+  START: 8,
 } as const;
 
 export const SCENE_COUNT = SCENE_NAMES.length;

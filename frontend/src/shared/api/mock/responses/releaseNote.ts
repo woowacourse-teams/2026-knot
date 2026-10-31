@@ -1,6 +1,56 @@
-import type { ReleaseNote } from "@api/mock/types/releaseNote";
+import type { ReleaseNote, ReleaseNoteItem } from "@api/mock/types/releaseNote";
 
-// 새 소식 DB에 처음 옮겨 넣은 v0.2.0과 v0.1.0 노트예요. 문구는 Figma 패널 목록(node 4696-29495) 그대로예요
+const GITHUB_IMAGE_URL = "https://github.com/user-attachments/assets";
+
+/**
+ * 사진 칸 경우별 항목(NEWS-R13, R14). 경우는 Figma 사진 칸 경우별 모양(node 5674-70369)과 같아요.
+ * github.com 사진은 가짜 사진 응답(`handlers/relay/n`)이 주소에 적힌 크기로 그려 주고, 그 밖의 주소는 404예요
+ */
+export const imageReleaseNoteItems = {
+  normal: {
+    title: "보통 비율 사진이 있는 항목이에요",
+    description:
+      "1596×1386 사진이에요. 폭에 맞추면 240보다 높아 높이 240으로 줄이고 가운데에 둬요.",
+    image: `${GITHUB_IMAGE_URL}/news-1596x1386`,
+  },
+  wide: {
+    title: "아주 납작한 사진이 있는 항목이에요",
+    description: "2560×420 사진이에요. 폭에 맞춘 높이 그대로 보여요.",
+    image: `${GITHUB_IMAGE_URL}/news-2560x420`,
+  },
+  tall: {
+    title: "세로로 긴 사진이 있는 항목이에요",
+    description:
+      "750×1624 사진이에요. 높이 240으로 줄이고 남는 양옆은 사진 칸 배경색이에요.",
+    image: `${GITHUB_IMAGE_URL}/news-750x1624`,
+  },
+  broken: {
+    title: "열리지 않는 사진이 있는 항목이에요",
+    description: "사진을 불러오지 못해 사진 칸 없이 글만 보여요.",
+    image: `${GITHUB_IMAGE_URL}/news-broken`,
+  },
+  disallowed: {
+    title: "허용하지 않는 사진 주소가 있는 항목이에요",
+    description:
+      "GitHub 첨부 사진 주소가 아니라 사진을 불러오지 않고 글만 보여요.",
+    image:
+      "https://github-production-user-asset-6210df.s3.amazonaws.com/news-s3.png",
+  },
+} satisfies Record<string, ReleaseNoteItem>;
+
+/**
+ * 패널에서 빠진 노트. 3일이 지났거나 Notion에서 「숨기기」로 내려, Worker가 글 없이 id와 자리만 넘겨요(NEWS-R15, R16).
+ * 이 노트까지 본 사용자에게는 그 뒤 노트만 안 읽음이에요
+ */
+export const hiddenReleaseNote = {
+  id: "pr-1040",
+  releasedAt: "2026-10-20",
+  items: [],
+} satisfies ReleaseNote;
+
+// 새 소식 DB에 처음 옮겨 넣은 v0.2.0과 v0.1.0 노트예요. 문구는 Figma 패널 목록(node 4696-29495) 그대로예요.
+// 둘 사이에는 패널에서 빠진 노트를 둬, 빠진 노트도 읽음 순서에 들어가는 것을 로컬과 E2E에서 봐요.
+// 맨 끝 노트는 사진 칸 경우를 로컬과 E2E에서 보려고 더했어요. 가장 오래된 노트로 둬 맨 위 노트 기준의 읽음 표시에 닿지 않아요
 export const releaseNotesResponse = [
   {
     id: "v0.2.0",
@@ -19,6 +69,7 @@ export const releaseNotesResponse = [
       },
     ],
   },
+  hiddenReleaseNote,
   {
     id: "v0.1.0",
     releasedAt: "2026-10-19",
@@ -35,5 +86,10 @@ export const releaseNotesResponse = [
           "녹음을 글로 옮기다 실패하면 정리 화면의 「다시 시도」로 처음부터 다시 맡길 수 있어요.",
       },
     ],
+  },
+  {
+    id: "pr-1051",
+    releasedAt: "2026-10-18",
+    items: Object.values(imageReleaseNoteItems),
   },
 ] satisfies ReleaseNote[];

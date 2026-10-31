@@ -15,7 +15,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.knot.backend.auth.domain.AuthTokenProvider;
 import com.knot.backend.auth.domain.model.AuthenticatedMember;
-import com.knot.backend.auth.infrastructure.github.GithubOAuth2UserService;
+import com.knot.backend.auth.infrastructure.oauth.OAuthLoginUserService;
 import com.knot.backend.auth.infrastructure.jwt.JwtAuthenticationFilter;
 import com.knot.backend.auth.presentation.handler.AuthAccessDeniedHandler;
 import com.knot.backend.auth.presentation.handler.AuthAuthenticationEntryPoint;
@@ -68,7 +68,7 @@ class GlobalExceptionHandlerSecurityMvcTest {
     @MockitoBean
     private AuthTokenProvider tokens;
     @MockitoBean
-    private GithubOAuth2UserService users;
+    private OAuthLoginUserService users;
     @MockitoBean
     private OAuth2AuthenticationSuccessHandler successHandler;
     @MockitoBean

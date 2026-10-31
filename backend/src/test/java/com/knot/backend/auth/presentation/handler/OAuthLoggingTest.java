@@ -11,7 +11,7 @@ import com.knot.backend.auth.domain.AuthErrorCode;
 import com.knot.backend.auth.domain.AuthException;
 import com.knot.backend.auth.domain.model.OAuthProvider;
 import com.knot.backend.auth.domain.model.OAuthUser;
-import com.knot.backend.auth.infrastructure.github.GithubOAuth2User;
+import com.knot.backend.auth.infrastructure.oauth.OAuthLoginUser;
 import com.knot.backend.auth.presentation.AuthCookieManager;
 import com.knot.backend.global.config.JwtProperties;
 import com.knot.backend.global.config.OAuth2LoginProperties;
@@ -36,7 +36,7 @@ class OAuthLoggingTest {
         );
         wrapped.addSuppressed(new IllegalArgumentException("private-credential"));
         when(service.login(any())).thenThrow(wrapped);
-        GithubOAuth2User principal = mock(GithubOAuth2User.class);
+        OAuthLoginUser principal = mock(OAuthLoginUser.class);
         when(principal.getOAuthUser()).thenReturn(
                 OAuthUser.of(
                         OAuthProvider.GITHUB,

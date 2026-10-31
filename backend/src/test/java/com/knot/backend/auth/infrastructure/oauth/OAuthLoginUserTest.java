@@ -1,4 +1,4 @@
-package com.knot.backend.auth.infrastructure.github;
+package com.knot.backend.auth.infrastructure.oauth;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.doReturn;
@@ -14,10 +14,10 @@ import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.oauth2.core.user.OAuth2User;
 
-class GithubOAuth2UserTest {
+class OAuthLoginUserTest {
 
     @Test
-    @DisplayName("GitHub OAuth 사용자에 도메인 OAuth 정보를 보관한다")
+    @DisplayName("OAuth 로그인 사용자에 도메인 OAuth 정보를 보관한다")
     void create_success() {
         // given
         OAuthUser oauthUser = OAuthUser.of(
@@ -38,7 +38,7 @@ class GithubOAuth2UserTest {
                 .getAttributes();
 
         // when
-        GithubOAuth2User result = GithubOAuth2User.of(
+        OAuthLoginUser result = OAuthLoginUser.of(
                 oauthUser,
                 delegate
         );

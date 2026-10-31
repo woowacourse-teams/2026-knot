@@ -1,6 +1,7 @@
 import styled from "@emotion/styled";
 import Button from "@primitives/ui/Button";
 import Logo from "@primitives/ui/Logo";
+import { useId } from "react";
 
 import InvalidInvitationUrlIllustration from "@/assets/illustrations/invalidInvitationUrl.svg";
 
@@ -10,13 +11,14 @@ interface PageErrorNoticeProps {
    * - `badRequest`: 잘못된 주소나 더 이상 유효하지 않은 요청(ERR-01)
    * - `network`: 응답을 받지 못한 실패. 네트워크 끊김과 timeout(ERR-02)
    * - `server`: 서버 오류와 화면을 그리지 못한 코드 오류(ERR-03)
+   * - `loginFailed`: GitHub, Google, 카카오 로그인 처리 실패와 원인 미상(ERR-15)
    */
   variant: keyof typeof PAGE_ERROR;
-  /** 버튼을 눌렀을 때 실행할 동작. ERR-01은 홈으로 이동, ERR-02와 ERR-03은 새로고침이에요 */
+  /** 버튼을 눌렀을 때 실행할 동작. ERR-01은 홈으로 이동, ERR-02와 ERR-03은 새로고침, ERR-15는 로그인 화면으로 이동이에요 */
   onAction: () => void;
 }
 
-/** 피그마 에러 페이지(ERR-01~03)의 문구. 설명은 시안의 줄 나눔대로 한 줄씩 적어요 */
+/** 피그마 에러 페이지(ERR-01~03, ERR-15)의 문구. 설명은 시안의 줄 나눔대로 한 줄씩 적어요 */
 const PAGE_ERROR = {
   badRequest: {
     title: "요청을 처리할 수 없어요",
@@ -33,21 +35,29 @@ const PAGE_ERROR = {
     descriptions: ["서버에서 생긴 문제예요.", "잠시 후에 다시 시도해 주세요."],
     actionLabel: "다시 시도",
   },
+  loginFailed: {
+    title: "로그인하지 못했어요",
+    descriptions: ["로그인 중 문제가 생겼어요.", "잠시 후 다시 시도해 주세요."],
+    actionLabel: "로그인 화면으로",
+  },
 } as const;
 
 /**
- * 화면 전체를 그리지 못했을 때 그 화면을 대신하는 공통 에러 페이지(ERR-01~03).
+ * 화면 전체를 그리지 못했을 때 그 화면을 대신하는 공통 에러 페이지(ERR-01~03, ERR-15).
  *
  * 로고 · 그림 · 제목 · 설명 · 버튼 순서로 놓고, GNB와 독은 두지 않아요.
  * 레이아웃 밖(앱 루트 Boundary, 워크스페이스 레이아웃 대신)에서도 그려지므로 로고와 배경, 위 여백을 직접 가져요.
  * 위 여백은 `CenteredLayout`처럼 화면 높이의 28%예요.
  * 낭독기가 바로 읽도록 `role="alert"`를 붙였어요.
+ * 버튼만 따로 읽어도 무엇을 하는 버튼인지 알 수 있게 제목과 설명을 버튼의 설명으로 이어요(AUTH-R8).
  */
 export default function PageErrorNotice({
   variant,
   onAction,
 }: PageErrorNoticeProps) {
   const { title, descriptions, actionLabel } = PAGE_ERROR[variant];
+  const titleId = useId();
+  const descriptionId = useId();
 
   return (
     <Root>
@@ -57,8 +67,8 @@ export default function PageErrorNotice({
           <Illustration />
 
           <Header>
-            <Title>{title}</Title>
-            <Description>
+            <Title id={titleId}>{title}</Title>
+            <Description id={descriptionId}>
               {descriptions.map((description) => (
                 <p key={description}>{description}</p>
               ))}
@@ -66,7 +76,12 @@ export default function PageErrorNotice({
           </Header>
         </Content>
 
-        <Button size="lg" isFullWidth onClick={onAction}>
+        <Button
+          size="lg"
+          isFullWidth
+          onClick={onAction}
+          aria-describedby={`${titleId} ${descriptionId}`}
+        >
           {actionLabel}
         </Button>
       </Container>

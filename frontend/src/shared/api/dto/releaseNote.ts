@@ -20,7 +20,7 @@ export class ReleaseNoteItemDto {
   title: string;
   /** 짧은 설명 */
   description: string;
-  /** 변화를 보여 주는 이미지 주소. 새 소식 DB에 이미지 칸이 없어 지금 Worker는 보내지 않아요 */
+  /** 변화를 보여 주는 사진 주소. Actions의 Claude가 PR 본문에서 고른 GitHub 첨부 사진이에요. 새 소식 DB 「사진」 칸 그대로라, 앱이 주소를 확인해 그릴지 정해요 */
   image?: string;
   /** 「바로 가보기」로 옮길 화면 키(`CHAT` 등). 지금 보고 있는 워크스페이스의 화면으로 가요. Notion에 적힌 글자 그대로라 앱에 없는 화면일 수 있어요 */
   link?: string;
@@ -43,6 +43,7 @@ export class ReleaseNoteItemDto {
 export interface ReleaseNoteRaw {
   id: string;
   releasedAt: string;
+  /** 패널에 보일 항목만 와요. 3일이 지났거나 「숨기기」라 보이지 않는 노트는 글 없이 빈 배열이에요(NEWS-R15, R16) */
   items: ReleaseNoteItemRaw[];
 }
 
@@ -52,7 +53,7 @@ export class ReleaseNoteDto {
   id: string;
   /** 배포 날짜(YYYY-MM-DD). 예: `2026-10-21` */
   releasedAt: string;
-  /** 항목 목록. 하나 이상이에요 */
+  /** 패널에 보일 항목 목록. 하나 이상이에요 */
   items: ReleaseNoteItemDto[];
 
   constructor(raw: ReleaseNoteRaw) {
@@ -64,15 +65,20 @@ export class ReleaseNoteDto {
 
 // GET /relay/n
 
-/** 새 소식 노트 목록의 Worker 응답 모양. 객체로 감싸지 않은 노트 배열이에요 */
+/** 새 소식 노트 목록의 Worker 응답 모양. 객체로 감싸지 않은 노트 배열이고, 패널에 보이지 않는 노트도 순서대로 들어 있어요 */
 export type GetReleaseNotesResponseRaw = ReleaseNoteRaw[];
 
 /** 새 소식 노트 목록 응답 */
 export class GetReleaseNotesResponseDto {
-  /** 노트 목록. 최신 노트가 맨 앞이고, 노트가 없으면 빈 배열이에요. Worker의 배열 응답을 `notes`로 감쌌어요 */
+  /** 패널에 보여 줄 노트. 최신 노트가 맨 앞이고, 보이는 노트가 없으면 빈 배열이에요. Worker 응답에서 항목이 빈 노트를 뺐어요(NEWS-R15) */
   notes: ReleaseNoteDto[];
+  /** 안 읽은 노트를 가릴 노트 id 순서. 최신이 맨 앞이고, 패널에 보이지 않는 노트도 들어 있어요(NEWS-R16). Worker 응답의 노트 id 그대로예요 */
+  noteIds: string[];
 
   constructor(raw: GetReleaseNotesResponseRaw) {
-    this.notes = raw.map((note) => new ReleaseNoteDto(note));
+    this.notes = raw
+      .filter(({ items }) => items.length > 0)
+      .map((note) => new ReleaseNoteDto(note));
+    this.noteIds = raw.map(({ id }) => id);
   }
 }

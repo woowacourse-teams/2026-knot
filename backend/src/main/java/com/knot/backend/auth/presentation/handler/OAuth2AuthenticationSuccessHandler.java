@@ -5,7 +5,7 @@ import com.knot.backend.auth.application.AuthService;
 import com.knot.backend.auth.application.dto.result.AuthLoginResult;
 import com.knot.backend.auth.domain.AuthErrorCode;
 import com.knot.backend.auth.domain.AuthException;
-import com.knot.backend.auth.infrastructure.github.GithubOAuth2User;
+import com.knot.backend.auth.infrastructure.oauth.OAuthLoginUser;
 import com.knot.backend.auth.presentation.AuthCookieManager;
 import com.knot.backend.global.config.OAuth2LoginProperties;
 import jakarta.servlet.ServletException;
@@ -54,8 +54,8 @@ public class OAuth2AuthenticationSuccessHandler implements AuthenticationSuccess
             Authentication authentication
     ) throws IOException, ServletException {
         try {
-            GithubOAuth2User githubUser = getGithubUser(authentication);
-            AuthLoginResult result = authService.login(githubUser.getOAuthUser());
+            OAuthLoginUser loginUser = getLoginUser(authentication);
+            AuthLoginResult result = authService.login(loginUser.getOAuthUser());
             authCookieManager.expireLoginCookies(response);
 
             if (result.requiresNickname()) {
@@ -131,17 +131,17 @@ public class OAuth2AuthenticationSuccessHandler implements AuthenticationSuccess
         }
     }
 
-    private GithubOAuth2User getGithubUser(Authentication authentication) {
+    private OAuthLoginUser getLoginUser(Authentication authentication) {
         if (authentication == null) {
             throw new AuthException(AuthErrorCode.OAUTH_AUTHENTICATION_FAILED);
         }
 
         try {
-            GithubOAuth2User githubUser = (GithubOAuth2User) authentication.getPrincipal();
-            if (githubUser == null) {
+            OAuthLoginUser loginUser = (OAuthLoginUser) authentication.getPrincipal();
+            if (loginUser == null) {
                 throw new AuthException(AuthErrorCode.OAUTH_AUTHENTICATION_FAILED);
             }
-            return githubUser;
+            return loginUser;
         } catch (ClassCastException exception) {
             throw new AuthException(
                     AuthErrorCode.OAUTH_AUTHENTICATION_FAILED,

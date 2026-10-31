@@ -13,6 +13,8 @@ import com.knot.backend.global.config.SearchAgentProperties;
 import com.knot.backend.search.SearchMessageFixtures;
 import com.knot.backend.search.application.dto.command.SearchQuestionCommand;
 import com.knot.backend.search.application.dto.query.SearchDocumentParameters;
+import com.knot.backend.search.application.dto.result.SearchDocumentResult;
+import com.knot.backend.search.application.dto.result.SearchRetrievalResult;
 import com.knot.backend.search.application.dto.result.SearchAnswerWorkResult;
 import com.knot.backend.search.application.dto.result.SearchQuestionAcceptedResult;
 import com.knot.backend.search.application.dto.result.SearchDocumentPage;
@@ -228,6 +230,71 @@ class SearchDocumentToolServiceIntegrationTest {
                 )
                         .items()
         ).isEmpty();
+    }
+
+    @Test
+    @DisplayName("날짜 검색은 실제 PostgreSQL에서 서울 기준 시작은 포함하고 다음 날은 제외한다")
+    void retrieve_success_dateBoundsInPostgres() {
+        // given
+        long inside = saveDocument(
+                workspaceId,
+                "ARCHIVED",
+                "어제 회의",
+                "내용"
+        );
+        long outside = saveDocument(
+                workspaceId,
+                "ARCHIVED",
+                "오늘 회의",
+                "내용"
+        );
+        jdbc.sql(
+                "UPDATE recording_sessions SET started_at = :time, ended_at = :time, last_seen_at = :time WHERE id = (SELECT recording_session_id FROM documents WHERE id = :id)"
+        )
+                .param(
+                        "time",
+                        java.sql.Timestamp.from(Instant.parse("2026-10-09T15:00:00Z"))
+                )
+                .param(
+                        "id",
+                        inside
+                )
+                .update();
+        jdbc.sql(
+                "UPDATE recording_sessions SET started_at = :time, ended_at = :time, last_seen_at = :time WHERE id = (SELECT recording_session_id FROM documents WHERE id = :id)"
+        )
+                .param(
+                        "time",
+                        java.sql.Timestamp.from(Instant.parse("2026-10-10T15:00:00Z"))
+                )
+                .param(
+                        "id",
+                        outside
+                )
+                .update();
+        com.knot.backend.search.infrastructure.llm.SearchFastPathDocumentRetriever retriever = new com.knot.backend.search.infrastructure.llm.SearchFastPathDocumentRetriever(
+                query,
+                access,
+                new com.knot.backend.search.infrastructure.llm.SearchQueryNormalizer()
+        );
+        // when
+        SearchRetrievalResult result = retriever.retrieve(
+                scope,
+                "어제 회의 요약"
+        );
+        // then
+        assertThat(result.documents()).extracting(SearchDocumentResult::documentId)
+                .containsExactly(inside);
+        assertThat(
+                result.documents()
+                        .getFirst()
+                        .recordingStartedAt()
+        ).isEqualTo(Instant.parse("2026-10-09T15:00:00Z"));
+        assertThat(
+                result.documents()
+                        .getFirst()
+                        .createdAt()
+        ).isNotNull();
     }
 
     @Test
@@ -1075,10 +1142,11 @@ class SearchDocumentToolServiceIntegrationTest {
             java.util.concurrent.atomic.AtomicInteger turns = new java.util.concurrent.atomic.AtomicInteger();
             List<JsonNode> captured = new ArrayList<>();
             server.respond(exchange -> {
-                captured.add(mapper.readTree(server.requestBody()));
+                JsonNode request = mapper.readTree(server.requestBody());
+                captured.add(request);
                 String body = "{\"choices\":[{\"finish_reason\":\"stop\",\"message\":{\"role\":\"assistant\",\"content\":\"{\\\"intent\\\":\\\"MEETING_SEARCH\\\"}\"}}]}";
-                if (!mapper.readTree(server.requestBody())
-                        .has("response_format")) {
+                if (request.path("stream")
+                        .asBoolean() || !request.has("response_format")) {
                     body = response(
                             turns.incrementAndGet(),
                             document
@@ -1234,7 +1302,11 @@ class SearchDocumentToolServiceIntegrationTest {
                     generationMessages.get(0)
                             .path("content")
                             .asString()
-            ).isEqualTo(SearchAnswerPrompt.system());
+            ).startsWith(SearchAnswerPrompt.system())
+                    .contains(
+                            "documentCreatedAt",
+                            "recordingStartedAt"
+                    );
             JsonNode generationInput = mapper.readTree(
                     generationMessages.get(1)
                             .path("content")
@@ -1269,6 +1341,22 @@ class SearchDocumentToolServiceIntegrationTest {
                             .path("evidenceId")
                             .asString()
             ).isEqualTo("E" + document);
+            assertThat(
+                    generationInput.path("requestedAt")
+                            .asString()
+            ).contains("+09:00");
+            assertThat(
+                    generationInput.path("evidence")
+                            .get(0)
+                            .path("documentCreatedAt")
+                            .asString()
+            ).contains("+09:00");
+            assertThat(
+                    generationInput.path("evidence")
+                            .get(0)
+                            .path("recordingStartedAt")
+                            .asString()
+            ).contains("+09:00");
             assertThat(
                     generationInput.path("evidence")
                             .get(0)

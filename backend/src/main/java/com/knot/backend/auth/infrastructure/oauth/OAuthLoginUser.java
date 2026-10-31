@@ -1,4 +1,4 @@
-package com.knot.backend.auth.infrastructure.github;
+package com.knot.backend.auth.infrastructure.oauth;
 
 import com.knot.backend.auth.domain.model.OAuthUser;
 import java.util.Collection;
@@ -9,12 +9,12 @@ import java.util.Map;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.oauth2.core.user.OAuth2User;
 
-public final class GithubOAuth2User implements OAuth2User {
+public final class OAuthLoginUser implements OAuth2User {
     private final OAuthUser oauthUser;
     private final Collection<? extends GrantedAuthority> authorities;
     private final Map<String, Object> attributes;
 
-    private GithubOAuth2User(
+    private OAuthLoginUser(
             OAuthUser oauthUser,
             OAuth2User delegate
     ) {
@@ -23,11 +23,11 @@ public final class GithubOAuth2User implements OAuth2User {
         this.attributes = Collections.unmodifiableMap(new LinkedHashMap<>(delegate.getAttributes()));
     }
 
-    public static GithubOAuth2User of(
+    public static OAuthLoginUser of(
             OAuthUser oauthUser,
             OAuth2User delegate
     ) {
-        return new GithubOAuth2User(
+        return new OAuthLoginUser(
                 oauthUser,
                 delegate
         );

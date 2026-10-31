@@ -4,6 +4,8 @@ export const PATH_ROUTE = {
   HOME: "/",
 
   LOGIN: "/login",
+  // 로그인 처리에 실패해 돌아왔을 때 보여 주는 로그인 실패 화면(ERR-15, AUTH-R7)
+  LOGIN_FAILED: "/login/failed",
 
   ONBOARDING: "/onboarding",
   ONBOARDING_COMPLETE: "/onboarding/complete",

@@ -234,13 +234,18 @@ public class SearchLlmClient {
         String[] completionTokens = {"unavailable"};
         AtomicBoolean usageLogged = new AtomicBoolean();
         try {
+            Map<String, Object> request = body(
+                    messages,
+                    true
+            );
+            request.put(
+                    "response_format",
+                    SearchAnswerSchema.responseFormat()
+            );
             http.stream(
                     endpoint(),
                     properties.getApiToken(),
-                    body(
-                            messages,
-                            true
-                    ),
+                    request,
                     scope,
                     event -> {
                         if (event.has("error")) {
