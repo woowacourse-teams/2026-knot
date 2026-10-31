@@ -661,7 +661,7 @@ describe("RecordingHeartbeat", () => {
       expect(requests).toEqual([]);
     });
 
-    it("일시정지 중에는 띄우지 않는다", async () => {
+    it("일시정지 중에는 띄우지 않고, 이어서 녹음해 남은 시간이 15분에 닿으면 띄운 뒤 또 이어서 녹음해도 다시 띄우지 않는다", async () => {
       await startRecording();
       renderRecordingHeartbeat();
       await act(() => useRecordingStore.getState().pauseRecording());
@@ -669,6 +669,21 @@ describe("RecordingHeartbeat", () => {
 
       advance(2000);
 
+      expect(screen.queryByText(WARNING)).not.toBeInTheDocument();
+
+      await act(() => useRecordingStore.getState().resumeRecording());
+      advance(999);
+      expect(screen.queryByText(WARNING)).not.toBeInTheDocument();
+
+      advance(1);
+      expect(screen.getByText(WARNING)).toBeInTheDocument();
+      advance(CAUTION_TOAST_MS);
+      advance(TOAST_LEAVE_MS);
+
+      // 15분 전을 지난 뒤 이어서 녹음해도 같은 녹음이라 다시 띄우지 않아요
+      await act(() => useRecordingStore.getState().pauseRecording());
+      await act(() => useRecordingStore.getState().resumeRecording());
+      advance(1000);
       expect(screen.queryByText(WARNING)).not.toBeInTheDocument();
     });
 
