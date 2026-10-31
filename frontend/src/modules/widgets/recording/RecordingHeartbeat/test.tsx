@@ -16,6 +16,7 @@ import { ToastProvider } from "@provider/context/toastContext";
 import { setupSentryEvents } from "@provider/sentry/mock";
 import { theme } from "@provider/themeProvider";
 import { getRouterPath, PATH_ROUTE } from "@routes/PATH_ROUTE";
+import { routes } from "@routes/routes";
 import { useRecordingStore } from "@store/recordingStore";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, render, screen, waitFor } from "@testing-library/react";
@@ -196,6 +197,47 @@ describe("RecordingHeartbeat", () => {
       ),
     );
     expect(useRecordingStore.getState().status).toBe("recording");
+  });
+
+  it("워크스페이스 밖 화면(워크스페이스 만들기)에서도 10초마다 생존 신호를 보낸다 (STT-R5)", async () => {
+    const requests = collectRequests();
+    await startRecording();
+    // 앱의 실제 라우트로 그려, 생존 신호가 워크스페이스 레이아웃 밖 화면까지 감싸는지 봐요
+    const router = createMemoryRouter(
+      [
+        {
+          element: (
+            <AppProviders routes={routes}>
+              <Outlet />
+            </AppProviders>
+          ),
+          children: routes,
+        },
+      ],
+      { initialEntries: [PATH_ROUTE.WORKSPACE_CREATE] },
+    );
+    render(
+      <ThemeProvider theme={theme}>
+        <QueryClientProvider
+          client={
+            new QueryClient({
+              defaultOptions: {
+                queries: { retry: false },
+                mutations: { retry: false },
+              },
+            })
+          }
+        >
+          <RouterProvider router={router} />
+        </QueryClientProvider>
+      </ThemeProvider>,
+    );
+    const heartbeats = () => requests.filter((path) => path === "heartbeat");
+
+    passHeartbeatInterval();
+
+    await waitFor(() => expect(heartbeats()).toEqual(["heartbeat"]));
+    expect(router.state.location.pathname).toBe(PATH_ROUTE.WORKSPACE_CREATE);
   });
 
   it("일시정지 중에도 생존 신호를 보낸다", async () => {
