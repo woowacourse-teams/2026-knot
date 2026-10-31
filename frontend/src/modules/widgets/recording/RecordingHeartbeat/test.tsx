@@ -16,8 +16,13 @@ import { ToastProvider } from "@provider/context/toastContext";
 import { setupSentryEvents } from "@provider/sentry/mock";
 import { theme } from "@provider/themeProvider";
 import { getRouterPath, PATH_ROUTE } from "@routes/PATH_ROUTE";
+import { routes } from "@routes/routes";
 import { useRecordingStore } from "@store/recordingStore";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import {
+  onlineManager,
+  QueryClient,
+  QueryClientProvider,
+} from "@tanstack/react-query";
 import { act, render, screen, waitFor } from "@testing-library/react";
 import {
   clearRecordingStartProof,
@@ -172,6 +177,8 @@ describe("RecordingHeartbeat", () => {
     useRecordingStore.getState().discardRecording();
     clearRecordingStartProof();
     mockServer.events.removeAllListeners();
+    // 연결 상태는 TanStack Query 전역 값이라, 오프라인으로 끝난 테스트가 다음 테스트의 요청을 멈추지 않게 되돌려요
+    onlineManager.setOnline(true);
     vi.useRealTimers();
   });
 
@@ -195,6 +202,147 @@ describe("RecordingHeartbeat", () => {
         expected.elapsedMillis,
       ),
     );
+    expect(useRecordingStore.getState().status).toBe("recording");
+  });
+
+  it("워크스페이스 밖 화면(워크스페이스 만들기)에서도 10초마다 생존 신호를 보낸다 (STT-R5)", async () => {
+    const requests = collectRequests();
+    await startRecording();
+    // 앱의 실제 라우트로 그려, 생존 신호가 워크스페이스 레이아웃 밖 화면까지 감싸는지 봐요
+    const router = createMemoryRouter(
+      [
+        {
+          element: (
+            <AppProviders routes={routes}>
+              <Outlet />
+            </AppProviders>
+          ),
+          children: routes,
+        },
+      ],
+      { initialEntries: [PATH_ROUTE.WORKSPACE_CREATE] },
+    );
+    render(
+      <ThemeProvider theme={theme}>
+        <QueryClientProvider
+          client={
+            new QueryClient({
+              defaultOptions: {
+                queries: { retry: false },
+                mutations: { retry: false },
+              },
+            })
+          }
+        >
+          <RouterProvider router={router} />
+        </QueryClientProvider>
+      </ThemeProvider>,
+    );
+    const heartbeats = () => requests.filter((path) => path === "heartbeat");
+
+    passHeartbeatInterval();
+
+    await waitFor(() => expect(heartbeats()).toEqual(["heartbeat"]));
+    expect(router.state.location.pathname).toBe(PATH_ROUTE.WORKSPACE_CREATE);
+  });
+
+  it.each([
+    [
+      "연결이 돌아오면(online)",
+      () => window.dispatchEvent(new Event("online")),
+    ],
+    [
+      "탭이 다시 보이면(visibilitychange)",
+      () => document.dispatchEvent(new Event("visibilitychange")),
+    ],
+  ])(
+    "%s 10초 주기를 기다리지 않고 생존 신호를 한 번 보낸다",
+    async (_, occur) => {
+      const requests = collectRequests();
+      await startRecording();
+      renderRecordingHeartbeat();
+
+      act(occur);
+
+      await waitFor(() => expect(requests).toEqual(["heartbeat"]));
+    },
+  );
+
+  it("탭이 가려질 때는 생존 신호를 바로 보내지 않는다", async () => {
+    vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden");
+    const requests = collectRequests();
+    await startRecording();
+    renderRecordingHeartbeat();
+
+    act(() => {
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+
+    await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+    expect(requests).toEqual([]);
+  });
+
+  it("녹음 중이 아니면 연결이 돌아와도 생존 신호를 보내지 않는다", async () => {
+    const requests = collectRequests();
+    renderRecordingHeartbeat();
+
+    act(() => {
+      window.dispatchEvent(new Event("online"));
+    });
+
+    await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+    expect(requests).toEqual([]);
+  });
+
+  it("연결이 돌아오는 일과 탭이 다시 보이는 일이 겹쳐도, 응답을 기다리는 동안에는 생존 신호를 한 번만 보낸다", async () => {
+    const heartbeat = holdHeartbeat(recordingHeartbeatResponse);
+    const requests = collectRequests();
+    await startRecording();
+    renderRecordingHeartbeat();
+
+    act(() => {
+      window.dispatchEvent(new Event("online"));
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+    await waitFor(() => expect(requests).toEqual(["heartbeat"]));
+    await heartbeat.release();
+
+    await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+    expect(requests).toEqual(["heartbeat"]);
+
+    // 응답을 받은 뒤에는 다시 바로 보내요
+    act(() => {
+      window.dispatchEvent(new Event("online"));
+    });
+    await waitFor(() => expect(requests).toEqual(["heartbeat", "heartbeat"]));
+  });
+
+  it("오프라인 동안 실패한 신호를 멈춰 쌓아 두지 않아, 연결이 돌아와도 한꺼번에 다시 보내지 않는다", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    respondHeartbeat(() => HttpResponse.error());
+    const requests = collectRequests();
+    await startRecording();
+    renderRecordingHeartbeat();
+
+    act(() => {
+      window.dispatchEvent(new Event("offline"));
+    });
+    passHeartbeatInterval();
+    await waitFor(() => expect(requests).toEqual(["heartbeat"]));
+    passHeartbeatInterval();
+    await waitFor(() => expect(requests).toEqual(["heartbeat", "heartbeat"]));
+
+    respondHeartbeat(() => HttpResponse.json(recordingHeartbeatResponse));
+    act(() => {
+      window.dispatchEvent(new Event("online"));
+    });
+
+    // 오프라인 동안의 두 신호는 이미 실패로 끝나, 연결이 돌아온 뒤에는 바로 보내는 한 번만 나가요
+    await waitFor(() =>
+      expect(requests).toEqual(["heartbeat", "heartbeat", "heartbeat"]),
+    );
+    await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+    expect(requests).toEqual(["heartbeat", "heartbeat", "heartbeat"]);
     expect(useRecordingStore.getState().status).toBe("recording");
   });
 
