@@ -601,6 +601,26 @@ describe("RecordingHeartbeat", () => {
     expect(useRecordingStore.getState().status).toBe("recording");
   });
 
+  // 응답을 실제 시간으로 받아야 해서 15분 전 안내 묶음의 가짜 시계 밖에 둬요
+  it("생존 신호의 서버 시간으로 남은 시간이 15분 이하로 맞춰지면, 15분 전을 지켜보지 못했어도 주의 토스트를 띄운다 (STT-R15)", async () => {
+    respondHeartbeat(() =>
+      HttpResponse.json({
+        ...recordingHeartbeatResponse,
+        elapsedMillis: MAX_RECORDING_DURATION_MS - 15 * 60 * 1000,
+      }),
+    );
+    await startRecording();
+    renderRecordingHeartbeat();
+
+    passHeartbeatInterval();
+
+    expect(
+      await screen.findByText(
+        TOAST_MESSAGES.RECORDING_TIME_LIMIT_APPROACHING.message,
+      ),
+    ).toBeInTheDocument();
+  });
+
   describe("최대 녹음 시간 15분 전 안내 (STT-R15)", () => {
     const WARNING_BEFORE_MS = 15 * 60 * 1000;
     const WARNING = TOAST_MESSAGES.RECORDING_TIME_LIMIT_APPROACHING.message;
