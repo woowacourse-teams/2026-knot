@@ -1,6 +1,8 @@
 import { HTTP_ERROR_TYPE, isHttpError } from "@api/httpClient/error";
 import useRecordingDocumentQuery from "@api/queries/useRecordingDocumentQuery";
 import useRecordingTranscriptQuery from "@api/queries/useRecordingTranscriptQuery";
+import { recordingDocumentKeys } from "@api/queryKey/recordingDocument";
+import useApiSupportState from "@hooks/common/useApiSupportState";
 import { isUnauthorizedError } from "@utils/isUnauthorizedError";
 
 interface UseRecordingDocumentStatusParams {
@@ -28,6 +30,7 @@ const isUnrecoverableLoadError = (error: unknown) =>
  *
  * - `loading`: 녹음 문서를 아직 받지 못했어요. 로그인이 풀려(401) 로그인 화면으로 보내는 동안에도 이 상태예요
  * - `loadFailed`: 녹음 문서를 보여 주지 못해요. 400 · 403 · 404는 받은 값이 있어도, 네트워크 · 서버 문제는 받은 값이 없을 때만 이 상태예요
+ * - `unsupported`: 신규 녹음 문서 경로가 없어요. 정상 캐시가 있어도 이 기능만 준비 안내로 바꿔요
  * - `organizing`: 문서 정리 중(`PROCESSING`)
  * - `transcriptionFailed`: 전사 실패
  * - `topicFailed`: 주제 분류 실패(전사는 성공, 주제를 나누지 못함)
@@ -58,6 +61,9 @@ const useRecordingDocumentStatus = ({
     isEnabled,
     isPolling,
   });
+  const { isUnsupported, isUnavailable } = useApiSupportState({
+    queryKey: recordingDocumentKeys.detail({ workspaceId, recordingId }), error,
+  });
   const processingStatus = recordingDocument?.processingStatus;
   const hasTranscript =
     processingStatus === "COMPLETED" || processingStatus === "DOCUMENT_FAILED";
@@ -71,10 +77,12 @@ const useRecordingDocumentStatus = ({
   const isLoadFailed =
     !isUnauthorizedError(error) &&
     (isUnrecoverableLoadError(error) ||
-      (recordingDocument === undefined && isError));
+      ((recordingDocument === undefined || isUnavailable) && isError));
 
   const getStatus = () => {
+    if (isUnsupported) return "unsupported" as const;
     if (isLoadFailed) return "loadFailed" as const;
+    if (isUnavailable) return "loading" as const;
     if (recordingDocument === undefined) return "loading" as const;
 
     switch (recordingDocument.processingStatus) {

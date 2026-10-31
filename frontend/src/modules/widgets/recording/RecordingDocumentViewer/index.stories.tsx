@@ -95,6 +95,16 @@ type Story = StoryObj<typeof meta>;
 /** 문서 정리와 요약을 모두 마친 녹음이에요. 녹음 음성, 회의 전체 요약, 이 회의에서 나온 문서가 모두 있어요 */
 export const Default: Story = {};
 
+/** 녹음 문서 API가 아직 없거나 롤백된 경우예요. 다시 확인하면 화면 새로고침 없이 지원 여부를 조회해요. */
+export const UnsupportedApi: Story = {
+  parameters: {
+    docs: { story: { inline: false, iframeHeight: 300 } },
+    msw: { handlers: { recordingDocument: http.get(RECORDING_DOCUMENT_REQUEST, () =>
+      HttpResponse.json({ code: "REQUEST_PATH_NOT_FOUND" }, { status: 404 }),
+    ) } },
+  },
+};
+
 /** 녹음 문서를 받기 전이에요. 제목 · 녹음 음성 · 요약 자리를 덩어리로 채워요 */
 export const Loading: Story = {
   parameters: {

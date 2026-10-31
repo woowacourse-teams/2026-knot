@@ -43,6 +43,11 @@ export default function RecordingHistoryRow({
   },
 }: RecordingHistoryRowProps) {
   const titleId = useId();
+  // 필드가 없거나 새 상태가 와도 다른 행과 홈은 그대로 보여줘요. 객체의 상속된 키도 상태로 인정하지 않아요.
+  const isKnownStatus =
+    processingStatus === "COMPLETED" ||
+    (typeof processingStatus === "string" &&
+      Object.prototype.hasOwnProperty.call(PROCESSING_STATUS_LABEL, processingStatus));
   const isFailed =
     processingStatus === "TRANSCRIPTION_FAILED" ||
     processingStatus === "DOCUMENT_FAILED";
@@ -57,22 +62,25 @@ export default function RecordingHistoryRow({
         <Title id={titleId} title={title}>
           {title}
         </Title>
-        {processingStatus === "COMPLETED" ? (
+        {processingStatus === "COMPLETED" || !isKnownStatus ? (
           <Meta>
             <StartedDate dateTime={startedAt}>
               {formatDate(startedAt)}
             </StartedDate>
             <Chip>{formatDurationFromSeconds(recordingDurationSeconds)}</Chip>
           </Meta>
-        ) : (
+        ) : processingStatus !== null ? (
           <Status $processingStatus={processingStatus}>
             <StatusDot aria-hidden $processingStatus={processingStatus} />
             <StatusText>{PROCESSING_STATUS_LABEL[processingStatus]}</StatusText>
           </Status>
+        ) : null}
+        {!isKnownStatus && (
+          <UnknownStatus>처리 상태를 확인할 수 없어요</UnknownStatus>
         )}
       </Info>
 
-      {isFailed && isRetryable ? (
+      {isFailed && isRetryable === true ? (
         <RetryRecordingButton
           workspaceId={workspaceId}
           recordingId={recordingId}
@@ -80,8 +88,8 @@ export default function RecordingHistoryRow({
           retryableJobIds={retryableJobIds}
           describedBy={titleId}
         />
-      ) : processingStatus === "PROCESSING" ? (
-        // 정리가 끝나야 녹음 문서를 열 수 있어 누를 수 없게 둬요
+      ) : processingStatus === "PROCESSING" || !isKnownStatus ? (
+        // 정리 중이거나 상태를 확인하지 못했으면 녹음 문서로 이동하지 않아요
         <ViewRecording
           as="span"
           role="link"
@@ -206,6 +214,11 @@ const StatusText = styled.span`
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
+`;
+
+const UnknownStatus = styled.p`
+  ${({ theme }) => theme.text.caption01};
+  color: ${({ theme }) => theme.neutral[500]};
 `;
 
 /** 피그마 Link/녹음 보기: 글자와 화살표 사이 2px. 누를 수 없으면 글자와 화살표를 흐리게 둬요 */

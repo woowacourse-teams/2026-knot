@@ -522,6 +522,7 @@ describe("TranscriptPanel · 녹음 문서 화면 (STT-R39)", () => {
               path: PATH_ROUTE.RECORDING_DOCUMENT,
               element: <TranscriptPanel />,
             },
+            { path: PATH_ROUTE.LOGIN, element: <p>로그인 화면</p> },
           ],
         },
       ],
@@ -545,6 +546,8 @@ describe("TranscriptPanel · 녹음 문서 화면 (STT-R39)", () => {
         </QueryClientProvider>
       </ThemeProvider>,
     );
+
+    return { router, queryClient };
   };
 
   afterEach(() => {
@@ -659,4 +662,52 @@ describe("TranscriptPanel · 녹음 문서 화면 (STT-R39)", () => {
       },
     });
   });
+
+  describe("신규 원문 호환성 (ERR-QA-004 · ERR-QA-005 · ERR-QA-006)", () => {
+    const unsupported = () => HttpResponse.json({ code: "REQUEST_PATH_NOT_FOUND" }, { status: 404 });
+    it("신규 원문 경로만 미지원이면 해당 패널에서 준비 안내한다", async () => {
+      mockServer.use(http.get(RECORDING_TRANSCRIPT_REQUEST, unsupported));
+      renderRecordingTranscriptPanel();
+      expect(await screen.findByText("업데이트 준비 중")).toBeInTheDocument();
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    });
+    it("정상 원문 캐시 뒤 미지원이면 복사를 막고 다시 확인해 복구한다", async () => {
+      const { queryClient } = renderRecordingTranscriptPanel();
+      await findLines();
+      mockServer.use(http.get(RECORDING_TRANSCRIPT_REQUEST, unsupported));
+      await act(async () => { await queryClient.invalidateQueries(); });
+      expect(await screen.findByText("업데이트 준비 중")).toBeInTheDocument();
+      expect(screen.queryByRole("listitem")).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /복사/ })).not.toBeInTheDocument();
+      for (const status of [500, 0]) {
+        mockServer.use(http.get(RECORDING_TRANSCRIPT_REQUEST, () => status === 0 ? HttpResponse.error() : new HttpResponse(null, { status })));
+        await act(async () => { await queryClient.invalidateQueries(); });
+        expect(await screen.findByRole("alert")).toHaveTextContent(LOAD_FAILED_NOTICE);
+        expect(screen.queryByRole("listitem")).not.toBeInTheDocument();
+        expect(screen.queryByRole("button", { name: /복사/ })).not.toBeInTheDocument();
+        expect(screen.queryByText("업데이트 준비 중")).not.toBeInTheDocument();
+      }
+      mockServer.use(http.get(RECORDING_TRANSCRIPT_REQUEST, () => HttpResponse.json(recordingTranscriptResponse)));
+      fireEvent.click(screen.getByRole("button", { name: "다시 시도" }));
+      expect(await findLines()).toHaveLength(expectedRecordingTranscript.segments.length);
+    });
+    it("같은 경로 오류라도 기존 문서 원문에는 준비 안내를 적용하지 않는다", async () => {
+      mockServer.use(http.get(TRANSCRIPT_REQUEST, unsupported));
+      renderTranscriptPanel();
+      expect(await screen.findByRole("alert")).toHaveTextContent(LOAD_FAILED_NOTICE);
+      expect(screen.queryByText("업데이트 준비 중")).not.toBeInTheDocument();
+    });
+    it.each([
+      [401, "UNAUTHORIZED"], [403, "WORKSPACE_ACCESS_DENIED"],
+      [404, "RECORDING_TRANSCRIPT_NOT_FOUND"], [500, "INTERNAL_SERVER_ERROR"], [0, "NETWORK"],
+    ] as const)("신규 원문 실제 오류 %s %s는 준비 안내로 바꾸지 않는다", async (status, code) => {
+      mockServer.use(http.get(RECORDING_TRANSCRIPT_REQUEST, () => status === 0
+        ? HttpResponse.error() : HttpResponse.json({ code }, { status })));
+      renderRecordingTranscriptPanel();
+      if (status === 401) expect(await screen.findByText("로그인 화면")).toBeInTheDocument();
+      else expect(await screen.findByRole("alert")).toHaveTextContent(LOAD_FAILED_NOTICE);
+      expect(screen.queryByText("업데이트 준비 중")).not.toBeInTheDocument();
+    });
+  });
+
 });

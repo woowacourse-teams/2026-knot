@@ -1,7 +1,11 @@
 import useRecordingDocumentQuery from "@api/queries/useRecordingDocumentQuery";
+import { recordingDocumentKeys } from "@api/queryKey/recordingDocument";
 import styled from "@emotion/styled";
+import useApiSupportState from "@hooks/common/useApiSupportState";
+import InlineError from "@primitives/ui/InlineError";
 import RelatedCard from "@primitives/ui/RelatedCard";
 import Skeleton from "@primitives/ui/Skeleton";
+import UpdatePreparingNotice from "@primitives/ui/UpdatePreparingNotice";
 import { getRouterPath } from "@routes/PATH_ROUTE";
 import { useId } from "react";
 
@@ -22,17 +26,26 @@ interface SourceRecordingProps {
  * 카드는 녹음 문서의 「이 회의에서 나온 문서」 카드와 같은 모양이에요.
  *
  * 녹음 제목은 녹음 문서 조회로 받아요. 받는 동안은 제목 자리만 스켈레톤으로 채우고, 받지 못하면 「녹음 보기」로 보여 줘요.
- * 어느 때든 녹음 ID는 이미 있으므로 카드를 누르면 녹음 문서로 가요. 제목을 받지 못해도 문서 본문에는 영향이 없어요.
+ * 경로 미지원이 확인되면 이 카드만 준비 안내로 바꿔 이동을 막아요. 일반적인 제목 조회 실패는 기존 대체 제목을 쓰며, 문서 본문에는 영향이 없어요.
  */
 export default function SourceRecording({
   workspaceId,
   recordingId,
 }: SourceRecordingProps) {
   const titleId = useId();
-  const { data: recordingDocument, isPending } = useRecordingDocumentQuery({
+  const {
+    data: recordingDocument,
+    isPending,
+    error,
+    refetch,
+  } = useRecordingDocumentQuery({
     workspaceId,
     recordingId,
   });
+  const { isUnsupported, isUnavailable } = useApiSupportState({
+    queryKey: recordingDocumentKeys.detail({ workspaceId, recordingId }), error,
+  });
+  const handleRetry = () => { refetch(); };
 
   const renderTitle = () => {
     if (isPending) {
@@ -47,18 +60,24 @@ export default function SourceRecording({
     <Root aria-labelledby={titleId}>
       <Title id={titleId}>이 문서가 나온 녹음</Title>
       <CardColumn>
-        <RelatedCard
-          href={getRouterPath({
-            routeKey: "RECORDING_DOCUMENT",
-            params: {
-              workspaceId: String(workspaceId),
-              recordingId: String(recordingId),
-            },
-          })}
-          icon={<MicIcon size={16} aria-hidden />}
-          title={renderTitle()}
-          description={DESCRIPTION}
-        />
+        {isUnsupported ? (
+          <UpdatePreparingNotice onCheck={handleRetry} />
+        ) : isUnavailable ? (
+          <InlineError message="녹음을 불러오지 못했어요. 다시 시도해 주세요." onRetry={handleRetry} />
+        ) : (
+          <RelatedCard
+            href={getRouterPath({
+              routeKey: "RECORDING_DOCUMENT",
+              params: {
+                workspaceId: String(workspaceId),
+                recordingId: String(recordingId),
+              },
+            })}
+            icon={<MicIcon size={16} aria-hidden />}
+            title={renderTitle()}
+            description={DESCRIPTION}
+          />
+        )}
       </CardColumn>
     </Root>
   );

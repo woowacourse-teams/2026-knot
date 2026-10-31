@@ -6,6 +6,7 @@ import useRecordingDocumentStatus from "@hooks/domain/recording/useRecordingDocu
 import useRetryFailedRecording from "@hooks/domain/recording/useRetryFailedRecording";
 import Chip from "@primitives/ui/Chip";
 import Divider from "@primitives/ui/Divider";
+import UpdatePreparingNotice from "@primitives/ui/UpdatePreparingNotice";
 import { formatDate } from "@utils/formatDate";
 import { formatDurationFromSeconds } from "@utils/formatDurationFromSeconds";
 import { useId } from "react";
@@ -73,6 +74,10 @@ export default function RecordingDocumentViewer() {
     status,
     recordingDocument,
   });
+
+  if (status === "unsupported") {
+    return <UpdatePreparingNotice onCheck={retryLoad} />;
+  }
 
   if (status === "loadFailed") {
     return <RecordingDocumentLoadFailed onRetry={retryLoad} />;

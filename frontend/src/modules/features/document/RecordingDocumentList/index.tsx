@@ -1,10 +1,12 @@
 import useDocumentRecordingsInfiniteQuery from "@api/queries/useDocumentRecordingsInfiniteQuery";
 import { documentKeys } from "@api/queryKey/document";
 import styled from "@emotion/styled";
+import useApiSupportState from "@hooks/common/useApiSupportState";
 import useLoadMoreOnReachEnd from "@hooks/common/useLoadMoreOnReachEnd";
 import useWorkspaceAccessGuard from "@hooks/domain/workspace/useWorkspaceAccessGuard";
 import InlineError from "@primitives/ui/InlineError";
 import LoadingIndicator from "@primitives/ui/LoadingIndicator";
+import UpdatePreparingNotice from "@primitives/ui/UpdatePreparingNotice";
 import { getRouterPath } from "@routes/PATH_ROUTE";
 import { useQueryClient } from "@tanstack/react-query";
 import { isBadRequestError } from "@utils/isBadRequestError";
@@ -47,11 +49,17 @@ export default function RecordingDocumentList() {
     isFetchNextPageError,
   } = useDocumentRecordingsInfiniteQuery({ workspaceId });
 
-  // 로그인이 풀렸으면 로그인 화면으로, 워크스페이스에 들어갈 수 없으면 마지막으로 본 다른 워크스페이스나 선택 화면으로 보내고 알려요
-  const { isRedirecting } = useWorkspaceAccessGuard({ error });
+  // 이 신규 경로의 미지원은 워크스페이스 접근 거부가 아니에요. 실제 인증·권한·자원 오류는 기존 가드가 처리해요.
+  const { isUnsupported, isUnavailable } = useApiSupportState({
+    queryKey: documentKeys.recordingList({ workspaceId }), error,
+  });
+  const { isRedirecting } = useWorkspaceAccessGuard({
+    error: isUnsupported ? null : error,
+  });
 
   const { sentinelRef } = useLoadMoreOnReachEnd({
-    isEnabled: hasNextPage && !isFetchingNextPage && !isFetchNextPageError,
+    isEnabled:
+      !isUnavailable && hasNextPage && !isFetchingNextPage && !isFetchNextPageError,
     onReachEnd: () => {
       fetchNextPage();
     },
@@ -75,7 +83,14 @@ export default function RecordingDocumentList() {
   };
 
   // 받은 목록이 없고 실패했을 때 실패 안내를 보여줘요. 다른 화면으로 보내는 중이면 가는 동안 안내가 잠깐 보이지 않게 빼요
-  const shouldShowLoadFailed = data === undefined && isError && !isRedirecting;
+  const shouldShowLoadFailed = (data === undefined || isUnavailable) && isError && !isRedirecting;
+
+  // 정상 캐시가 남아 있어도 현재 미지원이면 이전 링크를 실행시키지 않아요.
+  if (isUnsupported) {
+    return <UpdatePreparingNotice onCheck={handleRetry} />;
+  }
+
+  if (isRedirecting) return <RecordingDocumentListSkeleton />;
 
   if (shouldShowLoadFailed) {
     return <RecordingDocumentListLoadFailed onRetry={handleRetry} />;

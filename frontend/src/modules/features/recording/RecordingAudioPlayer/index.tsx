@@ -1,8 +1,11 @@
 import useRecordingAudioPlaybackQuery from "@api/queries/useRecordingAudioPlaybackQuery";
+import { recordingDocumentKeys } from "@api/queryKey/recordingDocument";
 import styled from "@emotion/styled";
+import useApiSupportState from "@hooks/common/useApiSupportState";
 import useRedirectToLoginOnUnauthorized from "@hooks/domain/auth/useRedirectToLoginOnUnauthorized";
 import InlineError from "@primitives/ui/InlineError";
 import Skeleton from "@primitives/ui/Skeleton";
+import UpdatePreparingNotice from "@primitives/ui/UpdatePreparingNotice";
 import { useParams } from "react-router";
 
 import { useAudioUnavailableAnalytics } from "./model/useAudioUnavailableAnalytics";
@@ -33,13 +36,18 @@ export default function RecordingAudioPlayer() {
     refetch,
   } = useRecordingAudioPlaybackQuery({ workspaceId, recordingId });
   const { isUnauthorized } = useRedirectToLoginOnUnauthorized({ error });
+  const { isUnsupported, isUnavailable } = useApiSupportState({
+    queryKey: recordingDocumentKeys.audioPlayback({ workspaceId, recordingId }), error,
+  });
   const isLoadFailed =
-    audioPlayback === undefined && isError && !isUnauthorized;
+    (audioPlayback === undefined || isUnavailable) && isError && !isUnauthorized;
   const isPlayable =
     audioPlayback?.audioStatus === "AVAILABLE" &&
     audioPlayback.playbackUrl !== null;
   useAudioUnavailableAnalytics({
-    reason: isLoadFailed
+    reason: isUnsupported
+      ? null
+      : isLoadFailed
       ? "load_failed"
       : audioPlayback === undefined || isPlayable
         ? null
@@ -52,7 +60,15 @@ export default function RecordingAudioPlayer() {
     refetch();
   };
 
-  if (audioPlayback === undefined) {
+  if (isUnsupported) {
+    return (
+      <Root role="group" aria-label="녹음 음성">
+        <UpdatePreparingNotice onCheck={handleRetry} />
+      </Root>
+    );
+  }
+
+  if (audioPlayback === undefined || isUnavailable) {
     if (isLoadFailed) {
       return (
         <Root role="group" aria-label="녹음 음성">
@@ -78,7 +94,10 @@ export default function RecordingAudioPlayer() {
           playbackUrl={playbackUrl}
           expiresAt={expiresAt}
           durationMillis={recordingDurationMillis}
-          refreshPlaybackUrl={refetch}
+          refreshPlaybackUrl={async () => {
+            const result = await refetch();
+            return result.isSuccess && result.data?.audioStatus === "AVAILABLE";
+          }}
         />
       </Root>
     );

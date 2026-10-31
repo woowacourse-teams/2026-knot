@@ -186,7 +186,7 @@ const renderCard = () => {
     </ThemeProvider>,
   );
 
-  return { router };
+  return { router, queryClient };
 };
 
 const getCard = () => screen.getByRole("region", { name: CARD_TITLE });
@@ -696,4 +696,65 @@ describe("RecordingHistoryCard", () => {
       expect(screen.queryByText(EMPTY_TEXT)).not.toBeInTheDocument();
     });
   });
+
+  describe("배포 호환성 (ERR-QA-002 · ERR-QA-003 · ERR-QA-006)", () => {
+    it.each([undefined, null, "FUTURE_STATUS", "", "constructor", "__proto__"])(
+      "처리 상태 %s인 행의 메타정보와 정상 행을 유지하고 신규 동작을 제한한다", async (processingStatus) => {
+        respondNoCurrentRecording();
+        respondRecordings(() => HttpResponse.json({
+          items: [{ ...COMPLETED_ITEM, processingStatus, retryable: true }, NO_CONTENT_ITEM],
+          nextCursor: null,
+        }));
+        renderCard();
+        expect(await screen.findByText("처리 상태를 확인할 수 없어요")).toBeInTheDocument();
+        const expectedRow = new GetRecordingsResponseDto({ items: [COMPLETED_ITEM], nextCursor: null }).items[0];
+        const row = screen.getByText(expectedRow.title).closest("li")!;
+        expect(within(row).getByText(formatDate(expectedRow.startedAt))).toBeInTheDocument();
+        expect(within(row).getByText(formatDurationFromSeconds(expectedRow.recordingDurationSeconds))).toBeInTheDocument();
+        const link = within(row).getByRole("link", { name: VIEW_RECORDING });
+        expect(link).toHaveAttribute("aria-disabled", "true");
+        expect(link).not.toHaveAttribute("href");
+        expect(within(row).queryByRole("button", { name: RETRY })).not.toBeInTheDocument();
+        expect(screen.getByText(STATUS_TEXT.NO_CONTENT)).toBeInTheDocument();
+      },
+    );
+
+    it.each([undefined, null, false])("알려진 실패라도 retryable=%s이면 재시도하지 않는다", async (retryable) => {
+      respondNoCurrentRecording();
+      respondRecordings(() => HttpResponse.json({
+        items: [{ ...TRANSCRIPTION_FAILED_ITEM, retryable }], nextCursor: null,
+      }));
+      renderCard();
+      expect(await screen.findByText(STATUS_TEXT.TRANSCRIPTION_FAILED)).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: RETRY })).not.toBeInTheDocument();
+      expect(screen.getByRole("link", { name: VIEW_RECORDING })).toHaveAttribute("href");
+    });
+
+    it("열린 카드에서 정상→상태 누락→정상 재조회가 전체 새로고침 없이 반영된다", async () => {
+      respondNoCurrentRecording(); respondItems([COMPLETED_ITEM]);
+      const { queryClient } = renderCard();
+      expect(await screen.findByRole("link", { name: VIEW_RECORDING })).toHaveAttribute("href");
+      respondRecordings(() => HttpResponse.json({ items: [{ ...COMPLETED_ITEM, processingStatus: undefined }], nextCursor: null }));
+      await act(async () => { await queryClient.invalidateQueries(); });
+      expect(await screen.findByText("처리 상태를 확인할 수 없어요")).toBeInTheDocument();
+      expect(screen.getByRole("link", { name: VIEW_RECORDING })).not.toHaveAttribute("href");
+      respondItems([COMPLETED_ITEM]);
+      await act(async () => { await queryClient.invalidateQueries(); });
+      await waitFor(() => expect(screen.getByRole("link", { name: VIEW_RECORDING })).toHaveAttribute("href"));
+      expect(screen.queryByText("처리 상태를 확인할 수 없어요")).not.toBeInTheDocument();
+    });
+
+    it("이후 묶음의 미지 상태도 앞 묶음을 유지하며 안전하게 표시한다", async () => {
+      respondNoCurrentRecording();
+      respondRecordings(({ request }) => HttpResponse.json(new URL(request.url).searchParams.has("cursor")
+        ? { items: [{ ...NO_CONTENT_ITEM, processingStatus: "FUTURE_STATUS" }], nextCursor: null }
+        : { items: [COMPLETED_ITEM], nextCursor: "next-page" }));
+      renderCard();
+      const expectedRow = new GetRecordingsResponseDto({ items: [COMPLETED_ITEM], nextCursor: null }).items[0];
+      await screen.findByText(expectedRow.title); reachEnd();
+      expect(await screen.findByText("처리 상태를 확인할 수 없어요")).toBeInTheDocument();
+      expect(screen.getByText(expectedRow.title)).toBeInTheDocument();
+    });
+  });
+
 });

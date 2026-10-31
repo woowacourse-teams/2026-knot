@@ -61,6 +61,7 @@ export const useRecordingDocumentAnalytics = ({
       trackedVisitKeyRef.current === visitKey ||
       status === "loading" ||
       status === "loadFailed" ||
+      status === "unsupported" ||
       recordingDocument === undefined
     ) {
       return;
