@@ -240,6 +240,77 @@ describe("RecordingHeartbeat", () => {
     expect(router.state.location.pathname).toBe(PATH_ROUTE.WORKSPACE_CREATE);
   });
 
+  it.each([
+    [
+      "연결이 돌아오면(online)",
+      () => window.dispatchEvent(new Event("online")),
+    ],
+    [
+      "탭이 다시 보이면(visibilitychange)",
+      () => document.dispatchEvent(new Event("visibilitychange")),
+    ],
+  ])(
+    "%s 10초 주기를 기다리지 않고 생존 신호를 한 번 보낸다",
+    async (_, occur) => {
+      const requests = collectRequests();
+      await startRecording();
+      renderRecordingHeartbeat();
+
+      act(occur);
+
+      await waitFor(() => expect(requests).toEqual(["heartbeat"]));
+    },
+  );
+
+  it("탭이 가려질 때는 생존 신호를 바로 보내지 않는다", async () => {
+    vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden");
+    const requests = collectRequests();
+    await startRecording();
+    renderRecordingHeartbeat();
+
+    act(() => {
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+
+    await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+    expect(requests).toEqual([]);
+  });
+
+  it("녹음 중이 아니면 연결이 돌아와도 생존 신호를 보내지 않는다", async () => {
+    const requests = collectRequests();
+    renderRecordingHeartbeat();
+
+    act(() => {
+      window.dispatchEvent(new Event("online"));
+    });
+
+    await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+    expect(requests).toEqual([]);
+  });
+
+  it("연결이 돌아오는 일과 탭이 다시 보이는 일이 겹쳐도, 응답을 기다리는 동안에는 생존 신호를 한 번만 보낸다", async () => {
+    const heartbeat = holdHeartbeat(recordingHeartbeatResponse);
+    const requests = collectRequests();
+    await startRecording();
+    renderRecordingHeartbeat();
+
+    act(() => {
+      window.dispatchEvent(new Event("online"));
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+    await waitFor(() => expect(requests).toEqual(["heartbeat"]));
+    await heartbeat.release();
+
+    await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+    expect(requests).toEqual(["heartbeat"]);
+
+    // 응답을 받은 뒤에는 다시 바로 보내요
+    act(() => {
+      window.dispatchEvent(new Event("online"));
+    });
+    await waitFor(() => expect(requests).toEqual(["heartbeat", "heartbeat"]));
+  });
+
   it("일시정지 중에도 생존 신호를 보낸다", async () => {
     const requests = collectRequests();
     await startRecording();
