@@ -36,6 +36,8 @@ import org.springframework.test.context.TestConstructor.AutowireMode;
 @SpringBootTest
 @TestConstructor(autowireMode = AutowireMode.ALL)
 class RecordingConnectionExpiryBatchIntegrationTest {
+    private static final int GRACE_SECONDS = 30 * 60;
+    private static final int EXPIRED_SECONDS = GRACE_SECONDS + 300;
     private static final Instant CREATED_AT = Instant.parse("2026-10-01T00:00:00Z");
     private static final Instant JOINED_AT = Instant.parse("2026-10-01T00:01:00Z");
     private static final String CONTROL_TOKEN = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefA";
@@ -69,13 +71,13 @@ class RecordingConnectionExpiryBatchIntegrationTest {
     }
 
     @Test
-    @DisplayName("요청이 없는 녹음은 회수 작업이 실행 시각이 아니라 마지막 신호 + 30초로 종료한다")
-    void expireDue_success_endsAtLastSeenPlusTimeout() {
+    @DisplayName("요청이 없는 녹음은 끊김 유예가 지나면 회수 작업이 실행 시각이 아니라 마지막 생존 시각으로 끝낸다")
+    void expireDue_success_endsAtLastSeen() {
         // given
         StartedRecording recording = startRecording(ownerFixture("회수 팀"));
         disconnect(
                 recording.id(),
-                600
+                EXPIRED_SECONDS
         );
         Instant lastSeenAt = recordingRow(recording.id()).lastSeenAt();
 
@@ -87,7 +89,7 @@ class RecordingConnectionExpiryBatchIntegrationTest {
         assertThat(expiredCount).isEqualTo(1);
         assertThat(row.status()).isEqualTo("ENDED");
         assertThat(row.endReason()).isEqualTo("CONNECTION_EXPIRED");
-        assertThat(row.endedAt()).isEqualTo(lastSeenAt.plusSeconds(30));
+        assertThat(row.endedAt()).isEqualTo(lastSeenAt);
         assertThat(row.lastSeenAt()).isEqualTo(lastSeenAt);
     }
 
@@ -165,12 +167,12 @@ class RecordingConnectionExpiryBatchIntegrationTest {
         );
         disconnect(
                 endedRecording.id(),
-                600
+                EXPIRED_SECONDS
         );
         long discardedRecordingId = discardedRecording();
         disconnect(
                 discardedRecordingId,
-                600
+                EXPIRED_SECONDS
         );
         List<RecordingRow> before = List.of(
                 recordingRow(aliveRecording.id()),
@@ -199,7 +201,7 @@ class RecordingConnectionExpiryBatchIntegrationTest {
         StartedRecording recording = startRecording(ownerFixture("반복 팀"));
         disconnect(
                 recording.id(),
-                600
+                EXPIRED_SECONDS
         );
         recordingConnectionExpiryService.expireDue(BATCH_SIZE);
         RecordingRow first = recordingRow(recording.id());
@@ -221,7 +223,7 @@ class RecordingConnectionExpiryBatchIntegrationTest {
             StartedRecording recording = startRecording(ownerFixture("배치 팀 " + i));
             disconnect(
                     recording.id(),
-                    600 - i
+                    EXPIRED_SECONDS - i
             );
             recordingIds.add(recording.id());
         }
@@ -249,7 +251,7 @@ class RecordingConnectionExpiryBatchIntegrationTest {
         StartedRecording kept = startRecording(keptFixture);
         disconnect(
                 kept.id(),
-                29
+                GRACE_SECONDS - 1
         );
         heartbeat(
                 keptFixture,
@@ -259,7 +261,7 @@ class RecordingConnectionExpiryBatchIntegrationTest {
         StartedRecording late = startRecording(lateFixture);
         disconnect(
                 late.id(),
-                600
+                EXPIRED_SECONDS
         );
         recordingConnectionExpiryService.expireDue(BATCH_SIZE);
         RecordingRow reclaimed = recordingRow(late.id());
@@ -285,7 +287,7 @@ class RecordingConnectionExpiryBatchIntegrationTest {
         StartedRecording recording = startRecording(fixture);
         disconnect(
                 recording.id(),
-                600
+                EXPIRED_SECONDS
         );
         Instant lastSeenAt = recordingRow(recording.id()).lastSeenAt();
 
@@ -311,7 +313,7 @@ class RecordingConnectionExpiryBatchIntegrationTest {
         RecordingRow row = recordingRow(recording.id());
         assertThat(row.status()).isEqualTo("ENDED");
         assertThat(row.endReason()).isEqualTo("CONNECTION_EXPIRED");
-        assertThat(row.endedAt()).isEqualTo(lastSeenAt.plusSeconds(30));
+        assertThat(row.endedAt()).isEqualTo(lastSeenAt);
     }
 
     private List<Outcome> runTogether(List<Callable<?>> tasks) throws Exception {

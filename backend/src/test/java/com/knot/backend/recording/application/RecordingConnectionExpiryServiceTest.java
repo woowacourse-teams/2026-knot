@@ -1,5 +1,7 @@
 package com.knot.backend.recording.application;
 
+import com.knot.backend.testsupport.RecordingConnectionPolicyFixture;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
@@ -29,6 +31,7 @@ class RecordingConnectionExpiryServiceTest {
         service = new RecordingConnectionExpiryService(
                 recordingSessionRepository,
                 recordingConnectionExpiryTransaction,
+                RecordingConnectionPolicyFixture.DEFAULT,
                 Clock.fixed(
                         NOW,
                         ZoneOffset.UTC
@@ -43,6 +46,7 @@ class RecordingConnectionExpiryServiceTest {
         when(
                 recordingSessionRepository.findActiveIdsDueAt(
                         NOW,
+                        NOW.minus(RecordingConnectionPolicyFixture.GRACE),
                         BATCH_SIZE
                 )
         ).thenReturn(
@@ -70,6 +74,7 @@ class RecordingConnectionExpiryServiceTest {
         when(
                 recordingSessionRepository.findActiveIdsDueAt(
                         NOW,
+                        NOW.minus(RecordingConnectionPolicyFixture.GRACE),
                         BATCH_SIZE
                 )
         ).thenReturn(

@@ -122,4 +122,107 @@ class RecordingAudioStreamTest {
                 .extracting("errorCode")
                 .isEqualTo(RecordingErrorCode.AUDIO_SAVE_FROZEN);
     }
+
+    @Test
+    @DisplayName("확인된 조각 바로 뒤로 되돌리면 다음 예약 위치가 그 뒤 순번과 누적 프레임이 된다")
+    void rewindTo_success() {
+        // given
+        RecordingAudioStream stream = RecordingAudioStream.create(1);
+        stream.reserve(
+                descriptor(
+                        1,
+                        0
+                )
+        );
+        stream.reserve(
+                descriptor(
+                        2,
+                        10
+                )
+        );
+
+        // when
+        stream.rewindTo(
+                1,
+                10
+        );
+
+        // then
+        assertThat(stream.getNextSequence()).isEqualTo(2);
+        assertThat(stream.getTotalFrameCount()).isEqualTo(10);
+        assertThat(
+                catchThrowable(
+                        () -> stream.reserve(
+                                descriptor(
+                                        2,
+                                        10
+                                )
+                        )
+                )
+        ).isNull();
+    }
+
+    @Test
+    @DisplayName("예약한 위치보다 앞으로는 되돌릴 수 있지만 뒤로 건너뛸 수는 없다")
+    void rewindTo_failure_beyondReserved() {
+        // given
+        RecordingAudioStream stream = RecordingAudioStream.create(1);
+        stream.reserve(
+                descriptor(
+                        1,
+                        0
+                )
+        );
+
+        // when
+        Throwable thrown = catchThrowable(
+                () -> stream.rewindTo(
+                        2,
+                        20
+                )
+        );
+
+        // then
+        assertThat(thrown).isInstanceOf(RecordingException.class)
+                .extracting("errorCode")
+                .isEqualTo(RecordingErrorCode.INVALID_AUDIO_CHUNK);
+        assertThat(stream.getNextSequence()).isEqualTo(2);
+    }
+
+    @Test
+    @DisplayName("봉인한 stream은 되돌리지 않는다")
+    void rewindTo_failure_sealed() {
+        // given
+        RecordingAudioStream stream = RecordingAudioStream.create(1);
+        stream.seal(
+                RecordingAudioSealKind.REMOTE,
+                java.time.Instant.parse("2026-10-28T00:00:00Z")
+        );
+
+        // when
+        Throwable thrown = catchThrowable(
+                () -> stream.rewindTo(
+                        0,
+                        0
+                )
+        );
+
+        // then
+        assertThat(thrown).isInstanceOf(RecordingException.class)
+                .extracting("errorCode")
+                .isEqualTo(RecordingErrorCode.AUDIO_SEAL_CONFLICT);
+    }
+
+    private AudioChunkDescriptor descriptor(
+            int sequence,
+            long sampleOffset
+    ) {
+        return new AudioChunkDescriptor(
+                sequence,
+                sampleOffset,
+                10,
+                20,
+                HASH
+        );
+    }
 }

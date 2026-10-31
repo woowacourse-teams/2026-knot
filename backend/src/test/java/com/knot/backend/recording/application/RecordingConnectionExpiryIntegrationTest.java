@@ -1,5 +1,7 @@
 package com.knot.backend.recording.application;
 
+import com.knot.backend.testsupport.RecordingConnectionPolicyFixture;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowable;
 
@@ -45,7 +47,7 @@ class RecordingConnectionExpiryIntegrationTest {
     private static final Instant CREATED_AT = Instant.parse("2026-10-01T00:00:00Z");
     private static final Instant JOINED_AT = Instant.parse("2026-10-01T00:01:00Z");
     private static final String CONTROL_TOKEN = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefA";
-    private static final int DISCONNECTED_SECONDS = 300;
+    private static final int DISCONNECTED_SECONDS = 30 * 60 + 300;
     private static final int TASK_COUNT = 3;
 
     private final RecordingService recordingService;
@@ -102,7 +104,7 @@ class RecordingConnectionExpiryIntegrationTest {
         assertThat(row.status()).isEqualTo("ENDED");
         assertThat(row.endReason()).isEqualTo("CONNECTION_EXPIRED");
         assertThat(row.lastSeenAt()).isEqualTo(lastSeenAt);
-        assertThat(row.endedAt()).isEqualTo(lastSeenAt.plusSeconds(30));
+        assertThat(row.endedAt()).isEqualTo(lastSeenAt);
     }
 
     @Test
@@ -140,7 +142,7 @@ class RecordingConnectionExpiryIntegrationTest {
         RecordingRow row = recordingRow(recording.id());
         assertThat(row.status()).isEqualTo("ENDED");
         assertThat(row.endReason()).isEqualTo("CONNECTION_EXPIRED");
-        assertThat(row.endedAt()).isEqualTo(lastSeenAt.plusSeconds(30));
+        assertThat(row.endedAt()).isEqualTo(lastSeenAt);
     }
 
     @Test
@@ -173,18 +175,18 @@ class RecordingConnectionExpiryIntegrationTest {
         assertThat(alive.status()).isEqualTo(RecordingStatus.RECORDING);
         assertThat(alive.expiresAt()).isEqualTo(
                 alive.lastSeenAt()
-                        .plusSeconds(30)
+                        .plus(RecordingConnectionPolicyFixture.GRACE)
         );
         assertThat(late.status()).isEqualTo(RecordingStatus.ENDED);
         assertThat(late.endReason()).isEqualTo(RecordingEndReason.CONNECTION_EXPIRED);
         assertThat(late.lastSeenAt()).isEqualTo(lastSeenAt);
-        assertThat(late.endedAt()).isEqualTo(lastSeenAt.plusSeconds(30));
+        assertThat(late.endedAt()).isEqualTo(lastSeenAt);
         assertThat(late.expiresAt()).isNull();
         assertThat(recordingRow(recording.id()).lastSeenAt()).isEqualTo(lastSeenAt);
     }
 
     @Test
-    @DisplayName("연결이 끊긴 녹음을 최초 탭이 종료하면 요청 시각이 아니라 만료 시각으로 종료한다")
+    @DisplayName("끊김 유예가 지난 녹음을 녹음 탭이 종료하면 요청 시각이 아니라 마지막 생존 시각으로 끝낸다")
     void end_success_disconnectedEndsAtExpiry() {
         // given
         Fixture fixture = ownerFixture("종료 만료 팀");
@@ -204,7 +206,7 @@ class RecordingConnectionExpiryIntegrationTest {
         );
 
         // then
-        assertThat(result.endedAt()).isEqualTo(lastSeenAt.plusSeconds(30));
+        assertThat(result.endedAt()).isEqualTo(lastSeenAt);
         assertThat(recordingRow(recording.id()).endReason()).isEqualTo("CONNECTION_EXPIRED");
     }
 
@@ -492,7 +494,7 @@ class RecordingConnectionExpiryIntegrationTest {
         );
     }
 
-    // 실제 30초를 기다리지 않도록 녹음의 모든 시각을 같은 만큼 과거로 옮겨 신호가 끊긴 상태를 만든다
+    // 실제 30분을 기다리지 않도록 녹음의 모든 시각을 같은 만큼 과거로 옮겨 끊김 유예가 지난 상태를 만든다
     private void disconnect(long recordingId) {
         jdbcClient.sql("""
                 UPDATE recording_sessions

@@ -106,6 +106,7 @@ class RecordingHeartbeatAcceptanceTest {
                 .andExpect(jsonPath("$.elapsedMillis").isNumber())
                 .andExpect(jsonPath("$.endedAt").isEmpty())
                 .andExpect(jsonPath("$.endReason").isEmpty())
+                .andExpect(jsonPath("$.connectionStatus").value("CONNECTED"))
                 .andReturn()
                 .getResponse()
                 .getContentAsString();
@@ -114,7 +115,7 @@ class RecordingHeartbeatAcceptanceTest {
     }
 
     @Test
-    @DisplayName("마지막 신호 후 30초가 지난 신호는 200과 연결 만료 종료 상태를 반환하고 녹음을 되살리지 않는다")
+    @DisplayName("마지막 생존 뒤 30분이 지난 신호는 200과 마지막 생존 시각으로 끝난 연결 만료 상태를 반환하고 녹음을 되살리지 않는다")
     void heartbeat_success_expiredRecording() throws Exception {
         // given
         long memberId = saveMember("member");
@@ -127,7 +128,11 @@ class RecordingHeartbeatAcceptanceTest {
                 workspaceId,
                 memberId
         );
-        disconnect(recording.id());
+        shiftBack(
+                recording.id(),
+                35
+        );
+        String lastSeenAt = lastSeenAt(recording.id());
 
         // when
         ResultActions result = heartbeat(
@@ -141,9 +146,62 @@ class RecordingHeartbeatAcceptanceTest {
         result.andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("ENDED"))
                 .andExpect(jsonPath("$.endReason").value("CONNECTION_EXPIRED"))
-                .andExpect(jsonPath("$.endedAt").isNotEmpty())
-                .andExpect(jsonPath("$.expiresAt").isEmpty());
+                .andExpect(jsonPath("$.endedAt").value(lastSeenAt))
+                .andExpect(jsonPath("$.lastSeenAt").value(lastSeenAt))
+                .andExpect(jsonPath("$.expiresAt").isEmpty())
+                .andExpect(jsonPath("$.connectionStatus").isEmpty());
         assertThat(recordingStatus(recording.id())).isEqualTo("ENDED");
+    }
+
+    @Test
+    @DisplayName("끊김 유예 안에서 다시 온 신호는 녹음을 이어 가고 만료 예정 시각을 마지막 생존 뒤 30분으로 늘린다")
+    void heartbeat_success_returnsWithinGrace() throws Exception {
+        // given
+        long memberId = saveMember("member");
+        long workspaceId = saveWorkspace("팀");
+        saveWorkspaceMember(
+                workspaceId,
+                memberId
+        );
+        StartedRecording recording = startRecording(
+                workspaceId,
+                memberId
+        );
+        shiftBack(
+                recording.id(),
+                29
+        );
+
+        // when
+        ResultActions result = heartbeat(
+                workspaceId,
+                Long.toString(recording.id()),
+                memberId,
+                recording.tabId()
+        );
+
+        // then
+        String body = result.andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("RECORDING"))
+                .andExpect(jsonPath("$.connectionStatus").value("CONNECTED"))
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        JsonNode json = objectMapper.readTree(body);
+        Instant lastSeen = Instant.parse(
+                json.get("lastSeenAt")
+                        .asText()
+        );
+        assertThat(
+                Instant.parse(
+                        json.get("expiresAt")
+                                .asText()
+                )
+        ).isEqualTo(lastSeen.plusSeconds(1_800));
+        assertThat(
+                json.get("elapsedMillis")
+                        .asLong()
+        ).isGreaterThanOrEqualTo(29 * 60 * 1000L);
     }
 
     @Test
@@ -332,6 +390,15 @@ class RecordingHeartbeatAcceptanceTest {
                 )
                 .andExpect(jsonPath(heartbeatPath + ".responses['409']").doesNotExist())
                 .andExpect(
+                        jsonPath("$.components.schemas.RecordingHeartbeatResponse.properties.connectionStatus.enum")
+                                .value(
+                                        hasItems(
+                                                "CONNECTED",
+                                                "DISCONNECTED"
+                                        )
+                                )
+                )
+                .andExpect(
                         jsonPath("$.components.schemas.RecordingHeartbeatResponse.properties.endReason.enum").value(
                                 hasItems(
                                         "USER_ENDED",
@@ -368,20 +435,38 @@ class RecordingHeartbeatAcceptanceTest {
         );
     }
 
-    // 실제 30초를 기다리지 않도록 녹음의 모든 시각을 같은 만큼 과거로 옮겨 신호가 끊긴 상태를 만든다
-    private void disconnect(long recordingId) {
+    // 실제로 기다리지 않도록 녹음의 모든 시각을 같은 만큼 과거로 옮겨 신호가 끊긴 상태를 만든다
+    private void shiftBack(
+            long recordingId,
+            int minutes
+    ) {
         jdbcClient.sql("""
                 UPDATE recording_sessions
-                SET started_at = started_at - INTERVAL '5 minutes',
-                    current_interval_started_at = current_interval_started_at - INTERVAL '5 minutes',
-                    last_seen_at = last_seen_at - INTERVAL '5 minutes'
+                SET started_at = started_at - make_interval(mins => :minutes),
+                    current_interval_started_at = current_interval_started_at - make_interval(mins => :minutes),
+                    last_seen_at = last_seen_at - make_interval(mins => :minutes)
                 WHERE id = :recordingId
                 """)
+                .param(
+                        "minutes",
+                        minutes
+                )
                 .param(
                         "recordingId",
                         recordingId
                 )
                 .update();
+    }
+
+    private String lastSeenAt(long recordingId) {
+        return jdbcClient.sql("SELECT last_seen_at FROM recording_sessions WHERE id = :recordingId")
+                .param(
+                        "recordingId",
+                        recordingId
+                )
+                .query(Instant.class)
+                .single()
+                .toString();
     }
 
     private String controlBody(UUID tabId) {

@@ -7,6 +7,8 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 public record RecordingConnectionExpiryProperties(
         boolean enabled,
         Duration interval,
-        int batchSize
+        int batchSize,
+        Duration grace,
+        Duration disconnectedAfter
 ) {
 }

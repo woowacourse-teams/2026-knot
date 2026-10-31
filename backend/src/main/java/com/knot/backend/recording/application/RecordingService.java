@@ -19,6 +19,7 @@ import com.knot.backend.recording.domain.model.RecordingAudioMode;
 import com.knot.backend.recording.domain.model.RecordingAudioStream;
 import com.knot.backend.recording.domain.repository.RecordingAudioStreamRepository;
 import com.knot.backend.recording.application.dto.command.RecordingControlCommand;
+import com.knot.backend.recording.application.dto.command.RecordingReconnectCommand;
 import com.knot.backend.recording.application.dto.command.RecordingStartCommand;
 import com.knot.backend.recording.application.dto.result.RecordingCurrentResult;
 import com.knot.backend.recording.application.dto.result.RecordingEndResult;
@@ -28,6 +29,7 @@ import com.knot.backend.recording.application.dto.result.RecordingResumeResult;
 import com.knot.backend.recording.application.dto.result.RecordingStartResult;
 import com.knot.backend.recording.domain.RecordingErrorCode;
 import com.knot.backend.recording.domain.RecordingException;
+import com.knot.backend.recording.domain.model.RecordingConnectionPolicy;
 import com.knot.backend.recording.domain.model.RecordingSession;
 import com.knot.backend.recording.domain.model.TranscriptionWindowShape;
 import com.knot.backend.recording.domain.model.RecordingStatus;
@@ -59,6 +61,8 @@ public class RecordingService {
     private final RecordingAudioCleanupRepository audioCleanup;
     private final RecordingTranscriptionFailure transcriptionFailure;
     private final DocumentGenerationProgressService documentProgress;
+    private final RecordingConnectionPolicy connectionPolicy;
+    private final RecordingAudioChunkTransaction audioChunkTransaction;
 
     @Transactional
     public RecordingStartResult start(
@@ -187,7 +191,10 @@ public class RecordingService {
                         session,
                         now
                 );
-                session.pause(now);
+                session.pause(
+                        now,
+                        connectionPolicy
+                );
             } finally {
                 logAutoEnded(
                         session,
@@ -227,7 +234,10 @@ public class RecordingService {
                         session,
                         now
                 );
-                session.resume(now);
+                session.resume(
+                        now,
+                        connectionPolicy
+                );
             } finally {
                 logAutoEnded(
                         session,
@@ -338,13 +348,10 @@ public class RecordingService {
     ) {
         if (session.isActive()) {
             return Optional.of(
-                    RecordingCurrentResult.of(
+                    RecordingCurrentResult.active(
                             session,
-                            CurrentRecordingStatus.valueOf(
-                                    session.getStatus()
-                                            .name()
-                            ),
-                            measuredAt
+                            measuredAt,
+                            connectionPolicy
                     )
             );
         }
@@ -474,7 +481,10 @@ public class RecordingService {
                 seal.lastSequence(),
                 seal.totalFrameCount()
         );
-        session.end(endedAt);
+        session.end(
+                endedAt,
+                connectionPolicy
+        );
         stream.seal(
                 RecordingAudioSealKind.NORMAL,
                 session.getEndedAt()
@@ -511,7 +521,10 @@ public class RecordingService {
             boolean expired
     ) {
         if (seal == null) {
-            session.end(endedAt);
+            session.end(
+                    endedAt,
+                    connectionPolicy
+            );
             audioSealing.sealEnded(session);
             return;
         }
@@ -558,7 +571,10 @@ public class RecordingService {
             RecordingSession session,
             Instant now
     ) {
-        boolean expired = session.expireIfDue(now);
+        boolean expired = session.expireIfDue(
+                now,
+                connectionPolicy
+        );
         audioSealing.sealEnded(session);
         return expired;
     }
@@ -578,7 +594,10 @@ public class RecordingService {
         );
         Instant now = now();
         RecordingStatus previous = session.getStatus();
-        session.recordHeartbeat(now);
+        session.recordAlive(
+                now,
+                connectionPolicy
+        );
         audioSealing.sealEnded(session);
         logAutoEnded(
                 session,
@@ -586,8 +605,75 @@ public class RecordingService {
         );
         return RecordingHeartbeatResult.of(
                 recordingSessionRepository.save(session),
-                now
+                now,
+                connectionPolicy
         );
+    }
+
+    @Transactional
+    public RecordingHeartbeatResult reconnect(
+            long workspaceId,
+            long memberId,
+            long recordingId,
+            RecordingReconnectCommand command
+    ) {
+        RecordingLog.Scope trace = RecordingLog.begin(
+                "recording.reconnect",
+                workspaceId,
+                recordingId,
+                null,
+                null
+        );
+        return trace.call(() -> {
+            RecordingSession session = recordingAccess.loadOwnedForUpdate(
+                    workspaceId,
+                    memberId,
+                    recordingId
+            );
+            Instant now = now();
+            RecordingStatus previous = session.getStatus();
+            boolean handedOver = session.reconnect(
+                    command.previousTabId(),
+                    recordingControlTokenHasher.hash(command.previousControlToken()),
+                    command.tabId(),
+                    recordingControlTokenHasher.hash(command.controlToken()),
+                    now,
+                    connectionPolicy
+            );
+            audioSealing.sealEnded(session);
+            logAutoEnded(
+                    session,
+                    previous
+            );
+            RecordingSession saved = recordingSessionRepository.save(session);
+            if (handedOver && saved.getAudioMode() == RecordingAudioMode.PCM16_CHUNKS_V1) {
+                audioChunkTransaction.rewindToVerifiedPrefix(recordingId);
+            }
+            trace.outcome(
+                    reconnectOutcome(
+                            saved,
+                            handedOver
+                    )
+            );
+            return RecordingHeartbeatResult.of(
+                    saved,
+                    now,
+                    connectionPolicy
+            );
+        });
+    }
+
+    private String reconnectOutcome(
+            RecordingSession session,
+            boolean handedOver
+    ) {
+        if (handedOver) {
+            return "changed";
+        }
+        if (!session.isActive()) {
+            return "ignored";
+        }
+        return "replayed";
     }
 
     private RecordingStartResult replay(
@@ -603,7 +689,10 @@ public class RecordingService {
                 command.audioMode()
         );
         RecordingStatus previous = session.getStatus();
-        if (session.expireIfDue(now())) {
+        if (session.expireIfDue(
+                now(),
+                connectionPolicy
+        )) {
             audioSealing.sealEnded(session);
             recordingSessionRepository.save(session);
             logAutoEnded(
@@ -621,7 +710,10 @@ public class RecordingService {
         Instant now = now();
         for (RecordingSession active : recordingSessionRepository.findAllActiveByMemberIdForUpdate(memberId)) {
             RecordingStatus previous = active.getStatus();
-            active.releaseForNewRecording(now);
+            active.releaseForNewRecording(
+                    now,
+                    connectionPolicy
+            );
             audioSealing.sealEnded(active);
             recordingSessionRepository.save(active);
             logAutoEnded(

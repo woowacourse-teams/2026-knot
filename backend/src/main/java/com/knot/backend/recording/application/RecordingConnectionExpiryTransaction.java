@@ -1,5 +1,6 @@
 package com.knot.backend.recording.application;
 
+import com.knot.backend.recording.domain.model.RecordingConnectionPolicy;
 import com.knot.backend.recording.domain.model.RecordingSession;
 import com.knot.backend.recording.domain.repository.RecordingSessionRepository;
 import java.time.Clock;
@@ -15,6 +16,7 @@ public class RecordingConnectionExpiryTransaction {
     private final RecordingSessionRepository recordingSessionRepository;
     private final Clock clock;
     private final RecordingAudioSealing audioSealing;
+    private final RecordingConnectionPolicy connectionPolicy;
     private final com.knot.backend.workspace.domain.repository.WorkspaceRepository workspaces;
 
     @Transactional
@@ -31,7 +33,8 @@ public class RecordingConnectionExpiryTransaction {
         RecordingSession session = found.orElseThrow();
         if (!session.expireIfDue(
                 clock.instant()
-                        .truncatedTo(ChronoUnit.MICROS)
+                        .truncatedTo(ChronoUnit.MICROS),
+                connectionPolicy
         )) {
             return false;
         }
