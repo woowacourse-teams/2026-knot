@@ -1,6 +1,4 @@
-import { GetDocumentsResponseDto } from "@api/dto/document";
 import { GetRecordingResponseDto } from "@api/dto/recording";
-import { documentsResponse } from "@api/mock/responses/document";
 import { documentGenerationJobRetryResponse } from "@api/mock/responses/documentGenerationJob";
 import {
   recordingAudioSaveResponse,
@@ -12,10 +10,6 @@ import type {
   RecordingDocumentGenerationResponse,
 } from "@api/mock/types/recording";
 import { mockServer } from "@api/mock/server";
-import {
-  DOCUMENT_FROM_PARAM,
-  DOCUMENT_FROM_RECORDING,
-} from "@constants/document";
 import { TOAST_MESSAGES } from "@constants/toastMessages";
 import { ThemeProvider } from "@emotion/react";
 import { ToastProvider } from "@provider/context/toastContext";
@@ -60,7 +54,6 @@ const RECORDING_REQUEST =
   "*/api/v1/workspaces/:workspaceId/recordings/:recordingId";
 const RETRY_REQUEST =
   "*/api/v1/workspaces/:workspaceId/document-generation-jobs/:jobId/retry";
-const DOCUMENTS_REQUEST = "*/api/v1/workspaces/:workspaceId/documents";
 const AUDIO_SAVE_REQUEST = `${RECORDING_REQUEST}/audio-save`;
 const AUDIO_SAVE_RETRY_REQUEST = `${AUDIO_SAVE_REQUEST}/retry`;
 const TRANSCRIPTION_RETRY_REQUEST = `${RECORDING_REQUEST}/transcription/retry`;
@@ -98,22 +91,12 @@ const RECORDING_KEPT_NOTICE = "녹음은 보관해 두었어요.";
 const AUDIO_SAVE_CHECK_FAILED_NOTICE =
   "녹음 저장 상태를 확인하지 못했어요. 잠시 후 다시 시도해 주세요.";
 
-// 정리가 끝난 mock 녹음에서 나온 문서. 서버가 준 순서 그대로라 첫 문서가 정리 뒤에 보내는 문서예요
-const completedRecordingDocumentItems = documentsResponse.items.filter(
-  ({ recordingSessionId }) =>
-    recordingSessionId === completedRecording.recordingId,
-);
-const [firstCompletedRecordingDocument] = new GetDocumentsResponseDto({
-  ...documentsResponse,
-  items: completedRecordingDocumentItems,
-}).items;
-
-const getDocumentPath = (documentId: number) =>
+const getRecordingDocumentPath = (recordingId: number) =>
   getRouterPath({
-    routeKey: "DOCUMENT",
+    routeKey: "RECORDING_DOCUMENT",
     params: {
       workspaceId: String(WORKSPACE_ID),
-      documentId: String(documentId),
+      recordingId: String(recordingId),
     },
   });
 
@@ -133,7 +116,7 @@ const renderRecordingDocuments = (recordingId: number | string) => {
       mutations: { retry: false },
     },
   });
-  // 이동을 확인할 수 있게 홈 · 녹음 · 문서 · 로그인 경로에 표시만 하는 화면을 둬요
+  // 이동을 확인할 수 있게 홈 · 녹음 · 녹음 문서 · 로그인 경로에 표시만 하는 화면을 둬요
   const router = createMemoryRouter(
     [
       {
@@ -149,7 +132,10 @@ const renderRecordingDocuments = (recordingId: number | string) => {
           },
           { path: PATH_ROUTE.WORKSPACE_HOME, element: <p>워크스페이스 홈</p> },
           { path: PATH_ROUTE.RECORDING, element: <p>녹음 화면</p> },
-          { path: PATH_ROUTE.DOCUMENT, element: <p>문서 화면</p> },
+          {
+            path: PATH_ROUTE.RECORDING_DOCUMENT,
+            element: <p>녹음 문서 화면</p>,
+          },
           { path: PATH_ROUTE.LOGIN, element: <p>로그인 화면</p> },
         ],
       },
@@ -278,7 +264,7 @@ describe("RecordingDocuments", () => {
     expect(await screen.findByText("워크스페이스 홈")).toBeInTheDocument();
   });
 
-  it("문서가 일부만 만들어진 실패도 문서로 보내지 않고, 실패했다고 알리며 다시 시도 버튼을 보여준다", async () => {
+  it("문서가 일부만 만들어진 실패도 녹음 문서로 보내지 않고, 실패했다고 알리며 다시 시도 버튼을 보여준다", async () => {
     mockServer.use(
       http.get(RECORDING_REQUEST, () =>
         HttpResponse.json({
@@ -298,7 +284,7 @@ describe("RecordingDocuments", () => {
     expect(
       screen.getByRole("button", { name: "다시 시도" }),
     ).toBeInTheDocument();
-    expect(screen.queryByText("문서 화면")).not.toBeInTheDocument();
+    expect(screen.queryByText("녹음 문서 화면")).not.toBeInTheDocument();
   });
 
   it.each([
@@ -478,99 +464,44 @@ describe("RecordingDocuments", () => {
     ).toBeInTheDocument();
   });
 
-  it("문서 정리가 끝났으면 그 녹음의 첫 문서로 보내고, 뒤로 가도 정리 화면으로 돌아오지 않게 지금 기록을 바꾼다", async () => {
+  it("문서 정리가 끝났으면 그 녹음의 녹음 문서로 보내고, 뒤로 가도 정리 화면으로 돌아오지 않게 지금 기록을 바꾼다", async () => {
     const { router } = renderRecordingDocuments(completedRecording.recordingId);
 
-    expect(await screen.findByText("문서 화면")).toBeInTheDocument();
+    expect(await screen.findByText("녹음 문서 화면")).toBeInTheDocument();
     expect(router.state.location.pathname).toBe(
-      getDocumentPath(firstCompletedRecordingDocument.id),
+      getRecordingDocumentPath(completedRecording.recordingId),
     );
     expect(router.state.historyAction).toBe("REPLACE");
   });
 
-  it("첫 문서로 보낼 때 정리 화면에서 넘어왔다는 쿼리를 붙여, 문서 보기가 같은 녹음의 문서를 넘기는 스테퍼를 보여주게 한다", async () => {
-    const { router } = renderRecordingDocuments(completedRecording.recordingId);
-
-    await screen.findByText("문서 화면");
-
-    expect(
-      new URLSearchParams(router.state.location.search).get(
-        DOCUMENT_FROM_PARAM,
-      ),
-    ).toBe(DOCUMENT_FROM_RECORDING);
-  });
-
-  it("정리 중에는 문서 목록을 조회하지 않고, 정리가 끝나면 조회해 첫 문서로 보낸다", async () => {
-    let recordingRequestCount = 0;
-    let documentsRequestCount = 0;
+  it("정리 중에 머물다가 정리가 끝나면 그 녹음의 녹음 문서로 보낸다", async () => {
+    let requestCount = 0;
     mockServer.use(
       http.get(RECORDING_REQUEST, () => {
-        recordingRequestCount += 1;
+        requestCount += 1;
         // 두 번째 조회부터는 정리가 끝났다는 결과를 돌려줘요
         return HttpResponse.json(
-          recordingRequestCount === 1
+          requestCount === 1
             ? organizingRecording.detail
             : completedRecording.detail,
         );
       }),
-      http.get(DOCUMENTS_REQUEST, () => {
-        documentsRequestCount += 1;
-        return HttpResponse.json({
-          ...documentsResponse,
-          items: completedRecordingDocumentItems,
-        });
-      }),
     );
     vi.useFakeTimers({ shouldAdvanceTime: true });
-    const { router } = renderRecordingDocuments(completedRecording.recordingId);
+    const { router } = renderRecordingDocuments(
+      organizingRecording.recordingId,
+    );
 
     await screen.findByRole("heading", { level: 2, name: ORGANIZING_TITLE });
-    expect(documentsRequestCount).toBe(0);
 
     await act(async () => {
       await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS);
     });
 
-    expect(await screen.findByText("문서 화면")).toBeInTheDocument();
+    expect(await screen.findByText("녹음 문서 화면")).toBeInTheDocument();
     expect(router.state.location.pathname).toBe(
-      getDocumentPath(firstCompletedRecordingDocument.id),
+      getRecordingDocumentPath(organizingRecording.recordingId),
     );
-    expect(documentsRequestCount).toBe(1);
-  });
-
-  it.each([
-    {
-      reason: "그 녹음에서 나온 문서가 없으면",
-      documentsResponder: () =>
-        HttpResponse.json({ ...documentsResponse, topics: [], items: [] }),
-    },
-    {
-      reason: "문서 목록을 불러오지 못하면",
-      documentsResponder: () => new HttpResponse(null, { status: 500 }),
-    },
-  ])(
-    "문서 정리가 끝났는데 $reason 지금 기록을 바꿔 워크스페이스 홈으로 보낸다",
-    async ({ documentsResponder }) => {
-      mockServer.use(http.get(DOCUMENTS_REQUEST, documentsResponder));
-      const { router } = renderRecordingDocuments(
-        completedRecording.recordingId,
-      );
-
-      expect(await screen.findByText("워크스페이스 홈")).toBeInTheDocument();
-      expect(router.state.historyAction).toBe("REPLACE");
-    },
-  );
-
-  it("문서 정리가 끝난 뒤 문서 목록 조회에서 로그인이 풀렸으면(401) 로그인 화면으로 보낸다", async () => {
-    mockServer.use(
-      http.get(
-        DOCUMENTS_REQUEST,
-        () => new HttpResponse(null, { status: 401 }),
-      ),
-    );
-    renderRecordingDocuments(completedRecording.recordingId);
-
-    expect(await screen.findByText("로그인 화면")).toBeInTheDocument();
   });
 
   it.each(["RECORDING", "PAUSED"] as const)(
@@ -816,15 +747,14 @@ describe("RecordingDocuments", () => {
         screen.findByRole("heading", { level: 2, name: ORGANIZING_TITLE }),
     },
     {
-      condition: "이미 정리가 끝났으면 그 녹음의 문서로 보낸다",
+      condition: "이미 정리가 끝났으면 그 녹음의 녹음 문서로 보낸다",
       latestRecording: completedRecording,
-      expectedScreen: () => screen.findByText("문서 화면"),
+      expectedScreen: () => screen.findByText("녹음 문서 화면"),
     },
   ])(
     "다시 시도가 409로 거절되면 녹음 상태를 다시 조회하고, 서버에서 $condition",
     async ({ latestRecording, expectedScreen }) => {
-      // 문서 mock이 있는 녹음(정리가 끝난 mock 녹음과 같은 id)에서 다시 시도가 거절된 상황이에요
-      const { recordingId } = completedRecording;
+      const { recordingId } = failedRecording;
       let isRetryRejected = false;
       mockServer.use(
         http.post(RETRY_REQUEST, () => {
@@ -2129,7 +2059,11 @@ describe("RecordingDocuments의 정리 결과 기록", () => {
   );
 
   it.each([
-    { reason: "정리가 끝난", recording: completedRecording, text: "문서 화면" },
+    {
+      reason: "정리가 끝난",
+      recording: completedRecording,
+      text: "녹음 문서 화면",
+    },
     {
       reason: "문서 만들기에 실패한",
       recording: failedRecording,
