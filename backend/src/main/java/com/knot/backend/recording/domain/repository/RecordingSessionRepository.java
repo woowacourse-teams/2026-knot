@@ -26,6 +26,7 @@ public interface RecordingSessionRepository {
 
     List<Long> findActiveIdsDueAt(
             Instant now,
+            Instant expiredLastSeenThreshold,
             int limit
     );
 

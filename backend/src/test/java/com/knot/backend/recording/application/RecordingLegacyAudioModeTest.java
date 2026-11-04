@@ -1,5 +1,7 @@
 package com.knot.backend.recording.application;
 
+import com.knot.backend.testsupport.RecordingConnectionPolicyFixture;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowable;
 import static org.mockito.Mockito.mock;
@@ -134,7 +136,10 @@ class RecordingLegacyAudioModeTest {
                 startedAt,
                 RecordingAudioMode.PCM16_CHUNKS_V1
         );
-        session.end(startedAt.plusSeconds(10));
+        session.end(
+                startedAt.plusSeconds(10),
+                RecordingConnectionPolicyFixture.DEFAULT
+        );
         return session;
     }
 }

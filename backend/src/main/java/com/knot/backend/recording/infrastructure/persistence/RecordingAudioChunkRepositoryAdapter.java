@@ -32,4 +32,10 @@ public class RecordingAudioChunkRepositoryAdapter implements RecordingAudioChunk
     public List<RecordingAudioChunk> findAllByRecordingIdOrderBySequence(long recordingId) {
         return repository.findAllByRecordingIdOrderBySequence(recordingId);
     }
+
+    @Override
+    public void deleteAll(List<RecordingAudioChunk> values) {
+        repository.deleteAll(values);
+        repository.flush();
+    }
 }

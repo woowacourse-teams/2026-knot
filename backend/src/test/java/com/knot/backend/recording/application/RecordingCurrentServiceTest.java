@@ -1,5 +1,7 @@
 package com.knot.backend.recording.application;
 
+import com.knot.backend.testsupport.RecordingConnectionPolicyFixture;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowable;
 import static org.mockito.ArgumentMatchers.anyLong;
@@ -17,6 +19,7 @@ import static org.mockito.Mockito.when;
 
 import com.knot.backend.member.domain.MemberRepository;
 import com.knot.backend.recording.application.dto.result.RecordingCurrentResult;
+import com.knot.backend.recording.domain.model.RecordingConnectionStatus;
 import com.knot.backend.recording.domain.model.RecordingSession;
 import com.knot.backend.recording.domain.repository.RecordingSessionRepository;
 import com.knot.backend.recording.application.dto.result.CurrentRecordingStatus;
@@ -100,12 +103,14 @@ class RecordingCurrentServiceTest {
                         uploads,
                         transcriptionProperties
                 ),
-                documentProgress
+                documentProgress,
+                RecordingConnectionPolicyFixture.DEFAULT,
+                mock(RecordingAudioChunkTransaction.class)
         );
     }
 
     @Test
-    @DisplayName("진행 중인 본인 녹음은 서버 시각까지의 누적 시간과 함께 반환한다")
+    @DisplayName("진행 중인 본인 녹음은 서버 시각까지의 누적 시간과 녹음 탭 연결 상태를 함께 반환한다")
     void findCurrent_success_recording() {
         // given
         prepareAccess();
@@ -130,9 +135,43 @@ class RecordingCurrentServiceTest {
                         RECORDING_ID,
                         CurrentRecordingStatus.RECORDING,
                         STARTED_AT,
-                        600_123L
+                        600_123L,
+                        false,
+                        List.of(),
+                        RecordingConnectionStatus.DISCONNECTED
                 )
         );
+    }
+
+    @Test
+    @DisplayName("녹음 탭의 마지막 생존 시각 뒤 30초가 지나지 않았으면 연결 상태는 CONNECTED다")
+    void findCurrent_success_connectedWithinThreshold() {
+        // given
+        prepareAccess();
+        RecordingSession session = recordingSession();
+        keepAlive(
+                session,
+                NOW
+        );
+        when(
+                recordingSessionRepository.findCurrentByWorkspaceIdAndMemberId(
+                        WORKSPACE_ID,
+                        MEMBER_ID,
+                        NOW
+                )
+        ).thenReturn(Optional.of(session));
+
+        // when
+        Optional<RecordingCurrentResult> result = service.findCurrent(
+                WORKSPACE_ID,
+                MEMBER_ID
+        );
+
+        // then
+        assertThat(result).hasValueSatisfying(current -> {
+            assertThat(current.connectionStatus()).isEqualTo(RecordingConnectionStatus.CONNECTED);
+            assertThat(session.getLastSeenAt()).isBefore(NOW);
+        });
     }
 
     @Test
@@ -141,7 +180,10 @@ class RecordingCurrentServiceTest {
         // given
         prepareAccess();
         RecordingSession session = recordingSession();
-        session.pause(STARTED_AT.plusSeconds(20));
+        session.pause(
+                STARTED_AT.plusSeconds(20),
+                RecordingConnectionPolicyFixture.DEFAULT
+        );
         when(
                 recordingSessionRepository.findCurrentByWorkspaceIdAndMemberId(
                         WORKSPACE_ID,
@@ -173,7 +215,10 @@ class RecordingCurrentServiceTest {
         when(clock.instant()).thenAnswer(invocation -> currentTime.get());
         Instant resumedAt = NOW.plusMillis(2);
         RecordingSession session = recordingSession();
-        session.pause(STARTED_AT.plusSeconds(20));
+        session.pause(
+                STARTED_AT.plusSeconds(20),
+                RecordingConnectionPolicyFixture.DEFAULT
+        );
         keepAlive(
                 session,
                 NOW
@@ -185,7 +230,10 @@ class RecordingCurrentServiceTest {
                         NOW
                 )
         ).thenAnswer(invocation -> {
-            session.resume(resumedAt);
+            session.resume(
+                    resumedAt,
+                    RecordingConnectionPolicyFixture.DEFAULT
+            );
             currentTime.set(resumedAt.plusMillis(1));
             return Optional.of(session);
         });
@@ -211,7 +259,9 @@ class RecordingCurrentServiceTest {
                         uploads,
                         transcriptionProperties
                 ),
-                documentProgress
+                documentProgress,
+                RecordingConnectionPolicyFixture.DEFAULT,
+                mock(RecordingAudioChunkTransaction.class)
         );
 
         // when
@@ -670,7 +720,10 @@ class RecordingCurrentServiceTest {
     private void prepareEndedRecording() {
         prepareAccess();
         RecordingSession session = recordingSession();
-        session.end(STARTED_AT.plusSeconds(20));
+        session.end(
+                STARTED_AT.plusSeconds(20),
+                RecordingConnectionPolicyFixture.DEFAULT
+        );
         when(
                 recordingSessionRepository.findCurrentByWorkspaceIdAndMemberId(
                         WORKSPACE_ID,
@@ -727,7 +780,10 @@ class RecordingCurrentServiceTest {
     ) {
         for (Instant at = session.getLastSeenAt()
                 .plusSeconds(10); at.isBefore(until); at = at.plusSeconds(10)) {
-            session.recordHeartbeat(at);
+            session.recordAlive(
+                    at,
+                    RecordingConnectionPolicyFixture.DEFAULT
+            );
         }
     }
 }

@@ -1,5 +1,7 @@
 package com.knot.backend.recording.application;
 
+import com.knot.backend.testsupport.RecordingConnectionPolicyFixture;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowable;
 import static org.mockito.ArgumentMatchers.any;
@@ -70,6 +72,7 @@ class RecordingAudioChunkTransactionTest {
                 sessions,
                 streams,
                 chunks,
+                RecordingConnectionPolicyFixture.DEFAULT,
                 Clock.fixed(
                         NOW,
                         ZoneOffset.UTC
@@ -88,7 +91,7 @@ class RecordingAudioChunkTransactionTest {
     }
 
     @Test
-    @DisplayName("새 조각 예약은 고정 키와 다음 위치를 저장하고 heartbeat를 변경하지 않는다")
+    @DisplayName("새 조각 예약은 고정 키와 다음 위치를 저장하고 마지막 생존 시각을 접수 시각으로 갱신한다")
     void reserve_success_newChunk() {
         // given
         controlled();
@@ -98,7 +101,6 @@ class RecordingAudioChunkTransactionTest {
                         1
                 )
         ).thenReturn(Optional.empty());
-        Instant lastSeen = session.getLastSeenAt();
 
         // when
         RecordingAudioChunkReservation result = transaction.reserve(
@@ -114,7 +116,8 @@ class RecordingAudioChunkTransactionTest {
         assertThat(result.storageKey()).isEqualTo("recordings/3/chunks/1");
         assertThat(result.expiresAt()).isEqualTo(EXPIRES);
         assertThat(stream.getNextSequence()).isEqualTo(2);
-        assertThat(session.getLastSeenAt()).isEqualTo(lastSeen);
+        assertThat(session.getLastSeenAt()).isEqualTo(NOW);
+        verify(sessions).save(session);
         verify(chunks).save(any(RecordingAudioChunk.class));
         verify(streams).save(stream);
     }
@@ -163,7 +166,8 @@ class RecordingAudioChunkTransactionTest {
                 UUID.randomUUID(),
                 CONTROL.tabId(),
                 "0".repeat(64),
-                NOW.minusSeconds(40),
+                NOW.minus(RecordingConnectionPolicyFixture.GRACE)
+                        .minusSeconds(10),
                 RecordingAudioMode.PCM16_CHUNKS_V1
         );
         controlled();
@@ -188,7 +192,8 @@ class RecordingAudioChunkTransactionTest {
         // then
         assertThat(thrown).isInstanceOf(RecordingAudioCaptureExpiredException.class);
         assertThat(session.getStatus()).isEqualTo(RecordingStatus.ENDED);
-        assertThat(session.getEndedAt()).isEqualTo(NOW.minusSeconds(10));
+        assertThat(session.getEndedAt()).isEqualTo(session.getStartedAt());
+        assertThat(session.getLastSeenAt()).isEqualTo(session.getStartedAt());
         verify(sessions).save(session);
         verify(
                 chunks,
@@ -350,7 +355,84 @@ class RecordingAudioChunkTransactionTest {
         assertThat(result.verifiedThroughFrame()).isEqualTo(80000);
         assertThat(result.verifiedAudioMillis()).isEqualTo(5000);
         assertThat(result.confirmedAt()).isEqualTo(NOW);
+        assertThat(session.getLastSeenAt()).isEqualTo(NOW);
         verify(chunks).save(chunk);
+    }
+
+    @Test
+    @DisplayName("이어 받기 때 확인된 조각이 이어진 곳 뒤의 예약을 지우고 다음 예약 위치를 그 바로 뒤로 되돌린다")
+    void rewindToVerifiedPrefix_success_dropsUnverifiedTail() {
+        // given
+        RecordingAudioChunk first = reserved();
+        first.verify(
+                stored(),
+                NOW
+        );
+        RecordingAudioChunk second = chunkAt(
+                2,
+                80000
+        );
+        RecordingAudioChunk third = chunkAt(
+                3,
+                160000
+        );
+        third.verify(
+                stored(),
+                NOW
+        );
+        stream.reserve(COMMAND.descriptor());
+        stream.reserve(
+                descriptorAt(
+                        2,
+                        80000
+                )
+        );
+        stream.reserve(
+                descriptorAt(
+                        3,
+                        160000
+                )
+        );
+        when(streams.findByRecordingIdForUpdate(3)).thenReturn(Optional.of(stream));
+        when(chunks.findAllByRecordingIdOrderBySequence(3)).thenReturn(
+                List.of(
+                        first,
+                        second,
+                        third
+                )
+        );
+
+        // when
+        transaction.rewindToVerifiedPrefix(3);
+
+        // then
+        verify(chunks).deleteAll(
+                List.of(
+                        second,
+                        third
+                )
+        );
+        assertThat(stream.getNextSequence()).isEqualTo(2);
+        assertThat(stream.getTotalFrameCount()).isEqualTo(80000);
+        verify(streams).save(stream);
+    }
+
+    @Test
+    @DisplayName("확인된 조각이 없으면 이어 받기 때 모든 예약을 지우고 첫 순번부터 다시 예약한다")
+    void rewindToVerifiedPrefix_success_noVerifiedChunk() {
+        // given
+        RecordingAudioChunk first = reserved();
+        stream.reserve(COMMAND.descriptor());
+        when(streams.findByRecordingIdForUpdate(3)).thenReturn(Optional.of(stream));
+        when(chunks.findAllByRecordingIdOrderBySequence(3)).thenReturn(List.of(first));
+
+        // when
+        transaction.rewindToVerifiedPrefix(3);
+
+        // then
+        verify(chunks).deleteAll(List.of(first));
+        assertThat(stream.getNextSequence()).isEqualTo(1);
+        assertThat(stream.getTotalFrameCount()).isZero();
     }
 
     @Test
@@ -363,7 +445,10 @@ class RecordingAudioChunkTransactionTest {
                 stored(),
                 NOW
         );
-        session.end(NOW);
+        session.end(
+                NOW,
+                RecordingConnectionPolicyFixture.DEFAULT
+        );
         stream.freeze();
         when(
                 chunks.findByRecordingIdAndSequence(
@@ -512,6 +597,34 @@ class RecordingAudioChunkTransactionTest {
                 COMMAND.descriptor(),
                 "recordings/3/chunks/1",
                 EXPIRES
+        );
+    }
+
+    private RecordingAudioChunk chunkAt(
+            int sequence,
+            long sampleOffset
+    ) {
+        return RecordingAudioChunk.reserve(
+                3,
+                descriptorAt(
+                        sequence,
+                        sampleOffset
+                ),
+                "recordings/3/chunks/" + sequence,
+                EXPIRES
+        );
+    }
+
+    private AudioChunkDescriptor descriptorAt(
+            int sequence,
+            long sampleOffset
+    ) {
+        return new AudioChunkDescriptor(
+                sequence,
+                sampleOffset,
+                80000,
+                160000,
+                HASH
         );
     }
 

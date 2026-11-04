@@ -80,6 +80,24 @@ public class RecordingAudioStream {
         nextSequence++;
     }
 
+    /**
+     * 이어 받기 때 확인된 조각 바로 뒤로 다음 예약 위치를 되돌린다. 확인되지 않은 예약은 호출한 쪽이 먼저 지운다.
+     */
+    public void rewindTo(
+            int verifiedThroughSequence,
+            long verifiedThroughFrame
+    ) {
+        if (isSealed()) {
+            throw new RecordingException(RecordingErrorCode.AUDIO_SEAL_CONFLICT);
+        }
+        if (verifiedThroughSequence < 0 || verifiedThroughSequence > getLastSequence() || verifiedThroughFrame < 0
+                || verifiedThroughFrame > totalFrameCount) {
+            throw new RecordingException(RecordingErrorCode.INVALID_AUDIO_CHUNK);
+        }
+        nextSequence = verifiedThroughSequence + 1;
+        totalFrameCount = verifiedThroughFrame;
+    }
+
     public boolean isSealed() {
         return sealedAt != null;
     }

@@ -1,5 +1,7 @@
 package com.knot.backend.recording.infrastructure.persistence;
 
+import com.knot.backend.testsupport.RecordingConnectionPolicyFixture;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowable;
 
@@ -120,7 +122,10 @@ class RecordingSessionRepositoryIntegrationTest {
                 memberId,
                 UUID.fromString("11111111-1111-1111-1111-111111111111")
         );
-        endedRecordingSession.end(Instant.parse("2026-10-01T00:00:10Z"));
+        endedRecordingSession.end(
+                Instant.parse("2026-10-01T00:00:10Z"),
+                RecordingConnectionPolicyFixture.DEFAULT
+        );
         saveAndFlush(endedRecordingSession);
         RecordingSession newRecordingSession = startRecording(
                 workspaceId,
@@ -204,7 +209,10 @@ class RecordingSessionRepositoryIntegrationTest {
                 memberId,
                 UUID.randomUUID()
         );
-        first.pause(STARTED_AT.plusSeconds(10));
+        first.pause(
+                STARTED_AT.plusSeconds(10),
+                RecordingConnectionPolicyFixture.DEFAULT
+        );
         saveAndFlush(first);
         RecordingSession second = startRecording(
                 secondWorkspaceId,
@@ -236,7 +244,10 @@ class RecordingSessionRepositoryIntegrationTest {
                 memberId,
                 requestId
         );
-        first.end(STARTED_AT.plusSeconds(10));
+        first.end(
+                STARTED_AT.plusSeconds(10),
+                RecordingConnectionPolicyFixture.DEFAULT
+        );
         saveAndFlush(first);
         RecordingSession second = startRecording(
                 workspaceId,
@@ -383,14 +394,20 @@ class RecordingSessionRepositoryIntegrationTest {
                 secondMemberId,
                 UUID.randomUUID()
         );
-        paused.pause(STARTED_AT.plusSeconds(10));
+        paused.pause(
+                STARTED_AT.plusSeconds(10),
+                RecordingConnectionPolicyFixture.DEFAULT
+        );
         saveAndFlush(paused);
         RecordingSession ended = startRecording(
                 workspaceId,
                 endedMemberId,
                 UUID.randomUUID()
         );
-        ended.end(STARTED_AT.plusSeconds(10));
+        ended.end(
+                STARTED_AT.plusSeconds(10),
+                RecordingConnectionPolicyFixture.DEFAULT
+        );
         saveAndFlush(ended);
         saveAndFlush(
                 startRecording(
@@ -427,14 +444,20 @@ class RecordingSessionRepositoryIntegrationTest {
                 memberId,
                 UUID.randomUUID()
         );
-        ended.end(STARTED_AT.plusSeconds(10));
+        ended.end(
+                STARTED_AT.plusSeconds(10),
+                RecordingConnectionPolicyFixture.DEFAULT
+        );
         saveAndFlush(ended);
         RecordingSession paused = startRecording(
                 workspaceId,
                 memberId,
                 UUID.randomUUID()
         );
-        paused.pause(STARTED_AT.plusSeconds(20));
+        paused.pause(
+                STARTED_AT.plusSeconds(20),
+                RecordingConnectionPolicyFixture.DEFAULT
+        );
         saveAndFlush(paused);
         saveAndFlush(
                 startRecording(
@@ -535,7 +558,10 @@ class RecordingSessionRepositoryIntegrationTest {
                 CONTROL_TOKEN_HASH,
                 STARTED_AT.plusSeconds(100)
         );
-        latest.end(STARTED_AT.plusSeconds(110));
+        latest.end(
+                STARTED_AT.plusSeconds(110),
+                RecordingConnectionPolicyFixture.DEFAULT
+        );
         saveAndFlush(latest);
         RecordingSession earlier = startRecording(
                 workspaceId,
@@ -610,7 +636,10 @@ class RecordingSessionRepositoryIntegrationTest {
                 memberId,
                 UUID.randomUUID()
         );
-        session.end(STARTED_AT.plusSeconds(10));
+        session.end(
+                STARTED_AT.plusSeconds(10),
+                RecordingConnectionPolicyFixture.DEFAULT
+        );
         return saveAndFlush(session);
     }
 

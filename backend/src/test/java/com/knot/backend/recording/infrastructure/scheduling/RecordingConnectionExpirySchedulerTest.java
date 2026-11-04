@@ -24,7 +24,9 @@ class RecordingConnectionExpirySchedulerTest {
                 new RecordingConnectionExpiryProperties(
                         true,
                         Duration.ofSeconds(1),
-                        100
+                        100,
+                        Duration.ofMinutes(30),
+                        Duration.ofSeconds(30)
                 )
         );
 
@@ -47,7 +49,9 @@ class RecordingConnectionExpirySchedulerTest {
                 new RecordingConnectionExpiryProperties(
                         true,
                         Duration.ofSeconds(1),
-                        100
+                        100,
+                        Duration.ofMinutes(30),
+                        Duration.ofSeconds(30)
                 )
         );
         try (LogCapture logs = new LogCapture(RecordingConnectionExpiryScheduler.class)) {

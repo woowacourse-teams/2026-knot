@@ -362,6 +362,88 @@ class RecordingAudioChunkAcceptanceTest {
     }
 
     @Test
+    @DisplayName("생존 신호 없이 조각 예약과 완료만 와도 마지막 생존 시각이 늘어 녹음이 끝나지 않는다")
+    void reserveAndComplete_success_extendLastSeen() throws Exception {
+        // given
+        Fixture fixture = startedRecording();
+        jdbcClient.sql("""
+                UPDATE recording_sessions
+                SET started_at = started_at - INTERVAL '29 minutes',
+                    current_interval_started_at = current_interval_started_at - INTERVAL '29 minutes',
+                    last_seen_at = last_seen_at - INTERVAL '29 minutes'
+                WHERE id = :id
+                """)
+                .param(
+                        "id",
+                        fixture.recordingId()
+                )
+                .update();
+        Instant staleSeen = lastSeenInstant(fixture);
+
+        // when
+        ResultActions reserved = reserve(
+                fixture,
+                body(
+                        1,
+                        0
+                )
+        );
+        Instant seenAfterReserve = lastSeenInstant(fixture);
+        ResultActions completed = complete(
+                fixture,
+                1
+        );
+
+        // then
+        reserved.andExpect(status().isCreated());
+        completed.andExpect(status().isOk());
+        assertThat(seenAfterReserve).isAfter(staleSeen.plusSeconds(28 * 60));
+        assertThat(lastSeenInstant(fixture)).isAfterOrEqualTo(seenAfterReserve);
+        assertThat(sessionStatus(fixture)).isEqualTo("RECORDING");
+    }
+
+    @Test
+    @DisplayName("다른 탭·기기에서 끝낸 녹음에 새 조각을 예약하면 409 RECORDING_ALREADY_ENDED다")
+    void reserve_failure_endedByOtherTab() throws Exception {
+        // given
+        Fixture fixture = startedRecording();
+        CsrfCredentials csrf = csrfCredentials();
+        mockMvc.perform(
+                post(
+                        RECORDING_PATH + "/end",
+                        fixture.workspaceId(),
+                        fixture.recordingId()
+                ).cookie(
+                        accessTokenCookie(fixture.memberId()),
+                        csrf.cookie()
+                )
+                        .header(
+                                "X-XSRF-TOKEN",
+                                csrf.token()
+                        )
+        )
+                .andExpect(status().isOk());
+
+        // when
+        ResultActions result = reserve(
+                fixture,
+                body(
+                        1,
+                        0
+                )
+        );
+
+        // then
+        result.andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("RECORDING_ALREADY_ENDED"));
+        assertThat(
+                jdbcClient.sql("SELECT COUNT(*) FROM recording_audio_chunks")
+                        .query(Long.class)
+                        .single()
+        ).isZero();
+    }
+
+    @Test
     @DisplayName("OpenAPI는 예약과 완료와 저장 조회 계약을 공개한다")
     void openApi_schema() throws Exception {
         // given
@@ -528,6 +610,26 @@ class RecordingAudioChunkAcceptanceTest {
 
     private String lastSeen(Fixture fixture) {
         return jdbcClient.sql("SELECT last_seen_at::text FROM recording_sessions WHERE id = :id")
+                .param(
+                        "id",
+                        fixture.recordingId()
+                )
+                .query(String.class)
+                .single();
+    }
+
+    private Instant lastSeenInstant(Fixture fixture) {
+        return jdbcClient.sql("SELECT last_seen_at FROM recording_sessions WHERE id = :id")
+                .param(
+                        "id",
+                        fixture.recordingId()
+                )
+                .query(Instant.class)
+                .single();
+    }
+
+    private String sessionStatus(Fixture fixture) {
+        return jdbcClient.sql("SELECT status FROM recording_sessions WHERE id = :id")
                 .param(
                         "id",
                         fixture.recordingId()

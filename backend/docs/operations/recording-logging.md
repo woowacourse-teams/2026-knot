@@ -19,6 +19,7 @@
 | recording.start | created / replayed | 신규 생성 / 멱등 재요청 |
 | recording.pause, recording.resume | changed / replayed | 상태 변경 / 이미 적용됨 |
 | recording.end | changed / replayed / ignored | 사용자 종료 / 이미 종료 / 자동 종료가 먼저 적용됨 |
+| recording.reconnect | changed / replayed / ignored | 녹음 탭 증명 교체 / 같은 새 증명의 재시도 / 이미 끝난 녹음이라 이어 받지 않음 |
 | recording.auto_end | changed | 실제 커밋한 자동 종료, endReason 포함 |
 | recording.upload_url | issued / reissued | 업로드 URL 발급 / 같은 업로드에 재발급 |
 | recording.upload.prepare | prepared / replayed | HEAD 전 검증 / 이미 완료되어 HEAD 생략 |
@@ -27,7 +28,7 @@
 
 관측 구간은 `started`를 즉시 기록하고 결과를 한 번 기록한다. DB 구간의 정상 결과는 트랜잭션 완료 콜백에서 기록한다. 거절은 `rejected`, 예상하지 못한 오류는 `failed`, 커밋 결과를 확정하지 못하면 `unconfirmed`다. 외부 트랜잭션이 나중에 롤백하면 정상 결과를 기록하지 않는다.
 
-`auto_end`는 커밋한 사실만 기록한다. 시작·소요 시간은 측정하지 않는다. 정상 heartbeat와 상태 조회는 별도 업무 로그를 만들지 않는다.
+`auto_end`는 커밋한 사실만 기록한다. 시작·소요 시간은 측정하지 않는다. 정상 heartbeat와 상태 조회는 별도 업무 로그를 만들지 않는다. 조각 예약·완료 확인도 생존 신호로 마지막 생존 시각을 갱신하지만 별도 업무 로그를 만들지 않는다. 이어 받기 로그에는 이전·새 tabId와 controlToken을 남기지 않는다.
 
 `verify=found` 뒤에도 타입·크기·녹음 상태 검증이나 DB 저장이 실패할 수 있다. 업로드 성공 판단에는 `upload.complete=completed/replayed`까지 확인한다.
 

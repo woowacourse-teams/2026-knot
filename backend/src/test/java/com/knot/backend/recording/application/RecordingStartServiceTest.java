@@ -1,5 +1,7 @@
 package com.knot.backend.recording.application;
 
+import com.knot.backend.testsupport.RecordingConnectionPolicyFixture;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowable;
 import static org.mockito.ArgumentMatchers.any;
@@ -249,7 +251,7 @@ class RecordingStartServiceTest {
     }
 
     @Test
-    @DisplayName("다른 요청으로 시작한 활성 녹음이 있으면 새 세션을 생성하지 않는다")
+    @DisplayName("다른 요청으로 시작한 녹음이 끊김 유예 중이면 새 세션을 생성하지 않는다")
     void start_failure_activeSession() {
         // given
         prepareAccess();
@@ -261,7 +263,8 @@ class RecordingStartServiceTest {
                                 UUID.randomUUID(),
                                 UUID.randomUUID(),
                                 HASH,
-                                NOW.minusSeconds(29)
+                                NOW.minus(RecordingConnectionPolicyFixture.GRACE)
+                                        .plusSeconds(1)
                         )
                 )
         );
@@ -285,7 +288,7 @@ class RecordingStartServiceTest {
     }
 
     @Test
-    @DisplayName("다른 Workspace에 남은 본인 녹음의 연결이 끊겼으면 만료로 회수한 뒤 새 녹음을 시작한다")
+    @DisplayName("다른 Workspace에 남은 본인 녹음의 끊김 유예가 지났으면 만료로 회수한 뒤 새 녹음을 시작한다")
     void start_success_reclaimsDisconnectedSession() {
         // given
         prepareAccess();
@@ -296,7 +299,7 @@ class RecordingStartServiceTest {
                         UUID.randomUUID(),
                         UUID.randomUUID(),
                         HASH,
-                        NOW.minusSeconds(30)
+                        NOW.minus(RecordingConnectionPolicyFixture.GRACE)
                 ),
                 6L
         );
@@ -322,12 +325,12 @@ class RecordingStartServiceTest {
         assertThat(result.status()).isEqualTo(RecordingStatus.RECORDING);
         assertThat(disconnected.getStatus()).isEqualTo(RecordingStatus.ENDED);
         assertThat(disconnected.getEndReason()).isEqualTo(RecordingEndReason.CONNECTION_EXPIRED);
-        assertThat(disconnected.getEndedAt()).isEqualTo(NOW);
+        assertThat(disconnected.getEndedAt()).isEqualTo(NOW.minus(RecordingConnectionPolicyFixture.GRACE));
         verify(recordingSessionRepository).save(disconnected);
     }
 
     @Test
-    @DisplayName("같은 시작 요청을 다시 보냈을 때 연결이 끊긴 녹음이면 만료를 저장하고 종료 상태를 돌려준다")
+    @DisplayName("같은 시작 요청을 다시 보냈을 때 끊김 유예가 지난 녹음이면 마지막 생존 시각으로 끝낸 상태를 돌려준다")
     void start_success_replayExpiresDisconnectedSession() {
         // given
         prepareAccess();
@@ -338,7 +341,8 @@ class RecordingStartServiceTest {
                         command.requestId(),
                         command.tabId(),
                         HASH,
-                        NOW.minusSeconds(300)
+                        NOW.minus(RecordingConnectionPolicyFixture.GRACE)
+                                .minusSeconds(300)
                 ),
                 7L
         );
@@ -359,8 +363,8 @@ class RecordingStartServiceTest {
         // then
         assertThat(result.created()).isFalse();
         assertThat(result.status()).isEqualTo(RecordingStatus.ENDED);
-        assertThat(existing.getEndedAt()).isEqualTo(NOW.minusSeconds(270));
-        assertThat(existing.getLastSeenAt()).isEqualTo(NOW.minusSeconds(300));
+        assertThat(existing.getEndedAt()).isEqualTo(existing.getStartedAt());
+        assertThat(existing.getLastSeenAt()).isEqualTo(existing.getStartedAt());
         verify(recordingSessionRepository).save(existing);
     }
 
@@ -543,7 +547,9 @@ class RecordingStartServiceTest {
                 mock(com.knot.backend.recording.domain.repository.RecordingAudioFinalizationRepository.class),
                 mock(com.knot.backend.recording.domain.repository.RecordingAudioCleanupRepository.class),
                 mock(RecordingTranscriptionFailure.class),
-                mock(com.knot.backend.document.application.DocumentGenerationProgressService.class)
+                mock(com.knot.backend.document.application.DocumentGenerationProgressService.class),
+                RecordingConnectionPolicyFixture.DEFAULT,
+                mock(RecordingAudioChunkTransaction.class)
         );
     }
 

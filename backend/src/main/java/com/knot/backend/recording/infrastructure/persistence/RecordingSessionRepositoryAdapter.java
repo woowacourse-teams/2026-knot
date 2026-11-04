@@ -65,10 +65,11 @@ public class RecordingSessionRepositoryAdapter implements RecordingSessionReposi
     @Override
     public List<Long> findActiveIdsDueAt(
             Instant now,
+            Instant expiredLastSeenThreshold,
             int limit
     ) {
         return recordingSessionJpaRepository.findActiveIdsDueAt(
-                RecordingSession.disconnectionThreshold(now),
+                expiredLastSeenThreshold,
                 now,
                 RecordingSession.MAX_RECORDING_MILLIS,
                 limit

@@ -126,7 +126,8 @@ class RecordingCurrentControllerTest {
                 .andExpect(jsonPath("$.elapsedMillis").value(125_000L))
                 .andExpect(jsonPath("$.retryable").value(false))
                 .andExpect(jsonPath("$.retryableJobIds").isEmpty())
-                .andExpect(jsonPath("$.length()").value(6));
+                .andExpect(jsonPath("$.connectionStatus").isEmpty())
+                .andExpect(jsonPath("$.length()").value(7));
     }
 
     @Test
@@ -216,7 +217,7 @@ class RecordingCurrentControllerTest {
                                 )
                         )
                 )
-                .andExpect(jsonPath("$.length()").value(6));
+                .andExpect(jsonPath("$.length()").value(7));
     }
 
     private UsernamePasswordAuthenticationToken memberAuthentication() {

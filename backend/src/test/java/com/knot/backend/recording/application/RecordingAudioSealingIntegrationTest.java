@@ -1,5 +1,7 @@
 package com.knot.backend.recording.application;
 
+import com.knot.backend.testsupport.RecordingConnectionPolicyFixture;
+
 import com.knot.backend.recording.application.dto.result.RecordingAudioChunkCompletionResult;
 
 import com.knot.backend.recording.domain.model.StoredAudioChunk;
@@ -42,6 +44,9 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 @SpringBootTest(properties = "recording.audio-chunks.enabled=true")
 class RecordingAudioSealingIntegrationTest {
     private static final Instant NOW = Instant.parse("2026-10-17T00:00:10Z");
+    private static final Instant LAST_SEEN_AT = NOW.minusSeconds(10);
+    private static final Instant GRACE_EXPIRED_AT = LAST_SEEN_AT.plus(RecordingConnectionPolicyFixture.GRACE)
+            .plusSeconds(5);
     private static final String HASH = Base64.getEncoder()
             .encodeToString(new byte[32]);
     private static final UUID TAB = UUID.fromString("11111111-1111-1111-1111-111111111111");
@@ -427,7 +432,7 @@ class RecordingAudioSealingIntegrationTest {
     @Test
     void timeoutTransitionCommitsEvenRejectedNewDescriptor() {
         // given
-        when(clock.instant()).thenReturn(NOW.plusSeconds(25));
+        when(clock.instant()).thenReturn(GRACE_EXPIRED_AT);
         // when
         Throwable failure = catchThrowable(
                 () -> service.reserve(
@@ -449,13 +454,13 @@ class RecordingAudioSealingIntegrationTest {
                         "sealed_at",
                         Instant.class
                 )
-        ).isEqualTo(NOW.plusSeconds(20));
+        ).isEqualTo(LAST_SEEN_AT);
         assertThat(
                 value(
                         "accept_until",
                         Instant.class
                 )
-        ).isEqualTo(NOW.plusSeconds(140));
+        ).isEqualTo(LAST_SEEN_AT.plusSeconds(120));
         assertThat(
                 value(
                         "seal_kind",
@@ -467,7 +472,7 @@ class RecordingAudioSealingIntegrationTest {
     @Test
     void delayedWorkerUsesLogicalTimeAndDurableEnumeration() {
         // given
-        when(clock.instant()).thenReturn(NOW.plusSeconds(200));
+        when(clock.instant()).thenReturn(GRACE_EXPIRED_AT.plusSeconds(200));
         // when
         boolean expired = expiry.expire(recordingId);
         // then
@@ -477,7 +482,7 @@ class RecordingAudioSealingIntegrationTest {
                         "accept_until",
                         Instant.class
                 )
-        ).isEqualTo(NOW.plusSeconds(140));
+        ).isEqualTo(LAST_SEEN_AT.plusSeconds(120));
         assertThat(
                 value(
                         "seal_kind",
@@ -656,7 +661,7 @@ class RecordingAudioSealingIntegrationTest {
     @Test
     void pauseRequestCommitsExpiredSealDespiteConflict() {
         // given
-        when(clock.instant()).thenReturn(NOW.plusSeconds(25));
+        when(clock.instant()).thenReturn(GRACE_EXPIRED_AT);
         // when
         Throwable failure = catchThrowable(
                 () -> controls.pause(
