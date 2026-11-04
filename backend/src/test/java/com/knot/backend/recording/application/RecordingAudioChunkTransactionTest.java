@@ -91,7 +91,7 @@ class RecordingAudioChunkTransactionTest {
     }
 
     @Test
-    @DisplayName("새 조각 예약은 고정 키와 다음 위치를 저장하고 마지막 생존 시각을 접수 시각으로 갱신한다")
+    @DisplayName("새 조각 예약은 고유 키와 다음 위치를 저장하고 마지막 생존 시각을 접수 시각으로 갱신한다")
     void reserve_success_newChunk() {
         // given
         controlled();
@@ -113,7 +113,8 @@ class RecordingAudioChunkTransactionTest {
 
         // then
         assertThat(result.created()).isTrue();
-        assertThat(result.storageKey()).isEqualTo("recordings/3/chunks/1");
+        assertThat(result.storageKey())
+                .matches("recordings/3/chunks/1/[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}");
         assertThat(result.expiresAt()).isEqualTo(EXPIRES);
         assertThat(stream.getNextSequence()).isEqualTo(2);
         assertThat(session.getLastSeenAt()).isEqualTo(NOW);
