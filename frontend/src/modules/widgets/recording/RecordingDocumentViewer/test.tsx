@@ -162,6 +162,8 @@ const renderViewer = () => {
       </QueryClientProvider>
     </ThemeProvider>,
   );
+
+  return { router, queryClient };
 };
 
 /** 녹음 제목. 녹음 문서를 받은 뒤에 보여요 */
@@ -845,6 +847,49 @@ describe("RecordingDocumentViewer", () => {
       await waitFor(() => expect(requestCount).toBe(2));
     });
 
+    it.each([500, 0])("만료 주소 갱신이 일반 오류(%s)면 오류와 다시 시도를 유지한다", async (status) => {
+      mockServer.use(http.get(AUDIO_PLAYBACK_REQUEST, () => HttpResponse.json({
+        ...recordingAudioPlaybackResponse,
+        expiresAt: new Date(Date.now() - 60_000).toISOString(),
+      })));
+      renderViewer();
+      const player = within(await findPlayer());
+      await player.findByRole("button", { name: "재생" });
+      mockServer.use(http.get(AUDIO_PLAYBACK_REQUEST, () => status === 0
+        ? HttpResponse.error()
+        : new HttpResponse(null, { status }),
+      ));
+      fireEvent.click(player.getByRole("button", { name: "재생" }));
+      expect(await player.findByRole("alert")).toHaveTextContent("음성을 불러오지 못했어요");
+      expect(player.queryByText("업데이트 준비 중")).not.toBeInTheDocument();
+      expect(HTMLMediaElement.prototype.load).not.toHaveBeenCalled();
+      expect(HTMLMediaElement.prototype.play).not.toHaveBeenCalled();
+      mockServer.use(http.get(AUDIO_PLAYBACK_REQUEST, () => HttpResponse.json(recordingAudioPlaybackResponse)));
+      fireEvent.click(player.getByRole("button", { name: "다시 시도" }));
+      await waitFor(() => expect(HTMLMediaElement.prototype.load).toHaveBeenCalled());
+      expect(player.queryByRole("alert")).not.toBeInTheDocument();
+    });
+
+    it("만료 주소 갱신 중 API 미지원이 확인되면 이전 음성을 불러오거나 재생하지 않는다", async () => {
+      mockServer.use(http.get(AUDIO_PLAYBACK_REQUEST, () => HttpResponse.json({
+        ...recordingAudioPlaybackResponse,
+        expiresAt: new Date(Date.now() - 60_000).toISOString(),
+      })));
+      renderViewer();
+      const player = within(await findPlayer());
+      await player.findByRole("button", { name: "재생" });
+      mockServer.use(http.get(AUDIO_PLAYBACK_REQUEST, () => HttpResponse.json(
+        { code: "REQUEST_PATH_NOT_FOUND" }, { status: 404 },
+      )));
+
+      fireEvent.click(player.getByRole("button", { name: "재생" }));
+
+      expect(await player.findByText("업데이트 준비 중")).toBeInTheDocument();
+      expect(HTMLMediaElement.prototype.load).not.toHaveBeenCalled();
+      expect(HTMLMediaElement.prototype.play).not.toHaveBeenCalled();
+      expect(document.querySelector("audio")).toBeNull();
+    });
+
     it("음성이 남아 있지 않은 녹음은 다시 시도 없이 회색 안내만 둔다", async () => {
       mockServer.use(
         http.get(AUDIO_PLAYBACK_REQUEST, () =>
@@ -1427,4 +1472,89 @@ describe("RecordingDocumentViewer의 사용 기록", () => {
       );
     });
   });
+});
+
+
+describe("녹음 문서·음성 배포 호환성 (ERR-QA-004 · ERR-QA-005 · ERR-QA-006)", () => {
+  const unsupported = () => HttpResponse.json({ code: "REQUEST_PATH_NOT_FOUND" }, { status: 404 });
+
+  it("녹음 문서 경로가 미지원이면 이 기능만 준비 안내하고 정상으로 복구된다", async () => {
+    mockServer.use(http.get(RECORDING_DOCUMENT_REQUEST, unsupported));
+    renderViewer();
+    expect(await screen.findByText("업데이트 준비 중")).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    respondWithRecordingDocument({});
+    fireEvent.click(screen.getByRole("button", { name: "다시 확인" }));
+    expect(await findTitle()).toBeInTheDocument();
+  });
+
+  it("정상 녹음 문서 캐시도 미지원 재조회 뒤에는 신규 동작을 허용하지 않는다", async () => {
+    const { queryClient } = renderViewer();
+    await findTitle();
+    mockServer.use(http.get(RECORDING_DOCUMENT_REQUEST, unsupported));
+    await act(async () => { await queryClient.invalidateQueries(); });
+    expect(await screen.findByText("업데이트 준비 중")).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: expectedRecording.title })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "재생" })).not.toBeInTheDocument();
+    for (const status of [500, 0]) {
+      mockServer.use(http.get(RECORDING_DOCUMENT_REQUEST, () => status === 0 ? HttpResponse.error() : new HttpResponse(null, { status })));
+      await act(async () => { await queryClient.invalidateQueries(); });
+      expect(await screen.findByRole("alert")).toBeInTheDocument();
+      expect(screen.queryByRole("heading", { name: expectedRecording.title })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "재생" })).not.toBeInTheDocument();
+      expect(screen.queryByText("업데이트 준비 중")).not.toBeInTheDocument();
+    }
+    mockServer.resetHandlers();
+    fireEvent.click(screen.getByRole("button", { name: "다시 시도" }));
+    expect(await findTitle()).toBeInTheDocument();
+  });
+
+  it("음성만 미지원이면 녹음 요약과 문서 조회를 유지하며 재생 기능만 제한한다", async () => {
+    mockServer.use(http.get(AUDIO_PLAYBACK_REQUEST, unsupported));
+    renderViewer();
+    expect(await screen.findByText("업데이트 준비 중")).toBeInTheDocument();
+    expect(await findTitle()).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "한눈에 보기" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "재생" })).not.toBeInTheDocument();
+    mockServer.use(http.get(AUDIO_PLAYBACK_REQUEST, () => HttpResponse.json(recordingAudioPlaybackResponse)));
+    fireEvent.click(screen.getByRole("button", { name: "다시 확인" }));
+    expect(await screen.findByRole("button", { name: "재생" })).toBeInTheDocument();
+  });
+
+  it("재생 정보 캐시 뒤 미지원이 확인되면 이전 재생 버튼을 제거한다", async () => {
+    const { queryClient } = renderViewer();
+    await screen.findByRole("button", { name: "재생" });
+    mockServer.use(http.get(AUDIO_PLAYBACK_REQUEST, unsupported));
+    await act(async () => { await queryClient.invalidateQueries(); });
+    expect(await screen.findByText("업데이트 준비 중")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "재생" })).not.toBeInTheDocument();
+    expect(document.querySelector("audio")).toBeNull();
+    expect(await findTitle()).toBeInTheDocument();
+    for (const status of [500, 0]) {
+      mockServer.use(http.get(AUDIO_PLAYBACK_REQUEST, () => status === 0 ? HttpResponse.error() : new HttpResponse(null, { status })));
+      await act(async () => { await queryClient.invalidateQueries(); });
+      expect(await screen.findByRole("alert")).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "재생" })).not.toBeInTheDocument();
+      expect(document.querySelector("audio")).toBeNull();
+      expect(screen.queryByText("업데이트 준비 중")).not.toBeInTheDocument();
+    }
+    mockServer.resetHandlers();
+    fireEvent.click(screen.getByRole("button", { name: "다시 시도" }));
+    expect(await screen.findByRole("button", { name: "재생" })).toBeInTheDocument();
+  });
+
+  for (const endpoint of [RECORDING_DOCUMENT_REQUEST, AUDIO_PLAYBACK_REQUEST]) {
+    it.each([
+      [401, "UNAUTHORIZED"], [403, "WORKSPACE_ACCESS_DENIED"],
+      [404, "RECORDING_NOT_FOUND"], [500, "INTERNAL_SERVER_ERROR"],
+      [0, "NETWORK"],
+    ] as const)(`${endpoint}의 실제 오류 %s %s는 준비 안내로 바꾸지 않는다`, async (status, code) => {
+      mockServer.use(http.get(endpoint, () => status === 0
+        ? HttpResponse.error() : HttpResponse.json({ code }, { status })));
+      renderViewer();
+      if (status === 401) expect(await screen.findByText("로그인 화면")).toBeInTheDocument();
+      else expect(await screen.findByRole("alert")).toBeInTheDocument();
+      expect(screen.queryByText("업데이트 준비 중")).not.toBeInTheDocument();
+    });
+  }
 });

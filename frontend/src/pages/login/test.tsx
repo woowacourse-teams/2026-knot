@@ -17,7 +17,9 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import LoginPage from ".";
 
-const renderLoginPage = () => {
+const LOGIN_FAILED_TEXT = "로그인 실패 화면";
+
+const renderLoginPage = (search = "") => {
   const router = createMemoryRouter(
     [
       {
@@ -26,10 +28,16 @@ const renderLoginPage = () => {
             <Outlet />
           </ToastProvider>
         ),
-        children: [{ path: PATH_ROUTE.LOGIN, element: <LoginPage /> }],
+        children: [
+          { path: PATH_ROUTE.LOGIN, element: <LoginPage /> },
+          {
+            path: PATH_ROUTE.LOGIN_FAILED,
+            element: <p>{LOGIN_FAILED_TEXT}</p>,
+          },
+        ],
       },
     ],
-    { initialEntries: [PATH_ROUTE.LOGIN] },
+    { initialEntries: [`${PATH_ROUTE.LOGIN}${search}`] },
   );
 
   render(
@@ -37,6 +45,8 @@ const renderLoginPage = () => {
       <RouterProvider router={router} />
     </ThemeProvider>,
   );
+
+  return { router };
 };
 
 const PROTECTED_TEXT = "로그인해야 보이는 화면";
@@ -97,7 +107,7 @@ const failMeAndRefresh = (refreshStatus = 401) => {
 };
 
 describe("LoginPage", () => {
-  it("제목과 GitHub 로그인 버튼, 약관 안내를 보여 준다", () => {
+  it("제목과 세 로그인 버튼을 보여 주고, 약관 안내는 버튼과 같은 계정 안내 아래에 둔다(TERMS-R10)", () => {
     renderLoginPage();
 
     expect(
@@ -106,14 +116,49 @@ describe("LoginPage", () => {
         name: "팀의 결정을 모두의 기억으로",
       }),
     ).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: "GitHub으로 시작하기" }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText(
-        "로그인하면 서비스 이용약관과 개인정보 처리방침에 동의하게 됩니다.",
-      ),
-    ).toBeInTheDocument();
+
+    const buttons = screen.getAllByRole("button");
+    const guide = screen.getByText(
+      "처음 가입한 방법으로 로그인해야 같은 계정이에요",
+    );
+    const terms = screen.getByText(
+      "로그인하면 서비스 이용약관과 개인정보 처리방침에 동의하게 됩니다.",
+    );
+
+    expect(buttons).toHaveLength(3);
+    for (const button of buttons) {
+      expect(guide.compareDocumentPosition(button)).toBe(
+        Node.DOCUMENT_POSITION_PRECEDING,
+      );
+    }
+    expect(guide.compareDocumentPosition(terms)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+  });
+
+  describe("로그인 실패와 취소 (AUTH-R7, AUTH-R16)", () => {
+    it("로그인 처리에 실패해 돌아오면(?error=oauth2) 로그인 실패 화면으로 기록을 바꿔 보낸다", async () => {
+      const { router } = renderLoginPage("?error=oauth2");
+
+      expect(await screen.findByText(LOGIN_FAILED_TEXT)).toBeInTheDocument();
+      expect(router.state.location.pathname).toBe(PATH_ROUTE.LOGIN_FAILED);
+      expect(router.state.historyAction).toBe("REPLACE");
+    });
+
+    it("승인 화면에서 취소하고 돌아오면(?error=oauth2_cancelled) 안내 없이 로그인 기본 화면을 보여 준다", () => {
+      const { router } = renderLoginPage("?error=oauth2_cancelled");
+
+      expect(screen.getAllByRole("button")).toHaveLength(3);
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+      expect(router.state.location.pathname).toBe(PATH_ROUTE.LOGIN);
+    });
+
+    it("모르는 error 값에는 로그인 기본 화면을 그대로 보여 준다", () => {
+      const { router } = renderLoginPage("?error=somethingElse");
+
+      expect(screen.getAllByRole("button")).toHaveLength(3);
+      expect(router.state.location.pathname).toBe(PATH_ROUTE.LOGIN);
+    });
   });
 
   describe("로그인 만료 안내 (ERR-07)", () => {

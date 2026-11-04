@@ -11,15 +11,23 @@ import NewsItem from "./NewsItem";
 interface NewsPanelProps {
   /** 보여 줄 노트. 최신 노트가 맨 앞이에요 */
   notes: ReleaseNote[];
+  /** NEW 칩을 붙일 안 읽은 노트의 id */
+  newNoteIds: string[];
 }
 
 /**
  * 새 소식 버튼이 여는 패널. 머리 아래에 노트를 배포 날짜별로 묶어 보여 주고, 노트가 없으면 빈 상태를 보여 줘요(NEWS-R4).
  *
+ * 안 읽은 노트의 항목에는 NEW 칩을 붙여요. 같은 날 낸 노트가 한 묶음에 모여도 칩은 노트마다 따로 정해요.
  * 화면 높이를 넘으면 머리는 그대로 두고 목록만 패널 안에서 스크롤해요.
  */
-export default function NewsPanel({ notes }: NewsPanelProps) {
-  const dateGroups = groupNotesByDate(notes);
+export default function NewsPanel({ notes, newNoteIds }: NewsPanelProps) {
+  const dateGroups = groupNotesByDate(
+    notes.map(({ id, releasedAt, items }) => ({
+      releasedAt,
+      items: items.map((item) => ({ ...item, isNew: newNoteIds.includes(id) })),
+    })),
+  );
 
   return (
     <Container>

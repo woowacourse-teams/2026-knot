@@ -10,6 +10,8 @@ import static org.mockito.Mockito.never;
 import com.knot.backend.global.exception.LlmErrorCode;
 import com.knot.backend.global.exception.LlmException;
 import com.knot.backend.recording.application.dto.result.MeetingSummaryTask;
+import com.knot.backend.recording.domain.RecordingErrorCode;
+import com.knot.backend.recording.domain.RecordingException;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -70,7 +72,7 @@ class MeetingSummaryWorkerTest {
     }
 
     @Test
-    @DisplayName("잘린 출력과 형식 오류는 무한 자동 재시도를 하지 않는다")
+    @DisplayName("출력 한도 초과는 자동 재시도하지 않는다")
     void process_failure_outputLimit() {
         // given
         when(generator.generate(task.transcript())).thenThrow(new LlmException(LlmErrorCode.LLM_OUTPUT_LIMIT_EXCEEDED));
@@ -81,6 +83,35 @@ class MeetingSummaryWorkerTest {
                 task,
                 "LLM_OUTPUT_LIMIT_EXCEEDED",
                 false
+        );
+    }
+
+    @Test
+    @DisplayName("요약 형식 오류는 제한된 자동 재시도로 접수한다")
+    void process_invalidSummary_retries() {
+        when(generator.generate(task.transcript()))
+                .thenThrow(new RecordingException(RecordingErrorCode.INVALID_MEETING_SUMMARY));
+
+        worker.process(task);
+
+        verify(service).fail(
+                task,
+                "INVALID_MEETING_SUMMARY",
+                true
+        );
+    }
+
+    @Test
+    @DisplayName("잘못된 모델 JSON도 제한된 자동 재시도로 접수한다")
+    void process_invalidModelResponse_retries() {
+        when(generator.generate(task.transcript())).thenThrow(new LlmException(LlmErrorCode.LLM_INVALID_RESPONSE));
+
+        worker.process(task);
+
+        verify(service).fail(
+                task,
+                "LLM_INVALID_RESPONSE",
+                true
         );
     }
 

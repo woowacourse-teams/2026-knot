@@ -130,6 +130,16 @@ type Story = StoryObj<typeof meta>;
  */
 export const Default: Story = {};
 
+/** 녹음별 목록 API를 아직 지원하지 않을 때예요. 주제별 목록과 기존 문서는 계속 볼 수 있어요. */
+export const UnsupportedApi: Story = {
+  parameters: {
+    docs: { story: { inline: false, iframeHeight: 300 } },
+    msw: { handlers: { documentRecordings: http.get(DOCUMENT_RECORDINGS_REQUEST, () =>
+      HttpResponse.json({ code: "REQUEST_PATH_NOT_FOUND" }, { status: 404 }),
+    ) } },
+  },
+};
+
 /**
  * 녹음 제목 · 문서 제목 · 요약이 길 때예요. 한 줄에서 말줄임하고, 「녹음 보기」와 화살표는 밀려나지 않아요.
  */

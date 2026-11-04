@@ -518,12 +518,85 @@ class MeetingSummaryGenerationServiceIntegrationTest {
                     service.claim(recording)
                             .orElseThrow()
             );
+            assertThat(row(recording).get("status")).isEqualTo("QUEUED");
+            assertThat(service.claim(recording)).isEmpty();
+            when(clock.instant()).thenReturn(NOW.plusSeconds(5));
+            worker.process(
+                    service.claim(recording)
+                            .orElseThrow()
+            );
         } finally {
             worker.shutdown();
         }
         // then
         assertThat(row(recording).get("status")).isEqualTo("FAILED");
+        assertThat(row(recording).get("attempt_no")).isEqualTo(2L);
         assertThat(batch(recording)).isEqualTo(before);
+    }
+
+    @Test
+    @DisplayName("형식 오류 후 재시도에서 성공하면 요약 하나만 저장하고 문서 배치를 유지한다")
+    void process_invalidResponse_thenSuccess() {
+        long recording = registered();
+        Map<String, Object> before = batch(recording);
+        MeetingSummaryGenerator generator = mock(MeetingSummaryGenerator.class);
+        when(generator.generate(anyString())).thenThrow(new LlmException(LlmErrorCode.LLM_INVALID_RESPONSE))
+                .thenReturn(CONTENT);
+        MeetingSummaryWorker worker = new MeetingSummaryWorker(
+                service,
+                generator
+        );
+        try {
+            worker.process(
+                    service.claim(recording)
+                            .orElseThrow()
+            );
+            assertThat(row(recording).get("status")).isEqualTo("QUEUED");
+            when(clock.instant()).thenReturn(NOW.plusSeconds(5));
+            worker.process(
+                    service.claim(recording)
+                            .orElseThrow()
+            );
+            assertThat(row(recording).get("status")).isEqualTo("SUCCEEDED");
+            assertThat(row(recording).get("attempt_no")).isEqualTo(2L);
+            assertThat(service.claim(recording)).isEmpty();
+            assertThat(batch(recording)).isEqualTo(before);
+        } finally {
+            worker.shutdown();
+        }
+    }
+
+    @Test
+    @DisplayName("시간 초과 후 재접수된 작업은 한 번 더 실행해 성공할 수 있다")
+    void process_timeout_thenSuccess() {
+        long recording = registered();
+        Map<String, Object> before = batch(recording);
+        MeetingSummaryGenerator generator = mock(MeetingSummaryGenerator.class);
+        when(generator.generate(anyString())).thenThrow(new LlmException(LlmErrorCode.LLM_TIMEOUT))
+                .thenReturn(CONTENT);
+        MeetingSummaryWorker worker = new MeetingSummaryWorker(
+                service,
+                generator
+        );
+        try {
+            worker.process(
+                    service.claim(recording)
+                            .orElseThrow()
+            );
+            assertThat(row(recording).get("status")).isEqualTo("QUEUED");
+            assertThat(service.claim(recording)).isEmpty();
+            when(clock.instant()).thenReturn(NOW.plusSeconds(5));
+            worker.process(
+                    service.claim(recording)
+                            .orElseThrow()
+            );
+            assertThat(row(recording).get("status")).isEqualTo("SUCCEEDED");
+            assertThat(row(recording).get("attempt_no")).isEqualTo(2L);
+            assertThat(service.claim(recording)).isEmpty();
+            assertThat(batch(recording)).isEqualTo(before);
+        } finally {
+            worker.shutdown();
+        }
     }
 
     @Test
@@ -628,6 +701,50 @@ class MeetingSummaryGenerationServiceIntegrationTest {
                 CONTENT
         );
         assertThat(row(recording).get("status")).isEqualTo("SUCCEEDED");
+    }
+
+    @Test
+    @EnabledIfEnvironmentVariable(named = "KNOT_LIVE_SUMMARY_TEST", matches = "true")
+    void dockerPostgresAndLiveModelGenerateAndPersistSummary() {
+        long recording = registered();
+        jdbc.sql("UPDATE transcripts SET content=:text WHERE recording_session_id=:id")
+                .param(
+                        "text",
+                        "녹음 품질을 측정하기로 합의했다. 검색 기능은 사용자 수가 1,000명을 넘으면 개발하기로 했다."
+                )
+                .param(
+                        "id",
+                        recording
+                )
+                .update();
+        var properties = new com.knot.backend.global.config.LlmProperties();
+        properties.setBaseUrl(java.net.URI.create(System.getenv("LLM_BASE_URL")));
+        properties.setApiToken(System.getenv("LLM_API_TOKEN"));
+        properties.setModel(System.getenv("LLM_MODEL"));
+        properties.setRequestTimeout(java.time.Duration.ofSeconds(150));
+        var client = new com.knot.backend.global.infrastructure.llm.LmStudioClient(
+                java.net.http.HttpClient.newHttpClient(),
+                new tools.jackson.databind.ObjectMapper(),
+                properties
+        );
+        var generator = new com.knot.backend.recording.infrastructure.llm.LlmMeetingSummaryGenerator(
+                client,
+                new tools.jackson.databind.ObjectMapper()
+        );
+        var worker = new MeetingSummaryWorker(
+                service,
+                generator
+        );
+        try {
+            worker.process(
+                    service.claim(recording)
+                            .orElseThrow()
+            );
+            assertThat(row(recording).get("status")).isEqualTo("SUCCEEDED");
+            assertThat((String) row(recording).get("content")).isNotBlank();
+        } finally {
+            worker.shutdown();
+        }
     }
 
     private long registered() {

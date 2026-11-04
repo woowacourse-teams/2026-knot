@@ -291,6 +291,18 @@ public class LmStudioClient implements LlmClient {
         if ("exceed_context_size_error".equals(type)) {
             return true;
         }
+        if ("BadRequestError".equals(type) && "input_tokens".equals(
+                error.path("param")
+                        .asString()
+        )) {
+            String message = error.path("message")
+                    .asString();
+            return message.startsWith("This model's maximum context length is ")
+                    && message.contains("your prompt contains at least ")
+                    && message.contains(
+                            "Please reduce the length of the input prompt or the number of requested output tokens."
+                    );
+        }
         return "server_error".equals(type) && error.path("code")
                 .asInt() == 500 && "Context size has been exceeded.".equals(
                         error.path("message")

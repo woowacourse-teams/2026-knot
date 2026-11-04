@@ -256,15 +256,15 @@ export type RecordingProcessingStatus =
 
 /**
  * 녹음 기록 한 행의 서버 응답 모양.
- * `retryableJobIds`는 행 다시 시도와 함께 더해진 값이라, 그 전의 서버는 필드 자체를 주지 않아요
+ * 처리 상태와 다시 시도 정보가 더해지기 전의 서버는 해당 필드를 주지 않아요
  */
 export interface RecordingHistoryItemRaw {
   recordingId: number;
   title: string;
   startedAt: string;
   recordingDurationSeconds: number;
-  processingStatus: RecordingProcessingStatus;
-  retryable: boolean;
+  processingStatus?: RecordingProcessingStatus | null;
+  retryable?: boolean | null;
   retryableJobIds?: number[];
 }
 
@@ -278,9 +278,9 @@ export class RecordingHistoryItemDto {
   startedAt: string;
   /** 일시정지를 뺀 녹음 길이(초) */
   recordingDurationSeconds: number;
-  /** 처리 상태 */
-  processingStatus: RecordingProcessingStatus;
-  /** 실패한 처리를 지금 다시 접수할 수 있으면 true. 서버 필드 `retryable`을 이름만 바꿨어요 */
+  /** 처리 상태. 이전 서버의 필드 누락은 null로 보존하며 정상 상태로 추정하지 않아요 */
+  processingStatus: RecordingProcessingStatus | null;
+  /** 실패한 처리를 지금 다시 접수할 수 있으면 true. 서버 필드 `retryable`을 이름만 바꾸고 누락·null은 false로 둬요 */
   isRetryable: boolean;
   /** 문서 생성 실패 중 지금 접수할 수 있는 작업 ID. 다른 상태와 확장 전 응답은 빈 배열이에요 */
   retryableJobIds: number[];
@@ -290,8 +290,8 @@ export class RecordingHistoryItemDto {
     this.title = raw.title;
     this.startedAt = raw.startedAt;
     this.recordingDurationSeconds = raw.recordingDurationSeconds;
-    this.processingStatus = raw.processingStatus;
-    this.isRetryable = raw.retryable;
+    this.processingStatus = raw.processingStatus ?? null;
+    this.isRetryable = raw.retryable ?? false;
     this.retryableJobIds = raw.retryableJobIds ?? [];
   }
 }

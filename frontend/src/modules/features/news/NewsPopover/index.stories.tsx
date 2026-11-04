@@ -1,4 +1,9 @@
 import { RELEASE_NOTES_RELAY_PATH } from "@api/fetch/relay/n";
+import {
+  hiddenReleaseNote,
+  imageReleaseNoteItems,
+  releaseNotesResponse,
+} from "@api/mock/responses/releaseNote";
 import styled from "@emotion/styled";
 import FeedbackPanel from "@features/feedback/FeedbackPanel";
 import { ToastProvider } from "@provider/context/toastContext";
@@ -22,24 +27,52 @@ const Stage = styled.div`
   background-color: ${({ theme }) => theme.neutral[50]};
 `;
 
-/** 버튼을 눌러 메뉴를 열어요 */
+/** 버튼을 눌러 메뉴를 열어요. 안 읽은 소식이 있으면 버튼 이름 뒤에 안내가 붙어 앞부분으로 찾아요 */
 const openMenu = async (canvasElement: HTMLElement) => {
   await userEvent.click(
     await within(canvasElement).findByRole("button", {
-      name: "새 소식과 피드백",
+      name: /^새 소식과 피드백/,
     }),
   );
 };
 
-/** 메뉴를 열고 항목 하나를 골라요. 메뉴는 body에 그려져 화면 전체에서 찾아요 */
+/**
+ * 메뉴를 열고 항목 하나를 골라요. 메뉴는 body에 그려져 화면 전체에서 찾아요.
+ * 안 읽은 소식이 있으면 「새 소식」 이름 뒤에 NEW가 붙어 앞부분으로 찾아요
+ */
 const selectMenuItem = async (
   canvasElement: HTMLElement,
   name: "새 소식" | "피드백 보내기",
 ) => {
   await openMenu(canvasElement);
+  const menu = within(canvasElement.ownerDocument.body).getByRole("navigation");
   await userEvent.click(
-    within(canvasElement.ownerDocument.body).getByRole("button", { name }),
+    within(menu).getByRole("button", { name: new RegExp(`^${name}`) }),
   );
+};
+
+/** 사진 칸 항목 하나만 있는 노트를 돌려줘요. 사진은 기본 msw 응답이 주소에 적힌 크기로 그려 줘요 */
+const respondNoteWithImage = (
+  item: (typeof imageReleaseNoteItems)[keyof typeof imageReleaseNoteItems],
+) => ({
+  handlers: {
+    releaseNotes: http.get(`*${RELEASE_NOTES_RELAY_PATH}`, () =>
+      HttpResponse.json([
+        { id: "pr-1051", releasedAt: "2026-10-27", items: [item] },
+      ]),
+    ),
+  },
+});
+
+/** 사진 칸 경우별 모양(보통, 아주 납작함, 세로로 긺, 사진 없음) */
+const IMAGE_CASES_DESIGN = {
+  type: "figma",
+  url: "https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=5674-70369",
+} as const;
+
+/** 맨 위 노트 하나만 아직 보지 않은 사용자로 둬요. 두 번째 노트는 패널에서 빠진 노트라 그다음 노트까지 본 사용자예요 */
+const leaveLatestNoteUnread = () => {
+  localStorage.setItem(LAST_SEEN_NOTE_ID_KEY, releaseNotesResponse[2].id);
 };
 
 /**
@@ -51,14 +84,25 @@ const selectMenuItem = async (
  * - 피드백을 보내는 동안에는 바깥 · ESC · 버튼으로 닫히지 않아요.
  * - 열려 있는 동안 버튼은 채워진 모양이에요. 닫혀 있을 때 마우스를 올리거나 키보드로 포커스하면 툴팁 「새 소식과 피드백」이 떠요.
  * - 노트를 받기 전에는 버튼을 그리지 않아요. 저절로 열지는 노트를 받은 뒤에 정해요.
- * - 이 기기에서 새 소식을 한 번도 열지 않았으면 노트를 받은 뒤 메뉴 없이 새 소식 패널을 저절로 열어요. 녹음 중이거나 노트가 없거나 받지 못하면 열지 않아요.
+ * - 이 기기에서 새 소식을 한 번도 열지 않았으면 노트를 받은 뒤 메뉴 없이 새 소식 패널을 저절로 열어요. 녹음 중이거나 보일 노트가 없거나 받지 못하면 열지 않아요.
  * - 새 소식 패널이 열리면(저절로든 메뉴에서 골라서든) 맨 위 노트를 읽음으로 남겨 다음부터는 저절로 열지 않아요.
  * - 휴대폰에서는 피드백을 사이드바에서 열어서, 버튼을 누르면 메뉴 없이 새 소식 패널을 바로 열어요.
  *
+ * **안 읽은 새 소식**
+ * - 마지막으로 새 소식 패널을 연 뒤에 새 노트가 올라왔으면 버튼 오른쪽 위에 점을 켜고, 메뉴의 「새 소식」에 NEW를 붙여요. 화면 낭독기에는 「새 소식과 피드백, 읽지 않은 소식 있음」으로 알려요.
+ * - 새 소식 패널을 열면 점과 메뉴의 NEW를 꺼요. 메뉴만 열었다 닫으면 그대로 둬요.
+ * - 패널에서는 안 읽은 노트의 항목에 NEW를 붙여요. 패널을 연 동안은 보이고, 닫았다 다시 열면 사라져요.
+ * - 새 소식을 처음 확인하는 사용자는 모든 노트가 안 읽음이에요. 이 기기에 저장할 수 없거나 노트를 받지 못하면 아무것도 표시하지 않아요.
+ *
  * **패널 내용**
  * - 노트는 main 머지마다 GitHub Actions의 Claude가 Notion 새 소식 DB에 쓰고, 프론트 Worker(`/relay/n`)가 그 DB에서 읽어 와요. 받지 못하면 빈 상태를 보여 줘요.
+ * - 최근 3일(오늘 포함, 한국 날짜) 안에 배포한 노트만 보여요. 팀이 Notion 「보이기」 칸에서 「항상 보이기」로 남긴 노트는 계속 보이고, 「숨기기」로 내린 노트는 보이지 않아요. 보일 노트가 없으면 빈 상태예요.
+ * - 버튼의 점, NEW, 저절로 열기도 보이는 노트만 봐요. 다만 노트 앞뒤는 패널에서 빠진 노트까지 넣어 가려, 마지막으로 연 노트가 빠져도 그 뒤 노트는 안 읽음이에요.
  * - 노트를 배포 날짜별(「10월 20일」)로 묶고 최신 날짜를 맨 위에 둬요. 같은 날 두 번 릴리즈하면 한 묶음에 모아요.
- * - 항목은 제목과 설명을 보여 주고, 이미지와 「바로 가보기」는 노트에 있을 때만 보여 줘요. 「바로 가보기」는 지금 보고 있는 워크스페이스의 그 화면으로 옮겨요.
+ * - 항목은 제목과 설명을 보여 주고, 사진과 「바로 가보기」는 노트에 있을 때만 보여 줘요. 「바로 가보기」는 지금 보고 있는 워크스페이스의 그 화면으로 옮겨요.
+ * - 사진은 Actions의 Claude가 머지 PR 본문에서 고른 GitHub 첨부 사진(`https://github.com/user-attachments/assets/…`)만 그려요. 다른 주소면 사진 칸 없이 글만 보여요.
+ * - 사진은 항목 폭에 맞춰 원래 비율로 보여 주고 자르지 않아요. 맞춘 높이가 240px을 넘으면 비율을 지킨 채 높이 240px로 줄이고 가운데에 둬요. 남는 양옆은 사진 칸 배경색이에요.
+ * - 사진을 다 불러오기 전과 불러오지 못했을 때는 사진 칸을 그리지 않아요.
  * - 사용자가 알려 준 문제를 고친 항목에는 「피드백 덕분에 바뀌었어요」 칩을 붙여요.
  * - 화면 높이를 넘으면 머리는 그대로 두고 목록만 패널 안에서 스크롤해요.
  */
@@ -82,6 +126,11 @@ const meta = {
         type: "figma",
         url: "https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=4696-29495",
       },
+      {
+        name: "Item/새 소식",
+        type: "figma",
+        url: "https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=4892-1831",
+      },
     ],
     // 열린 패널은 body에 그려져서, 문서 페이지에서 스토리마다 따로 그려야 서로 겹치지 않아요
     docs: { story: { inline: false, iframeHeight: 640 } },
@@ -103,9 +152,9 @@ const meta = {
       </MemoryRouter>
     ),
   ],
-  // 새 소식을 연 기록과 적던 피드백은 브라우저에 남아 스토리끼리 이어지므로, 이미 본 사용자와 빈 피드백으로 시작해요
+  // 새 소식을 연 기록과 적던 피드백은 브라우저에 남아 스토리끼리 이어지므로, 맨 위 노트까지 본 사용자와 빈 피드백으로 시작해요
   beforeEach: () => {
-    localStorage.setItem(LAST_SEEN_NOTE_ID_KEY, "v0.1.0");
+    localStorage.setItem(LAST_SEEN_NOTE_ID_KEY, releaseNotesResponse[0].id);
     sessionStorage.clear();
   },
   render: (args) => (
@@ -135,7 +184,62 @@ export const Menu: Story = {
   },
 };
 
-/** 이 기기에서 새 소식을 처음 확인하는 사용자예요. 누르지 않아도 메뉴 없이 새 소식 패널이 열려 있어요 */
+/** 마지막으로 새 소식을 본 뒤 새 노트가 올라온 사용자예요. 버튼 오른쪽 위에 점이 켜져 있어요 */
+export const Unread: Story = {
+  beforeEach: leaveLatestNoteUnread,
+  parameters: {
+    design: {
+      type: "figma",
+      url: "https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=4696-29503",
+    },
+  },
+};
+
+/** 안 읽은 노트가 있을 때 버튼을 눌러 연 메뉴예요. 「새 소식」 끝에 NEW가 붙어 있어요 */
+export const UnreadMenu: Story = {
+  beforeEach: leaveLatestNoteUnread,
+  parameters: {
+    design: {
+      type: "figma",
+      url: "https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=4888-24607",
+    },
+  },
+  play: async ({ canvasElement }) => {
+    await openMenu(canvasElement);
+  },
+};
+
+/** 안 읽은 노트가 있을 때 연 새 소식 패널이에요. 새로 올라온 10월 20일 항목에만 NEW가 붙고, 버튼의 점은 꺼져요 */
+export const UnreadNoteList: Story = {
+  beforeEach: leaveLatestNoteUnread,
+  parameters: {
+    design: {
+      type: "figma",
+      url: "https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=4892-55099",
+    },
+  },
+  play: async ({ canvasElement }) => {
+    await selectMenuItem(canvasElement, "새 소식");
+  },
+};
+
+/** 마지막으로 연 노트가 3일이 지나 패널에서 빠진 뒤 새 노트가 올라온 사용자예요. 버튼에 점이 켜져 있고, 패널을 열면 새로 올라온 10월 20일 항목에만 NEW가 붙어요. 빠진 노트보다 앞선 노트는 읽음이에요 */
+export const UnreadAfterHiddenNote: Story = {
+  beforeEach: () => {
+    localStorage.setItem(LAST_SEEN_NOTE_ID_KEY, hiddenReleaseNote.id);
+  },
+  parameters: {
+    design: {
+      type: "figma",
+      url: "https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=4892-55099",
+    },
+  },
+  play: async ({ canvasElement }) => {
+    await selectMenuItem(canvasElement, "새 소식");
+  },
+};
+
+/** 이 기기에서 새 소식을 처음 확인하는 사용자예요. 누르지 않아도 메뉴 없이 새 소식 패널이 열려 있고, 모든 항목에 NEW가 붙어 있어요 */
 export const FirstVisit: Story = {
   beforeEach: () => {
     localStorage.removeItem(LAST_SEEN_NOTE_ID_KEY);
@@ -155,6 +259,53 @@ export const NoteList: Story = {
   },
 };
 
+/** 화면이 바뀐 항목에 보통 비율 사진이 붙은 모습이에요. 1596×1386 사진은 폭에 맞추면 240px보다 높아 높이 240px로 줄이고 가운데에 둬요 */
+export const NoteImage: Story = {
+  parameters: {
+    msw: respondNoteWithImage(imageReleaseNoteItems.normal),
+    design: {
+      type: "figma",
+      url: "https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=4697-18589",
+    },
+  },
+  play: async ({ canvasElement }) => {
+    await selectMenuItem(canvasElement, "새 소식");
+  },
+};
+
+/** 아주 납작한 사진(2560×420)이에요. 폭에 맞춘 높이 그대로 보여 주고 자르지 않아요 */
+export const WideNoteImage: Story = {
+  parameters: {
+    msw: respondNoteWithImage(imageReleaseNoteItems.wide),
+    design: IMAGE_CASES_DESIGN,
+  },
+  play: async ({ canvasElement }) => {
+    await selectMenuItem(canvasElement, "새 소식");
+  },
+};
+
+/** 세로로 긴 사진(750×1624)이에요. 높이 240px로 줄이고 남는 양옆은 사진 칸 배경색이에요 */
+export const TallNoteImage: Story = {
+  parameters: {
+    msw: respondNoteWithImage(imageReleaseNoteItems.tall),
+    design: IMAGE_CASES_DESIGN,
+  },
+  play: async ({ canvasElement }) => {
+    await selectMenuItem(canvasElement, "새 소식");
+  },
+};
+
+/** 사진을 불러오지 못한 항목이에요. 사진 칸 없이 글만 보여요. 허용하지 않는 주소도 같은 모습이에요 */
+export const BrokenNoteImage: Story = {
+  parameters: {
+    msw: respondNoteWithImage(imageReleaseNoteItems.broken),
+    design: IMAGE_CASES_DESIGN,
+  },
+  play: async ({ canvasElement }) => {
+    await selectMenuItem(canvasElement, "새 소식");
+  },
+};
+
 /** 아직 낸 노트가 하나도 없거나 노트를 받지 못했을 때예요 */
 export const Empty: Story = {
   parameters: {
@@ -162,6 +313,32 @@ export const Empty: Story = {
       handlers: {
         releaseNotes: http.get(`*${RELEASE_NOTES_RELAY_PATH}`, () =>
           HttpResponse.json([]),
+        ),
+      },
+    },
+    design: {
+      type: "figma",
+      url: "https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=4892-55258",
+    },
+  },
+  play: async ({ canvasElement }) => {
+    await selectMenuItem(canvasElement, "새 소식");
+  },
+};
+
+/** 노트는 있지만 모두 3일이 지났거나 「숨기기」라 패널에 보일 노트가 없을 때예요. 마지막으로 본 뒤 숨긴 노트가 새로 올라와도 버튼에 점을 켜지 않고, 패널은 빈 상태예요 */
+export const NoVisibleNote: Story = {
+  beforeEach: () => {
+    localStorage.setItem(LAST_SEEN_NOTE_ID_KEY, hiddenReleaseNote.id);
+  },
+  parameters: {
+    msw: {
+      handlers: {
+        releaseNotes: http.get(`*${RELEASE_NOTES_RELAY_PATH}`, () =>
+          HttpResponse.json([
+            { ...hiddenReleaseNote, id: "pr-1070", releasedAt: "2026-10-29" },
+            hiddenReleaseNote,
+          ]),
         ),
       },
     },

@@ -29,7 +29,7 @@ export class GetCsrfTokenResponseDto {
 export interface GetMeResponseRaw {
   memberId: number;
   nickname: string;
-  profileImageUrl: string;
+  profileImageUrl: string | null;
 }
 
 /** 로그인한 회원 정보 조회 응답 */
@@ -38,8 +38,8 @@ export class GetMeResponseDto {
   memberId: number;
   /** 회원 닉네임. 최대 20자 */
   nickname: string;
-  /** 프로필 이미지의 절대 URL */
-  profileImageUrl: string;
+  /** 프로필 이미지의 절대 URL. 로그인 수단에 사진이 없거나 카카오에서 사진 제공에 동의하지 않았으면 null */
+  profileImageUrl: string | null;
 
   constructor(raw: GetMeResponseRaw) {
     this.memberId = raw.memberId;

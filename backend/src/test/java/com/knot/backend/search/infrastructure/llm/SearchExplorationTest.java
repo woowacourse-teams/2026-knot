@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.knot.backend.search.domain.SearchToolException;
+import java.time.Instant;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -72,6 +73,33 @@ class SearchExplorationTest {
         // when & then
         assertThatThrownBy(exploration::finish).isInstanceOf(SearchToolException.class)
                 .hasMessage("INCOMPLETE_DOCUMENT_EXPLORATION");
+    }
+
+    @Test
+    @DisplayName("도구에서 읽은 문서의 녹음 시각과 생성 시각을 보존한다")
+    void record_success_preservesDocumentDates() {
+        // given
+        String result = """
+                {"document":{"documentId":1,"title":"회의","topic":"주제",
+                "contentRevision":"revision","recordingStartedAt":"2026-10-27T14:50:00Z",
+                "createdAt":"2026-10-27T15:10:00Z"},"content":"내용","offset":0,"truncated":false}
+                """;
+        // when
+        exploration.record(
+                "read_document",
+                mapper.readTree(result)
+        );
+        // then
+        assertThat(
+                exploration.finish()
+                        .getFirst()
+                        .recordingStartedAt()
+        ).isEqualTo(Instant.parse("2026-10-27T14:50:00Z"));
+        assertThat(
+                exploration.finish()
+                        .getFirst()
+                        .createdAt()
+        ).isEqualTo(Instant.parse("2026-10-27T15:10:00Z"));
     }
 
     @Test

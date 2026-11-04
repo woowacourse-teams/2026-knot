@@ -27,13 +27,12 @@ public final class OAuthUser {
     ) {
         validate(
                 provider,
-                externalId,
-                profileImageUrl
+                externalId
         );
 
         this.provider = provider;
         this.externalId = externalId;
-        this.profileImageUrl = profileImageUrl;
+        this.profileImageUrl = usableProfileImageUrl(profileImageUrl);
         this.authenticatedAt = authenticatedAt;
     }
 
@@ -66,16 +65,18 @@ public final class OAuthUser {
 
     private static void validate(
             OAuthProvider provider,
-            String externalId,
-            String profileImageUrl
+            String externalId
     ) {
         if (provider == null || externalId == null || externalId.isBlank()) {
             throw new AuthException(AuthErrorCode.INVALID_OAUTH_USER);
         }
+    }
 
-        if (profileImageUrl != null
-                && (profileImageUrl.isBlank() || profileImageUrl.length() > MAX_PROFILE_IMAGE_URL_LENGTH)) {
-            throw new AuthException(AuthErrorCode.INVALID_OAUTH_USER);
+    private static String usableProfileImageUrl(String profileImageUrl) {
+        if (profileImageUrl == null || profileImageUrl.isBlank()
+                || profileImageUrl.length() > MAX_PROFILE_IMAGE_URL_LENGTH) {
+            return null;
         }
+        return profileImageUrl;
     }
 }

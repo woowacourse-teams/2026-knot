@@ -7,13 +7,16 @@ import com.knot.backend.search.application.SearchAnswerGenerator;
 import com.knot.backend.search.application.SearchToolAccess;
 import com.knot.backend.search.application.SearchToolScope;
 import com.knot.backend.search.application.dto.result.SearchDocumentResult;
+import com.knot.backend.search.domain.SearchToolException;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
+import lombok.extern.slf4j.Slf4j;
 import lombok.RequiredArgsConstructor;
 import tools.jackson.databind.ObjectMapper;
 
 @RequiredArgsConstructor
+@Slf4j
 public class SearchStreamingAnswerGenerator implements SearchAnswerGenerator {
 
     private final SearchLlmClient llm;
@@ -30,10 +33,44 @@ public class SearchStreamingAnswerGenerator implements SearchAnswerGenerator {
             Consumer<String> onDelta
     ) {
         access.validate(scope);
-        List<Map<String, Object>> messages = messages(
-                scope,
+        List<Map<String, Object>> previous = history.beforeQuestion(scope);
+        SearchAnswerBudget budget = new SearchAnswerBudget(
+                mapper,
+                properties.getContextCharacterLimit(),
                 question,
-                documents
+                scope.startedAt()
+        );
+        try {
+            budget.select(
+                    documents,
+                    previous
+            );
+        } catch (SearchToolException exception) {
+            log.warn(
+                    "Search context budget failed workspaceId={} answerId={} limitChars={} documents={} history={} failureCode={}",
+                    scope.workspaceId(),
+                    scope.answerId(),
+                    properties.getContextCharacterLimit(),
+                    documents.size(),
+                    previous.size(),
+                    exception.getMessage()
+            );
+            throw exception;
+        }
+        List<Map<String, Object>> messages = budget.messages();
+        log.info(
+                "Search context budget workspaceId={} answerId={} inputChars={} limitChars={} documents={} selectedDocuments={} history={} selectedHistory={} partial={}",
+                scope.workspaceId(),
+                scope.answerId(),
+                mapper.writeValueAsString(messages)
+                        .length(),
+                properties.getContextCharacterLimit(),
+                documents.size(),
+                budget.documents()
+                        .size(),
+                previous.size(),
+                budget.historyCount(),
+                budget.partial()
         );
         SearchAgentContext context = new SearchAgentContext(
                 properties,
@@ -56,55 +93,7 @@ public class SearchStreamingAnswerGenerator implements SearchAnswerGenerator {
                 }
         );
         access.validate(scope);
-        return answer.complete(documents);
+        return answer.complete(budget.documents());
     }
 
-    private List<Map<String, Object>> messages(
-            SearchToolScope scope,
-            String question,
-            List<SearchDocumentResult> documents
-    ) {
-        return List.of(
-                Map.of(
-                        "role",
-                        "system",
-                        "content",
-                        SearchAnswerPrompt.system()
-                ),
-                Map.of(
-                        "role",
-                        "user",
-                        "content",
-                        mapper.writeValueAsString(
-                                Map.of(
-                                        "question",
-                                        question,
-                                        "conversationHistory",
-                                        history.beforeQuestion(scope),
-                                        "evidence",
-                                        evidence(documents)
-                                )
-                        )
-                )
-        );
-    }
-
-    private List<Map<String, Object>> evidence(List<SearchDocumentResult> documents) {
-        return documents.stream()
-                .map(
-                        document -> Map.<String, Object>of(
-                                "evidenceId",
-                                "E" + document.documentId(),
-                                "documentId",
-                                document.documentId(),
-                                "title",
-                                document.title(),
-                                "topic",
-                                document.topic(),
-                                "content",
-                                document.content()
-                        )
-                )
-                .toList();
-    }
 }

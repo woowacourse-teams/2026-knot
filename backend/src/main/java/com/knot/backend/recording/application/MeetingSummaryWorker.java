@@ -6,6 +6,8 @@ import com.knot.backend.global.exception.LlmException;
 import com.knot.backend.global.exception.ProjectException;
 import com.knot.backend.global.logging.ServerErrorLogger;
 import com.knot.backend.recording.application.dto.result.MeetingSummaryTask;
+import com.knot.backend.recording.domain.RecordingErrorCode;
+import com.knot.backend.recording.domain.RecordingException;
 import jakarta.annotation.PreDestroy;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.ExecutorService;
@@ -211,13 +213,16 @@ public class MeetingSummaryWorker {
     }
 
     private boolean isTransient(RuntimeException exception) {
+        if (exception instanceof RecordingException recordingException) {
+            return recordingException.getErrorCode() == RecordingErrorCode.INVALID_MEETING_SUMMARY;
+        }
         if (!LlmException.class.isInstance(exception)) {
             return false;
         }
         ErrorCode code = LlmException.class.cast(exception)
                 .getErrorCode();
-        return code == LlmErrorCode.LLM_TIMEOUT || code == LlmErrorCode.LLM_RATE_LIMITED
-                || code == LlmErrorCode.LLM_UNAVAILABLE;
+        return code == LlmErrorCode.LLM_INVALID_RESPONSE || code == LlmErrorCode.LLM_TIMEOUT
+                || code == LlmErrorCode.LLM_RATE_LIMITED || code == LlmErrorCode.LLM_UNAVAILABLE;
     }
 
     private boolean isInterrupted(RuntimeException exception) {

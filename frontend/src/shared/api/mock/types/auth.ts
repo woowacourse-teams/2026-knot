@@ -1,7 +1,7 @@
 export interface MeResponse {
   memberId: number;
   nickname: string;
-  profileImageUrl: string;
+  profileImageUrl: string | null;
 }
 
 export interface CsrfTokenResponse {

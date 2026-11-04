@@ -16,7 +16,7 @@ import NothingToOrganizeState from "./ui/NothingToOrganizeState";
  *
  * 주소의 녹음 상태를 3초마다 다시 조회하고, 상태에 따라 정리 중 · 문서로 만들 내용 없음 · 문서를 만들지 못함 · 불러오지 못함 가운데 하나를 보여줘요.
  * 문서 만들기나 전사에 실패했으면 그 자리에서 다시 시도할 수 있고, 접수되면 정리 중으로 돌아가요.
- * 정리가 끝나면 그 녹음에서 나온 첫 문서로 보내고, 아직 끝내지 않은 녹음은 녹음 화면으로 보내요.
+ * 정리가 끝나면 그 녹음의 녹음 문서로 보내고, 아직 끝내지 않은 녹음은 녹음 화면으로 보내요.
  * PCM 조각 녹음의 서버 저장이 끝내 실패하거나 폐기됐으면 안내 없이 워크스페이스 홈으로 보내요. 저장된 음성이 없는 실패는 정리할 내용 없음으로 보여요.
  * 저장 상태를 확인하지 못하는 동안에는 정리 중 대신 확인하지 못했다는 안내와 「다시 시도」를 그 자리에 둬요.
  *
@@ -57,7 +57,7 @@ export default function RecordingDocuments() {
     return <AudioSaveCheckFailedState onRetry={retryAudioSaveCheck} />;
   }
 
-  // 정리가 끝난 녹음은 보낼 문서를 찾는 동안 정리 중 화면을 그대로 둬요
+  // 정리가 끝난 녹음은 녹음 문서로 넘어가는 동안 정리 중 화면을 그대로 둬요
   if (viewStatus === "organizing" || viewStatus === "completed") {
     return <DraftingState />;
   }

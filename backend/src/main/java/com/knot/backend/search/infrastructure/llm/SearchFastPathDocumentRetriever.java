@@ -25,32 +25,80 @@ public class SearchFastPathDocumentRetriever implements SearchDocumentRetriever 
             String question
     ) {
         access.validate(scope);
-        String normalizedQuery = normalizer.normalize(question);
-        if (normalizedQuery.isBlank()) {
+        SearchDateFilter date = SearchDateFilter.parse(
+                question,
+                scope.startedAt()
+        );
+        String queryText = question;
+        if (date != null) {
+            queryText = date.query();
+        }
+        String normalizedQuery = normalizer.normalize(queryText);
+        if (normalizedQuery.isBlank() && date == null) {
             return new SearchRetrievalResult(
                     List.of(),
                     0
             );
         }
-        SearchDocumentParameters parameters = new SearchDocumentParameters(
+        SearchDocumentParameters parameters = parameters(
                 normalizedQuery,
-                null,
-                null,
-                null,
-                null,
-                CANDIDATE_LIMIT
+                date
         );
-        List<SearchDocumentRecord> records = query.searchPage(
+        List<SearchDocumentRecord> records = findRecords(
                 scope,
-                parameters,
-                null
-        )
-                .stream()
-                .limit(CANDIDATE_LIMIT)
-                .toList();
+                normalizedQuery,
+                parameters
+        );
         return new SearchRetrievalResult(
                 documents(records),
                 0
+        );
+    }
+
+    private SearchDocumentParameters parameters(
+            String query,
+            SearchDateFilter date
+    ) {
+        if (date == null) {
+            return new SearchDocumentParameters(
+                    query,
+                    null,
+                    null,
+                    null,
+                    null,
+                    CANDIDATE_LIMIT
+            );
+        }
+        String search = query;
+        if (search.isBlank()) {
+            search = null;
+        }
+        return new SearchDocumentParameters(
+                search,
+                null,
+                date.from(),
+                date.before(),
+                null,
+                CANDIDATE_LIMIT
+        );
+    }
+
+    private List<SearchDocumentRecord> findRecords(
+            SearchToolScope scope,
+            String queryText,
+            SearchDocumentParameters parameters
+    ) {
+        if (queryText.isBlank()) {
+            return query.listPage(
+                    scope,
+                    parameters,
+                    null
+            );
+        }
+        return query.searchPage(
+                scope,
+                parameters,
+                null
         );
     }
 
@@ -65,7 +113,9 @@ public class SearchFastPathDocumentRetriever implements SearchDocumentRetriever 
                 record.documentId(),
                 record.title(),
                 record.topic(),
-                record.content()
+                record.content(),
+                record.recordingStartedAt(),
+                record.createdAt()
         );
     }
 }

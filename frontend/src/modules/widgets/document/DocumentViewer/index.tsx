@@ -1,8 +1,4 @@
-import {
-  DOCUMENT_FROM_PARAM,
-  DOCUMENT_FROM_RECORDING,
-  NO_DECISION_SENTENCE,
-} from "@constants/document";
+import { NO_DECISION_SENTENCE } from "@constants/document";
 import styled from "@emotion/styled";
 import SourceRecording from "@features/document/SourceRecording";
 import useConfirmDocument from "@hooks/domain/document/useConfirmDocument";
@@ -12,14 +8,13 @@ import { captureAnalyticsEvent } from "@utils/captureAnalyticsEvent";
 import { formatDate } from "@utils/formatDate";
 import { formatDurationFromSeconds } from "@utils/formatDurationFromSeconds";
 import { useId } from "react";
-import { useParams, useSearchParams } from "react-router";
+import { useParams } from "react-router";
 
 import { useDocumentViewer } from "./model/useDocumentViewer";
 import DocumentConfirmButton from "./ui/DocumentConfirmButton";
 import DocumentConfirmCount from "./ui/DocumentConfirmCount";
 import DocumentCopyButton from "./ui/DocumentCopyButton";
 import DocumentLoadFailed from "./ui/DocumentLoadFailed";
-import DocumentStepper from "./ui/DocumentStepper";
 import DocumentSkeleton from "./ui/DocumentSkeleton";
 
 /**
@@ -30,12 +25,11 @@ import DocumentSkeleton from "./ui/DocumentSkeleton";
  * 같은 판단을 프론트에도 두면 기준이 두 곳에 생기기 때문이에요.
  *
  * 받은 문서 값을 그리기만 하면 되는 것(제목 · 날짜 · 녹음 길이 · 본문)은 여기서 직접 그려요.
- * 복사 버튼 · 확인 수 · 스테퍼 · 확인 버튼은 이 위젯의 부품(`ui/`)이고, 필요한 값과 동작을 여기서 넘겨줘요. 문서는 여기서 한 번만 조회해요.
+ * 복사 버튼 · 확인 수 · 확인 버튼은 이 위젯의 부품(`ui/`)이고, 필요한 값과 동작을 여기서 넘겨줘요. 문서는 여기서 한 번만 조회해요.
  * 복사 버튼은 제목과 같은 줄의 오른쪽 끝에 놓아요.
  * 본문 아래에는 이 문서를 만든 녹음을 카드로 두고, 누르면 그 녹음의 녹음 문서로 가요(DOC-R25). 어느 입구로 열었든 같아요.
- * 그 아래 줄에는 왼쪽에 같은 녹음의 문서를 넘기는 스테퍼를, 오른쪽에 확인 버튼을 놓아요.
- * 스테퍼는 녹음 직후 정리 화면에서 넘어와 주소에 `?from=recording`이 있을 때만 그려요(DOC-R2). 문서 탭 · 홈 · 탐색에서 연 저장 문서에는 확인 버튼만 남아요.
- * 확인 버튼은 확인 대상에게만 보여요. 확인한 뒤에는 누를 수 없는 「확인했어요」로 바뀌고, 확인 대상이 아니면 그리지 않아요.
+ * 그 아래 줄의 오른쪽 끝에 확인 버튼을 놓아요. 같은 녹음의 문서를 넘기는 이전 · 다음은 없어요(DOC-R2).
+ * 확인 버튼은 확인 대상에게만 보여요. 확인한 뒤에는 누를 수 없는 「확인했어요」로 바뀌고, 확인 대상이 아니면 그 줄을 그리지 않아요.
  * 같은 녹음의 내 문서를 모두 확인하면 성공 토스트를, 확인 요청이 실패하면 오류 토스트를 띄워요(`useConfirmDocument`).
  * 결정이 없는 회의 문서는 본문의 결정 없음 문장을 흐리게 그려요(STT-R23).
  * 복사에 성공하면 문서 본문 복사를 사용 기록(`content_copied`)으로 보내요.
@@ -43,11 +37,8 @@ import DocumentSkeleton from "./ui/DocumentSkeleton";
 export default function DocumentViewer() {
   const titleId = useId();
   const params = useParams();
-  const [searchParams] = useSearchParams();
   const workspaceId = Number(params.workspaceId);
   const documentId = Number(params.documentId);
-  const isFromRecording =
-    searchParams.get(DOCUMENT_FROM_PARAM) === DOCUMENT_FROM_RECORDING;
   const { status, documentDetail, retry } = useDocumentViewer({
     workspaceId,
     documentId,
@@ -83,7 +74,7 @@ export default function DocumentViewer() {
   }
 
   return (
-    // 스테퍼로 다른 문서로 넘어가면 「복사됨」 같은 앞 문서의 표시가 남지 않게, 문서마다 새로 그려요
+    // 다른 문서로 넘어가면 「복사됨」 같은 앞 문서의 표시가 남지 않게, 문서마다 새로 그려요
     <Container key={documentDetail.id} aria-labelledby={titleId}>
       <TitleBlock>
         <TitleRow>
@@ -120,24 +111,15 @@ export default function DocumentViewer() {
         workspaceId={workspaceId}
         recordingId={documentDetail.recordingSessionId}
       />
-      <ConfirmBar>
-        {isFromRecording && (
-          <DocumentStepper
-            workspaceId={workspaceId}
-            documentId={documentDetail.id}
-            recordingSessionId={documentDetail.recordingSessionId}
+      {documentDetail.myConfirmationState !== "NOT_REQUIRED" && (
+        <ConfirmBar>
+          <DocumentConfirmButton
+            isConfirmed={documentDetail.myConfirmationState === "CONFIRMED"}
+            isConfirming={isConfirming}
+            onConfirm={confirmDocument}
           />
-        )}
-        {documentDetail.myConfirmationState !== "NOT_REQUIRED" && (
-          <ConfirmButtonWrapper>
-            <DocumentConfirmButton
-              isConfirmed={documentDetail.myConfirmationState === "CONFIRMED"}
-              isConfirming={isConfirming}
-              onConfirm={confirmDocument}
-            />
-          </ConfirmButtonWrapper>
-        )}
-      </ConfirmBar>
+        </ConfirmBar>
+      )}
     </Container>
   );
 }
@@ -195,21 +177,11 @@ const CreatedDate = styled.time`
   color: ${({ theme }) => theme.neutral[500]};
 `;
 
-/** 피그마 Confirm/하단 바: 본문 아래 구분선과 위아래 12px, 왼쪽에 스테퍼 · 오른쪽에 확인 버튼 */
+/** 피그마 Confirm/하단 바: 본문 아래 구분선과 위아래 12px, 오른쪽 끝에 확인 버튼 */
 const ConfirmBar = styled.div`
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   padding: 0.75rem 0; /* 12px 0 */
   border-top: 1px solid ${({ theme }) => theme.neutral[200]};
-
-  /* 스테퍼도 확인 버튼도 그리지 않을 때는 구분선과 여백을 남기지 않아요 */
-  &:empty {
-    display: none;
-  }
-`;
-
-/** 스테퍼가 아직 그려지지 않았을 때도 확인 버튼이 오른쪽 끝에 있게 해요 */
-const ConfirmButtonWrapper = styled.div`
-  margin-left: auto;
 `;

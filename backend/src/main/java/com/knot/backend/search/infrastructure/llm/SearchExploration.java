@@ -2,6 +2,8 @@ package com.knot.backend.search.infrastructure.llm;
 
 import com.knot.backend.search.application.dto.result.SearchDocumentResult;
 import com.knot.backend.search.domain.SearchToolException;
+import java.time.Instant;
+import java.time.format.DateTimeParseException;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -75,13 +77,40 @@ public class SearchExploration {
                                 .asString(),
                         document.path("topic")
                                 .asString(),
-                        previous + content
+                        previous + content,
+                        date(
+                                document,
+                                "recordingStartedAt"
+                        ),
+                        date(
+                                document,
+                                "createdAt"
+                        )
                 )
         );
         revisions.put(
                 id,
                 revision
         );
+    }
+
+    private Instant date(
+            JsonNode document,
+            String field
+    ) {
+        String value = document.path(field)
+                .asString();
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        try {
+            return Instant.parse(value);
+        } catch (DateTimeParseException exception) {
+            throw new SearchToolException(
+                    "INVALID_MCP_RESPONSE",
+                    exception
+            );
+        }
     }
 
     private String previous(

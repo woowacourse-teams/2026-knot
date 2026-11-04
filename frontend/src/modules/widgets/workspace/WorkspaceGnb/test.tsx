@@ -6,6 +6,7 @@ import {
 } from "@api/dto/workspace";
 import { meResponse } from "@api/mock/responses/auth";
 import { GetRecordingDocumentResponseDto } from "@api/dto/recordingDocument";
+import { AUTH_ME_API_PATH } from "@api/fetch/api/v1/auth/me";
 import { documentDetailsResponse } from "@api/mock/responses/document";
 import { recordingDocumentResponse } from "@api/mock/responses/recordingDocument";
 import {
@@ -14,10 +15,6 @@ import {
 } from "@api/mock/responses/workspace";
 import { mockServer } from "@api/mock/server";
 import DockablePanel from "@composites/DockablePanel";
-import {
-  DOCUMENT_FROM_PARAM,
-  DOCUMENT_FROM_RECORDING,
-} from "@constants/document";
 import { ThemeProvider } from "@emotion/react";
 import { theme } from "@provider/themeProvider";
 import { getRouterPath, PATH_ROUTE } from "@routes/PATH_ROUTE";
@@ -363,6 +360,23 @@ describe("WorkspaceGnb", () => {
     });
   });
 
+  it("프로필 사진이 없는 회원은 아바타에 닉네임 첫 글자를 보여준다(AUTH-R15)", async () => {
+    // Google, 카카오 회원은 사진이 없거나 제공에 동의하지 않으면 사진 주소가 null로 와요
+    mockServer.use(
+      http.get(`*${AUTH_ME_API_PATH}`, () =>
+        HttpResponse.json({ ...meResponse, profileImageUrl: null }),
+      ),
+    );
+    renderGnb();
+
+    const avatar = screen.getByRole("img", { name: "내 프로필" });
+
+    await waitFor(() => {
+      expect(avatar).toHaveTextContent(expectedMe.nickname.charAt(0));
+    });
+    expect(avatar.querySelector("img")).not.toBeInTheDocument();
+  });
+
   it("우측에 받은 버튼을 아바타 앞에 둔다 (Figma GNB/Floating)", () => {
     renderGnb();
 
@@ -501,10 +515,6 @@ describe("WorkspaceGnb 위치 표시", () => {
   it.each([
     { screenName: "녹음 화면", path: RECORDING_PATH },
     { screenName: "녹음 뒤 정리 중 화면", path: RECORDING_DOCUMENTS_PATH },
-    {
-      screenName: "녹음 직후 문서 확인 화면",
-      path: `${DOCUMENT_PATH}?${DOCUMENT_FROM_PARAM}=${DOCUMENT_FROM_RECORDING}`,
-    },
   ])(
     "[WS-QA-060] $screenName처럼 탭이 아닌 화면에서는 워크스페이스 이름만 보여준다",
     async ({ path }) => {

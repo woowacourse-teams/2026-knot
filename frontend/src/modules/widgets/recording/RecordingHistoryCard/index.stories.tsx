@@ -105,6 +105,22 @@ export default meta;
 
 type Story = StoryObj<typeof meta>;
 
+/** 상태 필드가 없는 이전 응답이에요. 제목·날짜·길이를 남기고 상태를 확인해야 하는 이동과 재시도만 막아요. */
+export const UnknownProcessingStatus: Story = {
+  parameters: {
+    docs: ISOLATED_DOCS,
+    msw: { handlers: {
+      currentRecording: noCurrentRecording,
+      recordings: http.get(RECORDINGS_URL, () => HttpResponse.json({
+        ...recordingsResponse,
+        items: recordingsResponse.items.map(({ recordingId, title, startedAt, recordingDurationSeconds }) => ({
+          recordingId, title, startedAt, recordingDurationSeconds,
+        })),
+      })),
+    } },
+  },
+};
+
 /**
  * 진행 중인 내 녹음 없이 지난 녹음만 있을 때예요. 처리 상태마다 한 행씩 있고, 아래로 스크롤하면 다음 묶음을 받아요.
  * 맨 위의 문서 정리 중 행은 녹음을 막 끝낸 직후의 모습이기도 해요.
