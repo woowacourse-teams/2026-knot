@@ -4,14 +4,11 @@ import {
   GetWorkspacesResponseDto,
 } from "@api/dto/workspace";
 import { documentDetailsResponse } from "@api/mock/responses/document";
+import { recordingDetailsResponse } from "@api/mock/responses/recording";
 import {
   workspaceDetailResponse,
   workspacesResponse,
 } from "@api/mock/responses/workspace";
-import {
-  DOCUMENT_FROM_PARAM,
-  DOCUMENT_FROM_RECORDING,
-} from "@constants/document";
 import { expect, test, type Locator, type Page } from "@playwright/test";
 
 /**
@@ -32,8 +29,9 @@ const HOME_PATH = `/workspace/${WORKSPACE_ID}`;
 // 문서 탭은 늘 「녹음별」 탭으로 열려요(DOC-R9). 문서 하나의 주소는 탭 없이 문서 id가 붙어요
 const DOCUMENTS_PATH = `${HOME_PATH}/documents/recordings`;
 const DOCUMENT_PATH = `${HOME_PATH}/documents/${DOCUMENT.id}`;
-// 녹음 직후 문서 확인 화면. 녹음 뒤 정리 화면이 문서를 다 만들면 이 주소로 보내요
-const FROM_RECORDING_PATH = `${DOCUMENT_PATH}?${DOCUMENT_FROM_PARAM}=${DOCUMENT_FROM_RECORDING}`;
+// 녹음 뒤 정리 화면. mock의 첫 녹음은 정리 중이라 이 화면에 머물러요
+const [organizingRecording] = recordingDetailsResponse;
+const RECORDING_DOCUMENTS_PATH = `${HOME_PATH}/recordings/${organizingRecording.recordingId}`;
 const TAB_NAMES = ["홈", "탐색", "문서"];
 // 워크스페이스 이름의 최대 길이(20자)
 const LONGEST_WORKSPACE_NAME = "가나다라마바사아자차카타파하가나다라마바";
@@ -109,12 +107,15 @@ test.describe("GNB 위치 표시", () => {
     ).toHaveCount(0);
   });
 
-  test("[WS-QA-060] 녹음 직후 문서 확인 화면처럼 탭이 아닌 화면에서는 아이콘과 워크스페이스 이름만 보여준다", async ({
+  test("[WS-QA-060] 녹음 뒤 정리 화면처럼 탭이 아닌 화면에서는 아이콘과 워크스페이스 이름만 보여준다", async ({
     page,
   }) => {
-    await page.goto(FROM_RECORDING_PATH);
+    await page.goto(RECORDING_DOCUMENTS_PATH);
     await expect(
-      page.getByRole("heading", { level: 2, name: DOCUMENT.title }),
+      page.getByRole("heading", {
+        level: 2,
+        name: "회의 내용을 바탕으로 문서를 정리하고 있어요",
+      }),
     ).toBeVisible();
     const location = getLocation(page);
 

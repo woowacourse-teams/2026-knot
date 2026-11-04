@@ -2,10 +2,6 @@ import { DOCUMENT_API_PATH } from "@api/fetch/api/v1/workspaces/[workspaceId]/do
 import { WORKSPACE_API_PATH } from "@api/fetch/api/v1/workspaces/[workspaceId]";
 import { documentDetailsResponse } from "@api/mock/responses/document";
 import DockablePanel from "@composites/DockablePanel";
-import {
-  DOCUMENT_FROM_PARAM,
-  DOCUMENT_FROM_RECORDING,
-} from "@constants/document";
 import SearchEvidenceToggle from "@features/search/SearchEvidenceToggle";
 import { ToastProvider } from "@provider/context/toastContext";
 import { getRouterPath, PATH_ROUTE } from "@routes/PATH_ROUTE";
@@ -257,16 +253,6 @@ export const OnRecordingDocumentViewerScreen: Story = {
       type: "figma",
       url: "https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=5373-3187",
     },
-  },
-};
-
-/**
- * 녹음을 끝내고 만든 문서를 확인하는 화면이에요. 탭이 아니라서 위치 표시에 아이콘과 워크스페이스 이름만 있어요.
- * 녹음 중인 화면도 같은 모양이에요.
- */
-export const OnRecordingDocumentScreen: Story = {
-  parameters: {
-    initialPath: `${DOCUMENT_PATH}?${DOCUMENT_FROM_PARAM}=${DOCUMENT_FROM_RECORDING}`,
   },
 };
 

@@ -15,10 +15,6 @@ import {
 } from "@api/mock/responses/workspace";
 import { mockServer } from "@api/mock/server";
 import DockablePanel from "@composites/DockablePanel";
-import {
-  DOCUMENT_FROM_PARAM,
-  DOCUMENT_FROM_RECORDING,
-} from "@constants/document";
 import { ThemeProvider } from "@emotion/react";
 import { theme } from "@provider/themeProvider";
 import { getRouterPath, PATH_ROUTE } from "@routes/PATH_ROUTE";
@@ -519,10 +515,6 @@ describe("WorkspaceGnb 위치 표시", () => {
   it.each([
     { screenName: "녹음 화면", path: RECORDING_PATH },
     { screenName: "녹음 뒤 정리 중 화면", path: RECORDING_DOCUMENTS_PATH },
-    {
-      screenName: "녹음 직후 문서 확인 화면",
-      path: `${DOCUMENT_PATH}?${DOCUMENT_FROM_PARAM}=${DOCUMENT_FROM_RECORDING}`,
-    },
   ])(
     "[WS-QA-060] $screenName처럼 탭이 아닌 화면에서는 워크스페이스 이름만 보여준다",
     async ({ path }) => {
