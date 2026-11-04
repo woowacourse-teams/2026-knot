@@ -457,6 +457,10 @@ class DevBlueGreenDeployTest(unittest.TestCase):
         return subprocess.run(["bash", str(self.scripts / "prod_bluegreen_deploy.sh")],
                               capture_output=True, text=True, env=environment)
 
+    def test_prod_large_metrics_response_preserves_safe_deployment(self):
+        result = self._run_prod_log_check(TEST_METRICS_LARGE="1")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
     def test_prod_refuses_serial_mode_before_stopping_existing_service(self):
         result = self._run_prod_log_check(TEST_MIGRATION_MODE="serial-workers")
         self.assertNotEqual(result.returncode, 0)
@@ -748,7 +752,9 @@ if "127.0.0.1:18080/actuator/prometheus" in url:
             sys.exit(7)
         if ":8081;" in route and "knot-backend-green.service" not in services:
             sys.exit(7)
-    print("jvm_memory_used_bytes 123")
+    print("jvm_memory_used_bytes 123", flush=True)
+    if os.environ.get("TEST_METRICS_LARGE") == "1":
+        sys.stdout.write("other_metric 1\\n" * 100000)
     sys.exit(0)
 if "127.0.0.1:8080" in url and os.environ.get("TEST_FAIL_PORT") == "8080":
     print('{"status":"DOWN"}')
