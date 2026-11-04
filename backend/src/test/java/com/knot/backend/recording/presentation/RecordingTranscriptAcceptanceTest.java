@@ -267,6 +267,39 @@ class RecordingTranscriptAcceptanceTest {
     }
 
     @Test
+    @DisplayName("입력 전사를 이미 정리한 지난 NO_CONTENT 녹음은 404 RECORDING_TRANSCRIPT_NOT_FOUND다")
+    void find_fail_releasedNoContentTranscript() throws Exception {
+        // given
+        long recordingId = saved(
+                teammateId,
+                0
+        );
+        long batchId = fixture.batch(
+                recordingId,
+                "NO_CONTENT",
+                "NO_CONTENT"
+        );
+        jdbcClient.sql("""
+                UPDATE document_generation_batches
+                SET released_transcript_id = transcript_id, transcript_id = NULL, input_released_at = finished_at
+                WHERE id = :batchId
+                """)
+                .param(
+                        "batchId",
+                        batchId
+                )
+                .update();
+
+        // when & then
+        find(
+                workspaceId,
+                String.valueOf(recordingId),
+                memberId
+        ).andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("RECORDING_TRANSCRIPT_NOT_FOUND"));
+    }
+
+    @Test
     @DisplayName("전사 전·전사 실패 녹음은 404 RECORDING_TRANSCRIPT_NOT_FOUND다")
     void find_fail_transcriptNotFound() throws Exception {
         // given
