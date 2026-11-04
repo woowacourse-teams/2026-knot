@@ -244,7 +244,30 @@ class RecordingTranscriptAcceptanceTest {
     }
 
     @Test
-    @DisplayName("전사 전·전사 실패·NO_CONTENT 녹음은 404 RECORDING_TRANSCRIPT_NOT_FOUND다")
+    @DisplayName("주제가 없어 문서를 만들지 않은 NO_CONTENT 녹음도 200으로 전사를 준다")
+    void find_success_noContentRecording() throws Exception {
+        // given
+        long recordingId = saved(
+                teammateId,
+                0
+        );
+        fixture.batch(
+                recordingId,
+                "NO_CONTENT",
+                "NO_CONTENT"
+        );
+
+        // when & then
+        find(
+                workspaceId,
+                String.valueOf(recordingId),
+                memberId
+        ).andExpect(status().isOk())
+                .andExpect(jsonPath("$.recordingId").value(recordingId));
+    }
+
+    @Test
+    @DisplayName("전사 전·전사 실패 녹음은 404 RECORDING_TRANSCRIPT_NOT_FOUND다")
     void find_fail_transcriptNotFound() throws Exception {
         // given
         long beforeTranscription = saved(
@@ -256,21 +279,11 @@ class RecordingTranscriptAcceptanceTest {
                 1
         );
         fixture.transcriptionFailed(transcriptionFailed);
-        long noContent = saved(
-                teammateId,
-                2
-        );
-        fixture.batch(
-                noContent,
-                "NO_CONTENT",
-                "NO_CONTENT"
-        );
 
         // when & then
         for (long recordingId : List.of(
                 beforeTranscription,
-                transcriptionFailed,
-                noContent
+                transcriptionFailed
         )) {
             find(
                     workspaceId,
