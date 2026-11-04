@@ -561,7 +561,6 @@ public class RecordingService {
                 RecordingAudioChunk.reserve(
                         session.getId(),
                         descriptor,
-                        "recordings/" + session.getId() + "/chunks/" + descriptor.sequence(),
                         endedAt.plusSeconds(120)
                 )
         );
