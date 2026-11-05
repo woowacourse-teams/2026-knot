@@ -229,9 +229,10 @@ public class TranscriptionWindowAudioAssembler {
                     || (previousEnd >= 0
                             && (previousEnd != part.sampleOffset() || previousSequence + 1 != part.sequence()))
                     || (previousEnd < 0 && part.sampleOffset() > manifest.inputStartFrame())
-                    || part.storageKey() == null || !part.storageKey()
-                            .equals("recordings/" + source.recordingId() + "/chunks/" + part.sequence())
-                    || !checksum(part.checksumSha256()) || (!part.isMissing() && !version(part.versionId()))
+                    || !validChunkKey(
+                            source.recordingId(),
+                            part
+                    ) || !checksum(part.checksumSha256()) || (!part.isMissing() && !version(part.versionId()))
                     || (part.isMissing() && !finalPresent)) {
                 throw mismatch();
             }
@@ -242,6 +243,18 @@ public class TranscriptionWindowAudioAssembler {
             throw mismatch();
         }
         return manifest;
+    }
+
+    private boolean validChunkKey(
+            long recordingId,
+            AudioManifestPart part
+    ) {
+        String prefix = "recordings/" + recordingId + "/chunks/" + part.sequence();
+        if (prefix.equals(part.storageKey())) {
+            return true;
+        }
+        return part.storageKey() != null && part.storageKey()
+                .matches(prefix + "/[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}");
     }
 
     private void validatePrepared(

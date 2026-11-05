@@ -26,6 +26,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.junit.jupiter.api.io.TempDir;
 import tools.jackson.databind.ObjectMapper;
 
@@ -320,6 +322,84 @@ class TranscriptionWindowAudioAssemblerTest {
                 null,
                 null,
                 0
+        );
+
+        // when
+        Throwable failure = catchThrowable(() -> assembler().materialize(source));
+
+        // then
+        assertThat(failure).isInstanceOf(RecordingException.class);
+        verify(
+                storage,
+                never()
+        ).openChunk(any());
+        assertEmptyDirectory();
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void materialize_acceptsUniqueChunkKeyForRawAndFinalAudio(boolean finalized) throws Exception {
+        // given
+        byte[] pcm = {1, 2, 3, 4, 5, 6, 7, 8};
+        AudioManifestPart part = new AudioManifestPart(
+                1,
+                0,
+                4,
+                "recordings/7/chunks/1/12345678-1234-4234-8234-123456789abc",
+                checksum(pcm),
+                "chunk-version"
+        );
+        TranscriptionWindowAudioSource source = source(
+                part,
+                finalized
+        );
+        when(storage.openChunk(part)).thenReturn(new ByteArrayInputStream(pcm));
+        when(
+                storage.openFinalRange(
+                        anyString(),
+                        anyString(),
+                        anyLong(),
+                        anyLong()
+                )
+        ).thenReturn(new ByteArrayInputStream(new byte[]{3, 4, 5, 6}));
+        AtomicReference<byte[]> uploaded = captureUpload();
+
+        // when
+        assembler().materialize(source);
+
+        // then
+        assertThat(
+                java.util.Arrays.copyOfRange(
+                        uploaded.get(),
+                        44,
+                        48
+                )
+        ).containsExactly(
+                3,
+                4,
+                5,
+                6
+        );
+        assertEmptyDirectory();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"recordings/8/chunks/1/12345678-1234-4234-8234-123456789abc",
+            "recordings/7/chunks/2/12345678-1234-4234-8234-123456789abc", "recordings/7/chunks/1/../2",
+            "recordings/7/chunks/1/not-a-uuid", "recordings/7/chunks/1/12345678-1234-4234-8234-123456789abc/extra"})
+    void materialize_rejectsChunkKeyOutsideRecordingSequenceOrFormat(String key) throws Exception {
+        // given
+        AudioManifestPart part = new AudioManifestPart(
+                1,
+                0,
+                4,
+                key,
+                checksum(new byte[8]),
+                "chunk-version"
+        );
+        TranscriptionWindowAudioSource source = source(
+                part,
+                false
         );
 
         // when

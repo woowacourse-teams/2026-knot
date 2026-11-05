@@ -86,8 +86,6 @@ public class RecordingAudioChunkTransaction {
         RecordingAudioChunk chunk = RecordingAudioChunk.reserve(
                 recordingId,
                 command.descriptor(),
-                "recordings/" + recordingId + "/chunks/" + command.descriptor()
-                        .sequence(),
                 expiresAt
         );
         chunks.save(chunk);
@@ -253,8 +251,8 @@ public class RecordingAudioChunkTransaction {
     }
 
     /**
-     * 이어 받기 때 확인된 조각이 끊김 없이 이어진 곳 뒤의 예약을 지우고 다음 예약 위치를 그 바로 뒤로 되돌린다. 지운 예약의 저장소 객체는
-     * 같은 키로 다시 올라오거나 녹음 단위 정리에서 함께 지운다.
+     * 이어 받기 때 확인된 조각이 끊김 없이 이어진 곳 뒤의 예약을 지우고 다음 예약 위치를 그 바로 뒤로 되돌린다. 새 예약은 별도 객체 키를
+     * 사용한다. 지운 예약의 객체는 이전 서명 URL과 격리한 채 녹음 단위 정리에서 함께 지운다.
      */
     @Transactional
     public void rewindToVerifiedPrefix(long recordingId) {

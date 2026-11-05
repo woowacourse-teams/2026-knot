@@ -12,6 +12,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.time.Instant;
 import java.util.Objects;
+import java.util.UUID;
 import lombok.Getter;
 
 @Getter
@@ -88,6 +89,23 @@ public class RecordingAudioChunk {
                 recordingId,
                 descriptor,
                 storageKey,
+                expiresAt
+        );
+    }
+
+    /** 새 예약은 같은 순번을 다시 쓰더라도 이전 서명 URL과 다른 객체를 가리킨다. */
+    public static RecordingAudioChunk reserve(
+            long recordingId,
+            AudioChunkDescriptor descriptor,
+            Instant expiresAt
+    ) {
+        if (descriptor == null) {
+            throw new RecordingException(RecordingErrorCode.INVALID_AUDIO_CHUNK);
+        }
+        return reserve(
+                recordingId,
+                descriptor,
+                "recordings/" + recordingId + "/chunks/" + descriptor.sequence() + "/" + UUID.randomUUID(),
                 expiresAt
         );
     }
