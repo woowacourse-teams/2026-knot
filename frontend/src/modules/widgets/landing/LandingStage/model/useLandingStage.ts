@@ -2,6 +2,7 @@ import { useTheme } from "@emotion/react";
 import { hexToRgb } from "@utils/hexToRgb";
 import { useEffect, useRef, useState } from "react";
 
+import type { LandingScenes } from "../constants/landing";
 import type { GraphLabel } from "../types/particle";
 
 import { createLandingEngine, type LandingEngine } from "./createLandingEngine";
@@ -14,7 +15,7 @@ const FONT_WAIT_MS = 1800;
  *
  * 반환한 ref들을 무대의 각 요소에 걸어야 엔진이 시작합니다.
  */
-const useLandingStage = () => {
+const useLandingStage = (scenes: LandingScenes) => {
   const theme = useTheme();
 
   const scrollerRef = useRef<HTMLDivElement>(null);
@@ -48,6 +49,7 @@ const useLandingStage = () => {
     const accent = hexToRgb(theme.sub.accent[500]);
     const engine = createLandingEngine({
       elements: { scroller, stage, canvas, scrollCue, documents, confirmation, questionInput },
+      scenes,
       listeners: {
         onSceneChange: setScene,
         onSettledChange: setIsSettled,
@@ -95,7 +97,7 @@ const useLandingStage = () => {
       engineRef.current = null;
       root.style.overscrollBehavior = previousOverscroll;
     };
-  }, [theme]);
+  }, [theme, scenes]);
 
   const selectQuestion = (index: number) => {
     setQuestionIndex(index);

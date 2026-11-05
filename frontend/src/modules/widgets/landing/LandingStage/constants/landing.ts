@@ -1,6 +1,4 @@
-/** 랜딩의 장면 이름. 오른쪽 장면 이동 버튼의 글자이고, 순서가 곧 장면 번호예요. */
-export const SCENE_NAMES = ["소개", "문제", "녹음", "정리", "확인", "탐색", "시작"];
-
+/** 소개부터 탐색까지 모든 랜딩이 같은 번호로 쓰는 장면. 그 뒤 장면은 `LandingScenes`가 정해요. */
 export const SCENE = {
   INTRO: 0,
   PROBLEM: 1,
@@ -8,10 +6,34 @@ export const SCENE = {
   DOCUMENTS: 3,
   CONFIRMATION: 4,
   SEARCH: 5,
-  START: 6,
 } as const;
 
-export const SCENE_COUNT = SCENE_NAMES.length;
+/** 랜딩 한 벌의 장면 묶음. `names`의 순서가 곧 장면 번호이고 오른쪽 장면 이동 버튼의 글자예요. */
+export interface LandingScenes {
+  names: readonly string[];
+  /** 녹음 기술 소개 장면 번호. 기술 소개가 없는 랜딩에는 없어요. */
+  RECORDING_TECHNOLOGY?: number;
+  /** 탐색 기술 소개 장면 번호. 기술 소개가 없는 랜딩에는 없어요. */
+  SEARCH_TECHNOLOGY?: number;
+  START: number;
+}
+
+/** 공개 랜딩(`/`)의 7장면. 탐색 소개 다음이 바로 시작하기예요. */
+export const LANDING_SCENES: LandingScenes = {
+  names: ["소개", "문제", "녹음", "정리", "확인", "탐색", "시작"],
+  START: 6,
+};
+
+/**
+ * 기술 소개 페이지(`/landing/technology`)의 9장면. 탐색 소개와 시작하기 사이에 녹음 기술, 탐색 기술 장면이 있어요.
+ * 공개 랜딩에서는 뺐지만 팀이 가장 자신 있는 기술로 어떤 문제를 어떻게 풀었는지 보여 줘야 할 때 이 페이지를 열어요.
+ */
+export const LANDING_TECHNOLOGY_SCENES: LandingScenes = {
+  names: ["소개", "문제", "녹음", "정리", "확인", "탐색", "기술: 녹음", "기술: 탐색", "시작"],
+  RECORDING_TECHNOLOGY: 6,
+  SEARCH_TECHNOLOGY: 7,
+  START: 8,
+};
 
 /** 탐색 장면에서 고를 수 있는 예시 질문과 답변. 답변의 `|`는 줄이 바뀌어도 끊기지 않는 덩어리의 경계예요. */
 export const SAMPLE_QUESTIONS = [

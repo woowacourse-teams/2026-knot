@@ -6,13 +6,14 @@ import { createMemoryRouter, RouterProvider } from "react-router";
 import { describe, expect, it } from "vitest";
 
 import LandingStage from ".";
+import { LANDING_TECHNOLOGY_SCENES, type LandingScenes } from "./constants/landing";
 
 const LOGIN_TEXT = "로그인 화면";
 
-const renderLandingStage = () => {
+const renderLandingStage = (scenes?: LandingScenes) => {
   const router = createMemoryRouter(
     [
-      { path: PATH_ROUTE.HOME, element: <LandingStage /> },
+      { path: PATH_ROUTE.HOME, element: <LandingStage scenes={scenes} /> },
       { path: PATH_ROUTE.LOGIN, element: <p>{LOGIN_TEXT}</p> },
     ],
     { initialEntries: [PATH_ROUTE.HOME] },
@@ -35,6 +36,27 @@ describe("LandingStage 장면 목록", () => {
 
     expect(steps.map((step) => step.textContent)).toEqual(["소개", "문제", "녹음", "정리", "확인", "탐색", "시작"]);
     expect(screen.queryByRole("region", { name: /기술/ })).not.toBeInTheDocument();
+  });
+
+  it("기술 소개 장면 묶음을 받으면 탐색과 시작 사이에 녹음 기술, 탐색 기술 장면이 들어간다", () => {
+    renderLandingStage(LANDING_TECHNOLOGY_SCENES);
+
+    const steps = within(screen.getByRole("navigation", { name: "섹션" })).getAllByRole("button");
+
+    expect(steps.map((step) => step.textContent)).toEqual([
+      "소개",
+      "문제",
+      "녹음",
+      "정리",
+      "확인",
+      "탐색",
+      "기술: 녹음",
+      "기술: 탐색",
+      "시작",
+    ]);
+    // 보이지 않는 장면은 aria-hidden이라 역할로는 안 잡히고, 제목이 줄바꿈으로 나뉘어 있어 제목 ID로 두 장면이 그려졌는지 봐요
+    expect(document.getElementById("technology-recording-title")).toHaveTextContent("녹음은 정확하게");
+    expect(document.getElementById("technology-search-title")).toHaveTextContent("찾는 건 빠르게");
   });
 });
 
