@@ -47,7 +47,7 @@ export default function RecordingHeartbeat({
   useRecordingMaxDuration({
     beforeMs: TIME_LIMIT_WARNING_BEFORE_MS,
     onReached: () => {
-      // 녹음한 시간이 서버 값으로 다시 맞춰지면 또 닿을 수 있어, 녹음마다 한 번만 알려요
+      // 녹음한 시간이 서버 값으로 다시 맞춰지거나 이어서 녹음하면 또 닿을 수 있어, 녹음마다 한 번만 알려요
       if (!session || warnedRecordingIdRef.current === session.recordingId) {
         return;
       }
