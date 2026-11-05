@@ -1,0 +1,11 @@
+gradle.projectsEvaluated {
+    gradle.rootProject.tasks.named('integrationTest').configure {
+        maxParallelForks = 2
+        systemProperty 'logging.level.org.springframework.test.context.cache', 'TRACE'
+        systemProperty 'logging.level.org.springframework.test.context.support.DirtiesContextTestExecutionListener', 'TRACE'
+        testLogging {
+            showStandardStreams = false
+            info.events = ['failed']
+        }
+    }
+}
