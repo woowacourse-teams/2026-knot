@@ -5,6 +5,7 @@ import JoinErrorPage from "@pages/join-error";
 import LandingPage from "@pages/landing";
 import LoginPage from "@pages/login";
 import LoginFailedPage from "@pages/login/failed";
+import MeetingInsightsPage from "@pages/meeting-insights";
 import NotFoundPage from "@pages/not-found";
 import OnboardingPage from "@pages/onboarding";
 import OnboardingCompletePage from "@pages/onboarding/complete";
@@ -52,6 +53,8 @@ import RecordingGuard from "./RecordingGuard";
  * 화면이 비어 보이지 않기 때문이에요.
  */
 const screenRoutes: RouteObject[] = [
+  // 회의 인포그래픽 시안 — 레이아웃과 가드 없이 주소로 바로 열어요
+  { path: PATH_ROUTE.MEETING_INSIGHTS, element: <MeetingInsightsPage /> },
   // 홈 — 로그인하지 않은 사람은 화면 전체를 쓰는 랜딩을, 로그인한 사람은 진입 분기를 거쳐 워크스페이스로
   {
     path: PATH_ROUTE.HOME,

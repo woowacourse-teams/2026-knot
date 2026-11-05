@@ -36,6 +36,9 @@ export const PATH_ROUTE = {
   INVITE: "/invite/:token",
 
   JOIN_ERROR: "/join-error",
+
+  // 회의 인포그래픽 시안. 팀이 함께 보고 기획하는 화면이라 로그인 없이 주소로 열어요
+  MEETING_INSIGHTS: "/meeting-insights",
 } as const;
 
 type RouteKey = keyof typeof PATH_ROUTE;
