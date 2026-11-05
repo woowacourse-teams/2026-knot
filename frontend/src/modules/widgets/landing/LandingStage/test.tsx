@@ -1,7 +1,7 @@
 import { ThemeProvider } from "@emotion/react";
 import { theme } from "@provider/themeProvider";
 import { PATH_ROUTE } from "@routes/PATH_ROUTE";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import { describe, expect, it } from "vitest";
 
@@ -26,6 +26,17 @@ const renderLandingStage = () => {
 
   return { router };
 };
+
+describe("LandingStage 장면 목록", () => {
+  it("장면은 소개부터 시작까지 7개이고 기술 소개 장면은 없다", () => {
+    renderLandingStage();
+
+    const steps = within(screen.getByRole("navigation", { name: "섹션" })).getAllByRole("button");
+
+    expect(steps.map((step) => step.textContent)).toEqual(["소개", "문제", "녹음", "정리", "확인", "탐색", "시작"]);
+    expect(screen.queryByRole("region", { name: /기술/ })).not.toBeInTheDocument();
+  });
+});
 
 describe("LandingStage 시작 자리", () => {
   it("첫 장면에는 로그인 수단 버튼 대신 「시작하기」 링크 하나를 둔다", () => {
