@@ -32,3 +32,6 @@ playwright/.cache/
 
 # 개발 서버의 녹음 시작 구간 기록
 .dev-recording-trace.log
+
+# 회의 인포그래픽 시안의 실제 회의 데이터. 회의 내용이 들어 있어 올리지 않아요
+docs/meeting-insights/

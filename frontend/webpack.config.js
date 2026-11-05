@@ -85,6 +85,27 @@ export default (env, argv) => {
           });
         }
 
+        // 회의 인포그래픽 시안의 실제 데이터를 내줘요. 파일은 .gitignore에 있고, public이 아니라서 빌드 결과에도 들어가지 않아요
+        middlewares.unshift({
+          name: "dev-meeting-insights",
+          path: "/__dev/meeting-insights",
+          middleware: (_req, res) => {
+            const datasetPath = path.join(
+              __dirname,
+              "docs/meeting-insights/dataset.json",
+            );
+
+            if (!fs.existsSync(datasetPath)) {
+              res.statusCode = 404;
+              res.end();
+              return;
+            }
+
+            res.setHeader("Content-Type", "application/json; charset=utf-8");
+            fs.createReadStream(datasetPath).pipe(res);
+          },
+        });
+
         // 녹음 시작 구간 시간을 파일로 남겨요(src/shared/utils/recordingStartTrace). 개발 서버에서만 있어요
         middlewares.unshift({
           name: "dev-recording-trace",
