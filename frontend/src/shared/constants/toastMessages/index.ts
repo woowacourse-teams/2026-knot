@@ -42,7 +42,7 @@ export const TOAST_MESSAGES = {
   /** 30분 넘게 끊겨 서버가 끝낸 뒤 돌아왔을 때 올리지 못한 조각이 남아 있으면 `RECORDING_CONNECTION_LOST`와 함께 알려요 */
   RECORDING_CHUNKS_NOT_UPLOADED: {
     variant: "caution",
-    message: "끊긴 동안의 소리 일부는 올리지 못했어요",
+    message: "끊긴 동안의 소리 일부는 저장하지 못했어요",
   },
   /** 새로고침 뒤 이어 받기가 거절돼(403 RECORDING_CONTROL_DENIED) 다른 탭이 먼저 이어 받은 것을 알 때 */
   RECORDING_TAKEN_OVER: {
