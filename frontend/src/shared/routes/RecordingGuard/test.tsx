@@ -133,6 +133,18 @@ describe("RecordingGuard", () => {
       );
     });
 
+    it("조회가 실패해도 이어 갈 길이 사라지지 않게 녹음 화면에 둔다", async () => {
+      leaveResumeProof(currentRecordingResponse.recordingId);
+      mockServer.use(
+        http.get(CURRENT_PATH, () => new HttpResponse(null, { status: 503 })),
+      );
+
+      const { router } = renderGuard();
+
+      expect(await screen.findByText(RECORDING_TEXT)).toBeInTheDocument();
+      expect(router.state.location.pathname).toBe(RECORDING_PATH);
+    });
+
     it("증명 없는 탭은 녹음이 진행 중이어도 홈으로 보낸다 (STT-R28)", () => {
       const { router } = renderGuard();
 

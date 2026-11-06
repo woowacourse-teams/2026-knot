@@ -60,6 +60,10 @@ const useServerRecording = () => {
   const isThisTabIdle = useRecordingStore((state) => state.status === "idle");
   const isRecording = data?.status === "RECORDING";
   const isInProgress = isRecording || data?.status === "PAUSED";
+  const resumeProof = getRecordingResumeProof();
+  const isOwnRecording = resumeProof?.recordingId === data?.recordingId;
+  // 조회가 실패해도 증명이 있으면 눌렀을 때 이어 받기가 답을 줘요. 홈으로 보내면 이어 갈 길이 사라져요
+  const isUnknown = resumeProof !== null && data === undefined && error !== null;
 
   // 서버가 녹음 중이라고 답한 동안만 시간 표시를 다시 그려요
   const now = useNow(isRecording);
@@ -72,10 +76,7 @@ const useServerRecording = () => {
   return {
     status,
     recordingId: status === null ? null : (data?.recordingId ?? null),
-    isResumable:
-      isInProgress &&
-      isThisTabIdle &&
-      getRecordingResumeProof()?.recordingId === data?.recordingId,
+    isResumable: isThisTabIdle && (isInProgress ? isOwnRecording : isUnknown),
     isConnectionLost: data?.connectionStatus === "DISCONNECTED",
     isRetryable: data?.isRetryable ?? false,
     retryableJobIds: data?.retryableJobIds ?? [],
