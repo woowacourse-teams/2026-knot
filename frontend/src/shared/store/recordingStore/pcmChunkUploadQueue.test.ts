@@ -598,4 +598,115 @@ describe("PcmChunkUploadQueue", () => {
       });
     });
   });
+
+  describe("이어 붙이기와 보관", () => {
+    /** 요청이 모두 바로 성공하는 큐 */
+    const createStubQueue = (
+      params: Partial<PcmChunkUploadQueueParams> = {},
+    ) => {
+      const reserved: number[][] = [];
+      const queue = new PcmChunkUploadQueue({
+        reserve: async ({ sequence, sampleOffset }) => {
+          reserved.push([sequence, sampleOffset]);
+
+          return { status: "RESERVED", uploadUrl: "url", requiredHeaders: {} };
+        },
+        upload: async () => undefined,
+        complete: async () => ({
+          status: "VERIFIED",
+          verifiedThroughFrame: 0,
+        }),
+        ...params,
+      });
+
+      return { queue, reserved };
+    };
+
+    it("서버가 확인한 다음 번호와 프레임부터 이어 붙인다", async () => {
+      const { queue, reserved } = createStubQueue({
+        nextSequence: 4,
+        nextSampleOffset: 240_000,
+      });
+
+      queue.enqueue(silentPcm(CHUNK_FRAMES));
+      queue.enqueue(silentPcm(CHUNK_FRAMES));
+      await queue.drain();
+
+      expect(reserved).toEqual([
+        [4, 240_000],
+        [5, 320_000],
+      ]);
+    });
+
+    it("넣는 조각을 보관하고 저장이 확인되면 지운다", async () => {
+      const save = vi.fn(() => Promise.resolve());
+      const remove = vi.fn(() => Promise.resolve());
+      const { queue } = createStubQueue({ archive: { save, remove } });
+      const pcm = silentPcm(CHUNK_FRAMES);
+
+      queue.enqueue(pcm);
+      expect(save).toHaveBeenCalledWith(1, pcm);
+      expect(remove).not.toHaveBeenCalled();
+
+      await queue.drain();
+      expect(remove).toHaveBeenCalledWith(1);
+    });
+
+    it("보관이 거절돼도 전송은 이어 가고 거절을 알린다", async () => {
+      const onArchiveFailed = vi.fn();
+      const { queue, reserved } = createStubQueue({
+        archive: {
+          save: () => Promise.reject(new Error("QuotaExceededError")),
+          remove: () => Promise.resolve(),
+        },
+        onArchiveFailed,
+      });
+
+      queue.enqueue(silentPcm(CHUNK_FRAMES));
+      await queue.drain();
+
+      expect(onArchiveFailed).toHaveBeenCalledTimes(1);
+      expect(reserved).toHaveLength(1);
+    });
+
+    it("일시 실패로 밀리면 알리고, 저장이 확인되면 풀렸다고 알린다", async () => {
+      const onStalledChange = vi.fn();
+      let reserveCount = 0;
+      const { queue } = createStubQueue({
+        reserve: async () => {
+          reserveCount += 1;
+          if (reserveCount === 1) {
+            throw createHttpError({ type: HTTP_ERROR_TYPE.network });
+          }
+
+          return { status: "RESERVED", uploadUrl: "url", requiredHeaders: {} };
+        },
+        onStalledChange,
+      });
+
+      queue.enqueue(silentPcm(CHUNK_FRAMES));
+      await vi.waitFor(() =>
+        expect(onStalledChange.mock.calls).toEqual([[true]]),
+      );
+      expect(queue.hasBacklog).toBe(true);
+
+      await queue.drain();
+      expect(onStalledChange.mock.calls).toEqual([[true], [false]]);
+      expect(queue.hasBacklog).toBe(false);
+    });
+
+    it("끊기지 않아도 조각이 쌓이면 밀린 것으로 본다", () => {
+      const { queue } = createStubQueue({
+        reserve: () => new Promise(() => {}),
+      });
+
+      queue.enqueue(silentPcm(CHUNK_FRAMES));
+      queue.enqueue(silentPcm(CHUNK_FRAMES));
+      expect(queue.hasBacklog).toBe(false);
+
+      queue.enqueue(silentPcm(CHUNK_FRAMES));
+      expect(queue.hasBacklog).toBe(true);
+      queue.clear();
+    });
+  });
 });
