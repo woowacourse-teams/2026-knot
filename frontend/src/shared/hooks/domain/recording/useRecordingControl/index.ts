@@ -1,3 +1,4 @@
+import { getRecordingAudioSaveApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/recordings/[recordingId]/audioSave";
 import { HTTP_ERROR_TYPE, isHttpError } from "@api/httpClient/error";
 import { markRecordingStart } from "@utils/recordingStartTrace";
 import useCompleteRecordingAudioChunkMutation from "@api/mutations/useCompleteRecordingAudioChunkMutation";
@@ -5,6 +6,7 @@ import useCompleteRecordingAudioUploadMutation from "@api/mutations/useCompleteR
 import useEndRecordingMutation from "@api/mutations/useEndRecordingMutation";
 import useIssueRecordingAudioUploadUrlMutation from "@api/mutations/useIssueRecordingAudioUploadUrlMutation";
 import usePauseRecordingMutation from "@api/mutations/usePauseRecordingMutation";
+import useReconnectRecordingMutation from "@api/mutations/useReconnectRecordingMutation";
 import useReserveRecordingAudioChunkMutation from "@api/mutations/useReserveRecordingAudioChunkMutation";
 import useResumeRecordingMutation from "@api/mutations/useResumeRecordingMutation";
 import useSendRecordingHeartbeatMutation from "@api/mutations/useSendRecordingHeartbeatMutation";
@@ -28,8 +30,13 @@ import {
   createBackoff,
   isTransientApiError,
   type PcmAudioSeal,
+  type PcmChunkRequests,
 } from "@store/recordingStore/pcmChunkUploadQueue";
 import { UnsupportedPcmCollectorError } from "@store/recordingStore/pcmCollector";
+import {
+  deleteRecordingChunks,
+  readRecordingChunks,
+} from "@store/recordingStore/recordingChunkArchive";
 import { useQueryClient } from "@tanstack/react-query";
 import { createRepeatedFailureReporter } from "@utils/createRepeatedFailureReporter";
 import { isClosedRecordingError } from "@utils/isClosedRecordingError";
@@ -38,9 +45,17 @@ import { isUnreachableRecordingError } from "@utils/isUnreachableRecordingError"
 import { logRequestError } from "@utils/logRequestError";
 import {
   clearRecordingStartProof,
+  completeRecordingReconnect,
   getRecordingControlProof,
+  getRecordingResumeProof,
   getRecordingStartProof,
+  prepareRecordingReconnect,
+  saveRecordingResumeProof,
 } from "@utils/recordingControlProof";
+import {
+  forgetUnfinishedRecording,
+  rememberUnfinishedRecording,
+} from "@utils/unfinishedRecording";
 import { useCallback, useRef } from "react";
 import useEndRecordingDialog from "../useEndRecordingDialog";
 
@@ -133,6 +148,18 @@ interface UploadRecordedAudioParams {
 
 type ControlProof = NonNullable<ReturnType<typeof getRecordingControlProof>>;
 
+interface CreateChunkRequestsParams extends ControlProof {
+  workspaceId: number;
+  recordingId: number;
+}
+
+interface LeaveReloadedRecordingParams {
+  workspaceId: number;
+  recordingId: number;
+  /** 다른 탭이 이어 받아 그 탭이 올릴 조각이면 지우지 않아요 */
+  isTakenOver?: boolean;
+}
+
 // TODO: 시작의 그 밖의 실패(`failed`)와 일시정지 실패는 안내 정책이 없어 콘솔에만 남겨요(#465)
 /**
  * 녹음을 시작·일시정지·이어서 녹음·끝내며 서버 녹음 세션과 맞추는 도메인 훅.
@@ -156,19 +183,25 @@ type ControlProof = NonNullable<ReturnType<typeof getRecordingControlProof>>;
  * - 끝내기(PCM): 수집을 멈추고 마지막 조각을 봉인한 뒤, 예약 응답을 아직 받지 못한 조각을 `audioSeal`에 담아 종료 요청을 보내요.
  *   성공하면 응답의 시한을 큐에 주고 녹음을 비워 바로 정리 화면으로 가고, 남은 조각은 큐가 뒤에서 올려요.
  *   응답을 못 받았거나 5xx, 429면 같은 봉인으로 1, 2, 4초 뒤, 그 뒤 4초 간격으로 다시 보내고, 봉인이 거절되면 봉인 없이 한 번 더 보내요.
+ *   끊겨서 쌓인 조각이 있으면 저장소가 먼저 올린 뒤 봉인해요. 조각은 종료 뒤 120초 안에만 받아 주기 때문이에요.
  *   서버가 먼저 끝낸 녹음(409 `RECORDING_ALREADY_ENDED`)은 예약한 조각만 종료 뒤 120초까지 올리고, 그 밖의 거절은 조각도 버려요. 둘 다 홈으로 가요.
  *   큐에 조각이 남아 있는 동안은 새 녹음을 시작하지 않아요(`uploading`). 안내 화면은 #814에서 붙여요.
  * - 생존 신호: 응답의 서버 상태를 따라가요. 서버가 끝낸 녹음(`ENDED`)이면 종료 요청 없이 WebM은 여기까지의 오디오를 올리고,
  *   PCM은 남은 소리를 봉인하지 않고 버린 뒤 예약한 조각만 종료 뒤 120초까지 올려요.
  *   연결 끊김(`CONNECTION_EXPIRED`)으로 끝난 녹음이면 넘긴 뒤 주의 토스트로 알려요(STT-R26).
+ *   PCM은 수신 창이 이미 닫혀 남은 조각을 지우고, 지운 조각이 있으면 일부 소리를 올리지 못했다고도 알려요.
  *   버렸거나(`DISCARDED`) 더는 볼 수 없는 녹음(403 `WORKSPACE_ACCESS_DENIED`, 404)이면 오디오와 조각을 버려요. 모두 홈으로 가요.
  *   이 탭의 제어가 거절되면(403 `RECORDING_CONTROL_DENIED`) 오디오와 조각을 버리고 주의 토스트와 함께 홈으로 가요.
  *   녹음을 비웠으니 다음 주기부터는 보내지 않아요.
- *   그 밖의 실패는 다시 보내지 않고 부르는 쪽의 다음 주기에 맡겨요. 끝내는 중에는 보내지 않아요.
+ *   응답을 못 받았거나 5xx, 429면 녹음을 끊지 않고 연결이 끊겼다고만 표시해요(STT-R53). 신호가 다시 닿으면 표시를 지워요.
+ *   실패는 다시 보내지 않고 부르는 쪽의 다음 주기에 맡겨요. 끝내는 중에는 보내지 않아요.
+ * - 새로고침 뒤 이어 가기: 증명으로 녹음을 이어 받아 일시정지로 되살리고 보관한 조각부터 올린 뒤, 마이크를 받아 이어서 녹음해요(STT-R26).
+ *   PCM은 서버가 확인한 다음 번호부터 이어 붙이고 새로고침 사이 구간은 채우지 않아요. WebM은 새로고침 전 소리를 잃어요.
+ *   끝난 녹음이면 홈으로 가고, 다른 탭이 먼저 이어 받았으면(403) 알린 뒤 홈으로 가요.
  * - 일시정지나 이어서 녹음이 서버에서 이미 끝난 녹음(409 `RECORDING_ALREADY_ENDED`)이라고 거절되면 오디오를 버리지 않고
  *   생존 신호를 바로 한 번 보내 그 응답대로 처리해요. 이미 버려진 녹음(409)이면 오디오를 버리고 홈으로 가요.
  *
- * 최초 탭 증명은 sessionStorage에 두고, 실패는 콘솔에 남겨요. 위에 적은 경우만 토스트나 모달로 안내해요.
+ * 녹음 탭 증명은 sessionStorage에 두고, 실패는 콘솔에 남겨요. 위에 적은 경우만 토스트나 모달로 안내해요.
  * 시작을 시도한 결과와 녹음이 끝난 이유는 오류가 아니어도 Sentry 지표(`recording.start`, `recording.end`)로 세요.
  * 안내하는 이동은 모두 독이 있는 화면끼리라 `show`로 띄운 토스트가 이동 뒤에도 남아요.
  * 독의 마이크 끊김 알림처럼 효과 안에서 부르는 곳이 있어 동작의 참조를 고정해요.
@@ -183,6 +216,8 @@ const useRecordingControl = () => {
   const { mutateAsync: endRecordingSession } = useEndRecordingMutation();
   const { mutateAsync: sendRecordingHeartbeat } =
     useSendRecordingHeartbeatMutation();
+  const { mutateAsync: reconnectRecordingSession } =
+    useReconnectRecordingMutation();
   const { mutateAsync: issueAudioUploadUrl } =
     useIssueRecordingAudioUploadUrlMutation();
   const { mutateAsync: uploadAudio } = useUploadRecordingAudioMutation();
@@ -286,7 +321,7 @@ const useRecordingControl = () => {
     };
 
     try {
-      const { status, elapsedMillis, endedAt, endReason } =
+      const { status, elapsedMillis, endedAt, endReason, connectionStatus } =
         await sendRecordingHeartbeat({
           ...session,
           ...proof,
@@ -294,11 +329,22 @@ const useRecordingControl = () => {
       heartbeatFailures.reset();
       if (isLateResponse()) return;
 
+      useRecordingStore
+        .getState()
+        .setHeartbeatFailing(connectionStatus === "DISCONNECTED");
+
       const isConnectionExpired = endReason === "CONNECTION_EXPIRED";
 
       if (status === "ENDED" && session.audioMode === "PCM16_CHUNKS_V1") {
-        // 서버가 먼저 끝낸 녹음은 봉인할 수 없어 남은 소리를 버리고, 예약한 조각만 시한 안에 올려요
-        closeRecording(session.workspaceId, acceptUntilFrom(endedAt));
+        const unsentChunkCount = useRecordingStore
+          .getState()
+          .getUnsentChunkCount();
+        // 서버가 먼저 끝낸 녹음은 봉인할 수 없어 남은 소리를 버리고, 예약한 조각만 시한 안에 올려요.
+        // 연결 만료는 끝난 시각이 30분 전이라 수신 창이 이미 닫혀, 올리지 않고 지워요
+        closeRecording(
+          session.workspaceId,
+          isConnectionExpired ? undefined : acceptUntilFrom(endedAt),
+        );
         countRecordingEnd({
           session,
           reason: toServerEndCause(endReason),
@@ -306,6 +352,9 @@ const useRecordingControl = () => {
         });
         if (isConnectionExpired) {
           show(TOAST_MESSAGES.RECORDING_CONNECTION_LOST);
+          if (unsentChunkCount > 0) {
+            show(TOAST_MESSAGES.RECORDING_CHUNKS_NOT_UPLOADED);
+          }
         }
       } else if (status === "ENDED") {
         // 서버가 이미 끝낸 녹음이라 종료 요청 없이 여기까지의 오디오를 올려요
@@ -331,7 +380,9 @@ const useRecordingControl = () => {
       heartbeatFailures.report({ error, scope: session.recordingId });
       if (isLateResponse()) return;
 
-      if (isUnreachableRecordingError(error)) {
+      if (isTransientApiError(error)) {
+        useRecordingStore.getState().setHeartbeatFailing(true);
+      } else if (isUnreachableRecordingError(error)) {
         closeRecording(session.workspaceId);
         countRecordingEnd({
           session,
@@ -385,6 +436,44 @@ const useRecordingControl = () => {
       }
     },
     [closeRecording, sendHeartbeat],
+  );
+
+  /** 조각 큐는 React 밖에서 돌아 뮤테이션을 직접 쓰지 못하므로, 세션과 녹음 탭 증명을 묶은 요청 함수를 만들어요 */
+  const createChunkRequests = useCallback(
+    ({
+      workspaceId,
+      recordingId,
+      tabId,
+      controlToken,
+    }: CreateChunkRequestsParams): PcmChunkRequests => ({
+      reserve: async (descriptor) => {
+        try {
+          return await reserveAudioChunk({
+            workspaceId,
+            recordingId,
+            tabId,
+            controlToken,
+            ...descriptor,
+          });
+        } catch (error) {
+          // 다른 탭·기기가 끝낸 녹음이에요. 다음 주기를 기다리지 않고 신호로 확인해 멈춰요
+          if (isHttpError(error) && error.code === "RECORDING_ALREADY_ENDED") {
+            void sendHeartbeat();
+          }
+          throw error;
+        }
+      },
+      upload: uploadAudioChunk,
+      complete: (sequence) =>
+        completeAudioChunk({
+          workspaceId,
+          recordingId,
+          tabId,
+          controlToken,
+          sequence,
+        }),
+    }),
+    [completeAudioChunk, reserveAudioChunk, sendHeartbeat, uploadAudioChunk],
   );
 
   /** 마이크를 받아 서버에 녹음을 열어요. 결과는 `started`·`microphoneUnavailable`·`refused`·`networkFailed`·`failed`예요 */
@@ -457,7 +546,7 @@ const useRecordingControl = () => {
           clearRecordingStartProof();
           session = await requestStart();
         } else if (!session.isCreated) {
-          // 새로고침 전 녹음이 아직 열려 있어요. 이어 녹음은 이후 버전이라 이어받지 않아요(#374)
+          // 응답을 받지 못한 시작의 녹음이 아직 열려 있어요. 시작을 재시도해 이어받지 않고, 이 녹음은 다른 탭처럼 끝낼 수 있어요
           useRecordingStore.getState().discardRecording();
 
           return "refused";
@@ -467,27 +556,15 @@ const useRecordingControl = () => {
         const { tabId, controlToken } = getRecordingStartProof();
         useRecordingStore.getState().startRecording({
           ...sessionIds,
-          // 조각 큐는 React 밖에서 돌아 뮤테이션을 직접 쓰지 못하므로, 세션과 최초 탭 증명을 묶은 요청 함수를 넘겨요
           chunkRequests: audioMode
-            ? {
-                reserve: (descriptor) =>
-                  reserveAudioChunk({
-                    ...sessionIds,
-                    tabId,
-                    controlToken,
-                    ...descriptor,
-                  }),
-                upload: uploadAudioChunk,
-                complete: (sequence) =>
-                  completeAudioChunk({
-                    ...sessionIds,
-                    tabId,
-                    controlToken,
-                    sequence,
-                  }),
-              }
+            ? createChunkRequests({ ...sessionIds, tabId, controlToken })
             : undefined,
         });
+        saveRecordingResumeProof({
+          ...sessionIds,
+          audioMode: audioMode ?? "FINAL_WEBM_V1",
+        });
+        rememberUnfinishedRecording(sessionIds);
 
         return "started";
       } catch (error) {
@@ -502,12 +579,7 @@ const useRecordingControl = () => {
         return "failed";
       }
     },
-    [
-      completeAudioChunk,
-      reserveAudioChunk,
-      startRecordingSession,
-      uploadAudioChunk,
-    ],
+    [createChunkRequests, startRecordingSession],
   );
 
   /**
@@ -637,6 +709,117 @@ const useRecordingControl = () => {
     return true;
   }, [handleControlError, resumePcmRecording, resumeRecordingSession]);
 
+  /** 새로고침 전 녹음을 더 이어 갈 수 없어 증명을 지우고 홈으로 가요 */
+  const leaveReloadedRecording = useCallback(
+    ({
+      workspaceId,
+      recordingId,
+      isTakenOver = false,
+    }: LeaveReloadedRecordingParams) => {
+      closeRecording(workspaceId);
+      if (isTakenOver) return;
+
+      forgetUnfinishedRecording(recordingId);
+      void deleteRecordingChunks(recordingId).catch(() => undefined);
+    },
+    [closeRecording],
+  );
+
+  /**
+   * 새로고침 전 녹음을 이어 받아 마이크 없이 일시정지로 되살리고, 보관한 조각을 먼저 올려요.
+   * 결과는 `reconnected`(이어 받음)·`closed`(이어 갈 수 없어 홈으로 감)·`failed`(증명을 그대로 둬 다시 누를 수 있음)예요
+   */
+  const reconnectRecording = useCallback(async () => {
+    const resumeProof = getRecordingResumeProof();
+    const reconnectProof = prepareRecordingReconnect();
+    if (!resumeProof || !reconnectProof) return "failed";
+
+    const { workspaceId, recordingId, audioMode } = resumeProof;
+    const sessionIds = { workspaceId, recordingId };
+
+    try {
+      const { status, elapsedMillis, endReason } =
+        await reconnectRecordingSession({ ...sessionIds, ...reconnectProof });
+
+      if (status === "ENDED" || status === "DISCARDED") {
+        leaveReloadedRecording(sessionIds);
+        if (endReason === "CONNECTION_EXPIRED") {
+          show(TOAST_MESSAGES.RECORDING_CONNECTION_LOST);
+        }
+
+        return "closed";
+      }
+
+      const isPcm = audioMode === "PCM16_CHUNKS_V1";
+      const saved = isPcm ? await getRecordingAudioSaveApi(sessionIds) : null;
+      const verifiedThroughSequence = saved?.verifiedThroughSequence ?? 0;
+      const archivedChunks = isPcm
+        ? await readRecordingChunks(recordingId).catch(() => [])
+        : [];
+      // 서버가 확인되지 않은 예약을 지워 번호가 바뀔 수 있어, 큐가 새 번호로 다시 보관하게 비워요
+      await deleteRecordingChunks(recordingId).catch(() => undefined);
+
+      completeRecordingReconnect();
+      useRecordingStore.getState().restoreRecording({
+        ...sessionIds,
+        audioMode,
+        elapsedMs: elapsedMillis,
+        nextSequence: verifiedThroughSequence + 1,
+        nextSampleOffset: saved?.verifiedThroughFrame ?? 0,
+        archivedChunks: archivedChunks
+          .filter(({ sequence }) => sequence > verifiedThroughSequence)
+          .map(({ pcm }) => pcm),
+        chunkRequests: isPcm
+          ? createChunkRequests({
+              ...sessionIds,
+              tabId: reconnectProof.tabId,
+              controlToken: reconnectProof.controlToken,
+            })
+          : undefined,
+      });
+
+      return "reconnected";
+    } catch (error) {
+      if (
+        isHttpError(error, HTTP_ERROR_TYPE.forbidden) &&
+        error.code === "RECORDING_CONTROL_DENIED"
+      ) {
+        leaveReloadedRecording({ ...sessionIds, isTakenOver: true });
+        show(TOAST_MESSAGES.RECORDING_TAKEN_OVER);
+
+        return "closed";
+      }
+      if (isClosedRecordingError(error) || isUnreachableRecordingError(error)) {
+        leaveReloadedRecording(sessionIds);
+
+        return "closed";
+      }
+
+      logRequestError({ feature: "recording", action: "녹음 이어 받기", error });
+      show(TOAST_MESSAGES.RECORDING_RESUME_FAILED);
+
+      return "failed";
+    }
+  }, [
+    createChunkRequests,
+    leaveReloadedRecording,
+    reconnectRecordingSession,
+    show,
+  ]);
+
+  /**
+   * 새로고침 뒤 「이어서 녹음」을 눌렀을 때 이어 받고 마이크를 받아 이어 가요.
+   * 마이크를 받지 못했을 때만 `false`예요. 서버는 녹음 중일 수 있어 일시정지를 알려 화면과 맞춰요
+   */
+  const resumeReloadedRecording = useCallback(async () => {
+    if ((await reconnectRecording()) !== "reconnected") return true;
+
+    const isResumed = await resumeRecording();
+    if (!isResumed) void syncPause();
+
+    return isResumed;
+  }, [reconnectRecording, resumeRecording, syncPause]);
+
   /**
    * PCM 녹음을 봉인해 끝내요. 일시 실패는 같은 봉인으로 간격을 두고 다시 보내고, 봉인이 거절되면 봉인 없이 한 번 더 보내요.
    * 성공하면 `uploaded`로 정리 화면으로 가고, 남은 조각은 큐가 시한까지 뒤에서 올려요.
@@ -669,7 +852,7 @@ const useRecordingControl = () => {
         } catch (error) {
           if (isTransientApiError(error)) {
             endFailures.report({ error });
-            // 끝내는 중 생존 신호를 보내지 않아 30초가 넘으면 서버가 먼저 끝내고 409로 알려요
+            // 끝내는 중 생존 신호를 보내지 않아 30분이 넘으면 서버가 먼저 끝내고 409로 알려요
             await wait(nextDelay());
           } else if (
             audioSeal &&
@@ -768,6 +951,14 @@ const useRecordingControl = () => {
 
     openEndRecordingDialog({
       onEnd: async () => {
+        // 새로고침 뒤 이어 받기 전이면 보관한 소리를 올릴 수 있게 먼저 이어 받아요
+        if (
+          useRecordingStore.getState().status === "idle" &&
+          (await reconnectRecording()) !== "reconnected"
+        ) {
+          return;
+        }
+
         const { session } = useRecordingStore.getState();
         if (!session) return;
 
@@ -792,6 +983,7 @@ const useRecordingControl = () => {
     navigateToRecordingDocuments,
     navigateToWorkspaceHome,
     openEndRecordingDialog,
+    reconnectRecording,
   ]);
 
   return {
@@ -799,6 +991,7 @@ const useRecordingControl = () => {
     pauseRecording,
     syncPause,
     resumeRecording,
+    resumeReloadedRecording,
     sendHeartbeat,
     endRecording,
     endRecordingWithoutConfirm,

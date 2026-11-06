@@ -11,7 +11,9 @@ import { act, renderHook, screen, waitFor } from "@testing-library/react";
 import {
   clearRecordingStartProof,
   getRecordingControlProof,
+  getRecordingResumeProof,
   getRecordingStartProof,
+  saveRecordingResumeProof,
 } from "@utils/recordingControlProof";
 import { http, HttpResponse, type PathParams } from "msw";
 import type { ReactNode } from "react";
@@ -25,6 +27,7 @@ import {
 import {
   recordingAudioChunkCompleteResponse,
   recordingAudioChunkReserveResponse,
+  recordingAudioSaveResponse,
   recordingEndResponse,
   recordingHeartbeatResponse,
   recordingPauseResponse,
@@ -36,6 +39,11 @@ import {
   type PcmCollectorParams,
   UnsupportedPcmCollectorError,
 } from "@store/recordingStore/pcmCollector";
+import {
+  deleteRecordingChunks,
+  readRecordingChunks,
+  saveRecordingChunk,
+} from "@store/recordingStore/recordingChunkArchive";
 
 import useRecordingControl from ".";
 
@@ -796,9 +804,9 @@ describe("useRecordingControl의 PCM 조각 녹음", () => {
       expect(count("complete")).toBe(1);
     });
 
-    it("생존 신호가 연결 끊김으로 서버가 끝낸 녹음이라 답하면 남은 소리를 봉인하지 않고 버리고, 예약한 조각만 마저 올리며 주의 토스트로 알린다", async () => {
+    it("생존 신호가 연결 끊김으로 서버가 끝낸 녹음이라 답하면 수신 창이 닫혀 남은 조각을 올리지 않고 지우고, 일부 소리를 올리지 못했다고도 알린다", async () => {
       collectRequests();
-      const { respond } = holdResponses("complete");
+      holdResponses("complete");
       mockServer.use(
         http.post(`${RECORDING_PATH}/heartbeat`, () =>
           HttpResponse.json({
@@ -820,7 +828,7 @@ describe("useRecordingControl의 PCM 조각 녹음", () => {
       expect(useRecordingStore.getState()).toMatchObject({
         status: "idle",
         session: null,
-        isUploadingChunks: true,
+        isUploadingChunks: false,
       });
       expect(collector.isClosed).toBe(true);
       expect(events).not.toContain("flush");
@@ -830,8 +838,11 @@ describe("useRecordingControl의 PCM 조각 녹음", () => {
           TOAST_MESSAGES.RECORDING_CONNECTION_LOST.message,
         ),
       ).toBeInTheDocument();
-      respond();
-      await waitFor(() => expect(isUploadingChunks()).toBe(false));
+      expect(
+        await screen.findByText(
+          TOAST_MESSAGES.RECORDING_CHUNKS_NOT_UPLOADED.message,
+        ),
+      ).toBeInTheDocument();
       expect(count("audio-chunks")).toBe(1);
     });
 
@@ -1126,6 +1137,329 @@ describe("useRecordingControl의 PCM 조각 녹음", () => {
       await act(() => result.current.sendHeartbeat());
 
       expect(await metricsNamed("recording.end")).toEqual([]);
+    });
+  });
+
+  describe("연결이 끊긴 동안 (STT-R53)", () => {
+    const isConnectionFlagged = () =>
+      useRecordingStore.getState().isHeartbeatFailing;
+
+    afterEach(() => deleteRecordingChunks(RECORDING_ID));
+
+    it.each([
+      ["네트워크 실패", () => HttpResponse.error()],
+      ["5xx", () => new HttpResponse(null, { status: 503 })],
+    ])("신호가 %s여도 녹음을 이어 가고, 닿으면 끊김 표시를 지운다", async (_, fail) => {
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      mockServer.use(http.post(`${RECORDING_PATH}/heartbeat`, fail));
+      const result = renderRecordingControl();
+      await startRecording(result);
+
+      await act(() => result.current.sendHeartbeat());
+      await act(() => result.current.sendHeartbeat());
+
+      expect(getStatus()).toBe("recording");
+      expect(isConnectionFlagged()).toBe(true);
+
+      mockServer.resetHandlers();
+      await act(() => result.current.sendHeartbeat());
+
+      expect(getStatus()).toBe("recording");
+      expect(isConnectionFlagged()).toBe(false);
+    });
+
+    it("저장이 확인되기 전까지 조각을 브라우저에 보관하고, 확인되면 지운다", async () => {
+      const { respond } = holdResponses("complete");
+      const result = renderRecordingControl();
+      const collector = await startRecording(result);
+
+      collector.feed(CHUNK_FRAMES);
+      await waitFor(async () =>
+        expect(await readRecordingChunks(RECORDING_ID)).toHaveLength(1),
+      );
+
+      respond();
+      await waitFor(async () =>
+        expect(await readRecordingChunks(RECORDING_ID)).toEqual([]),
+      );
+    });
+
+    it("다른 탭이 끝내 조각 예약이 거절되면 다음 주기를 기다리지 않고 멈춘다 (STT-R28)", async () => {
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      mockServer.use(
+        http.post(RESERVE_PATH, () =>
+          HttpResponse.json(
+            { code: "RECORDING_ALREADY_ENDED" },
+            { status: 409 },
+          ),
+        ),
+        http.post(`${RECORDING_PATH}/heartbeat`, () =>
+          HttpResponse.json({
+            ...recordingHeartbeatResponse,
+            status: "ENDED",
+            endReason: "USER_ENDED",
+            endedAt: new Date().toISOString(),
+          }),
+        ),
+      );
+      const result = renderRecordingControl();
+      const collector = await startRecording(result);
+
+      collector.feed(CHUNK_FRAMES);
+
+      await waitFor(() => expect(getStatus()).toBe("idle"));
+      expect(endRecordingApi).not.toHaveBeenCalled();
+    });
+
+    it("끊긴 채 끝내면 쌓인 조각을 먼저 올린 뒤 봉인에 미루지 않고 끝낸다", async () => {
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      endRecordingApi.mockResolvedValue(
+        new PostRecordingEndResponseDto(recordingEndResponse),
+      );
+      mockServer.use(
+        http.post(RESERVE_PATH, () => new HttpResponse(null, { status: 503 })),
+      );
+      const result = renderRecordingControl();
+      const collector = await startRecording(result);
+      collector.feed(CHUNK_FRAMES);
+      await waitFor(() =>
+        expect(useRecordingStore.getState().isChunkTransferStalled).toBe(true),
+      );
+
+      let ended!: Promise<unknown>;
+      act(() => {
+        ended = result.current.endRecordingWithoutConfirm();
+      });
+      await flushRequests();
+      expect(endRecordingApi).not.toHaveBeenCalled();
+
+      mockServer.resetHandlers();
+      await act(async () => {
+        await ended;
+      });
+
+      expect(endBodies()).toEqual([
+        expect.objectContaining({
+          audioSeal: expect.objectContaining({
+            lastSequence: 1,
+            totalFrameCount: CHUNK_FRAMES,
+            pendingDescriptors: [],
+          }),
+        }),
+      ]);
+    }, 10_000);
+  });
+
+  describe("새로고침 뒤 이어 가기 (STT-R26)", () => {
+    const RECONNECT_PATH = `${RECORDING_PATH}/reconnect`;
+    const AUDIO_SAVE_PATH = `${RECORDING_PATH}/audio-save`;
+    const SESSION = { workspaceId: WORKSPACE_ID, recordingId: RECORDING_ID };
+
+    /** 새로고침 전에 녹음 중이었던 것처럼 증명을 남겨 둬요 */
+    const leaveResumeProof = () => {
+      getRecordingStartProof();
+      saveRecordingResumeProof({ ...SESSION, audioMode: "PCM16_CHUNKS_V1" });
+    };
+
+    const archiveChunk = (sequence: number) =>
+      saveRecordingChunk({
+        ...SESSION,
+        sequence,
+        pcm: new ArrayBuffer(CHUNK_FRAMES * 2),
+      });
+
+    /** 서버가 앞의 조각 하나만 저장했다고 답하게 해요 */
+    const respondVerifiedThroughFirst = () =>
+      mockServer.use(
+        http.get(AUDIO_SAVE_PATH, () =>
+          HttpResponse.json({
+            ...recordingAudioSaveResponse,
+            audioSaveStatus: "CAPTURING",
+            verifiedThroughSequence: 1,
+            verifiedThroughFrame: CHUNK_FRAMES,
+          }),
+        ),
+      );
+
+    const resume = async (
+      result: ReturnType<typeof renderRecordingControl>,
+    ) => {
+      let isResumed!: boolean;
+      await act(async () => {
+        isResumed = await result.current.resumeReloadedRecording();
+      });
+
+      return isResumed;
+    };
+
+    afterEach(() => deleteRecordingChunks(RECORDING_ID));
+
+    it("이전 증명으로 이어 받고, 이후 조각과 끝내기에는 새 증명을 쓴다", async () => {
+      leaveResumeProof();
+      const previous = getRecordingControlProof();
+      respondVerifiedThroughFirst();
+      const reconnectBodies: unknown[] = [];
+      mockServer.use(
+        http.post(RECONNECT_PATH, async ({ request }) => {
+          reconnectBodies.push(await request.clone().json());
+        }),
+      );
+      const reserveBodies = recordReserveBodies();
+      const result = renderRecordingControl();
+
+      expect(await resume(result)).toBe(true);
+
+      expect(reconnectBodies).toEqual([
+        expect.objectContaining({
+          previousTabId: previous?.tabId,
+          previousControlToken: previous?.controlToken,
+        }),
+      ]);
+      const current = getRecordingControlProof();
+      expect(current?.tabId).not.toBe(previous?.tabId);
+      expect(getStatus()).toBe("recording");
+
+      FakePcmCollector.instances[0].feed(CHUNK_FRAMES);
+      await waitFor(() => expect(reserveBodies).toHaveLength(1));
+      expect(reserveBodies[0]).toMatchObject({
+        tabId: current?.tabId,
+        controlToken: current?.controlToken,
+      });
+    });
+
+    it("서버가 확인한 다음부터 보관한 조각을 먼저 올리고, 새 소리를 뒤에 이어 붙인다", async () => {
+      leaveResumeProof();
+      respondVerifiedThroughFirst();
+      await archiveChunk(1);
+      await archiveChunk(2);
+      const reserveBodies = recordReserveBodies();
+      const result = renderRecordingControl();
+
+      await resume(result);
+      FakePcmCollector.instances[0].feed(CHUNK_FRAMES);
+
+      await waitFor(() => expect(reserveBodies).toHaveLength(2));
+      expect(
+        reserveBodies.map(({ sequence, sampleOffset }) => [
+          sequence,
+          sampleOffset,
+        ]),
+      ).toEqual([
+        [2, CHUNK_FRAMES],
+        [3, CHUNK_FRAMES * 2],
+      ]);
+    });
+
+    it("서버 시간으로 경과 시간을 잇는다", async () => {
+      leaveResumeProof();
+      respondVerifiedThroughFirst();
+      mockServer.use(
+        http.post(RECONNECT_PATH, () =>
+          HttpResponse.json({
+            ...recordingHeartbeatResponse,
+            elapsedMillis: 90_000,
+          }),
+        ),
+      );
+      const result = renderRecordingControl();
+
+      await resume(result);
+
+      expect(useRecordingStore.getState().accumulatedMs).toBe(90_000);
+    });
+
+    it("연결 끊김으로 끝난 녹음이면 토스트로 알리고 증명과 조각을 지운다", async () => {
+      leaveResumeProof();
+      await archiveChunk(1);
+      mockServer.use(
+        http.post(RECONNECT_PATH, () =>
+          HttpResponse.json({
+            ...recordingHeartbeatResponse,
+            status: "ENDED",
+            endReason: "CONNECTION_EXPIRED",
+          }),
+        ),
+      );
+      const result = renderRecordingControl();
+
+      await resume(result);
+
+      expect(getStatus()).toBe("idle");
+      expect(getRecordingResumeProof()).toBeNull();
+      expect(
+        await screen.findByText(
+          TOAST_MESSAGES.RECORDING_CONNECTION_LOST.message,
+        ),
+      ).toBeInTheDocument();
+      await waitFor(async () =>
+        expect(await readRecordingChunks(RECORDING_ID)).toEqual([]),
+      );
+    });
+
+    it("다른 탭이 먼저 이어 받았으면(403) 알리고, 그 탭이 올릴 조각은 남겨 둔다", async () => {
+      leaveResumeProof();
+      await archiveChunk(1);
+      mockServer.use(
+        http.post(RECONNECT_PATH, () =>
+          HttpResponse.json(
+            { code: "RECORDING_CONTROL_DENIED" },
+            { status: 403 },
+          ),
+        ),
+      );
+      const result = renderRecordingControl();
+
+      await resume(result);
+
+      expect(getStatus()).toBe("idle");
+      expect(getRecordingResumeProof()).toBeNull();
+      expect(
+        await screen.findByText(TOAST_MESSAGES.RECORDING_TAKEN_OVER.message),
+      ).toBeInTheDocument();
+      expect(await readRecordingChunks(RECORDING_ID)).toHaveLength(1);
+    });
+
+    it("응답을 받지 못하면 증명을 두고 다시 눌렀을 때 같은 새 증명으로 보낸다", async () => {
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      leaveResumeProof();
+      respondVerifiedThroughFirst();
+      const tokens: string[] = [];
+      mockServer.use(
+        http.post<PathParams, { controlToken: string }>(
+          RECONNECT_PATH,
+          async ({ request }) => {
+            tokens.push((await request.clone().json()).controlToken);
+            if (tokens.length === 1) return HttpResponse.error();
+          },
+        ),
+      );
+      const result = renderRecordingControl();
+
+      await resume(result);
+      expect(getStatus()).toBe("idle");
+      expect(getRecordingResumeProof()).not.toBeNull();
+      expect(
+        await screen.findByText(TOAST_MESSAGES.RECORDING_RESUME_FAILED.message),
+      ).toBeInTheDocument();
+
+      await resume(result);
+      expect(getStatus()).toBe("recording");
+      expect(tokens[0]).toBe(tokens[1]);
+    });
+
+    it("마이크를 받지 못하면 일시정지로 남고 서버에도 알린다", async () => {
+      leaveResumeProof();
+      respondVerifiedThroughFirst();
+      collectRequests();
+      vi.spyOn(navigator.mediaDevices, "getUserMedia").mockRejectedValueOnce(
+        new DOMException("거절", "NotAllowedError"),
+      );
+      const result = renderRecordingControl();
+
+      expect(await resume(result)).toBe(false);
+
+      expect(getStatus()).toBe("paused");
+      await waitFor(() => expect(count("pause")).toBe(1));
     });
   });
 });
