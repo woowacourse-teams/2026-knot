@@ -1,0 +1,39 @@
+import org.gradle.api.tasks.testing.Test
+settingsEvaluated { settings ->
+    settings.include('ciShardA', 'ciShardB')
+    ['A', 'B'].each { s ->
+        def dir = new File(settings.settingsDir, "build/ci-shards/$s")
+        dir.mkdirs()
+        settings.project(":ciShard$s").projectDir = dir
+    }
+}
+gradle.rootProject { root ->
+    root.tasks.register('writeProbeClasspath') {
+        dependsOn 'testClasses'
+        doLast {
+            new File(System.getProperty('probe.dir'), 'runtime-classpath.txt').text = root.sourceSets.test.runtimeClasspath.files.collect { it.absolutePath }.join('\n')
+        }
+    }
+}
+gradle.projectsEvaluated {
+    def root = gradle.rootProject
+    ['A', 'B'].each { s ->
+        def child = root.project(":ciShard$s")
+        child.tasks.register('balancedTest', Test) {
+            dependsOn root.tasks.named('writeProbeClasspath')
+            testClassesDirs = child.files(new File(root.buildDir, 'classes/java/test'))
+            classpath = child.files({ new File(System.getProperty('probe.dir'), 'runtime-classpath.txt').readLines() })
+            binaryResultsDirectory = child.layout.buildDirectory.dir('test-results/balancedTest/binary')
+            reports.junitXml.outputLocation = child.layout.buildDirectory.dir('test-results/balancedTest')
+            reports.html.outputLocation = child.layout.buildDirectory.dir('reports/tests/balancedTest')
+            workingDir = root.projectDir
+            maxParallelForks = 1
+            maxHeapSize = '1g'
+            systemProperty 'spring.test.context.cache.maxSize', '8'
+            systemProperty 'aws.accessKeyId', 'test-access-key'
+            systemProperty 'aws.secretAccessKey', 'test-secret-key'
+            useJUnitPlatform { includeTags 'integration' }
+            new File(System.getProperty('probe.dir'), "shard${s}.txt").readLines().findAll { it }.each { include(it.replace('.', '/') + '.class') }
+        }
+    }
+}
