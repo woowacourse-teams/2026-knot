@@ -1,3 +1,4 @@
+import useEndOtherTabRecording from "@hooks/domain/recording/useEndOtherTabRecording";
 import useMicrophoneUnavailableDialog from "@hooks/domain/recording/useMicrophoneUnavailableDialog";
 import useNavigateToRecording from "@hooks/domain/recording/useNavigateToRecording";
 import useRecordingState from "@hooks/domain/recording/useRecordingState";
@@ -29,6 +30,9 @@ import { useMatch, useParams } from "react-router";
  * 녹음 화면이 아닌 곳에서 녹음이 이어지고 있으면 마이크 대신 녹음 칩을 보여줘요.
  * 칩을 누르면 권한을 다시 묻지 않고 녹음 화면으로 가고, 중지를 누르면 녹음을 끝내 올린 뒤 그 녹음의 문서 정리 화면으로 가요.
  * 이 탭의 녹음이 없을 때 현재 녹음 조회가 녹음 중·일시정지로 답하면 다른 탭의 녹음(`isOtherTabRecording`)으로 칩을 보여줘요.
+ * 다른 탭의 녹음은 칩을 눌러도 이동하지 않고, 중지를 누르면 확인 창을 거쳐 그 녹음을 끝내요(STT-R28).
+ * 이 탭을 새로고침해 아직 이어 받지 않은 녹음도 칩으로 보여 주고, 칩을 누르면 녹음 화면으로 가요(STT-R26).
+ * 연결이 끊긴 동안은 독 위에 안내를 계속 띄워요(`connectionGuideKind`, STT-R28 · R53).
  * 문서 정리 중인 녹음은 이미 끝난 녹음이라 칩으로 보여 주지 않고, 새 녹음을 시작할 수 있게 마이크를 둬요.
  * 조회 중이거나 실패하면 마이크를 둬요.
  *
@@ -49,11 +53,18 @@ export const useDockRecording = () => {
     isMicrophoneLost,
     clearMicrophoneLost,
     analyser,
+    isConnectionLost,
   } = useRecordingState();
   const { elapsedSeconds } = useRecordingElapsedTime();
-  const { status: serverStatus, elapsedTime: serverElapsedTime } =
-    useServerRecording();
+  const {
+    status: serverStatus,
+    recordingId: serverRecordingId,
+    elapsedTime: serverElapsedTime,
+    isResumable,
+    isConnectionLost: isServerConnectionLost,
+  } = useServerRecording();
   const { startRecording, syncPause, endRecording } = useRecordingControl();
+  const { endOtherTabRecording } = useEndOtherTabRecording();
   // 안내 창을 띄운 실패는 독에서 시작하지 못한 사용 기록으로도 보내요
   const { startAndTrackRecording } = useRecordingStartAnalytics({
     startRecording,
@@ -61,11 +72,13 @@ export const useDockRecording = () => {
   });
   const [isRecordingStarting, setIsRecordingStarting] = useState(false);
 
-  const isOtherTabRecording =
+  const isServerRecordingVisible =
     !isRecordingActive &&
     (serverStatus === "recording" || serverStatus === "paused");
+  const isOtherTabRecording = isServerRecordingVisible && !isResumable;
   // 방금 연 녹음은 녹음 화면에 들어갈 때까지 마이크 자리에서 기다리는 중으로 보여줘요
-  const hasRecording = (isRecordingActive && !isRecordingStarting) || isOtherTabRecording;
+  const hasRecording =
+    (isRecordingActive && !isRecordingStarting) || isServerRecordingVisible;
 
   // 녹음 화면에 들어가면 기다림이 끝나요
   useEffect(() => {
@@ -128,22 +141,46 @@ export const useDockRecording = () => {
     navigateToRecording({ workspaceId });
   };
 
+  const handleStopRecording = () => {
+    if (isOtherTabRecording && workspaceId && serverRecordingId !== null) {
+      endOtherTabRecording({
+        workspaceId: Number(workspaceId),
+        recordingId: serverRecordingId,
+      });
+
+      return;
+    }
+
+    void endRecording();
+  };
+
+  const getConnectionGuideKind = () => {
+    if (isOtherTabRecording && isServerConnectionLost) {
+      return "otherTabConnectionLost" as const;
+    }
+
+    return isConnectionLost ? ("connectionLost" as const) : null;
+  };
+
   return {
     isMicVisible: !isRecordingPageActive && !hasRecording,
     isRecordingChipVisible: !isRecordingPageActive && hasRecording,
     isOtherTabRecording,
     /** 녹음 버튼을 누르고 녹음이 열려 녹음 화면에 들어가기를 기다리는 중 */
     isRecordingStarting,
-    isRecordingPaused: isOtherTabRecording
+    isRecordingPaused: isServerRecordingVisible
       ? serverStatus === "paused"
       : status === "paused",
-    elapsedTime: isOtherTabRecording
+    elapsedTime: isServerRecordingVisible
       ? serverElapsedTime
       : formatRecordingTime(elapsedSeconds),
     /** 이 탭의 녹음 소리를 읽는 분석기. 다른 탭의 녹음이면 없어요 */
-    analyser: isOtherTabRecording ? null : analyser,
+    analyser: isServerRecordingVisible ? null : analyser,
+    /** 독 위에 띄울 연결 끊김 안내. 칩이 보일 때만 띄워요 */
+    connectionGuideKind:
+      !isRecordingPageActive && hasRecording ? getConnectionGuideKind() : null,
     handleMicClick,
     handleOpenRecording,
-    handleStopRecording: () => void endRecording(),
+    handleStopRecording,
   };
 };

@@ -9,7 +9,7 @@ import { DOCK_GUIDE_COPY } from "../constants/dockHint";
 export type DockGuideKind = keyof typeof DOCK_GUIDE_COPY;
 
 interface DockGuideProps {
-  /** `first`는 채팅과 회의 녹음을 함께 설명하는 첫 사용 안내, `chat`과 `record`는 버튼에 올렸을 때의 한 줄 안내예요 */
+  /** `first`는 채팅과 회의 녹음을 함께 설명하는 첫 사용 안내, 나머지는 한 줄 안내예요 */
   kind: DockGuideKind;
   /** 꼬리가 가리킬 자리. 독이 놓인 자리의 가로 가운데에서 떨어진 거리(px). 버튼 안내는 올린 버튼을 가리켜요 */
   tailOffset?: number;

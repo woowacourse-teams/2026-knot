@@ -2,6 +2,7 @@
  * 독 안내 문구. Figma Design System `Dock/Guide`와 같아요.
  *
  * 첫 사용 안내는 접힌 독 위에 채팅과 회의 녹음을 함께 설명하고, 채팅·녹음 안내는 각 버튼에 올리거나 포커스했을 때 한 줄로 보여요.
+ * 연결 끊김 안내는 끊긴 동안 계속 한 줄로 보여요(STT-R28 · R53).
  */
 export const DOCK_GUIDE_COPY = {
   first: {
@@ -11,6 +12,8 @@ export const DOCK_GUIDE_COPY = {
   },
   chat: "채팅으로 지난 기록을 찾아보세요",
   record: "회의 녹음 · 끝내면 문서로 정리해요",
+  connectionLost: "연결이 끊겼어요. 녹음은 계속돼요",
+  otherTabConnectionLost: "녹음 중인 탭의 연결이 끊겼어요",
 } as const;
 
 /** 첫 사용 안내를 보여줄 최대 방문 횟수. 이만큼 보고 나면 다시 띄우지 않아요. */

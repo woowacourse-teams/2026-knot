@@ -1542,7 +1542,7 @@ describe("WorkspaceDock", () => {
         ).not.toBeInTheDocument();
       });
 
-      it("칩을 눌러 녹음 화면으로 가거나 녹음을 끝낼 수 없다 (STT-20)", async () => {
+      it("칩을 눌러도 녹음 화면으로 가지 않고, 끝내기 버튼은 있다 (STT-R28)", async () => {
         respondCurrentRecordingStatus("RECORDING");
         renderDock();
 
@@ -1553,8 +1553,53 @@ describe("WorkspaceDock", () => {
           screen.queryByRole("button", { name: "녹음 화면으로 이동" }),
         ).not.toBeInTheDocument();
         expect(
-          screen.queryByRole("button", { name: "녹음 끝내기" }),
-        ).not.toBeInTheDocument();
+          screen.getByRole("button", { name: "녹음 끝내기" }),
+        ).toBeInTheDocument();
+      });
+
+      it("끝내기 버튼은 확인 창을 거쳐 그 녹음을 본문 없이 끝낸다 (STT-R28)", async () => {
+        respondCurrentRecordingStatus("RECORDING");
+        const bodies: string[] = [];
+        mockServer.use(
+          http.post(
+            "*/api/v1/workspaces/:workspaceId/recordings/:recordingId/end",
+            async ({ request }) => {
+              bodies.push(await request.clone().text());
+
+              return HttpResponse.json(recordingEndResponse);
+            },
+          ),
+        );
+        renderDock();
+
+        fireEvent.click(
+          await screen.findByRole("button", { name: "녹음 끝내기" }),
+        );
+        const dialog = await screen.findByRole("dialog", {
+          name: "녹음을 끝낼까요?",
+        });
+        fireEvent.click(
+          within(dialog).getByRole("button", { name: "녹음 끝내기" }),
+        );
+
+        await waitFor(() => expect(bodies).toEqual([""]));
+      });
+
+      it("녹음 탭의 연결이 끊기면 독 위에 끊김 안내를 띄운다 (STT-R28)", async () => {
+        mockServer.use(
+          http.get(CURRENT_RECORDING_URL, () =>
+            HttpResponse.json({
+              ...currentRecordingResponse,
+              status: "RECORDING",
+              connectionStatus: "DISCONNECTED",
+            }),
+          ),
+        );
+        renderDock();
+
+        expect(
+          await screen.findByText("녹음 중인 탭의 연결이 끊겼어요"),
+        ).toBeInTheDocument();
       });
 
       it("일시정지면 회색 점과 멈춘 시간을 보여준다 (STT-R28)", async () => {
