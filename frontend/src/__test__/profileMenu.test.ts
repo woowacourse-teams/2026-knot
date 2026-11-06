@@ -66,7 +66,7 @@ const pressLogout = async (page: Page) => {
   await logoutItem(page).click();
 };
 
-/** 처리 중에도 닫는 세 방법을 모두 써 봐요. 처리 중인 항목은 눌러도 막혀 있어 클릭을 직접 보내요 */
+/** 처리 중에도 닫는 세 방법을 모두 써 봐요 */
 const tryToCloseMenu = async (page: Page) => {
   await avatar(page).click();
   await page.mouse.click(400, 400);
@@ -206,6 +206,43 @@ test.describe("프로필 메뉴", () => {
     await expect(profileMenu(page)).toBeVisible();
     await page.keyboard.press("Escape");
     await expect(profileMenu(page)).toBeHidden();
+  });
+
+  test("[AUTH-R17] 처리 중에는 프로필 사진, 바깥, ESC로 메뉴가 닫히지 않음", async ({
+    page,
+  }) => {
+    await holdRequests(page, LOGOUT_REQUEST_PATH);
+    await openHome(page);
+    await pressLogout(page);
+    await expectProcessing(page);
+
+    await tryToCloseMenu(page);
+
+    await expect(profileMenu(page)).toBeVisible();
+    await expectProcessing(page);
+  });
+
+  test("[AUTH-R17] 처리 중에 창 크기가 바뀌어도 메뉴가 닫히지 않고 프로필 사진 곁에 남음", async ({
+    page,
+  }) => {
+    await holdRequests(page, LOGOUT_REQUEST_PATH);
+    await openHome(page);
+    await pressLogout(page);
+    await expectProcessing(page);
+
+    await page.setViewportSize({ width: 900, height: 700 });
+
+    await expect(profileMenu(page)).toBeVisible();
+    await expect
+      .poll(async () => {
+        const menu = await profileMenu(page).boundingBox();
+        const trigger = await avatar(page).boundingBox();
+
+        return Math.round(
+          menu!.x + menu!.width - (trigger!.x + trigger!.width),
+        );
+      })
+      .toBe(0);
   });
 
   test.describe("휴대폰", () => {
@@ -356,9 +393,9 @@ test.describe("로그아웃", () => {
     await expectMenuOpened(page);
 
     await logoutItem(page).dispatchEvent("click");
-    await tryToCloseMenu(page);
+    // 겹친 요청은 현재 녹음 조회를 거쳐 나가서 그만큼 기다린 뒤에 세요
+    await page.waitForTimeout(300);
 
-    await expect(profileMenu(page)).toBeVisible();
     expect(
       await page.evaluate(() =>
         (window as unknown as RequestControlWindow).__heldRequestCount(),
@@ -368,29 +405,6 @@ test.describe("로그아웃", () => {
     await releaseHeldRequests(page);
 
     await expect(page).toHaveURL(LOGIN_PATH);
-  });
-
-  test("[AUTH-R19] 처리 중에 창 크기가 바뀌어도 메뉴가 닫히지 않고 프로필 사진 곁에 남음", async ({
-    page,
-  }) => {
-    await holdRequests(page, LOGOUT_REQUEST_PATH);
-    await openHome(page);
-    await pressLogout(page);
-    await expectProcessing(page);
-
-    await page.setViewportSize({ width: 900, height: 700 });
-
-    await expect(profileMenu(page)).toBeVisible();
-    await expect
-      .poll(async () => {
-        const menu = await profileMenu(page).boundingBox();
-        const trigger = await avatar(page).boundingBox();
-
-        return Math.round(
-          menu!.x + menu!.width - (trigger!.x + trigger!.width),
-        );
-      })
-      .toBe(0);
   });
 
   test("[AUTH-R19] 서버 오류나 연결 문제로 로그아웃에 실패하면 로그인과 화면이 그대로이고 오류 토스트", async ({
