@@ -5,7 +5,6 @@ import {
   recordingsResponse,
 } from "@api/mock/responses/recording";
 import { resetRecordingMockState } from "@api/mock/state/recording";
-import { DialogProvider } from "@provider/context/dialogContext";
 import { ToastProvider } from "@provider/context/toastContext";
 import { getRouterPath, PATH_ROUTE } from "@routes/PATH_ROUTE";
 import { useRecordingStore } from "@store/recordingStore";
@@ -63,7 +62,7 @@ const setRecordingInThisTab = (status: "recording" | "paused") => {
  *
  * **동작 규칙**
  * - 맨 위에는 내 녹음 중 · 일시정지 녹음 한 줄(녹음 이름, 상태 · 시간, 안내, 「녹음 화면으로」)을, 그 아래에는 워크스페이스의 끝난 녹음을 최신순으로 보여 줘요. 누가 녹음했는지는 보여 주지 않아요.
- * - 이 탭에서 시작한 녹음이면 「녹음 화면으로」로 녹음 화면에 가요. 다른 탭에서 시작한 녹음이면 버튼을 누를 수 없고, 「녹음 끝내기」로 끝낼 수 있어요. 일시정지 · 이어서 녹음은 그 탭에서 한다고 안내해요.
+ * - 이 탭에서 시작한 녹음이면 「녹음 화면으로」로 녹음 화면에 가요. 다른 탭에서 시작한 녹음이면 버튼을 누를 수 없고, 일시정지 · 이어서 녹음은 그 탭에서 한다고 안내해요. 끝내기는 독의 ■로 해요.
  * - 맨 위 줄은 카드 머리 아래에 고정되고, 목록만 카드 안에서 스크롤돼요. 목록 아래 40px은 흐리게 보여요. 스크롤 끝에 닿으면 다음 20개를 이어 받아요.
  * - 행은 제목을 한 줄로 자르고, 마우스를 올리면 전체 제목을 브라우저 툴팁으로 보여 줘요.
  * - 완료 행은 녹음 날짜와 녹음 길이 칩을, 그 밖의 행은 처리 상태(문서 정리 중 · 녹음을 글로 옮기지 못했어요 · 문서를 만들지 못했어요 · 변환된 음성 기록이 없어요.)를 보여 줘요.
@@ -96,13 +95,11 @@ const meta = {
   decorators: [
     (Story) => (
       <MemoryRouter initialEntries={[HOME_PATH]}>
-        {/* 다시 시도의 오류 토스트와 녹음 끝내기 확인 창이 뜨도록 앱처럼 공급자를 둬요 */}
+        {/* 다시 시도의 오류 토스트가 뜨도록 앱처럼 토스트 공급자를 둬요 */}
         <ToastProvider>
-          <DialogProvider>
-            <Routes>
-              <Route path={PATH_ROUTE.WORKSPACE_HOME} element={<Story />} />
-            </Routes>
-          </DialogProvider>
+          <Routes>
+            <Route path={PATH_ROUTE.WORKSPACE_HOME} element={<Story />} />
+          </Routes>
         </ToastProvider>
       </MemoryRouter>
     ),
@@ -164,11 +161,11 @@ export const PausedInThisTab: Story = {
 export const RecordingInOtherTab: Story = {
   parameters: {
     docs: ISOLATED_DOCS,
-    design: { type: "figma", url: figmaUrl("5423-5002") },
+    design: { type: "figma", url: figmaUrl("6061-44336") },
   },
 };
 
-/** 다른 탭에서 녹음하는데 그 탭의 연결이 끊겼을 때예요. 예: 회의실 노트북의 인터넷이 끊긴 채 다른 기기로 홈을 연 경우. 끊겨도 여기서 끝낼 수 있어요 */
+/** 다른 탭에서 녹음하는데 그 탭의 연결이 끊겼을 때예요. 예: 회의실 노트북의 인터넷이 끊긴 채 다른 기기로 홈을 연 경우 */
 export const OtherTabConnectionLost: Story = {
   parameters: {
     docs: ISOLATED_DOCS,
@@ -182,7 +179,7 @@ export const OtherTabConnectionLost: Story = {
         ),
       },
     },
-    design: { type: "figma", url: figmaUrl("6061-42635") },
+    design: { type: "figma", url: figmaUrl("6061-44533") },
   },
 };
 

@@ -26,8 +26,6 @@ interface CurrentRecordingItemProps {
   elapsedTime: string;
   /** 이 탭의 녹음이면 넘겨요. 없으면 다른 탭의 녹음이라 「녹음 화면으로」를 누를 수 없어요(STT-R28) */
   onOpenRecording?: () => void;
-  /** 다른 탭의 녹음이면 넘겨요. 「녹음 끝내기」를 더해요(STT-R28) */
-  onEndRecording?: () => void;
   /** 이 탭을 새로고침해 아직 이어 받지 않은 녹음인지(STT-R26) */
   isReloaded?: boolean;
   /** 다른 탭의 녹음에서 녹음 탭의 연결이 끊겼는지(STT-R28) */
@@ -36,16 +34,17 @@ interface CurrentRecordingItemProps {
 
 /**
  * 녹음 기록 카드 맨 위의 내 녹음 중 · 일시정지 녹음 한 줄. 녹음 이름 / 상태 줄(점 + 상태 · 시간) / 안내 한 줄과 오른쪽 「녹음 화면으로」로 이뤄져요(STT-R24).
- * 다른 탭의 녹음이면 「녹음 화면으로」 옆에 「녹음 끝내기」를 두고, 안내는 두 줄까지 늘어나요.
+ * 다른 탭의 녹음이면 「녹음 화면으로」를 누를 수 없고, 안내는 줄을 바꿔 다 보여 줘요. 끝내기는 독의 ■로 해요.
  *
- * @see https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=6061-42635 시안
+ * @see https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=6061-44336 다른 탭 평소
+ * @see https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=6061-44533 다른 탭 끊김
+ * @see https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=6061-44922 다른 탭 모바일
  */
 export default function CurrentRecordingItem({
   recordingStatus,
   title,
   elapsedTime,
   onOpenRecording,
-  onEndRecording,
   isReloaded = false,
   isConnectionLost = false,
 }: CurrentRecordingItemProps) {
@@ -87,21 +86,14 @@ export default function CurrentRecordingItem({
         )}
       </Info>
 
-      <Actions>
-        <Button
-          size="sm"
-          variant="filled"
-          disabled={isOtherTab}
-          onClick={onOpenRecording}
-        >
-          녹음 화면으로
-        </Button>
-        {onEndRecording && (
-          <Button size="sm" variant="filled" onClick={onEndRecording}>
-            녹음 끝내기
-          </Button>
-        )}
-      </Actions>
+      <Button
+        size="sm"
+        variant="filled"
+        disabled={isOtherTab}
+        onClick={onOpenRecording}
+      >
+        녹음 화면으로
+      </Button>
     </Container>
   );
 }
@@ -131,19 +123,9 @@ const Container = styled.div`
   ${MEDIA_QUERY.mobile} {
     flex-wrap: wrap;
     align-items: flex-start;
-  }
-`;
-
-const Actions = styled.div`
-  display: flex;
-  flex-shrink: 0;
-  gap: 0.5rem; /* 8px */
-
-  ${MEDIA_QUERY.mobile} {
-    flex-basis: 100%;
 
     && > button {
-      flex: 1;
+      flex-basis: 100%;
       height: 2.75rem; /* 44px */
     }
   }

@@ -10,12 +10,10 @@ import { CURRENT_RECORDING_API_PATH } from "@api/fetch/api/v1/workspaces/[worksp
 import { meResponse } from "@api/mock/responses/auth";
 import {
   currentRecordingResponse,
-  recordingEndResponse,
   recordingsResponse,
 } from "@api/mock/responses/recording";
 import { mockServer } from "@api/mock/server";
 import { ThemeProvider } from "@emotion/react";
-import { DialogProvider } from "@provider/context/dialogContext";
 import {
   clearRecordingStartProof,
   getRecordingStartProof,
@@ -166,9 +164,7 @@ const renderCard = () => {
       {
         element: (
           <ToastProvider>
-            <DialogProvider>
-              <Outlet />
-            </DialogProvider>
+            <Outlet />
           </ToastProvider>
         ),
         children: [
@@ -768,7 +764,6 @@ describe("RecordingHistoryCard", () => {
 
   describe("다른 탭과 새로고침한 탭의 맨 위 줄 (STT-R26 · R28)", () => {
     const END_RECORDING = "녹음 끝내기";
-    const END_PATH = `*/api/v1/workspaces/${WORKSPACE_ID}/recordings/${expectedCurrent.recordingId}/end`;
 
     const respondCurrent = (
       fields: Partial<typeof currentRecordingResponse> & {
@@ -783,63 +778,17 @@ describe("RecordingHistoryCard", () => {
 
     afterEach(() => clearRecordingStartProof());
 
-    it("다른 탭의 녹음은 확인 창을 거쳐 본문 없이 끝낸다", async () => {
+    it("다른 탭의 녹음에는 비활성 「녹음 화면으로」 하나만 있고 끝내기 버튼이 없다", async () => {
       respondItems([]);
-      const bodies: string[] = [];
-      mockServer.use(
-        http.post(END_PATH, async ({ request }) => {
-          bodies.push(await request.clone().text());
-
-          return HttpResponse.json(recordingEndResponse);
-        }),
-      );
       renderCard();
 
-      fireEvent.click(
-        await screen.findByRole("button", { name: END_RECORDING }),
-      );
-      const dialog = await screen.findByRole("dialog", {
-        name: "녹음을 끝낼까요?",
-      });
-      expect(bodies).toEqual([]);
-
-      fireEvent.click(
-        within(dialog).getByRole("button", { name: END_RECORDING }),
-      );
-
-      await waitFor(() => expect(bodies).toEqual([""]));
-    });
-
-    it("다른 탭의 녹음을 끝내면 맨 위 줄이 사라진다", async () => {
-      respondItems([]);
-      let isEnded = false;
-      mockServer.use(
-        http.get(CURRENT_URL, () =>
-          isEnded
-            ? new HttpResponse(null, { status: 204 })
-            : HttpResponse.json(currentRecordingResponse),
-        ),
-        http.post(END_PATH, () => {
-          isEnded = true;
-
-          return HttpResponse.json(recordingEndResponse);
-        }),
-      );
-      renderCard();
-
-      fireEvent.click(
-        await screen.findByRole("button", { name: END_RECORDING }),
-      );
-      const dialog = await screen.findByRole("dialog");
-      fireEvent.click(
-        within(dialog).getByRole("button", { name: END_RECORDING }),
-      );
-
-      await waitFor(() =>
-        expect(
-          screen.queryByRole("button", { name: END_RECORDING }),
-        ).not.toBeInTheDocument(),
-      );
+      expect(await screen.findByText(OTHER_TAB_HINT)).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: OPEN_RECORDING }),
+      ).toBeDisabled();
+      expect(
+        screen.queryByRole("button", { name: END_RECORDING }),
+      ).not.toBeInTheDocument();
     });
 
     it("녹음 탭의 연결이 끊겼으면 안내 자리에 끊김을 보여 준다", async () => {

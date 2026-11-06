@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 
 import { TOAST_MESSAGES } from "@constants/toastMessages";
 
@@ -410,21 +410,22 @@ test.describe("새로고침 뒤 이어서 녹음", () => {
 
 test.describe("다른 탭에서 녹음 중", () => {
   const OTHER_TAB_HOME_PATH = `${HOME_PATH}?mock.currentRecording=recording`;
-  const endButton = (page: Page) =>
-    page.getByRole("button", { name: "녹음 끝내기" });
+  const endButton = (scope: Page | Locator) =>
+    scope.getByRole("button", { name: "녹음 끝내기" });
 
-  test("[STT-R28, STT-R24] 다른 탭 홈 맨 위 줄에 상태와 안내, 비활성 「녹음 화면으로」, 「녹음 끝내기」가 있다", async ({
+  test("[STT-R28, STT-R24] 다른 탭 홈 맨 위 줄에 상태와 안내, 비활성 「녹음 화면으로」 하나가 있다", async ({
     page,
   }) => {
     await page.goto(OTHER_TAB_HOME_PATH);
+    const recordingCard = page.getByRole("region", { name: "녹음 기록" });
 
     await expect(
       page.getByText("녹음 중인 탭에서 일시정지·이어서 녹음을 할 수 있어요"),
     ).toBeVisible();
     await expect(
-      page.getByRole("button", { name: "녹음 화면으로", exact: true }),
+      recordingCard.getByRole("button", { name: "녹음 화면으로", exact: true }),
     ).toBeDisabled();
-    await expect(endButton(page).first()).toBeEnabled();
+    await expect(endButton(recordingCard)).toHaveCount(0);
   });
 
   test("[STT-R28] 다른 탭의 독에 시간 칩과 끝내기 버튼이 있고, 마이크와 일시정지 버튼은 없다", async ({
@@ -432,7 +433,7 @@ test.describe("다른 탭에서 녹음 중", () => {
   }) => {
     await page.goto(OTHER_TAB_HOME_PATH);
 
-    await expect(endButton(page).first()).toBeVisible();
+    await expect(endButton(page)).toBeVisible();
     await expect(
       page.getByRole("button", { name: "회의 녹음 시작" }),
     ).toBeHidden();
@@ -442,7 +443,7 @@ test.describe("다른 탭에서 녹음 중", () => {
     ).toBeHidden();
   });
 
-  test("[STT-R28] 맨 위 줄의 「녹음 끝내기」는 확인 창을 거치고, 취소하면 끝나지 않으며 확정하면 본문 없이 끝낸다", async ({
+  test("[STT-R28] 독의 끝내기 버튼은 확인 창을 거치고, 취소하면 끝나지 않으며 확정하면 본문 없이 끝낸다", async ({
     page,
   }) => {
     await page.goto(OTHER_TAB_HOME_PATH);
@@ -454,11 +455,11 @@ test.describe("다른 탭에서 녹음 중", () => {
     });
     const dialog = page.getByRole("dialog", { name: "녹음을 끝낼까요?" });
 
-    await endButton(page).first().click();
+    await endButton(page).click();
     await dialog.getByRole("button", { name: "계속 녹음" }).click();
     expect(endRequests).toEqual([]);
 
-    await endButton(page).first().click();
+    await endButton(page).click();
     await dialog.getByRole("button", { name: "녹음 끝내기" }).click();
 
     await expect.poll(() => endRequests).toEqual([null]);
