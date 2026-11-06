@@ -99,6 +99,17 @@ describe("useUnfinishedRecordingCheck", () => {
     );
   });
 
+  it("지금 보내고 있는 시작 증명은 지우지 않는다", async () => {
+    await leaveUnfinishedRecording();
+    const { controlToken } = getRecordingStartProof();
+    respondDetail("ENDED", "USER_ENDED");
+
+    renderCheck();
+
+    await waitFor(() => expect(getRecordingResumeProof()).toBeNull());
+    expect(getRecordingStartProof().controlToken).toBe(controlToken);
+  });
+
   it("사용자가 끝낸 녹음이면 알리지 않고 지운다", async () => {
     await leaveUnfinishedRecording();
     respondDetail("ENDED", "USER_ENDED");

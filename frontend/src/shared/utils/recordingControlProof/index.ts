@@ -119,11 +119,15 @@ export const completeRecordingReconnect = () => {
   writeResumeProof({ ...rest, ...next });
 };
 
+/** 이어 갈 수 없는 녹음의 이어 녹음 증명만 지워요. 지금 보내고 있는 시작 증명은 그대로 둬요 */
+export const clearRecordingResumeProof = () =>
+  sessionStorage.removeItem(RESUME_PROOF_KEY);
+
 /**
  * 끝낸 녹음의 요청 ID·제어 증명을 지워요. 다음 시작은 새 녹음으로 보내야 하기 때문이에요.
  * 탭 ID는 탭이 바뀐 게 아니라 남겨 둬요.
  */
 export const clearRecordingStartProof = () => {
   startProof = null;
-  sessionStorage.removeItem(RESUME_PROOF_KEY);
+  clearRecordingResumeProof();
 };

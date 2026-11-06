@@ -11,7 +11,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { isUnreachableRecordingError } from "@utils/isUnreachableRecordingError";
 import { logRequestError } from "@utils/logRequestError";
 import {
-  clearRecordingStartProof,
+  clearRecordingResumeProof,
   getRecordingResumeProof,
 } from "@utils/recordingControlProof";
 import {
@@ -45,7 +45,7 @@ const useUnfinishedRecordingCheck = () => {
       forgetUnfinishedRecording(recordingId);
       void deleteRecordingChunks(recordingId).catch(() => undefined);
       if (getRecordingResumeProof()?.recordingId === recordingId) {
-        clearRecordingStartProof();
+        clearRecordingResumeProof();
       }
       void queryClient.invalidateQueries({
         queryKey: recordingKeys.current(workspaceId),
