@@ -1,5 +1,14 @@
+import { currentRecordingResponse } from "@api/mock/responses/recording";
+import { mockServer } from "@api/mock/server";
 import { useRecordingStore } from "@store/recordingStore";
-import { act, render, screen } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { act, render, screen, waitFor } from "@testing-library/react";
+import {
+  clearRecordingStartProof,
+  getRecordingStartProof,
+  saveRecordingResumeProof,
+} from "@utils/recordingControlProof";
+import { http, HttpResponse } from "msw";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -32,7 +41,13 @@ const renderGuard = () => {
     { initialEntries: [HOME_PATH, RECORDING_PATH], initialIndex: 1 },
   );
 
-  render(<RouterProvider router={router} />);
+  render(
+    <QueryClientProvider
+      client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
+    >
+      <RouterProvider router={router} />
+    </QueryClientProvider>,
+  );
 
   return { router };
 };
@@ -82,5 +97,46 @@ describe("RecordingGuard", () => {
     });
 
     expect(router.state.location.pathname).toBe(RECORDING_PATH);
+  });
+
+  describe("이 탭을 새로고침했으면 (STT-R26)", () => {
+    const CURRENT_PATH = "*/api/v1/workspaces/:workspaceId/recordings/current";
+    const leaveResumeProof = (recordingId: number) => {
+      getRecordingStartProof();
+      saveRecordingResumeProof({
+        workspaceId: Number(WORKSPACE_ID),
+        recordingId,
+        audioMode: "PCM16_CHUNKS_V1",
+      });
+    };
+
+    afterEach(() => clearRecordingStartProof());
+
+    it("증명의 녹음이 아직 진행 중이면 녹음 화면을 연다", async () => {
+      leaveResumeProof(currentRecordingResponse.recordingId);
+
+      renderGuard();
+
+      expect(await screen.findByText(RECORDING_TEXT)).toBeInTheDocument();
+    });
+
+    it("증명의 녹음이 끝났으면 홈으로 보낸다", async () => {
+      leaveResumeProof(currentRecordingResponse.recordingId);
+      mockServer.use(
+        http.get(CURRENT_PATH, () => new HttpResponse(null, { status: 204 })),
+      );
+
+      const { router } = renderGuard();
+
+      await waitFor(() =>
+        expect(router.state.location.pathname).toBe(HOME_PATH),
+      );
+    });
+
+    it("증명 없는 탭은 녹음이 진행 중이어도 홈으로 보낸다 (STT-R28)", () => {
+      const { router } = renderGuard();
+
+      expect(router.state.location.pathname).toBe(HOME_PATH);
+    });
   });
 });
