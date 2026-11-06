@@ -44,6 +44,27 @@ export const TOAST_MESSAGES = {
     variant: "caution",
     message: "끊긴 동안의 소리 일부는 저장하지 못했어요",
   },
+  /** 이 탭의 신호나 조각이 서버에 닿지 못하는 동안. X로 닫는 고정 토스트예요(STT-R53). Figma 6083:27373 */
+  RECORDING_DISCONNECTED: {
+    variant: "caution",
+    message: "연결이 끊겼어요. 녹음은 계속돼요",
+  },
+  /** 끊긴 동안 브라우저가 조각 보관을 거절했을 때. X로 닫는 고정 토스트예요. Figma 6083:27373 */
+  RECORDING_ARCHIVE_FAILED: {
+    variant: "caution",
+    message:
+      "저장 공간이 부족해요. 이 탭을 닫으면 끊긴 동안의 소리가 사라질 수 있어요",
+  },
+  /** 끊긴 채 녹음을 끝내는 동안. X로 닫는 고정 토스트예요. Figma 6083:27373 */
+  RECORDING_ENDING_DISCONNECTED: {
+    variant: "caution",
+    message: "연결이 돌아오면 녹음을 끝낼게요. 이 탭을 닫지 말아 주세요",
+  },
+  /** 다른 탭의 녹음에서 녹음 탭의 연결이 끊긴 동안. X로 닫는 고정 토스트예요(STT-R28). Figma 6083:27373 */
+  OTHER_TAB_RECORDING_DISCONNECTED: {
+    variant: "caution",
+    message: "녹음 중인 탭의 연결이 끊겼어요",
+  },
   /** 새로고침 뒤 이어 받기가 거절돼(403 RECORDING_CONTROL_DENIED) 다른 탭이 먼저 이어 받은 것을 알 때 */
   RECORDING_TAKEN_OVER: {
     variant: "caution",
