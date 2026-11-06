@@ -110,7 +110,16 @@ const meta = {
         type: "figma",
         url: `${FIGMA_URL}6063-55228`,
       },
-      { name: "정리 카드", type: "figma", url: `${FIGMA_URL}6063-55637` },
+      {
+        name: "Toast 오류 · 로그아웃 실패",
+        type: "figma",
+        url: `${FIGMA_URL}6125-5597`,
+      },
+      {
+        name: "정책 | 프로필 메뉴와 로그아웃 | 2026-11-06 확정",
+        type: "figma",
+        url: `${FIGMA_URL}6125-6113`,
+      },
     ],
   },
   beforeEach: resetRecording,
