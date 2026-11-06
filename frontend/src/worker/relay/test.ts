@@ -417,6 +417,18 @@ describe("relayToNotion", () => {
       reason: "원문 링크가 PostHog 리플레이가 아니면",
       body: { ...feedback, replayUrl: "https://evil.example.com/x" },
     },
+    {
+      reason: "닉네임이 20자를 넘으면",
+      body: { ...feedback, nickname: "가".repeat(21) },
+    },
+    {
+      reason: "닉네임이 숫자이면",
+      body: { ...feedback, nickname: 20 },
+    },
+    {
+      reason: "닉네임이 null이면",
+      body: { ...feedback, nickname: null },
+    },
     { reason: "본문이 객체가 아니면", body: "피드백" },
   ])("$reason 넣지 않고 400을 돌려준다", async ({ body }) => {
     const requests = captureNotionRequests();
@@ -425,6 +437,18 @@ describe("relayToNotion", () => {
 
     expect(response.status).toBe(400);
     expect(requests).toHaveLength(0);
+  });
+
+  it("닉네임이 정확히 20자면 받아 201을 돌려준다", async () => {
+    const requests = captureNotionRequests();
+
+    const response = await relayToNotion(
+      toFeedbackRequest({ ...feedback, nickname: "가".repeat(20) }),
+      env,
+    );
+
+    expect(response.status).toBe(201);
+    expect(requests).toHaveLength(1);
   });
 
   it("본문이 너무 길면 넣지 않고 413을 돌려준다", async () => {
