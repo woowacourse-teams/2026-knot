@@ -31,9 +31,12 @@ export interface DialogControls {
    * 이미 떠 있으면 그 모달로 바뀌고, 바뀐 뒤에는 이전 모달의 `close`를 불러도 아무 일도 하지 않아요
    */
   open: (render: DialogRender) => () => void;
+  /** 누가 띄웠든 떠 있는 모달을 닫아요. 앞 계정의 모달이 남으면 안 되는 로그아웃처럼 화면을 통째로 떠날 때 써요 */
+  closeOpenedDialog: () => void;
 }
 
 const DialogContext = createContext<DialogControls | null>(null);
+const HasDialogContext = createContext(false);
 
 /**
  * 지금 떠 있는 모달 하나를 들고 있어요.
@@ -61,7 +64,9 @@ const useOpenedDialog = () => {
     return nextDialog.close;
   }, []);
 
-  return { dialog: openedDialog, show };
+  const closeOpenedDialog = useCallback(() => setOpenedDialog(null), []);
+
+  return { dialog: openedDialog, show, closeOpenedDialog };
 };
 
 /**
@@ -77,7 +82,7 @@ const useOpenedDialog = () => {
  * 사라지는 모달은 `inert`로 막아서 버튼이 클릭이나 키보드로 다시 눌리지 않아요.
  */
 export function DialogProvider({ children }: { children: ReactNode }) {
-  const { dialog, show } = useOpenedDialog();
+  const { dialog, show, closeOpenedDialog } = useOpenedDialog();
   const { remember } = useReturnFocus({ isActive: dialog !== null });
   const dialogLayerRef = useRef<HTMLDivElement>(null);
   const { renderedValue: renderedDialog, isExiting } = useExitAnimation({
@@ -92,22 +97,25 @@ export function DialogProvider({ children }: { children: ReactNode }) {
 
         return show(nextRender);
       },
+      closeOpenedDialog,
     }),
-    [remember, show],
+    [closeOpenedDialog, remember, show],
   );
 
   return (
     <DialogContext.Provider value={controlsValue}>
-      {children}
-      {renderedDialog && (
-        <DialogLayer
-          ref={dialogLayerRef}
-          data-overlay-state={isExiting ? "closing" : "open"}
-          inert={isExiting}
-        >
-          {renderedDialog.render({ close: renderedDialog.close })}
-        </DialogLayer>
-      )}
+      <HasDialogContext.Provider value={dialog !== null}>
+        {children}
+        {renderedDialog && (
+          <DialogLayer
+            ref={dialogLayerRef}
+            data-overlay-state={isExiting ? "closing" : "open"}
+            inert={isExiting}
+          >
+            {renderedDialog.render({ close: renderedDialog.close })}
+          </DialogLayer>
+        )}
+      </HasDialogContext.Provider>
     </DialogContext.Provider>
   );
 }
@@ -178,3 +186,10 @@ export const useDialog = () => {
 
   return controls;
 };
+
+/**
+ * 지금 떠 있는 모달이 있는지. 닫히는 애니메이션 중인 모달은 치지 않아요.
+ * 모달 뒤에 열어 둔 메뉴처럼, 모달을 누를 때 바깥 누름으로 닫히면 안 되는 것이 막을 때 써요.
+ * `useDialog`와 나눠서, 모달을 띄우기만 하는 곳은 모달이 열리고 닫혀도 다시 그리지 않아요. Provider 밖에서는 늘 `false`예요.
+ */
+export const useHasDialog = () => useContext(HasDialogContext);
