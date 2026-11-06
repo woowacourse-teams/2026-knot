@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
-  deleteRecordingChunk,
   deleteRecordingChunks,
+  deleteRecordingChunksThrough,
   readRecordingChunks,
   saveRecordingChunk,
 } from "./recordingChunkArchive";
@@ -51,13 +51,14 @@ describe("recordingChunkArchive", () => {
     expect(new Uint8Array(chunks[0].pcm)).toEqual(new Uint8Array([2]));
   });
 
-  it("저장을 확인한 조각만 지운다", async () => {
+  it("빈틈없이 확인된 번호까지만 지운다", async () => {
     await saveRecordingChunk(chunk(1));
     await saveRecordingChunk(chunk(2));
+    await saveRecordingChunk(chunk(3));
 
-    await deleteRecordingChunk(RECORDING_ID, 1);
+    await deleteRecordingChunksThrough(RECORDING_ID, 2);
 
-    expect(await sequencesOf()).toEqual([2]);
+    expect(await sequencesOf()).toEqual([3]);
   });
 
   it("녹음을 지워도 다른 녹음의 조각은 남는다", async () => {

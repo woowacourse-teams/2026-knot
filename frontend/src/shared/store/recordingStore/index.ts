@@ -19,8 +19,8 @@ import PcmChunkUploadQueue, {
 import PcmCollector from "./pcmCollector";
 import RecordedAudio from "./recordedAudio";
 import {
-  deleteRecordingChunk,
   deleteRecordingChunks,
+  deleteRecordingChunksThrough,
   saveRecordingChunk,
 } from "./recordingChunkArchive";
 
@@ -53,12 +53,14 @@ interface ConnectMicrophoneParams {
   audioMode?: RecordingAudioMode;
 }
 
-interface DiscardRecordingParams {
+export interface DiscardRecordingParams {
   /**
    * 끝낸 PCM 녹음의 남은 조각을 서버가 받아 주는 시한(ISO 8601). 주면 큐를 남겨 그때까지 뒤에서 올리고,
    * 주지 않으면 큐도 비워요
    */
   acceptUntil?: string;
+  /** 다른 탭이 이어 받은 녹음이면 보관본과 기록을 그 탭의 몫으로 남겨요 */
+  isTakenOver?: boolean;
 }
 
 interface StartRecordingParams {
@@ -249,7 +251,8 @@ export const useRecordingStore = create<RecordingState & RecordingActions>()((
       archive: {
         save: (sequence, pcm) =>
           saveRecordingChunk({ recordingId, sequence, pcm }),
-        remove: (sequence) => deleteRecordingChunk(recordingId, sequence),
+        removeThrough: (sequence) =>
+          deleteRecordingChunksThrough(recordingId, sequence),
       },
       onArchiveFailed: () => set({ isChunkArchiveFailed: true }),
       onStalledChange: (isStalled) =>
@@ -367,15 +370,17 @@ export const useRecordingStore = create<RecordingState & RecordingActions>()((
     },
 
     ensureMicrophone: async () => {
-      if (microphone.isLive() && (pcmCollector?.isLive ?? true)) return true;
+      const isPcm = get().session?.audioMode === "PCM16_CHUNKS_V1";
+      // 되살린 PCM 녹음은 수집기를 만들기 전까지 소리를 모으지 못해요
+      const isCollectorReady = pcmCollector?.isLive ?? !isPcm;
+      if (microphone.isLive() && isCollectorReady) return true;
 
       const connection = await microphone.connect();
       set({ microphoneErrorName: microphone.errorName });
       if (!connection) return false;
       if (meetingAudio) connection.addAudio(meetingAudio);
 
-      // 새로고침 뒤 되살린 PCM 녹음은 아직 수집기가 없어요
-      if (pcmCollector || get().session?.audioMode === "PCM16_CHUNKS_V1") {
+      if (pcmCollector || isPcm) {
         // 멈춘 수집기의 마지막 봉인이 끝난 뒤에 닫아야 그 조각을 잃지 않아요
         await pcmFlushed;
         pcmCollector?.close();
@@ -456,11 +461,11 @@ export const useRecordingStore = create<RecordingState & RecordingActions>()((
       pcmCollector = null;
     },
 
-    discardRecording: ({ acceptUntil } = {}) => {
+    discardRecording: ({ acceptUntil, isTakenOver = false } = {}) => {
       const recordingId = get().session?.recordingId;
       /** 끝났거나 버린 녹음은 브라우저에 남길 조각이 없어요 */
       const forgetRecording = () => {
-        if (recordingId === undefined) return;
+        if (recordingId === undefined || isTakenOver) return;
 
         forgetUnfinishedRecording(recordingId);
         void deleteRecordingChunks(recordingId).catch(() => undefined);

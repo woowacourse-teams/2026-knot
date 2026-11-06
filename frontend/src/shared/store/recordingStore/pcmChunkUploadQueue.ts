@@ -53,6 +53,8 @@ interface UploadParams {
 
 interface CompleteResult {
   status: PcmChunkStatus;
+  /** 첫 조각부터 빈틈없이 저장이 확인된 마지막 번호 */
+  verifiedThroughSequence: number;
   verifiedThroughFrame: number;
 }
 
@@ -69,7 +71,8 @@ export interface PcmChunkRequests {
 /** 저장이 확인될 때까지 조각을 브라우저에 보관하는 곳. 새로고침해도 남아요 */
 interface PcmChunkArchive {
   save: (sequence: number, pcm: ArrayBuffer) => Promise<unknown>;
-  remove: (sequence: number) => Promise<unknown>;
+  /** 이 번호까지의 조각을 지워요 */
+  removeThrough: (sequence: number) => Promise<unknown>;
 }
 
 export interface PcmChunkUploadQueueParams extends PcmChunkRequests {
@@ -391,7 +394,10 @@ export default class PcmChunkUploadQueue {
         if (completed.status !== "VERIFIED") return "reserveAgain";
 
         this.pending.delete(sequence);
-        void this.archive?.remove(sequence).catch(() => undefined);
+        // 앞 조각이 비어 있으면 서버는 이어 받을 때 뒤 조각도 지우므로, 빈틈없이 확인된 데까지만 보관본을 놓아요
+        void this.archive
+          ?.removeThrough(completed.verifiedThroughSequence)
+          .catch(() => undefined);
         this.retriedFailures.reset();
         this.setStalled(false);
         // 뒤 조각의 응답이 먼저 와도 watermark가 줄지 않게 큰 값만 받아요

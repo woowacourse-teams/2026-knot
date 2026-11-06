@@ -50,9 +50,14 @@ const recordingRange = (recordingId: number) =>
 export const saveRecordingChunk = (chunk: ArchivedChunk) =>
   runInStore("readwrite", (store) => store.put(chunk));
 
-/** 서버가 저장을 확인한 조각을 지워요 */
-export const deleteRecordingChunk = (recordingId: number, sequence: number) =>
-  runInStore("readwrite", (store) => store.delete([recordingId, sequence]));
+/** 서버가 빈틈없이 저장을 확인한 번호까지의 조각을 지워요 */
+export const deleteRecordingChunksThrough = (
+  recordingId: number,
+  sequence: number,
+) =>
+  runInStore("readwrite", (store) =>
+    store.delete(IDBKeyRange.bound([recordingId, 0], [recordingId, sequence])),
+  );
 
 /** 녹음의 보관 조각을 번호 순서로 돌려줘요 */
 export const readRecordingChunks = (recordingId: number) =>

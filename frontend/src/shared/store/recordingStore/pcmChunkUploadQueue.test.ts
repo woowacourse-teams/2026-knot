@@ -271,6 +271,7 @@ describe("PcmChunkUploadQueue", () => {
       const complete = vi.fn<PcmChunkUploadQueueParams["complete"]>(
         async () => ({
           status: "VERIFIED",
+          verifiedThroughSequence: 1,
           verifiedThroughFrame: CHUNK_FRAMES,
         }),
       );
@@ -612,8 +613,9 @@ describe("PcmChunkUploadQueue", () => {
           return { status: "RESERVED", uploadUrl: "url", requiredHeaders: {} };
         },
         upload: async () => undefined,
-        complete: async () => ({
+        complete: async (sequence) => ({
           status: "VERIFIED",
+          verifiedThroughSequence: sequence,
           verifiedThroughFrame: 0,
         }),
         ...params,
@@ -640,16 +642,34 @@ describe("PcmChunkUploadQueue", () => {
 
     it("넣는 조각을 보관하고 저장이 확인되면 지운다", async () => {
       const save = vi.fn(() => Promise.resolve());
-      const remove = vi.fn(() => Promise.resolve());
-      const { queue } = createStubQueue({ archive: { save, remove } });
+      const removeThrough = vi.fn(() => Promise.resolve());
+      const { queue } = createStubQueue({ archive: { save, removeThrough } });
       const pcm = silentPcm(CHUNK_FRAMES);
 
       queue.enqueue(pcm);
       expect(save).toHaveBeenCalledWith(1, pcm);
-      expect(remove).not.toHaveBeenCalled();
+      expect(removeThrough).not.toHaveBeenCalled();
 
       await queue.drain();
-      expect(remove).toHaveBeenCalledWith(1);
+      expect(removeThrough).toHaveBeenCalledWith(1);
+    });
+
+    it("앞 조각이 비어 있으면 뒤 조각이 확인돼도 그 보관본을 지우지 않는다", async () => {
+      const removeThrough = vi.fn(() => Promise.resolve());
+      const { queue } = createStubQueue({
+        archive: { save: () => Promise.resolve(), removeThrough },
+        // 서버는 앞 조각이 비어 있으면 빈틈없이 확인된 번호를 0으로 줘요
+        complete: async () => ({
+          status: "VERIFIED",
+          verifiedThroughSequence: 0,
+          verifiedThroughFrame: 0,
+        }),
+      });
+
+      queue.enqueue(silentPcm(CHUNK_FRAMES));
+      await queue.drain();
+
+      expect(removeThrough).toHaveBeenCalledWith(0);
     });
 
     it("보관이 거절돼도 전송은 이어 가고 거절을 알린다", async () => {
@@ -657,7 +677,7 @@ describe("PcmChunkUploadQueue", () => {
       const { queue, reserved } = createStubQueue({
         archive: {
           save: () => Promise.reject(new Error("QuotaExceededError")),
-          remove: () => Promise.resolve(),
+          removeThrough: () => Promise.resolve(),
         },
         onArchiveFailed,
       });
