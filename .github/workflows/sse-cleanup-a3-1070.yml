@@ -1,0 +1,122 @@
+name: SSE cleanup A3 PR1079
+on:
+  push:
+    branches:
+      - 'be/chore/#1070'
+    paths:
+      - '.github/cache-probe/sse-cleanup1070/trigger.txt'
+permissions:
+  contents: read
+jobs:
+  integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          path: harness
+      - uses: actions/checkout@v6
+        with:
+          ref: 25ca871e7c6ef6ff3dde8173a5373f77c65d2195
+          path: source
+      - name: Apply reviewed test patch
+        working-directory: ${{ github.workspace }}
+        run: |
+          base64 -d "$GITHUB_WORKSPACE/harness/.github/cache-probe/search3-1095.b64" > /tmp/context-reuse-1095.patch
+          printf '%s  %s\n' 419bf865dc03df207703f6713056c33aa142b3a97d5c81027e6c170485ad1775 /tmp/context-reuse-1095.patch | sha256sum -c -
+          git -C source apply --check /tmp/context-reuse-1095.patch
+          git -C source apply /tmp/context-reuse-1095.patch
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-read-only: true
+      - name: Run integration and observe
+        env:
+          FORK_COUNT: '2'
+          CONTEXT_CACHE_SIZE: '8'
+        run: |
+          set -o pipefail
+          mkdir -p "$GITHUB_WORKSPACE/observe"
+          git -C source rev-parse HEAD > "$GITHUB_WORKSPACE/observe/source.txt"
+          nproc > "$GITHUB_WORKSPACE/observe/cores.txt"
+          printf '%s\n' "$FORK_COUNT" > "$GITHUB_WORKSPACE/observe/forks.txt"
+          export OBSERVE_METRICS="$GITHUB_WORKSPACE/observe/resources.csv"
+          export MEMORY_CSV="$GITHUB_WORKSPACE/observe/memory.csv"
+          export WORKER_PID_DIR="$GITHUB_WORKSPACE/observe/worker-pids"
+          mkdir -p "$WORKER_PID_DIR"
+          python3 harness/.github/cache-probe/reload8v16/memory.py &
+          sampler=$!
+          trap 'kill "$sampler" 2>/dev/null || true; wait "$sampler" 2>/dev/null || true' EXIT
+          mkdir -p source/backend/src/test/java/org/springframework/test/context/cache
+          cp harness/.github/cache-probe/reload8v16/DefaultContextCache.java.txt source/backend/src/test/java/org/springframework/test/context/cache/DefaultContextCache.java
+          printf '%s  %s\n' 4cf48614e040f93049f4a9eed37e6ea0c24f15c50facad27b2a9276b26c7a51a source/backend/src/test/java/org/springframework/test/context/cache/DefaultContextCache.java | sha256sum -c -
+          cd source/backend
+          ./gradlew --init-script "$GITHUB_WORKSPACE/harness/.github/cache-probe/reload8v16/observe.init.gradle" --max-workers=4 --info --profile --rerun-tasks integrationTest 2>&1 | tee "$GITHUB_WORKSPACE/observe/integration.log"
+      - name: Preserve integration evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: sse-cleanup-a3-integration-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            source/backend/build/test-results/integrationTest/
+            source/backend/build/reports/profile/
+            observe/
+          if-no-files-found: warn
+  remaining:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: source/backend
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          path: harness
+      - uses: actions/checkout@v6
+        with:
+          ref: 25ca871e7c6ef6ff3dde8173a5373f77c65d2195
+          path: source
+      - name: Apply reviewed test patch
+        working-directory: ${{ github.workspace }}
+        run: |
+          base64 -d "$GITHUB_WORKSPACE/harness/.github/cache-probe/search3-1095.b64" > /tmp/context-reuse-1095.patch
+          printf '%s  %s\n' 419bf865dc03df207703f6713056c33aa142b3a97d5c81027e6c170485ad1775 /tmp/context-reuse-1095.patch | sha256sum -c -
+          git -C source apply --check /tmp/context-reuse-1095.patch
+          git -C source apply /tmp/context-reuse-1095.patch
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-read-only: true
+      - name: Check formatting
+        run: ./gradlew spotlessCheck
+      - name: Run unit tests
+        run: ./gradlew test
+      - name: Run acceptance tests
+        run: ./gradlew acceptanceTest
+      - name: Build JAR
+        run: ./gradlew bootJar
+      - name: Preserve remaining evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: sse-cleanup-a3-remaining-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            source/backend/build/test-results/test/
+            source/backend/build/test-results/acceptanceTest/
+          if-no-files-found: warn
+  verify:
+    needs: [integration, remaining]
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify both required jobs
+        env:
+          INTEGRATION_RESULT: ${{ needs.integration.result }}
+          REMAINING_RESULT: ${{ needs.remaining.result }}
+        run: test "$INTEGRATION_RESULT" = success && test "$REMAINING_RESULT" = success
