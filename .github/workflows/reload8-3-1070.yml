@@ -45,12 +45,14 @@ jobs:
           printf '%s\n' "$FORK_COUNT" > "$GITHUB_WORKSPACE/observe/forks.txt"
           export OBSERVE_METRICS="$GITHUB_WORKSPACE/observe/resources.csv"
           export MEMORY_CSV="$GITHUB_WORKSPACE/observe/memory.csv"
+          export WORKER_PID_DIR="$GITHUB_WORKSPACE/observe/worker-pids"
+          mkdir -p "$WORKER_PID_DIR"
           python3 harness/.github/cache-probe/reload8v16/memory.py &
           sampler=$!
           trap 'kill "$sampler" 2>/dev/null || true; wait "$sampler" 2>/dev/null || true' EXIT
           mkdir -p source/backend/src/test/java/org/springframework/test/context/cache
           cp harness/.github/cache-probe/reload8v16/DefaultContextCache.java.txt source/backend/src/test/java/org/springframework/test/context/cache/DefaultContextCache.java
-          printf '%s  %s\n' 5a4ace4a60cfff03ef8a517174698da9d5acb04903fec403fb167b30b24a405e source/backend/src/test/java/org/springframework/test/context/cache/DefaultContextCache.java | sha256sum -c -
+          printf '%s  %s\n' 4cf48614e040f93049f4a9eed37e6ea0c24f15c50facad27b2a9276b26c7a51a source/backend/src/test/java/org/springframework/test/context/cache/DefaultContextCache.java | sha256sum -c -
           cd source/backend
           ./gradlew --init-script "$GITHUB_WORKSPACE/harness/.github/cache-probe/reload8v16/observe.init.gradle" --max-workers=4 --info --profile --rerun-tasks integrationTest 2>&1 | tee "$GITHUB_WORKSPACE/observe/integration.log"
       - name: Preserve integration evidence

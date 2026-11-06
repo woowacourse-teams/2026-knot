@@ -61,6 +61,20 @@ import org.springframework.util.Assert;
  * @see ContextCacheUtils#retrievePauseMode()
  */
 public class DefaultContextCache implements ContextCache {
+    static {
+        String probeDirectory = System.getenv("WORKER_PID_DIR");
+        if (probeDirectory != null) {
+            try {
+                java.nio.file.Path probePath = java.nio.file.Path.of(probeDirectory);
+                java.nio.file.Files.createDirectories(probePath);
+                java.nio.file.Files.writeString(probePath.resolve(Long.toString(ProcessHandle.current().pid())), "worker");
+            }
+            catch (java.io.IOException ex) {
+                System.err.println("CONTEXT_PID_REPORT_FAILED " + ex);
+            }
+        }
+    }
+
     private final Map<MergedContextConfiguration, String> probeRemoved = new java.util.HashMap<>();
 
 
