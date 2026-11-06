@@ -1585,21 +1585,86 @@ describe("WorkspaceDock", () => {
         await waitFor(() => expect(bodies).toEqual([""]));
       });
 
-      it("녹음 탭의 연결이 끊기면 독 위에 끊김 안내를 띄운다 (STT-R28)", async () => {
-        mockServer.use(
-          http.get(CURRENT_RECORDING_URL, () =>
-            HttpResponse.json({
-              ...currentRecordingResponse,
-              status: "RECORDING",
-              connectionStatus: "DISCONNECTED",
-            }),
-          ),
-        );
-        renderDock();
+      describe("녹음 탭의 연결이 끊기면 (STT-R28)", () => {
+        const OTHER_TAB_LOST =
+          TOAST_MESSAGES.OTHER_TAB_RECORDING_DISCONNECTED.message;
 
-        expect(
-          await screen.findByText("녹음 중인 탭의 연결이 끊겼어요"),
-        ).toBeInTheDocument();
+        const respondDisconnected = () => {
+          const responses: unknown[] = [];
+
+          mockServer.use(
+            http.get(CURRENT_RECORDING_URL, () => {
+              const response = {
+                ...currentRecordingResponse,
+                status: "RECORDING",
+                connectionStatus: "DISCONNECTED",
+              };
+              responses.push(response);
+
+              return HttpResponse.json(response);
+            }),
+          );
+
+          return { responses };
+        };
+
+        /** 창으로 돌아와 현재 녹음을 다시 받아요 */
+        const refetchCurrentRecording = () =>
+          act(() => {
+            focusManager.setFocused(false);
+            focusManager.setFocused(true);
+          });
+
+        const expectNoToast = () =>
+          waitFor(() =>
+            expect(screen.queryByText(OTHER_TAB_LOST)).not.toBeInTheDocument(),
+          );
+
+        afterEach(() => focusManager.setFocused(undefined));
+
+        it("끊김 토스트를 띄운다", async () => {
+          respondDisconnected();
+          renderDock();
+
+          expect(await screen.findByText(OTHER_TAB_LOST)).toBeInTheDocument();
+        });
+
+        it("연결이 돌아오면 끊김 토스트를 닫는다", async () => {
+          respondDisconnected();
+          renderDock();
+          await screen.findByText(OTHER_TAB_LOST);
+
+          respondCurrentRecordingStatus("RECORDING");
+          refetchCurrentRecording();
+
+          await expectNoToast();
+        });
+
+        it("녹음이 끝나면 끊김 토스트를 닫는다", async () => {
+          respondDisconnected();
+          renderDock();
+          await screen.findByText(OTHER_TAB_LOST);
+
+          respondNoCurrentRecording();
+          refetchCurrentRecording();
+
+          await expectNoToast();
+        });
+
+        it("X로 닫으면 같은 상태가 이어져도 다시 띄우지 않는다", async () => {
+          const { responses } = respondDisconnected();
+          renderDock();
+          await screen.findByText(OTHER_TAB_LOST);
+
+          fireEvent.click(screen.getByRole("button", { name: "닫기" }));
+          await expectNoToast();
+
+          refetchCurrentRecording();
+          await waitFor(() => expect(responses).toHaveLength(2));
+          await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+
+          expect(screen.queryByText(OTHER_TAB_LOST)).not.toBeInTheDocument();
+        });
       });
 
       it("일시정지면 회색 점과 멈춘 시간을 보여준다 (STT-R28)", async () => {

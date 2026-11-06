@@ -315,10 +315,14 @@ export const RecordingInOtherTab: Story = {
   },
 };
 
-/** 녹음 탭의 연결이 끊겼을 때 독 위에 안내가 계속 떠 있어요. 예: 회의실 노트북의 인터넷이 끊긴 채 다른 기기로 홈을 연 사용자 */
+/** 녹음 탭의 연결이 끊겼을 때 X로 닫는 토스트가 떠요. 예: 회의실 노트북의 인터넷이 끊긴 채 다른 기기로 홈을 연 사용자 */
 export const OtherTabConnectionLost: Story = {
   parameters: {
     docs: ISOLATED_DOCS,
+    design: {
+      type: "figma",
+      url: "https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=6117-54065",
+    },
     msw: {
       handlers: {
         currentRecording: http.get(CURRENT_RECORDING_URL, () =>

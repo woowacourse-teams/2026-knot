@@ -105,7 +105,6 @@ export default function WorkspaceDock() {
     isRecordingPaused,
     elapsedTime,
     analyser,
-    connectionGuideKind,
     handleMicClick,
     handleOpenRecording,
     handleStopRecording,
@@ -169,8 +168,6 @@ export default function WorkspaceDock() {
       {guide.shown && (
         <DockGuide kind={guide.shown.kind} tailOffset={guide.shown.tailOffset} isLeaving={guide.isLeaving} />
       )}
-
-      {connectionGuideKind && <DockGuide kind={connectionGuideKind} />}
 
       <Bar
         ref={formRef}
