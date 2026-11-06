@@ -671,11 +671,7 @@ describe("고정 토스트", () => {
     clickShow(COPIED);
     clickShow(SYNCED);
 
-    expect(getShownMessages()).toEqual([
-      PINNED_LOST.message,
-      COPIED,
-      SYNCED,
-    ]);
+    expect(getShownMessages()).toEqual([PINNED_LOST.message, COPIED, SYNCED]);
   });
 
   it("일반 토스트가 3개 떠 있을 때 띄워도 떠 있는 토스트는 3개다", () => {
@@ -686,11 +682,7 @@ describe("고정 토스트", () => {
     clickShow(SYNCED);
     clickButton("connection 끊김 고정");
 
-    expect(getShownMessages()).toEqual([
-      COPIED,
-      SYNCED,
-      PINNED_LOST.message,
-    ]);
+    expect(getShownMessages()).toEqual([COPIED, SYNCED, PINNED_LOST.message]);
   });
 
   it("값이 바뀌면 쌓지 않고 문구를 바꾼다", () => {

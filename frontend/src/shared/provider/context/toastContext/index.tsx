@@ -75,9 +75,7 @@ const trimToasts = (toasts: ShownToast[]) => {
 
   if (stayingToasts.length <= MAX_TOAST_COUNT) return toasts;
 
-  const oldestToast = stayingToasts.find(
-    (toast) => toast.pinKey === undefined,
-  );
+  const oldestToast = stayingToasts.find((toast) => toast.pinKey === undefined);
 
   return toasts.filter((toast) => toast !== oldestToast);
 };
