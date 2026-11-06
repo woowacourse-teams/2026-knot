@@ -1,0 +1,9 @@
+allprojects {
+    afterEvaluate {
+        tasks.matching { it.name == 'integrationTest' }.configureEach {
+            maxParallelForks = 2
+            systemProperty 'spring.test.context.cache.maxSize', System.getenv('CONTEXT_CACHE_SIZE')
+            testLogging.showStandardStreams = false
+        }
+    }
+}
