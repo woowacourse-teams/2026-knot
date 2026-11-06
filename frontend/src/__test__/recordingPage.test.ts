@@ -412,6 +412,9 @@ test.describe("다른 탭에서 녹음 중", () => {
   const OTHER_TAB_HOME_PATH = `${HOME_PATH}?mock.currentRecording=recording`;
   const endButton = (scope: Page | Locator) =>
     scope.getByRole("button", { name: "녹음 끝내기" });
+  /** 접힌 독은 파형만 보여, 열어야 끝내기 버튼이 나와요 */
+  const openDock = (page: Page) =>
+    page.getByRole("button", { name: "독 열기" }).click();
 
   test("[STT-R28, STT-R24] 다른 탭 홈 맨 위 줄에 상태와 안내, 비활성 「녹음 화면으로」 하나가 있다", async ({
     page,
@@ -432,6 +435,8 @@ test.describe("다른 탭에서 녹음 중", () => {
     page,
   }) => {
     await page.goto(OTHER_TAB_HOME_PATH);
+
+    await openDock(page);
 
     await expect(endButton(page)).toBeVisible();
     await expect(
@@ -455,10 +460,13 @@ test.describe("다른 탭에서 녹음 중", () => {
     });
     const dialog = page.getByRole("dialog", { name: "녹음을 끝낼까요?" });
 
+    await openDock(page);
     await endButton(page).click();
     await dialog.getByRole("button", { name: "계속 녹음" }).click();
+    await expect(dialog).toBeHidden();
     expect(endRequests).toEqual([]);
 
+    await openDock(page);
     await endButton(page).click();
     await dialog.getByRole("button", { name: "녹음 끝내기" }).click();
 
