@@ -3,7 +3,6 @@ import { expect, test, type Page } from "@playwright/test";
 import { TOAST_MESSAGES } from "@constants/toastMessages";
 
 import { MEETING_AUDIO_COPY } from "../modules/features/recording/MeetingAudioOption/constants/meetingAudioCopy";
-import { CONNECTION_NOTICE_COPY } from "../modules/features/recording/RecordingConnectionNotice/constants/connectionNoticeCopy";
 
 const HOME_PATH = "/workspace/1";
 const SAFARI_UA =
@@ -280,11 +279,11 @@ async function setHeartbeatBlocked(page: Page, isBlocked: boolean) {
   }, isBlocked);
 }
 
-const connectionNotice = (page: Page) =>
-  page.getByText(CONNECTION_NOTICE_COPY.lost.title);
+const connectionToast = (page: Page) =>
+  page.getByText(TOAST_MESSAGES.RECORDING_DISCONNECTED.message);
 
 test.describe("연결이 끊긴 동안", () => {
-  test("[STT-R53] 신호가 닿지 않아도 녹음이 이어지고, 끊김 안내가 보였다가 연결이 돌아오면 사라진다", async ({
+  test("[STT-R53] 신호가 닿지 않아도 녹음이 이어지고, 끊김 토스트가 보였다가 연결이 돌아오면 닫힌다", async ({
     page,
   }) => {
     await blockableHeartbeat(page);
@@ -292,24 +291,39 @@ test.describe("연결이 끊긴 동안", () => {
 
     await setHeartbeatBlocked(page, true);
 
-    await expect(connectionNotice(page)).toBeVisible();
+    await expect(connectionToast(page)).toBeVisible();
     await expectRecordingContinues(page);
 
     await setHeartbeatBlocked(page, false);
 
-    await expect(connectionNotice(page)).toBeHidden();
+    await expect(connectionToast(page)).toBeHidden();
     await expectRecordingContinues(page);
   });
 
-  test("[STT-R53] 다른 화면에서는 독 위에 끊김 안내가 보인다", async ({ page }) => {
+  test("[STT-R53] 끊김 토스트는 화면을 옮겨도 같은 자리에 남고, X로 닫으면 끊긴 동안 다시 뜨지 않는다", async ({
+    page,
+  }) => {
     await blockableHeartbeat(page);
     await startRecordingFromDock(page);
     await setHeartbeatBlocked(page, true);
-    await expect(connectionNotice(page)).toBeVisible();
+    const toastList = page.getByTestId("toast-list");
+    await expect(toastList).toContainText(
+      TOAST_MESSAGES.RECORDING_DISCONNECTED.message,
+    );
 
     await page.getByRole("button", { name: "홈", exact: true }).click();
 
-    await expect(connectionNotice(page)).toBeVisible();
+    await expect(toastList).toContainText(
+      TOAST_MESSAGES.RECORDING_DISCONNECTED.message,
+    );
+
+    await toastList.getByRole("button", { name: "닫기" }).click();
+
+    await expect(connectionToast(page)).toBeHidden();
+
+    await setHeartbeatBlocked(page, true);
+
+    await expect(connectionToast(page)).toBeHidden();
   });
 });
 

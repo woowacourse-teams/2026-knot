@@ -2,7 +2,6 @@ import { MEDIA_QUERY } from "@constants/breakpoint";
 import styled from "@emotion/styled";
 import MeetingAudioOption from "@features/recording/MeetingAudioOption";
 import RecordingCard from "@features/recording/RecordingCard";
-import RecordingConnectionNotice from "@features/recording/RecordingConnectionNotice";
 import useRecordingState from "@hooks/domain/recording/useRecordingState";
 import RecorderBar from "@widgets/recording/RecorderBar";
 import { markRecordingStart } from "@utils/recordingStartTrace";
@@ -13,7 +12,6 @@ import { useEffect } from "react";
  *
  * 독의 마이크로 시작한 녹음을 보여 주는 화면이에요. 위에는 녹음 조작 바를, 아래에는 녹음 카드를 둬요.
  * 둘 사이에는 화상 회의 상대방 목소리도 함께 녹음할 수 있는 「화상 회의 상대방 목소리」 줄을 둬요.
- * 연결이 끊긴 동안은 바로 아래에 끊김 줄을 더해요(STT-R53).
  * 새로고침 뒤 「이어서 녹음」을 누르기 전에는 공유를 받을 녹음이 없어 그 줄을 숨겨요. 공유는 이어서 녹음한 뒤 다시 골라요.
  * 진행 중인 녹음 없이 들어오면 라우트의 `RecordingGuard`가 홈으로 보내요.
  * 녹음 상태는 워크스페이스 레이아웃이 들고 있어 다른 화면으로 옮겨 가도 녹음이 이어지고,
@@ -37,7 +35,6 @@ export default function RecordingPage() {
     <Container>
       <PageColumn>
         <RecorderBar />
-        <RecordingConnectionNotice />
         {isRecordingActive && <MeetingAudioOption />}
         <RecordingCard />
       </PageColumn>
