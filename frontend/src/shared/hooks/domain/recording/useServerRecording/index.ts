@@ -3,6 +3,8 @@ import useNow from "@hooks/common/useNow";
 import { calculateElapsedSeconds } from "@utils/calculateElapsedSeconds";
 import { formatRecordingTime } from "@utils/formatRecordingTime";
 import { logRequestError } from "@utils/logRequestError";
+import { getRecordingResumeProof } from "@utils/recordingControlProof";
+import { useRecordingStore } from "@store/recordingStore";
 import { useEffect } from "react";
 import { useParams } from "react-router";
 
@@ -36,6 +38,8 @@ const RECORDING_STATUS_BY_SERVER_STATUS = {
  * 조회 실패는 콘솔에 남기고, 받은 녹음이 아직 없을 때만 `isLoadFailed`로 알려요. 실패 안내는 쓰는 쪽이 정해요(홈 카드는 ERR-09).
  * 한 번 받은 뒤 다시 조회만 실패하면 받은 녹음을 그대로 보여 줘요.
  * `retry`는 현재 녹음만 다시 조회해요.
+ * 이 탭에 녹음이 없을 때 진행 중인 녹음이 있으면 다른 탭의 녹음이고, 이어 녹음 증명이 그 녹음이면 새로고침한 이 탭의 녹음이에요(`isResumable`, STT-R26).
+ * `isConnectionLost`는 녹음 탭의 신호가 30초 넘게 오지 않았다는 서버의 판단이에요.
  */
 const useServerRecording = () => {
   const { workspaceId } = useParams();
@@ -53,7 +57,9 @@ const useServerRecording = () => {
       });
   }, [error]);
 
+  const isThisTabIdle = useRecordingStore((state) => state.status === "idle");
   const isRecording = data?.status === "RECORDING";
+  const isInProgress = isRecording || data?.status === "PAUSED";
 
   // 서버가 녹음 중이라고 답한 동안만 시간 표시를 다시 그려요
   const now = useNow(isRecording);
@@ -66,6 +72,11 @@ const useServerRecording = () => {
   return {
     status,
     recordingId: status === null ? null : (data?.recordingId ?? null),
+    isResumable:
+      isInProgress &&
+      isThisTabIdle &&
+      getRecordingResumeProof()?.recordingId === data?.recordingId,
+    isConnectionLost: data?.connectionStatus === "DISCONNECTED",
     isRetryable: data?.isRetryable ?? false,
     retryableJobIds: data?.retryableJobIds ?? [],
     elapsedTime: formatRecordingTime(

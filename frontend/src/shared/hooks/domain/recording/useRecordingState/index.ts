@@ -26,6 +26,14 @@ const useRecordingState = () => {
   const connectMeetingAudio = useRecordingStore(
     (state) => state.connectMeetingAudio,
   );
+  const isConnectionLost = useRecordingStore(
+    (state) =>
+      state.status !== "idle" &&
+      (state.isHeartbeatFailing || state.isChunkTransferStalled),
+  );
+  const isChunkArchiveFailed = useRecordingStore(
+    (state) => state.isChunkArchiveFailed,
+  );
 
   return {
     status,
@@ -34,6 +42,10 @@ const useRecordingState = () => {
     analyser,
     isMicrophoneLost,
     isEnding,
+    /** 이 탭의 신호나 조각이 서버에 닿지 못하고 있는지. 녹음은 그대로 이어 가요(STT-R53) */
+    isConnectionLost,
+    /** 브라우저가 조각 보관을 거절했는지 */
+    isChunkArchiveFailed,
     clearMicrophoneLost,
     /** 이 브라우저가 회의 소리를 받을 수 있는지(Chrome 계열) */
     isMeetingAudioSupported: isMeetingAudioSupported(),
