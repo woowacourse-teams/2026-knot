@@ -5,6 +5,7 @@ import {
   recordingsResponse,
 } from "@api/mock/responses/recording";
 import { resetRecordingMockState } from "@api/mock/state/recording";
+import { DialogProvider } from "@provider/context/dialogContext";
 import { ToastProvider } from "@provider/context/toastContext";
 import { getRouterPath, PATH_ROUTE } from "@routes/PATH_ROUTE";
 import { useRecordingStore } from "@store/recordingStore";
@@ -95,11 +96,13 @@ const meta = {
   decorators: [
     (Story) => (
       <MemoryRouter initialEntries={[HOME_PATH]}>
-        {/* 다시 시도의 오류 토스트가 뜨도록 앱처럼 토스트 공급자를 둬요 */}
+        {/* 다시 시도의 오류 토스트와 녹음 끝내기 확인 창이 뜨도록 앱처럼 공급자를 둬요 */}
         <ToastProvider>
-          <Routes>
-            <Route path={PATH_ROUTE.WORKSPACE_HOME} element={<Story />} />
-          </Routes>
+          <DialogProvider>
+            <Routes>
+              <Route path={PATH_ROUTE.WORKSPACE_HOME} element={<Story />} />
+            </Routes>
+          </DialogProvider>
         </ToastProvider>
       </MemoryRouter>
     ),
