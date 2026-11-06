@@ -6,11 +6,7 @@ import { currentRecordingResponse } from "@api/mock/responses/recording";
 import { mockServer } from "@api/mock/server";
 import { TOAST_MESSAGES } from "@constants/toastMessages";
 import { ThemeProvider } from "@emotion/react";
-import {
-  DialogProvider,
-  useDialog,
-  type DialogControls,
-} from "@provider/context/dialogContext";
+import { DialogProvider, useDialog } from "@provider/context/dialogContext";
 import { ToastProvider } from "@provider/context/toastContext";
 import { theme } from "@provider/themeProvider";
 import { getRouterPath, PATH_ROUTE } from "@routes/PATH_ROUTE";
@@ -61,6 +57,7 @@ const ELSEWHERE_DIALOG_NAME = "다른 곳에서 녹음 중이에요";
 const DRAFT = { type: null, content: "앞 계정이 적던 내용" };
 const RETURN_PATH = "/invite/credential";
 const OTHER_DIALOG_NAME = "다른 화면이 띄운 창";
+const OTHER_DIALOG_OPENER_TEXT = "다른 창 열기";
 
 /** 현재 녹음 조회가 녹음 없음(204)으로 답하게 해요. 기본 mock은 다른 탭에서 녹음 중이에요 */
 const respondNoRecording = () =>
@@ -96,25 +93,32 @@ const holdLogoutRequest = () =>
     }),
   );
 
-let dialogControls: DialogControls;
+/** 메뉴 밖에서 다른 모달을 띄우는 화면을 흉내 내요 */
+function OtherDialogOpener() {
+  const { open } = useDialog();
 
-/** 메뉴 밖에서 다른 모달을 띄우는 화면을 흉내 내려고, 모달을 여는 함수를 받아 둬요 */
-function DialogControlsProbe() {
-  dialogControls = useDialog();
-
-  return null;
+  return (
+    <button
+      type="button"
+      onClick={() =>
+        open(({ close }) => (
+          <div role="alertdialog" aria-label={OTHER_DIALOG_NAME}>
+            <button type="button" onClick={close}>
+              확인
+            </button>
+          </div>
+        ))
+      }
+    >
+      {OTHER_DIALOG_OPENER_TEXT}
+    </button>
+  );
 }
 
 const openOtherDialog = () =>
-  act(() => {
-    dialogControls.open(({ close }) => (
-      <div role="alertdialog" aria-label={OTHER_DIALOG_NAME}>
-        <button type="button" onClick={close}>
-          확인
-        </button>
-      </div>
-    ));
-  });
+  fireEvent.click(
+    screen.getByRole("button", { name: OTHER_DIALOG_OPENER_TEXT }),
+  );
 
 const renderAvatar = () => {
   const queryClient = new QueryClient({
@@ -136,7 +140,7 @@ const renderAvatar = () => {
             element: (
               <>
                 <MemberProfileAvatar />
-                <DialogControlsProbe />
+                <OtherDialogOpener />
                 <p>{OUTSIDE_TEXT}</p>
               </>
             ),
@@ -222,7 +226,9 @@ describe("MemberProfileAvatar", () => {
       expect(queryMenu()).toBeInTheDocument();
       expect(getTrigger()).toHaveAttribute("aria-expanded", "true");
       expect(getLogoutItem()).toHaveFocus();
-      expect(screen.getAllByRole("button")).toHaveLength(2);
+      expect(
+        within(queryMenu() as HTMLElement).getAllByRole("button"),
+      ).toHaveLength(1);
     });
 
     it.each([
