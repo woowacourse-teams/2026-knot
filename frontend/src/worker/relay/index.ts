@@ -250,8 +250,14 @@ const readFeedback = (text: string, origin: string): Feedback | null => {
 const toRichText = (content: string) =>
   content ? [{ text: { content } }] : [];
 
-/** 접수함에 한 줄로 넣을 Notion 페이지. 제목은 적은 내용의 첫 줄 앞부분이고, 닉네임은 적지 않아요 */
-const toNotionPage = ({ type, content, pageUrl, replayUrl }: Feedback) => {
+/** 접수함에 한 줄로 넣을 Notion 페이지. 제목은 적은 내용의 첫 줄 앞부분이고, 닉네임이 없으면 별칭 칸을 비워요 */
+const toNotionPage = ({
+  type,
+  content,
+  pageUrl,
+  replayUrl,
+  nickname,
+}: Feedback) => {
   const title =
     content.trim().split("\n")[0].slice(0, MAX_FEEDBACK_TITLE_LENGTH) ||
     "(내용 없음)";
@@ -266,6 +272,7 @@ const toNotionPage = ({ type, content, pageUrl, replayUrl }: Feedback) => {
       종류: { select: { name: FEEDBACK_KIND[type] } },
       내용: { rich_text: toRichText(content) },
       "사용 상황": { rich_text: toRichText(pageUrl) },
+      "팀이나 제보자 별칭": { rich_text: toRichText(nickname ?? "") },
       "원문 링크": { url: replayUrl ?? null },
       "접수 경로": { select: { name: "앱 내" } },
       "출처 유형": { select: { name: "사용자 제보" } },

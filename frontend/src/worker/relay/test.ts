@@ -335,6 +335,7 @@ describe("relayToNotion", () => {
         종류: { select: { name: "버그" } },
         내용: { rich_text: [{ text: { content: feedback.content } }] },
         "사용 상황": { rich_text: [{ text: { content: feedback.pageUrl } }] },
+        "팀이나 제보자 별칭": { rich_text: [] },
         "원문 링크": { url: feedback.replayUrl },
         "접수 경로": { select: { name: "앱 내" } },
         "출처 유형": { select: { name: "사용자 제보" } },
@@ -439,16 +440,20 @@ describe("relayToNotion", () => {
     expect(requests).toHaveLength(0);
   });
 
-  it("닉네임이 정확히 20자면 받아 201을 돌려준다", async () => {
+  it("닉네임이 정확히 20자면 자르지 않고 칸 「팀이나 제보자 별칭」에 그대로 넣는다", async () => {
+    const nickname = "가".repeat(20);
     const requests = captureNotionRequests();
 
     const response = await relayToNotion(
-      toFeedbackRequest({ ...feedback, nickname: "가".repeat(20) }),
+      toFeedbackRequest({ ...feedback, nickname }),
       env,
     );
 
     expect(response.status).toBe(201);
-    expect(requests).toHaveLength(1);
+    const { properties } = await requests[0].json();
+    expect(properties["팀이나 제보자 별칭"]).toEqual({
+      rich_text: [{ text: { content: nickname } }],
+    });
   });
 
   it("본문이 너무 길면 넣지 않고 413을 돌려준다", async () => {
