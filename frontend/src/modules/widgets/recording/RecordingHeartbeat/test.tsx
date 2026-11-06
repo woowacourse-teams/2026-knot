@@ -29,6 +29,7 @@ import {
   getRecordingControlProof,
   getRecordingStartProof,
 } from "@utils/recordingControlProof";
+import { postRecordingEnded } from "@utils/recordingChannel";
 import { http, HttpResponse, type HttpResponseResolver } from "msw";
 import { createMemoryRouter, Outlet, RouterProvider } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -767,6 +768,63 @@ describe("RecordingHeartbeat", () => {
         TOAST_MESSAGES.RECORDING_TIME_LIMIT_APPROACHING.message,
       ),
     ).toBeInTheDocument();
+  });
+
+  it("같은 브라우저의 다른 탭이 끝내면 다음 주기를 기다리지 않고 멈추고 홈으로 간다 (STT-R28)", async () => {
+    vi.useRealTimers();
+    mockServer.use(
+      http.post(
+        "*/api/v1/workspaces/:workspaceId/recordings/:recordingId/heartbeat",
+        () =>
+          HttpResponse.json({
+            ...recordingHeartbeatResponse,
+            status: "ENDED",
+            endReason: "USER_ENDED",
+          }),
+      ),
+    );
+    await startRecording();
+    const { router } = renderRecordingHeartbeat();
+
+    postRecordingEnded({
+      workspaceId: Number(WORKSPACE_ID),
+      recordingId: expected.recordingId,
+    });
+
+    await waitFor(() =>
+      expect(useRecordingStore.getState().status).toBe("idle"),
+    );
+    await waitFor(() => expect(router.state.location.pathname).toBe(HOME_PATH));
+  });
+
+  describe("화면 꺼짐 방지 (STT-R13)", () => {
+    const installWakeLock = () => {
+      const release = vi.fn(() => Promise.resolve());
+      const request = vi.fn(() => Promise.resolve({ release }));
+      Object.defineProperty(navigator, "wakeLock", {
+        value: { request },
+        configurable: true,
+      });
+
+      return { request, release };
+    };
+
+    afterEach(() => {
+      Reflect.deleteProperty(navigator, "wakeLock");
+    });
+
+    it("녹음 중에는 잠그고 일시정지하면 놓는다", async () => {
+      vi.useRealTimers();
+      const { request, release } = installWakeLock();
+      await startRecording();
+      renderRecordingHeartbeat();
+      await waitFor(() => expect(request).toHaveBeenCalledTimes(1));
+      await act(async () => {});
+
+      await act(() => useRecordingStore.getState().pauseRecording());
+
+      expect(release).toHaveBeenCalledTimes(1);
+    });
   });
 
   describe("최대 녹음 시간 15분 전 안내 (STT-R15)", () => {
