@@ -10,10 +10,17 @@ import { CURRENT_RECORDING_API_PATH } from "@api/fetch/api/v1/workspaces/[worksp
 import { meResponse } from "@api/mock/responses/auth";
 import {
   currentRecordingResponse,
+  recordingEndResponse,
   recordingsResponse,
 } from "@api/mock/responses/recording";
 import { mockServer } from "@api/mock/server";
 import { ThemeProvider } from "@emotion/react";
+import { DialogProvider } from "@provider/context/dialogContext";
+import {
+  clearRecordingStartProof,
+  getRecordingStartProof,
+  saveRecordingResumeProof,
+} from "@utils/recordingControlProof";
 import { ToastProvider } from "@provider/context/toastContext";
 import { theme } from "@provider/themeProvider";
 import { getRouterPath, PATH_ROUTE } from "@routes/PATH_ROUTE";
@@ -65,7 +72,7 @@ const RECORDING_TITLE = `${new GetMeResponseDto(meResponse).nickname} 님의 녹
 const OPEN_RECORDING = "녹음 화면으로";
 const VIEW_RECORDING = "녹음 보기";
 const RETRY = "다시 시도";
-const OTHER_TAB_HINT = "녹음 중인 탭에서 일시정지·끝내기를 할 수 있어요";
+const OTHER_TAB_HINT = "녹음 중인 탭에서 일시정지·이어서 녹음을 할 수 있어요";
 const EMPTY_TEXT = "아직 녹음이 없어요";
 const LOAD_FAILED_TEXT = "녹음 기록을 불러오지 못했어요. 다시 시도해 주세요.";
 const RETRY_FAILED_TOAST =
@@ -159,7 +166,9 @@ const renderCard = () => {
       {
         element: (
           <ToastProvider>
-            <Outlet />
+            <DialogProvider>
+              <Outlet />
+            </DialogProvider>
           </ToastProvider>
         ),
         children: [
@@ -757,4 +766,121 @@ describe("RecordingHistoryCard", () => {
     });
   });
 
+  describe("다른 탭과 새로고침한 탭의 맨 위 줄 (STT-R26 · R28)", () => {
+    const END_RECORDING = "녹음 끝내기";
+    const END_PATH = `*/api/v1/workspaces/${WORKSPACE_ID}/recordings/${expectedCurrent.recordingId}/end`;
+
+    const respondCurrent = (
+      fields: Partial<typeof currentRecordingResponse> & {
+        connectionStatus?: string;
+      },
+    ) =>
+      mockServer.use(
+        http.get(CURRENT_URL, () =>
+          HttpResponse.json({ ...currentRecordingResponse, ...fields }),
+        ),
+      );
+
+    afterEach(() => clearRecordingStartProof());
+
+    it("다른 탭의 녹음은 확인 창을 거쳐 본문 없이 끝낸다", async () => {
+      respondItems([]);
+      const bodies: string[] = [];
+      mockServer.use(
+        http.post(END_PATH, async ({ request }) => {
+          bodies.push(await request.clone().text());
+
+          return HttpResponse.json(recordingEndResponse);
+        }),
+      );
+      renderCard();
+
+      fireEvent.click(
+        await screen.findByRole("button", { name: END_RECORDING }),
+      );
+      const dialog = await screen.findByRole("dialog", {
+        name: "녹음을 끝낼까요?",
+      });
+      expect(bodies).toEqual([]);
+
+      fireEvent.click(
+        within(dialog).getByRole("button", { name: END_RECORDING }),
+      );
+
+      await waitFor(() => expect(bodies).toEqual([""]));
+    });
+
+    it("다른 탭의 녹음을 끝내면 맨 위 줄이 사라진다", async () => {
+      respondItems([]);
+      let isEnded = false;
+      mockServer.use(
+        http.get(CURRENT_URL, () =>
+          isEnded
+            ? new HttpResponse(null, { status: 204 })
+            : HttpResponse.json(currentRecordingResponse),
+        ),
+        http.post(END_PATH, () => {
+          isEnded = true;
+
+          return HttpResponse.json(recordingEndResponse);
+        }),
+      );
+      renderCard();
+
+      fireEvent.click(
+        await screen.findByRole("button", { name: END_RECORDING }),
+      );
+      const dialog = await screen.findByRole("dialog");
+      fireEvent.click(
+        within(dialog).getByRole("button", { name: END_RECORDING }),
+      );
+
+      await waitFor(() =>
+        expect(
+          screen.queryByRole("button", { name: END_RECORDING }),
+        ).not.toBeInTheDocument(),
+      );
+    });
+
+    it("녹음 탭의 연결이 끊겼으면 안내 자리에 끊김을 보여 준다", async () => {
+      respondItems([]);
+      respondCurrent({ connectionStatus: "DISCONNECTED" });
+      renderCard();
+
+      expect(
+        await screen.findByText("녹음 중인 탭의 연결이 끊겼어요"),
+      ).toBeInTheDocument();
+      expect(screen.queryByText(OTHER_TAB_HINT)).not.toBeInTheDocument();
+    });
+
+    it("이 탭을 새로고침한 녹음은 「녹음 화면으로」로 갈 수 있고 끝내기 버튼이 없다", async () => {
+      respondItems([]);
+      getRecordingStartProof();
+      saveRecordingResumeProof({
+        workspaceId: WORKSPACE_ID,
+        recordingId: expectedCurrent.recordingId,
+        audioMode: "PCM16_CHUNKS_V1",
+      });
+      const { router } = renderCard();
+
+      expect(
+        await screen.findByText("녹음 화면에서 이어서 녹음할 수 있어요"),
+      ).toBeInTheDocument();
+      expect(screen.getByText(/^녹음 멈춤 · /)).toBeInTheDocument();
+      expect(
+        screen.queryByRole("button", { name: END_RECORDING }),
+      ).not.toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole("button", { name: OPEN_RECORDING }));
+
+      await waitFor(() =>
+        expect(router.state.location.pathname).toBe(
+          getRouterPath({
+            routeKey: "RECORDING",
+            params: { workspaceId: String(WORKSPACE_ID) },
+          }),
+        ),
+      );
+    });
+  });
 });

@@ -2,6 +2,7 @@ import { GetMeResponseDto } from "@api/dto/auth";
 import { meResponse } from "@api/mock/responses/auth";
 import { mockServer } from "@api/mock/server";
 import { ThemeProvider } from "@emotion/react";
+import { DialogProvider } from "@provider/context/dialogContext";
 import { ToastProvider } from "@provider/context/toastContext";
 import { theme } from "@provider/themeProvider";
 import { getRouterPath, PATH_ROUTE } from "@routes/PATH_ROUTE";
@@ -44,7 +45,9 @@ const renderHomePage = () => {
       {
         element: (
           <ToastProvider>
-            <Outlet />
+            <DialogProvider>
+              <Outlet />
+            </DialogProvider>
           </ToastProvider>
         ),
         children: [
