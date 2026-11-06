@@ -19,7 +19,7 @@ interface ToastListProps {
   toasts: ShownToast[];
   /** 레이아웃 안에 직접 놓거나 화면 하단 가운데에 고정해요 */
   placement: ToastPlacement;
-  /** 토스트의 떠 있는 시간이 다 되면 불러요 */
+  /** 토스트의 떠 있는 시간이 다 되거나 X를 누르면 불러요 */
   onExpire: (id: number) => void;
   /** 토스트의 사라지는 애니메이션이 끝나면 불러요 */
   onLeaveEnd: (id: number) => void;
@@ -61,7 +61,7 @@ const listStyle = css`
   display: flex;
   flex-direction: column;
   align-items: center;
-  /* 토스트에는 누를 것이 없어서, 목록이 덮은 자리의 클릭을 가리지 않아요 */
+  /* 목록이 덮은 자리의 클릭을 가리지 않아요. 누를 것은 고정 토스트의 X뿐이고, X만 클릭을 받아요 */
   pointer-events: none;
 `;
 

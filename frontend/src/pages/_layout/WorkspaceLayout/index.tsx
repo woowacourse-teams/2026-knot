@@ -412,7 +412,7 @@ const Main = styled.main`
 /**
  * 독과 그 위 토스트가 놓이는 자리. 본문 위에 떠 있지만 독 바깥은 본문 클릭을 가리지 않는다.
  *
- * 토스트에는 누를 것이 없어서 토스트 자리도 클릭을 받지 않는다.
+ * 토스트 자리도 클릭을 받지 않고, 고정 토스트의 X만 받는다.
  */
 const DockSlot = styled(DockColumn)`
   position: absolute;
