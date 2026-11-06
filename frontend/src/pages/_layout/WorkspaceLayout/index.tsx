@@ -10,6 +10,7 @@ import useMediaQuery from "@hooks/common/useMediaQuery";
 import useTranscriptPanel from "@hooks/domain/document/useTranscriptPanel";
 import useRecordingDocumentStatus from "@hooks/domain/recording/useRecordingDocumentStatus";
 import useRecordingLeaveWarning from "@hooks/domain/recording/useRecordingLeaveWarning";
+import useUnfinishedRecordingCheck from "@hooks/domain/recording/useUnfinishedRecordingCheck";
 import useAbortSearchAnswerOnLeave from "@hooks/domain/search/useAbortSearchAnswerOnLeave";
 import useOpenedEvidenceMessage from "@hooks/domain/search/useOpenedEvidenceMessage";
 import useOpenEvidenceOnAnswerComplete from "@hooks/domain/search/useOpenEvidenceOnAnswerComplete";
@@ -106,6 +107,7 @@ export default function WorkspaceLayout() {
   const [pickedPanel, setPickedPanel] = useState<DockedPanelName>(null);
 
   useRecordingLeaveWarning();
+  useUnfinishedRecordingCheck();
   useAbortSearchAnswerOnLeave();
   useOpenEvidenceOnAnswerComplete();
   // 화면은 창이 아니라 본문 안에서 스크롤돼서, 화면을 옮길 때 본문의 스크롤 위치를 맞춰요
