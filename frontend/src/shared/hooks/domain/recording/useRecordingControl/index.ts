@@ -1,3 +1,4 @@
+import { getRecordingApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/recordings/[recordingId]";
 import { getRecordingAudioSaveApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/recordings/[recordingId]/audioSave";
 import { HTTP_ERROR_TYPE, isHttpError } from "@api/httpClient/error";
 import { markRecordingStart } from "@utils/recordingStartTrace";
@@ -23,6 +24,7 @@ import useNavigateToWorkspaceHome from "@hooks/domain/workspace/useNavigateToWor
 import { useToast } from "@provider/context/toastContext";
 import { countMetric } from "@provider/sentry";
 import {
+  type DiscardRecordingParams,
   type RecordingSession,
   useRecordingStore,
 } from "@store/recordingStore";
@@ -54,6 +56,7 @@ import {
 } from "@utils/recordingControlProof";
 import {
   forgetUnfinishedRecording,
+  getUnfinishedRecording,
   rememberUnfinishedRecording,
 } from "@utils/unfinishedRecording";
 import { useCallback, useRef } from "react";
@@ -184,6 +187,7 @@ interface LeaveReloadedRecordingParams {
  *   성공하면 응답의 시한을 큐에 주고 녹음을 비워 바로 정리 화면으로 가고, 남은 조각은 큐가 뒤에서 올려요.
  *   응답을 못 받았거나 5xx, 429면 같은 봉인으로 1, 2, 4초 뒤, 그 뒤 4초 간격으로 다시 보내고, 봉인이 거절되면 봉인 없이 한 번 더 보내요.
  *   끊겨서 쌓인 조각이 있으면 저장소가 먼저 올린 뒤 봉인해요. 조각은 종료 뒤 120초 안에만 받아 주기 때문이에요.
+ *   그동안 30분이 지나 서버가 끝낸 녹음이면 토스트로 알리고 홈으로 가요(STT-R26).
  *   서버가 먼저 끝낸 녹음(409 `RECORDING_ALREADY_ENDED`)은 예약한 조각만 종료 뒤 120초까지 올리고, 그 밖의 거절은 조각도 버려요. 둘 다 홈으로 가요.
  *   큐에 조각이 남아 있는 동안은 새 녹음을 시작하지 않아요(`uploading`). 안내 화면은 #814에서 붙여요.
  * - 생존 신호: 응답의 서버 상태를 따라가요. 서버가 끝낸 녹음(`ENDED`)이면 종료 요청 없이 WebM은 여기까지의 오디오를 올리고,
@@ -234,10 +238,13 @@ const useRecordingControl = () => {
   const queryClient = useQueryClient();
   const isStartingRef = useRef(false);
 
-  /** 녹음을 버리고 다음 녹음은 새 시작 요청으로 보내도록 증명을 지워요. `acceptUntil`을 주면 PCM 큐는 그때까지 남은 조각을 올려요 */
+  /**
+   * 녹음을 버리고 다음 녹음은 새 시작 요청으로 보내도록 증명을 지워요.
+   * `acceptUntil`을 주면 PCM 큐는 그때까지 남은 조각을 올리고, `isTakenOver`면 보관본을 이어 받은 탭의 몫으로 남겨요
+   */
   const clearRecording = useCallback(
-    (workspaceId: number, acceptUntil?: string) => {
-      useRecordingStore.getState().discardRecording({ acceptUntil });
+    (workspaceId: number, options?: DiscardRecordingParams) => {
+      useRecordingStore.getState().discardRecording(options);
       clearRecordingStartProof();
       // 녹음하는 동안 받아 둔 녹음 중 응답이 다른 탭의 녹음으로 보이지 않게, 비우고 새로 받아요
       void queryClient.resetQueries({
@@ -250,8 +257,8 @@ const useRecordingControl = () => {
   //TODO: shared훅에서 라우팅 제거하기
   /** 녹음을 비우고 홈으로 가요 */
   const closeRecording = useCallback(
-    (workspaceId: number, acceptUntil?: string) => {
-      clearRecording(workspaceId, acceptUntil);
+    (workspaceId: number, options?: DiscardRecordingParams) => {
+      clearRecording(workspaceId, options);
       navigateToWorkspaceHome({
         workspaceId: String(workspaceId),
         replace: true,
@@ -341,10 +348,11 @@ const useRecordingControl = () => {
           .getUnsentChunkCount();
         // 서버가 먼저 끝낸 녹음은 봉인할 수 없어 남은 소리를 버리고, 예약한 조각만 시한 안에 올려요.
         // 연결 만료는 끝난 시각이 30분 전이라 수신 창이 이미 닫혀, 올리지 않고 지워요
-        closeRecording(
-          session.workspaceId,
-          isConnectionExpired ? undefined : acceptUntilFrom(endedAt),
-        );
+        closeRecording(session.workspaceId, {
+          acceptUntil: isConnectionExpired
+            ? undefined
+            : acceptUntilFrom(endedAt),
+        });
         countRecordingEnd({
           session,
           reason: toServerEndCause(endReason),
@@ -397,8 +405,9 @@ const useRecordingControl = () => {
         isHttpError(error, HTTP_ERROR_TYPE.forbidden) &&
         error.code === "RECORDING_CONTROL_DENIED"
       ) {
-        // 이 탭은 더 제어할 수 없어 서버가 곧 녹음을 끝내요. 오디오도 올릴 수 없어 버리고, 신호를 되풀이하지 않게 녹음을 닫아요
-        closeRecording(session.workspaceId);
+        // 이 탭은 더 제어할 수 없어요. 오디오도 올릴 수 없어 버리고, 신호를 되풀이하지 않게 녹음을 닫아요.
+        // 복제한 탭이 이어 받았을 수 있어 보관본은 지우지 않아요
+        closeRecording(session.workspaceId, { isTakenOver: true });
         countRecordingEnd({
           session,
           reason: "controlLost",
@@ -564,6 +573,13 @@ const useRecordingControl = () => {
           ...sessionIds,
           audioMode: audioMode ?? "FINAL_WEBM_V1",
         });
+        // 기록은 한 칸이라, 덮어쓰기 전에 지난 녹음의 남은 조각을 지워요. 새 녹음이 열렸으니 지난 녹음은 끝났어요
+        const previous = getUnfinishedRecording();
+        if (previous && previous.recordingId !== session.recordingId) {
+          void deleteRecordingChunks(previous.recordingId).catch(
+            () => undefined,
+          );
+        }
         rememberUnfinishedRecording(sessionIds);
 
         return "started";
@@ -827,9 +843,30 @@ const useRecordingControl = () => {
    */
   const endPcmRecording = useCallback(
     async (session: RecordingSession, proof: ControlProof) => {
+      const { isHeartbeatFailing, isChunkTransferStalled } =
+        useRecordingStore.getState();
       let audioSeal: PcmAudioSeal | undefined = await useRecordingStore
         .getState()
         .sealRecording();
+
+      // 끊긴 채 끝내는 동안 30분이 지났으면 서버가 이미 끝냈어요. 종료 응답은 사유를 주지 않아 녹음을 조회해 알아내요
+      if (isHeartbeatFailing || isChunkTransferStalled) {
+        const recording = await getRecordingApi(session).catch(() => null);
+
+        if (recording?.endReason === "CONNECTION_EXPIRED") {
+          const unsentChunkCount = useRecordingStore
+            .getState()
+            .getUnsentChunkCount();
+          clearRecording(session.workspaceId);
+          show(TOAST_MESSAGES.RECORDING_CONNECTION_LOST);
+          if (unsentChunkCount > 0) {
+            show(TOAST_MESSAGES.RECORDING_CHUNKS_NOT_UPLOADED);
+          }
+
+          return "notUploaded";
+        }
+      }
+
       const nextDelay = createBackoff();
       const endFailures = createRepeatedFailureReporter({
         feature: "recording",
@@ -843,10 +880,9 @@ const useRecordingControl = () => {
             ...proof,
             audioSeal,
           });
-          clearRecording(
-            session.workspaceId,
-            audioSave?.acceptUntil ?? acceptUntilFrom(endedAt),
-          );
+          clearRecording(session.workspaceId, {
+            acceptUntil: audioSave?.acceptUntil ?? acceptUntilFrom(endedAt),
+          });
 
           return "uploaded";
         } catch (error) {
@@ -865,17 +901,16 @@ const useRecordingControl = () => {
             endFailures.report({ error, isGivingUp: true });
             const isEndedByServer =
               isHttpError(error) && error.code === "RECORDING_ALREADY_ENDED";
-            clearRecording(
-              session.workspaceId,
-              isEndedByServer ? acceptUntilFrom(null) : undefined,
-            );
+            clearRecording(session.workspaceId, {
+              acceptUntil: isEndedByServer ? acceptUntilFrom(null) : undefined,
+            });
 
             return "notUploaded";
           }
         }
       }
     },
-    [clearRecording, endRecordingSession],
+    [clearRecording, endRecordingSession, show],
   );
 
   /**

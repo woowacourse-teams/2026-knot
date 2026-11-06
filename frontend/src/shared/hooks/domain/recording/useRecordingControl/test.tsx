@@ -6,7 +6,11 @@ import { ToastProvider } from "@provider/context/toastContext";
 import { setupSentryEvents } from "@provider/sentry/mock";
 import { theme } from "@provider/themeProvider";
 import { useRecordingStore } from "@store/recordingStore";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import {
+  onlineManager,
+  QueryClient,
+  QueryClientProvider,
+} from "@tanstack/react-query";
 import { act, renderHook, screen, waitFor } from "@testing-library/react";
 import {
   clearRecordingStartProof,
@@ -15,6 +19,10 @@ import {
   getRecordingStartProof,
   saveRecordingResumeProof,
 } from "@utils/recordingControlProof";
+import {
+  getUnfinishedRecording,
+  rememberUnfinishedRecording,
+} from "@utils/unfinishedRecording";
 import { http, HttpResponse, type PathParams } from "msw";
 import type { ReactNode } from "react";
 import { MemoryRouter } from "react-router";
@@ -1211,6 +1219,98 @@ describe("useRecordingControl의 PCM 조각 녹음", () => {
       expect(endRecordingApi).not.toHaveBeenCalled();
     });
 
+    it("오프라인이어도 일시정지가 멈춰 있지 않고 끝나, 뒤따르는 조작을 막지 않는다", async () => {
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      const result = renderRecordingControl();
+      await startRecording(result);
+      mockServer.use(
+        http.post(`${RECORDING_PATH}/pause`, () => HttpResponse.error()),
+      );
+      onlineManager.setOnline(false);
+
+      await pauseRecording(result);
+
+      expect(getStatus()).toBe("paused");
+      onlineManager.setOnline(true);
+    });
+
+    it("다른 탭이 이어 받아 이 탭이 닫혀도 보관본은 지우지 않는다", async () => {
+      holdResponses("complete");
+      mockServer.use(
+        http.post(`${RECORDING_PATH}/heartbeat`, () =>
+          HttpResponse.json(
+            { code: "RECORDING_CONTROL_DENIED" },
+            { status: 403 },
+          ),
+        ),
+      );
+      const result = renderRecordingControl();
+      const collector = await startRecording(result);
+      collector.feed(CHUNK_FRAMES);
+      await waitFor(async () =>
+        expect(await readRecordingChunks(RECORDING_ID)).toHaveLength(1),
+      );
+
+      await act(() => result.current.sendHeartbeat());
+      await flushRequests();
+
+      expect(getStatus()).toBe("idle");
+      expect(await readRecordingChunks(RECORDING_ID)).toHaveLength(1);
+    });
+
+    it("끊긴 채 끝내는 동안 30분이 지났으면 끝내기를 보내지 않고 토스트로 알린다 (STT-R26)", async () => {
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      mockServer.use(
+        http.post(RESERVE_PATH, () => new HttpResponse(null, { status: 503 })),
+      );
+      const result = renderRecordingControl();
+      const collector = await startRecording(result);
+      collector.feed(CHUNK_FRAMES);
+      await waitFor(() =>
+        expect(useRecordingStore.getState().isChunkTransferStalled).toBe(true),
+      );
+
+      let outcome!: Promise<unknown>;
+      act(() => {
+        outcome = result.current.endRecordingWithoutConfirm();
+      });
+      mockServer.resetHandlers();
+      mockServer.use(
+        http.post(RESERVE_PATH, () =>
+          HttpResponse.json(
+            { code: "RECORDING_ALREADY_ENDED" },
+            { status: 409 },
+          ),
+        ),
+        http.get(RECORDING_PATH, () =>
+          HttpResponse.json({
+            status: "ENDED",
+            elapsedMillis: 0,
+            endedAt: new Date().toISOString(),
+            endReason: "CONNECTION_EXPIRED",
+            audioUploadStatus: null,
+          }),
+        ),
+      );
+
+      await act(async () => {
+        expect(await outcome).toBe("notUploaded");
+      });
+
+      expect(endRecordingApi).not.toHaveBeenCalled();
+      expect(getStatus()).toBe("idle");
+      expect(
+        await screen.findByText(
+          TOAST_MESSAGES.RECORDING_CONNECTION_LOST.message,
+        ),
+      ).toBeInTheDocument();
+      expect(
+        await screen.findByText(
+          TOAST_MESSAGES.RECORDING_CHUNKS_NOT_UPLOADED.message,
+        ),
+      ).toBeInTheDocument();
+    }, 10_000);
+
     it("끊긴 채 끝내면 쌓인 조각을 먼저 올린 뒤 봉인에 미루지 않고 끝낸다", async () => {
       vi.spyOn(console, "error").mockImplementation(() => {});
       endRecordingApi.mockResolvedValue(
@@ -1445,6 +1545,50 @@ describe("useRecordingControl의 PCM 조각 녹음", () => {
       await resume(result);
       expect(getStatus()).toBe("recording");
       expect(tokens[0]).toBe(tokens[1]);
+    });
+
+    it("수집기를 만들지 못하면 녹음 중으로 넘어가지 않고, 다시 누르면 새 수집기로 이어 간다", async () => {
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      leaveResumeProof();
+      respondVerifiedThroughFirst();
+      const create = vi
+        .spyOn(FakePcmCollector, "create")
+        .mockRejectedValueOnce(new Error("worklet을 받지 못했어요"));
+      const result = renderRecordingControl();
+
+      expect(await resume(result)).toBe(false);
+      expect(getStatus()).toBe("paused");
+
+      await act(async () => {
+        await result.current.resumeRecording();
+      });
+
+      expect(getStatus()).toBe("recording");
+      const { instances } = FakePcmCollector;
+      expect(instances[instances.length - 1].isCollecting).toBe(true);
+      create.mockRestore();
+    });
+
+    it("새 녹음을 시작하면 지난 녹음의 남은 조각을 지운다", async () => {
+      const previousRecordingId = RECORDING_ID + 1;
+      rememberUnfinishedRecording({
+        workspaceId: WORKSPACE_ID,
+        recordingId: previousRecordingId,
+      });
+      await saveRecordingChunk({
+        workspaceId: WORKSPACE_ID,
+        recordingId: previousRecordingId,
+        sequence: 1,
+        pcm: new ArrayBuffer(2),
+      } as Parameters<typeof saveRecordingChunk>[0]);
+      const result = renderRecordingControl();
+
+      await startRecording(result);
+
+      await waitFor(async () =>
+        expect(await readRecordingChunks(previousRecordingId)).toEqual([]),
+      );
+      expect(getUnfinishedRecording()?.recordingId).toBe(RECORDING_ID);
     });
 
     it("마이크를 받지 못하면 일시정지로 남고 서버에도 알린다", async () => {
