@@ -45,7 +45,7 @@ interface UsePopoverParams {
  * 내용 안이나 트리거와 관계없는 영역이 스크롤될 때는 닫지 않아요.
  * 열린 동안 내용의 크기가 바뀌면(메뉴에서 패널로 바뀌는 등) 그 크기로 자리를 다시 맞춰요.
  *
- * `isDismissible`이 꺼져 있는 동안에는 위 방법으로 닫지 않고, 내용이 `close`를 불러야만 닫혀요.
+ * `isDismissible`이 꺼져 있는 동안에는 위 방법으로 닫지 않고, 내용이 `close`를 불러야만 닫혀요. 창 크기가 바뀌면 트리거 곁으로 자리를 다시 맞춰요.
  * 닫힐 때 포커스가 내용 안에 있었거나 갈 곳 없이 비어 있으면 트리거로 돌려줘요. 내용이 사라지면서 포커스를 잃지 않게요.
  */
 const usePopover = ({
@@ -136,8 +136,12 @@ const usePopover = ({
 
     const resizeObserver = new ResizeObserver(updatePosition);
     resizeObserver.observe(content);
+    window.addEventListener("resize", updatePosition);
 
-    return () => resizeObserver.disconnect();
+    return () => {
+      resizeObserver.disconnect();
+      window.removeEventListener("resize", updatePosition);
+    };
   }, [isOpen, placement]);
 
   // 열린 순간에만 불러요. 쓰는 쪽이 렌더링마다 새 onOpen을 넘겨도 다시 부르지 않아요

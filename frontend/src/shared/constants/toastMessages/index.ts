@@ -107,6 +107,11 @@ export const TOAST_MESSAGES = {
     variant: "error",
     message: "이어서 녹음하지 못했어요. 다시 시도해 주세요.",
   },
+  /** 프로필 메뉴의 로그아웃 요청이 실패했을 때. 메뉴는 열린 채 다시 누를 수 있어요(AUTH-R19). Figma 6063:52974 */
+  LOGOUT_FAILED: {
+    variant: "error",
+    message: "로그아웃하지 못했어요. 다시 시도해 주세요.",
+  },
   COPY_FAILED: {
     variant: "error",
     message: "복사하지 못했어요. 다시 시도해 주세요.",

@@ -96,7 +96,7 @@ const Tooltip = styled.span`
   position: absolute;
   top: calc(100% + 0.5rem); /* 8px */
   right: 0;
-  z-index: 30; /* 화면 위에 떠 있는 패널(20)보다 위에 떠요 */
+  z-index: 28; /* 화면 위에 떠 있는 패널(20)보다 위, 열린 팝오버(29)보다 아래에 떠요 */
   display: none;
   padding: 0.375rem 0.625rem; /* 6px 10px */
   border-radius: 0.375rem; /* 6px */

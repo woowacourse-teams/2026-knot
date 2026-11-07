@@ -1,4 +1,5 @@
 import { authCsrfHandlers } from "./api/v1/auth/csrf";
+import { authLogoutHandlers } from "./api/v1/auth/logout";
 import { authMeHandlers } from "./api/v1/auth/me";
 import { authNicknameHandlers } from "./api/v1/auth/nickname";
 import { authRefreshHandlers } from "./api/v1/auth/refresh";
@@ -47,7 +48,7 @@ import { currentRecordingHandlers } from "./api/v1/workspaces/[workspaceId]/reco
 import { feedbackRelayHandlers } from "./relay/f";
 import { releaseNotesRelayHandlers } from "./relay/n";
 
-// 리다이렉트 엔드포인트(OAuth 시작·로그아웃)는 XHR 응답이 아니라 두지 않아요
+// 리다이렉트 엔드포인트(OAuth 시작)는 XHR 응답이 아니라 두지 않아요
 export const handlers = [
   ...feedbackRelayHandlers,
   ...releaseNotesRelayHandlers,
@@ -55,6 +56,7 @@ export const handlers = [
   ...authCsrfHandlers,
   ...authNicknameHandlers,
   ...authRefreshHandlers,
+  ...authLogoutHandlers,
   ...lastViewedWorkspaceHandlers,
   ...workspacesHandlers,
   ...workspaceHandlers,

@@ -2,10 +2,12 @@ import { act, fireEvent, render, screen } from "@testing-library/react";
 import { useRef } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { DialogProvider, useDialog } from ".";
+import { DialogProvider, useDialog, useHasDialog } from ".";
 
 const FIRST_LABEL = "첫 모달";
 const SECOND_LABEL = "둘째 모달";
+const HAS_DIALOG_TEXT = "모달 있음";
+const NO_DIALOG_TEXT = "모달 없음";
 
 function SecondDialog() {
   return <div role="dialog" aria-modal="true" aria-label={SECOND_LABEL} />;
@@ -13,7 +15,8 @@ function SecondDialog() {
 
 /** 모달을 열고, 연 쪽이 돌려받은 `close`로 밖에서 닫아 보는 테스트용 화면 */
 function OpenerPage() {
-  const { open } = useDialog();
+  const { open, closeOpenedDialog } = useDialog();
+  const hasDialog = useHasDialog();
   const closeFirstRef = useRef<(() => void) | null>(null);
 
   const handleOpenFirstClick = () => {
@@ -43,6 +46,10 @@ function OpenerPage() {
       <button type="button" onClick={() => closeFirstRef.current?.()}>
         밖에서 첫 모달 닫기
       </button>
+      <button type="button" onClick={closeOpenedDialog}>
+        떠 있는 모달 닫기
+      </button>
+      <p>{hasDialog ? HAS_DIALOG_TEXT : NO_DIALOG_TEXT}</p>
     </>
   );
 }
@@ -130,6 +137,31 @@ describe("DialogProvider", () => {
     await act(async () => finish());
 
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("모달을 띄운 쪽이 아니어도 떠 있는 모달을 닫는다", () => {
+    renderOpenerPage();
+    fireEvent.click(screen.getByRole("button", { name: "첫 모달 열기" }));
+
+    fireEvent.click(screen.getByRole("button", { name: "떠 있는 모달 닫기" }));
+
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("모달이 떠 있는 동안만 떠 있다고 알리고, 닫히는 애니메이션 중에는 치지 않는다", () => {
+    renderOpenerPage();
+    expect(screen.getByText(NO_DIALOG_TEXT)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "첫 모달 열기" }));
+    expect(screen.getByText(HAS_DIALOG_TEXT)).toBeInTheDocument();
+
+    mockRunningExitAnimation();
+    fireEvent.click(
+      screen.getByRole("button", { name: "밖에서 첫 모달 닫기" }),
+    );
+
+    expect(screen.getByRole("dialog", { name: FIRST_LABEL })).toBeVisible();
+    expect(screen.getByText(NO_DIALOG_TEXT)).toBeInTheDocument();
   });
 
   it("닫히는 중에 다른 모달을 열면 기다리지 않고 바로 바꾼다", () => {

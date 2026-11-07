@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
+  clearAuthSession,
   consumeAuthSessionExpired,
   markAuthSessionConfirmed,
   markAuthSessionExpired,
@@ -31,6 +32,24 @@ describe("authSession", () => {
     consumeAuthSessionExpired();
 
     markAuthSessionExpired();
+
+    expect(consumeAuthSessionExpired()).toBe(false);
+  });
+
+  it("기록을 지운 뒤에는 재발급이 실패해도 만료로 기록하지 않는다", () => {
+    markAuthSessionConfirmed();
+
+    clearAuthSession();
+    markAuthSessionExpired();
+
+    expect(consumeAuthSessionExpired()).toBe(false);
+  });
+
+  it("이미 남은 만료 기록도 지운다", () => {
+    markAuthSessionConfirmed();
+    markAuthSessionExpired();
+
+    clearAuthSession();
 
     expect(consumeAuthSessionExpired()).toBe(false);
   });

@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
+  clearAllLastConversationIds,
   clearLastConversationId,
   readLastConversationId,
   saveLastConversationId,
@@ -44,7 +45,20 @@ describe("lastConversation", () => {
     expect(readLastConversationId("2")).toBe(20);
   });
 
+  it("모두 비우면 워크스페이스마다 남긴 대화를 지우고 다른 기록은 그대로 둔다", () => {
+    saveLastConversationId({ workspaceId: "1", conversationId: 10 });
+    saveLastConversationId({ workspaceId: "2", conversationId: 20 });
+    sessionStorage.setItem("knot.other", "남는 값");
+
+    clearAllLastConversationIds();
+
+    expect(readLastConversationId("1")).toBeUndefined();
+    expect(readLastConversationId("2")).toBeUndefined();
+    expect(sessionStorage.getItem("knot.other")).toBe("남는 값");
+  });
+
   it("저장소를 쓸 수 없어도 오류를 던지지 않고, 읽으면 남긴 대화가 없는 것으로 본다", () => {
+    saveLastConversationId({ workspaceId: "1", conversationId: 10 });
     vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
       throw new Error("저장소를 쓸 수 없어요");
     });
@@ -59,6 +73,7 @@ describe("lastConversation", () => {
       saveLastConversationId({ workspaceId: "1", conversationId: 10 }),
     ).not.toThrow();
     expect(() => clearLastConversationId("1")).not.toThrow();
+    expect(() => clearAllLastConversationIds()).not.toThrow();
     expect(readLastConversationId("1")).toBeUndefined();
   });
 });
