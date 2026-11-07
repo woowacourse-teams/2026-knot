@@ -1,4 +1,5 @@
 import useSendFeedbackMutation from "@api/mutations/useSendFeedbackMutation";
+import useMeQuery from "@api/queries/useMeQuery";
 import { FEEDBACK_TYPE_OPTIONS } from "@constants/feedback";
 import { TOAST_MESSAGES } from "@constants/toastMessages";
 import { useToast } from "@provider/context/toastContext";
@@ -24,13 +25,15 @@ interface UseFeedbackFormParams {
  *
  * - `type`, `content`: 고른 유형(없으면 `null`)과 적은 내용. 바꿀 때마다 이 탭에 남겨, 닫았다 열거나 새로고침해도 그대로예요(FEEDBACK-R6)
  * - `isSending`, `isFailed`: 보내는 중인지, 마지막으로 보내지 못했는지(FEEDBACK-R8)
- * - `send`: 유형을 골랐을 때만 보내요. 보고 있는 화면 주소와 PostHog 리플레이 주소를 함께 보내요
+ * - `send`: 유형을 골랐을 때만 보내요. 닉네임, 보고 있는 화면 주소와 PostHog 리플레이 주소를 함께 보내요.
+ *   닉네임을 불러오지 못했으면 닉네임 없이 보내요(FEEDBACK-R9)
  *
  * 저장에 성공해야만 남긴 내용을 지우고, PostHog `survey sent`를 보내고(FEEDBACK-R7), 토스트를 띄운 뒤 `onSent`를 불러요.
  * 실패하면 적은 내용을 그대로 두고, 실패는 MutationCache가 Sentry에 남겨요.
  */
 const useFeedbackForm = ({ onSent }: UseFeedbackFormParams) => {
   const [draft, setDraft] = useState(readFeedbackDraft);
+  const { data: me } = useMeQuery();
   const { mutate, isPending, isError } = useSendFeedbackMutation();
   const { show } = useToast();
 
@@ -58,6 +61,7 @@ const useFeedbackForm = ({ onSent }: UseFeedbackFormParams) => {
         content,
         pageUrl: window.location.href,
         replayUrl: getAnalyticsReplayUrl(),
+        nickname: me?.nickname,
       },
       {
         onSuccess: () => {
