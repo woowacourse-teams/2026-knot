@@ -1,7 +1,7 @@
 import styled from "@emotion/styled";
 import Logo from "@primitives/ui/Logo";
 
-import { SCENE, SCENE_COUNT } from "./constants/landing";
+import { LANDING_SCENES, type LandingScenes, SCENE } from "./constants/landing";
 import useLandingStage from "./model/useLandingStage";
 import ConfirmationScene from "./ui/ConfirmationScene";
 import DocumentsScene from "./ui/DocumentsScene";
@@ -15,37 +15,32 @@ import SearchScene from "./ui/SearchScene";
 import SearchTechnologyScene from "./ui/SearchTechnologyScene";
 import StartScene from "./ui/StartScene";
 
+interface LandingStageProps {
+  /**
+   * 보여 줄 장면 묶음. 기본은 공개 랜딩의 7장면이고, 기술 소개 페이지는 녹음 기술과 탐색 기술 장면이 든
+   * `LANDING_TECHNOLOGY_SCENES`를 넘겨요.
+   */
+  scenes?: LandingScenes;
+}
+
 /**
  * 서비스를 처음 만난 사람에게 knot이 무엇이고 어떻게 쓰는지 보여 주는 랜딩 무대.
  *
- * 소개 → 문제 → 녹음 → 정리 → 확인 → 탐색 → 녹음 기술 → 탐색 기술 → 시작 순서로 보여 줘요.
+ * 스크롤 한 번에 한 장면씩 넘어가며 소개 → 문제 → 녹음 → 정리 → 확인 → 탐색 → 시작 순서로 보여 줘요.
+ * 기술 소개 장면이 든 묶음을 받으면 탐색과 시작 사이에 녹음 기술, 탐색 기술 장면이 들어가고, 그 두 장면에서는 입자 캔버스를 숨겨요.
  * 입자 수천 개가 장면마다 워드마크, 말 조각, 파형, 문서 카드, 연결망, 새 심볼로 모양을 바꾸고,
  * 포인터를 가져가면 비켜나고 누르면 물결이 퍼져요. 소개와 시작 장면의 「시작하기」로 로그인 화면에 가요.
  */
-export default function LandingStage() {
-  const {
-    refs,
-    scene,
-    isSettled,
-    recordingSeconds,
-    search,
-    questionIndex,
-    labels,
-    selectQuestion,
-    goToScene,
-  } = useLandingStage();
+export default function LandingStage({ scenes = LANDING_SCENES }: LandingStageProps) {
+  const { refs, scene, isSettled, recordingSeconds, search, questionIndex, labels, selectQuestion, goToScene } =
+    useLandingStage(scenes);
+  const hasTechnology = scenes.RECORDING_TECHNOLOGY !== undefined && scenes.SEARCH_TECHNOLOGY !== undefined;
+  const isTechnologyScene = scene === scenes.RECORDING_TECHNOLOGY || scene === scenes.SEARCH_TECHNOLOGY;
 
   return (
-    <Scroller ref={refs.scrollerRef}>
+    <Scroller ref={refs.scrollerRef} $sceneCount={scenes.names.length}>
       <Stage ref={refs.stageRef}>
-        <Canvas
-          ref={refs.canvasRef}
-          aria-hidden
-          $isOn={
-            scene !== SCENE.RECORDING_TECHNOLOGY &&
-            scene !== SCENE.SEARCH_TECHNOLOGY
-          }
-        />
+        <Canvas ref={refs.canvasRef} aria-hidden $isOn={!isTechnologyScene} />
 
         <Header>
           <HomeLink
@@ -63,7 +58,7 @@ export default function LandingStage() {
           </HomeLink>
         </Header>
 
-        <SceneSteps scene={scene} onSceneSelect={goToScene} />
+        <SceneSteps names={scenes.names} scene={scene} onSceneSelect={goToScene} />
 
         <IntroScene
           isOn={scene === SCENE.INTRO}
@@ -71,10 +66,7 @@ export default function LandingStage() {
           onNext={() => goToScene(SCENE.PROBLEM)}
         />
         <ProblemScene isOn={scene === SCENE.PROBLEM} />
-        <RecordingScene
-          isOn={scene === SCENE.RECORDING}
-          recordingSeconds={recordingSeconds}
-        />
+        <RecordingScene isOn={scene === SCENE.RECORDING} recordingSeconds={recordingSeconds} />
         <DocumentsScene
           isOn={scene === SCENE.DOCUMENTS}
           isRevealed={isSettled}
@@ -94,17 +86,21 @@ export default function LandingStage() {
           questionInputRef={refs.questionInputRef}
           onQuestionSelect={selectQuestion}
         />
-        <RecordingTechnologyScene
-          isOn={scene === SCENE.RECORDING_TECHNOLOGY}
-          onPrevious={() => goToScene(SCENE.SEARCH)}
-          onNext={() => goToScene(SCENE.SEARCH_TECHNOLOGY)}
-        />
-        <SearchTechnologyScene
-          isOn={scene === SCENE.SEARCH_TECHNOLOGY}
-          onPrevious={() => goToScene(SCENE.RECORDING_TECHNOLOGY)}
-          onNext={() => goToScene(SCENE.START)}
-        />
-        <StartScene isOn={scene === SCENE.START} />
+        {hasTechnology && (
+          <>
+            <RecordingTechnologyScene
+              isOn={scene === scenes.RECORDING_TECHNOLOGY}
+              onPrevious={() => goToScene(SCENE.SEARCH)}
+              onNext={() => goToScene(scenes.SEARCH_TECHNOLOGY ?? scenes.START)}
+            />
+            <SearchTechnologyScene
+              isOn={scene === scenes.SEARCH_TECHNOLOGY}
+              onPrevious={() => goToScene(scenes.RECORDING_TECHNOLOGY ?? SCENE.SEARCH)}
+              onNext={() => goToScene(scenes.START)}
+            />
+          </>
+        )}
+        <StartScene isOn={scene === scenes.START} />
       </Stage>
     </Scroller>
   );
@@ -114,10 +110,10 @@ export default function LandingStage() {
  * 장면 수만큼 세로로 긴 스크롤 영역. 스크롤 위치로 지금 장면이 정해져요.
  * 장면마다 화면 한 장 높이를 두고, 마지막 장면이 화면에 붙어 있을 자리로 한 장을 더해요.
  */
-const Scroller = styled.div`
+const Scroller = styled.div<{ $sceneCount: number }>`
   position: relative;
   width: 100%;
-  height: calc(${SCENE_COUNT * 100}vh + 100dvh);
+  height: calc(${({ $sceneCount }) => $sceneCount * 100}vh + 100dvh);
   background-color: ${({ theme }) => theme.neutral[50]};
   color: ${({ theme }) => theme.neutral[900]};
   word-break: keep-all;
@@ -127,13 +123,12 @@ const Stage = styled.div`
   position: sticky;
   top: env(safe-area-inset-top, 0px);
   width: 100%;
-  height: calc(
-    100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)
-  );
+  height: calc(100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
   min-height: 32.5rem; /* 520px */
   overflow: hidden;
 `;
 
+/** 기술 소개 장면은 글이 많아 입자 캔버스를 숨기고, 다시 입자 장면으로 돌아오면 서서히 보여요. */
 const Canvas = styled.canvas<{ $isOn: boolean }>`
   position: absolute;
   inset: 0;
