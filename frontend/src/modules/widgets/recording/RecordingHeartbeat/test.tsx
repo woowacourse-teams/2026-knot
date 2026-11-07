@@ -23,12 +23,19 @@ import {
   QueryClient,
   QueryClientProvider,
 } from "@tanstack/react-query";
-import { act, render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import {
   clearRecordingStartProof,
   getRecordingControlProof,
   getRecordingStartProof,
 } from "@utils/recordingControlProof";
+import { postRecordingEnded } from "@utils/recordingChannel";
 import { http, HttpResponse, type HttpResponseResolver } from "msw";
 import { createMemoryRouter, Outlet, RouterProvider } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -87,6 +94,42 @@ const renderRecordingHeartbeat = () => {
   );
 
   return { router };
+};
+
+/** 앱의 실제 라우트로 그려요 */
+const renderAppRoutes = (initialPath: string) => {
+  const router = createMemoryRouter(
+    [
+      {
+        element: (
+          <AppProviders routes={routes}>
+            <Outlet />
+          </AppProviders>
+        ),
+        children: routes,
+      },
+    ],
+    { initialEntries: [initialPath] },
+  );
+
+  render(
+    <ThemeProvider theme={theme}>
+      <QueryClientProvider
+        client={
+          new QueryClient({
+            defaultOptions: {
+              queries: { retry: false },
+              mutations: { retry: false },
+            },
+          })
+        }
+      >
+        <RouterProvider router={router} />
+      </QueryClientProvider>
+    </ThemeProvider>,
+  );
+
+  return router;
 };
 
 /** 녹음은 독에서 증명을 만들어 시작하므로, 같은 순서로 미리 시작해 둬요. */
@@ -209,41 +252,24 @@ describe("RecordingHeartbeat", () => {
     const requests = collectRequests();
     await startRecording();
     // 앱의 실제 라우트로 그려, 생존 신호가 워크스페이스 레이아웃 밖 화면까지 감싸는지 봐요
-    const router = createMemoryRouter(
-      [
-        {
-          element: (
-            <AppProviders routes={routes}>
-              <Outlet />
-            </AppProviders>
-          ),
-          children: routes,
-        },
-      ],
-      { initialEntries: [PATH_ROUTE.WORKSPACE_CREATE] },
-    );
-    render(
-      <ThemeProvider theme={theme}>
-        <QueryClientProvider
-          client={
-            new QueryClient({
-              defaultOptions: {
-                queries: { retry: false },
-                mutations: { retry: false },
-              },
-            })
-          }
-        >
-          <RouterProvider router={router} />
-        </QueryClientProvider>
-      </ThemeProvider>,
-    );
+    const router = renderAppRoutes(PATH_ROUTE.WORKSPACE_CREATE);
     const heartbeats = () => requests.filter((path) => path === "heartbeat");
 
     passHeartbeatInterval();
 
     await waitFor(() => expect(heartbeats()).toEqual(["heartbeat"]));
     expect(router.state.location.pathname).toBe(PATH_ROUTE.WORKSPACE_CREATE);
+  });
+
+  it("끊김 토스트는 앱의 실제 라우트에서 워크스페이스 밖 화면에도 보인다 (STT-R53)", async () => {
+    await startRecording();
+    act(() => useRecordingStore.getState().setHeartbeatFailing(true));
+
+    renderAppRoutes(PATH_ROUTE.WORKSPACE_CREATE);
+
+    expect(
+      await screen.findByText(TOAST_MESSAGES.RECORDING_DISCONNECTED.message),
+    ).toBeInTheDocument();
   });
 
   it.each([
@@ -769,6 +795,63 @@ describe("RecordingHeartbeat", () => {
     ).toBeInTheDocument();
   });
 
+  it("같은 브라우저의 다른 탭이 끝내면 다음 주기를 기다리지 않고 멈추고 홈으로 간다 (STT-R28)", async () => {
+    vi.useRealTimers();
+    mockServer.use(
+      http.post(
+        "*/api/v1/workspaces/:workspaceId/recordings/:recordingId/heartbeat",
+        () =>
+          HttpResponse.json({
+            ...recordingHeartbeatResponse,
+            status: "ENDED",
+            endReason: "USER_ENDED",
+          }),
+      ),
+    );
+    await startRecording();
+    const { router } = renderRecordingHeartbeat();
+
+    postRecordingEnded({
+      workspaceId: Number(WORKSPACE_ID),
+      recordingId: expected.recordingId,
+    });
+
+    await waitFor(() =>
+      expect(useRecordingStore.getState().status).toBe("idle"),
+    );
+    await waitFor(() => expect(router.state.location.pathname).toBe(HOME_PATH));
+  });
+
+  describe("화면 꺼짐 방지 (STT-R13)", () => {
+    const installWakeLock = () => {
+      const release = vi.fn(() => Promise.resolve());
+      const request = vi.fn(() => Promise.resolve({ release }));
+      Object.defineProperty(navigator, "wakeLock", {
+        value: { request },
+        configurable: true,
+      });
+
+      return { request, release };
+    };
+
+    afterEach(() => {
+      Reflect.deleteProperty(navigator, "wakeLock");
+    });
+
+    it("녹음 중에는 잠그고 일시정지하면 놓는다", async () => {
+      vi.useRealTimers();
+      const { request, release } = installWakeLock();
+      await startRecording();
+      renderRecordingHeartbeat();
+      await waitFor(() => expect(request).toHaveBeenCalledTimes(1));
+      await act(async () => {});
+
+      await act(() => useRecordingStore.getState().pauseRecording());
+
+      expect(release).toHaveBeenCalledTimes(1);
+    });
+  });
+
   describe("최대 녹음 시간 15분 전 안내 (STT-R15)", () => {
     const WARNING_BEFORE_MS = 15 * 60 * 1000;
     const WARNING = TOAST_MESSAGES.RECORDING_TIME_LIMIT_APPROACHING.message;
@@ -867,6 +950,113 @@ describe("RecordingHeartbeat", () => {
       advance(1000);
 
       expect(screen.getByText(WARNING)).toBeInTheDocument();
+    });
+  });
+
+  describe("연결 끊김 토스트 (STT-R53)", () => {
+    const LOST = TOAST_MESSAGES.RECORDING_DISCONNECTED.message;
+    const ARCHIVE_FAILED = TOAST_MESSAGES.RECORDING_ARCHIVE_FAILED.message;
+    const ENDING = TOAST_MESSAGES.RECORDING_ENDING_DISCONNECTED.message;
+
+    const setHeartbeatFailing = (isFailing: boolean) =>
+      act(() => useRecordingStore.getState().setHeartbeatFailing(isFailing));
+
+    const closeToast = async () => {
+      fireEvent.click(screen.getByRole("button", { name: "닫기" }));
+
+      await waitFor(() =>
+        expect(screen.queryByRole("status")).not.toBeInTheDocument(),
+      );
+    };
+
+    const expectNoToast = () =>
+      waitFor(() =>
+        expect(screen.queryByRole("status")).not.toBeInTheDocument(),
+      );
+
+    beforeEach(async () => {
+      await startRecording();
+      renderRecordingHeartbeat();
+    });
+
+    it("연결이 살아 있으면 띄우지 않는다", () => {
+      expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    });
+
+    it("신호가 닿지 않으면 띄우고, 연결이 돌아오면 닫는다", async () => {
+      setHeartbeatFailing(true);
+
+      expect(screen.getByRole("status")).toHaveTextContent(LOST);
+
+      setHeartbeatFailing(false);
+
+      await expectNoToast();
+    });
+
+    it("조각 전송이 밀려도 띄운다", () => {
+      act(() => useRecordingStore.setState({ isChunkTransferStalled: true }));
+
+      expect(screen.getByRole("status")).toHaveTextContent(LOST);
+    });
+
+    it("보관을 거절당하면 쌓지 않고 문구를 바꾸고, 연결이 돌아오면 닫는다", async () => {
+      setHeartbeatFailing(true);
+      act(() => useRecordingStore.setState({ isChunkArchiveFailed: true }));
+
+      expect(screen.getByRole("status")).toHaveTextContent(ARCHIVE_FAILED);
+
+      setHeartbeatFailing(false);
+
+      await expectNoToast();
+    });
+
+    it("끊긴 채 끝내는 중이면 쌓지 않고 문구를 바꾸고, 연결이 돌아오면 닫는다", async () => {
+      setHeartbeatFailing(true);
+      act(() => useRecordingStore.setState({ isEnding: true }));
+
+      expect(screen.getByRole("status")).toHaveTextContent(ENDING);
+
+      setHeartbeatFailing(false);
+
+      await expectNoToast();
+    });
+
+    it("X로 닫은 뒤 같은 상태가 이어지면 다시 띄우지 않는다", async () => {
+      setHeartbeatFailing(true);
+      await closeToast();
+
+      setHeartbeatFailing(true);
+      act(() => useRecordingStore.setState({ isChunkTransferStalled: true }));
+
+      expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    });
+
+    it("X로 닫은 뒤 문구가 바뀌는 상태로 넘어가면 다시 띄운다", async () => {
+      setHeartbeatFailing(true);
+      await closeToast();
+
+      act(() => useRecordingStore.setState({ isChunkArchiveFailed: true }));
+
+      expect(screen.getByRole("status")).toHaveTextContent(ARCHIVE_FAILED);
+    });
+
+    it("X로 닫은 뒤 연결이 돌아왔다 다시 끊기면 다시 띄운다", async () => {
+      setHeartbeatFailing(true);
+      await closeToast();
+
+      setHeartbeatFailing(false);
+      setHeartbeatFailing(true);
+
+      expect(screen.getByRole("status")).toHaveTextContent(LOST);
+    });
+
+    it("녹음이 끝나면 닫는다", async () => {
+      setHeartbeatFailing(true);
+      expect(screen.getByRole("status")).toHaveTextContent(LOST);
+
+      act(() => useRecordingStore.getState().discardRecording());
+
+      await expectNoToast();
     });
   });
 

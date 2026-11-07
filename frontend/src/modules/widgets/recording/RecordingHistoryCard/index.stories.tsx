@@ -9,6 +9,11 @@ import { ToastProvider } from "@provider/context/toastContext";
 import { getRouterPath, PATH_ROUTE } from "@routes/PATH_ROUTE";
 import { useRecordingStore } from "@store/recordingStore";
 import type { Meta, StoryObj } from "@storybook/react-webpack5";
+import {
+  clearRecordingStartProof,
+  getRecordingStartProof,
+  saveRecordingResumeProof,
+} from "@utils/recordingControlProof";
 import { delay, http, HttpResponse } from "msw";
 import { MemoryRouter, Route, Routes } from "react-router";
 
@@ -57,7 +62,7 @@ const setRecordingInThisTab = (status: "recording" | "paused") => {
  *
  * **동작 규칙**
  * - 맨 위에는 내 녹음 중 · 일시정지 녹음 한 줄(녹음 이름, 상태 · 시간, 안내, 「녹음 화면으로」)을, 그 아래에는 워크스페이스의 끝난 녹음을 최신순으로 보여 줘요. 누가 녹음했는지는 보여 주지 않아요.
- * - 이 탭에서 시작한 녹음이면 「녹음 화면으로」로 녹음 화면에 가요. 다른 탭에서 시작한 녹음이면 버튼을 누를 수 없고, 그 탭에서 일시정지 · 끝내기를 할 수 있다고 안내해요.
+ * - 이 탭에서 시작한 녹음이면 「녹음 화면으로」로 녹음 화면에 가요. 다른 탭에서 시작한 녹음이면 버튼을 누를 수 없고, 일시정지 · 이어서 녹음은 그 탭에서 한다고 안내해요. 끝내기는 독의 ■로 해요.
  * - 맨 위 줄은 카드 머리 아래에 고정되고, 목록만 카드 안에서 스크롤돼요. 목록 아래 40px은 흐리게 보여요. 스크롤 끝에 닿으면 다음 20개를 이어 받아요.
  * - 행은 제목을 한 줄로 자르고, 마우스를 올리면 전체 제목을 브라우저 툴팁으로 보여 줘요.
  * - 완료 행은 녹음 날짜와 녹음 길이 칩을, 그 밖의 행은 처리 상태(문서 정리 중 · 녹음을 글로 옮기지 못했어요 · 문서를 만들지 못했어요 · 변환된 음성 기록이 없어요.)를 보여 줘요.
@@ -156,7 +161,43 @@ export const PausedInThisTab: Story = {
 export const RecordingInOtherTab: Story = {
   parameters: {
     docs: ISOLATED_DOCS,
-    design: { type: "figma", url: figmaUrl("5423-5002") },
+    design: { type: "figma", url: figmaUrl("6061-44336") },
+  },
+};
+
+/** 다른 탭에서 녹음하는데 그 탭의 연결이 끊겼을 때예요. 예: 회의실 노트북의 인터넷이 끊긴 채 다른 기기로 홈을 연 경우 */
+export const OtherTabConnectionLost: Story = {
+  parameters: {
+    docs: ISOLATED_DOCS,
+    msw: {
+      handlers: {
+        currentRecording: http.get(CURRENT_URL, () =>
+          HttpResponse.json({
+            ...currentRecordingResponse,
+            connectionStatus: "DISCONNECTED",
+          }),
+        ),
+      },
+    },
+    design: { type: "figma", url: figmaUrl("6061-44533") },
+  },
+};
+
+/** 녹음하던 이 탭을 새로고침했을 때예요. 소리는 멈춰 있고, 녹음 화면으로 가서 「이어서 녹음」으로 같은 녹음을 이어요 */
+export const ReloadedInThisTab: Story = {
+  beforeEach: () => {
+    getRecordingStartProof();
+    saveRecordingResumeProof({
+      workspaceId: 1,
+      recordingId: currentRecordingResponse.recordingId,
+      audioMode: "PCM16_CHUNKS_V1",
+    });
+
+    return clearRecordingStartProof;
+  },
+  parameters: {
+    docs: ISOLATED_DOCS,
+    design: { type: "figma", url: figmaUrl("6061-42635") },
   },
 };
 

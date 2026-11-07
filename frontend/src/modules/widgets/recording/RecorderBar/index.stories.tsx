@@ -5,9 +5,11 @@ import type { Meta, StoryObj } from "@storybook/react-webpack5";
 import {
   clearRecordingStartProof,
   getRecordingStartProof,
+  saveRecordingResumeProof,
 } from "@utils/recordingControlProof";
+import { currentRecordingResponse } from "@api/mock/responses/recording";
 import { http, HttpResponse } from "msw";
-import { MemoryRouter } from "react-router";
+import { MemoryRouter, Route, Routes } from "react-router";
 import { spyOn, userEvent, within } from "storybook/test";
 
 import RecorderBar from ".";
@@ -77,11 +79,18 @@ const meta = {
   decorators: [
     (Story) => (
       <DialogProvider>
-        {/* 끝내기와 이어서 녹음의 결과로 화면을 옮기거나 토스트를 띄워요 */}
-        <MemoryRouter>
-          <ToastProvider>
-            <Story />
-          </ToastProvider>
+        {/* 끝내기와 이어서 녹음의 결과로 화면을 옮기거나 토스트를 띄워요. 현재 녹음 조회는 주소의 워크스페이스를 읽어요 */}
+        <MemoryRouter initialEntries={["/workspace/1/recording"]}>
+          <Routes>
+            <Route
+              path="/workspace/:workspaceId/*"
+              element={
+                <ToastProvider>
+                  <Story />
+                </ToastProvider>
+              }
+            />
+          </Routes>
         </MemoryRouter>
       </DialogProvider>
     ),
@@ -101,6 +110,29 @@ export const Default: Story = {
       resumedAt: Date.now(),
       analyser: createFakeAnalyser(),
     });
+  },
+};
+
+/**
+ * 녹음하던 탭을 새로고침한 상태예요. 소리는 멈춰 있고 서버의 시간이 계속 흘러요. 「이어서 녹음」을 누르면 같은 녹음이 이어져요.
+ * 예: 실수로 새로고침한 사용자
+ */
+export const Reloaded: Story = {
+  parameters: {
+    design: {
+      type: "figma",
+      url: "https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=6061-42635",
+    },
+  },
+  beforeEach: () => {
+    getRecordingStartProof();
+    saveRecordingResumeProof({
+      workspaceId: 1,
+      recordingId: currentRecordingResponse.recordingId,
+      audioMode: "PCM16_CHUNKS_V1",
+    });
+
+    return clearRecordingStartProof;
   },
 };
 

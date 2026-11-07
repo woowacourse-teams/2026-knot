@@ -13,12 +13,13 @@ export const RECORDING_END_API_PATH = (
 interface EndRecordingApiParams {
   workspaceId: number;
   recordingId: number;
-  body: PostRecordingEndRequestDto;
+  /** 녹음 탭의 증명과 봉인. 다른 탭·기기에서 끝낼 때는 보내지 않아요(STT-R28) */
+  body?: PostRecordingEndRequestDto;
 }
 
 /**
- * @description 최초 녹음 탭에서 녹음 세션을 종료합니다. 업로드 완료나 전사 접수를 뜻하지 않아요
- * @param params - 워크스페이스 ID·녹음 세션 ID·최초 탭 증명
+ * @description 녹음 세션을 종료합니다. 업로드 완료나 전사 접수를 뜻하지 않아요
+ * @param params - 워크스페이스 ID·녹음 세션 ID·최초 탭 증명(다른 탭·기기에서 끝낼 때는 없음)
  * @returns 서버가 확정한 종료 시각
  * @example
  * await endRecordingApi({ workspaceId: 1, recordingId: 10, body });

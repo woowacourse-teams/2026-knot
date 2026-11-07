@@ -1,4 +1,5 @@
 import {
+  currentRecordingResponse,
   recordingEndResponse,
   recordingHeartbeatResponse,
 } from "@api/mock/responses/recording";
@@ -24,6 +25,7 @@ import {
   clearRecordingStartProof,
   getRecordingControlProof,
   getRecordingStartProof,
+  saveRecordingResumeProof,
 } from "@utils/recordingControlProof";
 import { http, HttpResponse } from "msw";
 import { createMemoryRouter, Outlet, RouterProvider } from "react-router";
@@ -165,7 +167,9 @@ const countControlRequests = () => {
 const collectRequests = () => {
   const requests: string[] = [];
   mockServer.events.on("request:start", ({ request }) => {
-    requests.push(new URL(request.url).pathname.split("/").pop() ?? "");
+    const name = new URL(request.url).pathname.split("/").pop() ?? "";
+    // 녹음 바는 새로고침한 녹음인지 보려고 현재 녹음도 조회해요. 조작의 순서만 봐요
+    if (name !== "current") requests.push(name);
   });
 
   return requests;
@@ -739,5 +743,90 @@ describe("RecorderBar", () => {
     await act(() => new Promise((resolve) => setTimeout(resolve, 0)));
 
     expect(captureAnalyticsEvent).not.toHaveBeenCalled();
+  });
+
+  describe("새로고침한 탭 (STT-R26)", () => {
+    const CURRENT_PATH = "*/api/v1/workspaces/:workspaceId/recordings/current";
+
+    const respondCurrent = (status: "RECORDING" | "PAUSED") =>
+      mockServer.use(
+        http.get(CURRENT_PATH, () =>
+          HttpResponse.json({
+            ...currentRecordingResponse,
+            recordingId: RECORDING_ID,
+            status,
+            elapsedMillis: 754_000,
+          }),
+        ),
+      );
+
+    const leaveResumeProof = () => {
+      getRecordingStartProof();
+      saveRecordingResumeProof({
+        workspaceId: Number(WORKSPACE_ID),
+        recordingId: RECORDING_ID,
+        audioMode: "FINAL_WEBM_V1",
+      });
+    };
+
+    beforeEach(() => vi.useRealTimers());
+
+    it("서버의 시간과 「이어서 녹음」, 안내를 보여 준다", async () => {
+      leaveResumeProof();
+      respondCurrent("RECORDING");
+      renderRecorderBar();
+
+      expect(
+        await screen.findByText(/새로고침으로 녹음이 멈췄어요/),
+      ).toBeInTheDocument();
+      expect(screen.getByText("녹음 멈춤")).toBeInTheDocument();
+      expect(getElapsedTime()).toHaveTextContent("12:34");
+      expect(
+        screen.getByRole("button", { name: "이어서 녹음" }),
+      ).toBeInTheDocument();
+    });
+
+    it("일시정지였으면 상태를 일시정지로 둔다", async () => {
+      leaveResumeProof();
+      respondCurrent("PAUSED");
+      renderRecorderBar();
+
+      await screen.findByText(/새로고침으로 녹음이 멈췄어요/);
+      expect(screen.getByText("일시정지")).toBeInTheDocument();
+    });
+
+    it("「이어서 녹음」을 누르면 같은 녹음을 이어 받아 녹음한다", async () => {
+      leaveResumeProof();
+      respondCurrent("RECORDING");
+      const requests = collectRequests();
+      renderRecorderBar();
+      await screen.findByText(/새로고침으로 녹음이 멈췄어요/);
+
+      await clickResume();
+
+      await waitFor(() =>
+        expect(useRecordingStore.getState().status).toBe("recording"),
+      );
+      expect(requests).toEqual(["reconnect", "resume"]);
+      expect(
+        screen.queryByText(/새로고침으로 녹음이 멈췄어요/),
+      ).not.toBeInTheDocument();
+    });
+
+    it("이어 받기 전에 끝내면 먼저 이어 받은 뒤 끝낸다", async () => {
+      leaveResumeProof();
+      respondCurrent("RECORDING");
+      const requests = collectRequests();
+      renderRecorderBar();
+      await screen.findByText(/새로고침으로 녹음이 멈췄어요/);
+
+      await clickEndRecording();
+      await chooseInEndRecordingDialog("녹음 끝내기");
+
+      await waitFor(() => expect(requests).toContain("end"));
+      expect(requests.indexOf("reconnect")).toBeLessThan(
+        requests.indexOf("end"),
+      );
+    });
   });
 });

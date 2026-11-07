@@ -59,6 +59,8 @@ export default function RecordingHistoryCard() {
             title={title}
             elapsedTime={currentRecording.elapsedTime}
             onOpenRecording={currentRecording.onOpenRecording}
+            isReloaded={currentRecording.isReloaded}
+            isConnectionLost={currentRecording.isConnectionLost}
           />
           <Divider />
         </>
