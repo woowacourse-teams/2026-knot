@@ -46,6 +46,8 @@ export default (env, argv) => {
     devtool: isDev ? "eval-source-map" : productionDevtool,
     output: {
       filename: "bundle.js",
+      // 페이지 코드는 내용이 바뀌면 이름도 바뀌어, 배포 전에 연 탭이 새 배포의 다른 코드를 섞어 받지 않아요
+      chunkFilename: "[id].[contenthash:8].js",
       path: path.resolve(__dirname, "dist"),
       publicPath: "/", // 하위 라우트에서도 번들을 절대 경로로 로드해요
       clean: true, // 빌드 시 이전 산출물을 제거해요
