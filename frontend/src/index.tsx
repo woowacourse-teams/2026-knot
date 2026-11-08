@@ -11,6 +11,7 @@ import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
 import AppErrorBoundary from "@provider/AppErrorBoundary";
 import AppProviders from "@provider/AppProviders";
 import { getRootErrorHandlers, initSentry } from "@provider/sentry";
+import { preloadPages } from "@routes/lazyPage";
 import { routes } from "@routes/routes";
 import { ANALYTICS_SCROLL_ROOT_ATTRIBUTE } from "@constants/analytics";
 import { attachAnalyticsWorkspace } from "@utils/analyticsWorkspace";
@@ -83,6 +84,9 @@ const renderApp = () => {
     </React.StrictMode>,
   );
 };
+
+// 처음 연 화면의 페이지 코드를 로그인, 워크스페이스 확인 요청과 함께 받기 시작해요
+preloadPages(routes, window.location);
 
 enableApiMocking()
   .then(renderApp)
