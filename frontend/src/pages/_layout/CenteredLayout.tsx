@@ -1,5 +1,6 @@
 import styled from "@emotion/styled";
 import Spacing from "@primitives/layout/Spacing";
+import { Suspense } from "react";
 import { Outlet } from "react-router";
 
 import LogoIcon from "@/assets/logos/logo.svg";
@@ -21,7 +22,10 @@ export default function CenteredLayout() {
     <Container>
       <Logo />
       <Spacing size={2.5} /> {/* 40px */}
-      <Outlet />
+      {/* 페이지 코드를 받는 동안 로고는 그대로 두고 카드 자리만 비워요 */}
+      <Suspense fallback={null}>
+        <Outlet />
+      </Suspense>
     </Container>
   );
 }

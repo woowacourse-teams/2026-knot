@@ -30,7 +30,7 @@ import SearchEvidenceList from "@widgets/search/SearchEvidenceList";
 import WorkspaceDock from "@widgets/workspace/WorkspaceDock";
 import WorkspaceGnb from "@widgets/workspace/WorkspaceGnb";
 import WorkspaceSidebar from "@widgets/workspace/WorkspaceSidebar";
-import { useState, type MouseEvent } from "react";
+import { Suspense, useState, type MouseEvent } from "react";
 import { Outlet, useLocation, useMatch, useParams } from "react-router";
 
 import ChatListIcon from "@/assets/icons/chatList.svg";
@@ -149,6 +149,10 @@ export default function WorkspaceLayout() {
     closeRightOverlay();
   };
 
+  const workspaceLoading = (
+    <LoadingFallback label="워크스페이스를 불러오고 있어요" />
+  );
+
   if (entryError) {
     return (
       <PageErrorNotice
@@ -212,10 +216,13 @@ export default function WorkspaceLayout() {
         <Content>
           {/* 사용 기록의 스크롤 깊이는 창이 아니라 이 본문을 재요(ANALYTICS_SCROLL_ROOT_ATTRIBUTE) */}
           <Main ref={mainRef} data-analytics-scroll-root aria-busy={!isReady}>
+            {/* 확인을 마친 뒤 페이지 코드를 받는 동안에도 같은 스피너를 이어서 보여 줘요 */}
             {isReady ? (
-              <Outlet />
+              <Suspense fallback={workspaceLoading}>
+                <Outlet />
+              </Suspense>
             ) : (
-              <LoadingFallback label="워크스페이스를 불러오고 있어요" />
+              workspaceLoading
             )}
           </Main>
 
