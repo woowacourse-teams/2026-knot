@@ -52,11 +52,12 @@ const renderApp = (initialPath: string) => {
 describe("NotFoundPage", () => {
   it.each(["/unknown", "/workspace/1/unknown", "/invite"])(
     "정의되지 않은 주소(%s)면 빈 화면 대신 ERR-01 화면을 보여준다 (ERR-01)",
-    (path) => {
+    async (path) => {
       renderApp(path);
 
+      // 페이지 코드는 그 화면에 처음 들어갈 때 받아서 그려질 때까지 기다려요
       expect(
-        screen.getByRole("heading", { name: NOT_FOUND_TITLE }),
+        await screen.findByRole("heading", { name: NOT_FOUND_TITLE }),
       ).toBeInTheDocument();
       NOT_FOUND_DESCRIPTIONS.forEach((description) => {
         expect(screen.getByText(description)).toBeInTheDocument();
@@ -64,10 +65,12 @@ describe("NotFoundPage", () => {
     },
   );
 
-  it("정의된 주소는 ERR-01 화면을 보여주지 않는다", () => {
+  it("정의된 주소는 ERR-01 화면을 보여주지 않는다", async () => {
     renderApp(PATH_ROUTE.JOIN_ERROR);
 
-    expect(screen.getByText("초대장을 열 수 없어요")).toBeInTheDocument();
+    expect(
+      await screen.findByText("초대장을 열 수 없어요"),
+    ).toBeInTheDocument();
     expect(screen.queryByText(NOT_FOUND_TITLE)).not.toBeInTheDocument();
   });
 
@@ -80,9 +83,12 @@ describe("NotFoundPage", () => {
       }),
     );
     const { router } = renderApp("/unknown");
+    const homeButton = await screen.findByRole("button", {
+      name: "홈으로 이동",
+    });
 
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "홈으로 이동" }));
+      fireEvent.click(homeButton);
     });
 
     expect(router.state.location.pathname).toBe(PATH_ROUTE.HOME);

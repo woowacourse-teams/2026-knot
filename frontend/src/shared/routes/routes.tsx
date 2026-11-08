@@ -1,25 +1,5 @@
 import CenteredLayout from "@pages/_layout/CenteredLayout";
 import WorkspaceLayout from "@pages/_layout/WorkspaceLayout";
-import InvitePage from "@pages/invite/[token]";
-import JoinErrorPage from "@pages/join-error";
-import LandingPage from "@pages/landing";
-import LoginPage from "@pages/login";
-import LoginFailedPage from "@pages/login/failed";
-import NotFoundPage from "@pages/not-found";
-import OnboardingPage from "@pages/onboarding";
-import OnboardingCompletePage from "@pages/onboarding/complete";
-import WorkspacePage from "@pages/workspace";
-import WorkspaceHomePage from "@pages/workspace/[workspaceId]";
-import ChatPage from "@pages/workspace/[workspaceId]/chat";
-import DocumentsPage from "@pages/workspace/[workspaceId]/documents";
-import DocumentPage from "@pages/workspace/[workspaceId]/documents/[documentId]";
-import WorkspaceInvitePage from "@pages/workspace/[workspaceId]/invite";
-import WorkspaceJoinPage from "@pages/workspace/[workspaceId]/join";
-import RecordingPage from "@pages/workspace/[workspaceId]/recording";
-import RecordingDocumentsPage from "@pages/workspace/[workspaceId]/recordings/[recordingId]";
-import RecordingDocumentPage from "@pages/workspace/[workspaceId]/recordings/[recordingId]/document";
-import WorkspaceCodePage from "@pages/workspace/code";
-import WorkspaceCreatePage from "@pages/workspace/create";
 import RecordingHeartbeat from "@widgets/recording/RecordingHeartbeat";
 import WorkspaceAnalytics from "@/shared/components/domain/WorkspaceAnalytics";
 import { Outlet, type RouteObject } from "react-router";
@@ -29,8 +9,50 @@ import DocumentsRedirect from "./DocumentsRedirect";
 import EntryRedirect from "./EntryRedirect";
 import GuestGuard from "./GuestGuard";
 import LandingGuard from "./LandingGuard";
+import lazyPage from "./lazyPage";
 import { PATH_ROUTE } from "./PATH_ROUTE";
 import RecordingGuard from "./RecordingGuard";
+
+// 페이지는 그 화면에 처음 들어갈 때 코드를 받아요. 어느 화면으로 들어와도 모든 페이지 코드를 받지 않게요
+const InvitePage = lazyPage(() => import("@pages/invite/[token]"));
+const JoinErrorPage = lazyPage(() => import("@pages/join-error"));
+const LandingPage = lazyPage(() => import("@pages/landing"));
+const LoginPage = lazyPage(() => import("@pages/login"));
+const LoginFailedPage = lazyPage(() => import("@pages/login/failed"));
+const NotFoundPage = lazyPage(() => import("@pages/not-found"));
+const OnboardingPage = lazyPage(() => import("@pages/onboarding"));
+const OnboardingCompletePage = lazyPage(
+  () => import("@pages/onboarding/complete"),
+);
+const WorkspacePage = lazyPage(() => import("@pages/workspace"));
+const WorkspaceHomePage = lazyPage(
+  () => import("@pages/workspace/[workspaceId]"),
+);
+const ChatPage = lazyPage(() => import("@pages/workspace/[workspaceId]/chat"));
+const DocumentsPage = lazyPage(
+  () => import("@pages/workspace/[workspaceId]/documents"),
+);
+const DocumentPage = lazyPage(
+  () => import("@pages/workspace/[workspaceId]/documents/[documentId]"),
+);
+const WorkspaceInvitePage = lazyPage(
+  () => import("@pages/workspace/[workspaceId]/invite"),
+);
+const WorkspaceJoinPage = lazyPage(
+  () => import("@pages/workspace/[workspaceId]/join"),
+);
+const RecordingPage = lazyPage(
+  () => import("@pages/workspace/[workspaceId]/recording"),
+);
+const RecordingDocumentsPage = lazyPage(
+  () => import("@pages/workspace/[workspaceId]/recordings/[recordingId]"),
+);
+const RecordingDocumentPage = lazyPage(
+  () =>
+    import("@pages/workspace/[workspaceId]/recordings/[recordingId]/document"),
+);
+const WorkspaceCodePage = lazyPage(() => import("@pages/workspace/code"));
+const WorkspaceCreatePage = lazyPage(() => import("@pages/workspace/create"));
 
 /**
  * 로그인 여부로 세 구역이 나뉘어요.
