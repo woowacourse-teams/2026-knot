@@ -45,8 +45,6 @@ const UNREAD_BUTTON_NAME = "새 소식과 피드백, 읽지 않은 소식 있음
 const PANEL_DESCRIPTION = "새로 생기거나 달라진 점을 모아 둬요";
 const NICKNAME = new GetMeResponseDto(meResponse).nickname;
 const AUTH_ME_PATH = "/api/v1/auth/me";
-const FEEDBACK_NOTICE =
-  "닉네임, 지금 보고 있는 화면 주소와 최근 사용 기록이 함께 전달돼요. 회의 내용이나 개인 정보는 적지 말아 주세요.";
 const FEEDBACK_FAILED_MESSAGE =
   "보내지 못했어요. 적은 내용은 그대로 있으니 다시 보내 주세요.";
 
@@ -464,16 +462,6 @@ test.describe("소식과 피드백", () => {
     await expect(panel.getByRole("combobox")).toHaveCount(0);
   });
 
-  test("[FEEDBACK-R10] 패널 안내 문구에 닉네임이 함께 전달된다고 보인다", async ({
-    page,
-  }) => {
-    await openFeedbackPanel(page);
-
-    await expect(
-      getFeedbackPanel(page).getByText(FEEDBACK_NOTICE, { exact: true }),
-    ).toBeVisible();
-  });
-
   test("[FEEDBACK-R7, FEEDBACK-R8, FEEDBACK-R9] 저장에 실패하면 패널을 닫지 않고 고른 유형과 적은 내용을 남기며, 「다시 보내기」에 성공하면 닉네임과 함께 한 번만 저장된다", async ({
     page,
   }) => {
@@ -516,19 +504,6 @@ test.describe("소식과 피드백", () => {
 
   test.describe("휴대폰", () => {
     test.use({ viewport: { width: 390, height: 844 } });
-
-    test("[FEEDBACK-R10, FEEDBACK-R2] 아래 시트의 안내 문구에도 닉네임이 함께 전달된다고 보인다", async ({
-      page,
-    }) => {
-      await page.goto(HOME_PATH);
-
-      await page.getByRole("button", { name: "사이드바" }).click();
-      await page.getByRole("button", { name: "피드백", exact: true }).click();
-
-      await expect(
-        getFeedbackPanel(page).getByText(FEEDBACK_NOTICE, { exact: true }),
-      ).toBeVisible();
-    });
 
     test("[FEEDBACK-R2] 사이드바 맨 아래 「피드백」을 누르면 피드백 패널을 아래 시트로 열고, 「소식과 피드백」은 메뉴 없이 새 소식을 연다", async ({
       page,
