@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 
 import { TOAST_MESSAGES } from "@constants/toastMessages";
 
@@ -241,5 +241,243 @@ test.describe("회의 소리를 받을 수 없는 브라우저", () => {
     await expect(page.getByRole("alertdialog")).toHaveCount(0);
     expect(await displayMediaCalls(page)).toBe(0);
     await expectRecordingContinues(page);
+  });
+});
+
+/** 생존 신호를 막았다 풀 수 있게 해요. 막으면 연결이 끊긴 것처럼 신호 요청만 닿지 못해요 */
+async function blockableHeartbeat(page: Page) {
+  await page.addInitScript(() => {
+    const { open } = XMLHttpRequest.prototype;
+
+    XMLHttpRequest.prototype.open = function (
+      this: XMLHttpRequest,
+      method: string,
+      url: string | URL,
+      ...rest: [boolean, string?, string?]
+    ) {
+      const isBlocked =
+        (window as unknown as HeartbeatWindow).__isHeartbeatBlocked &&
+        String(url).includes("/heartbeat");
+
+      return open.call(
+        this,
+        method,
+        isBlocked ? "http://127.0.0.1:1/" : url,
+        ...rest,
+      );
+    } as typeof XMLHttpRequest.prototype.open;
+  });
+}
+
+type HeartbeatWindow = Window & { __isHeartbeatBlocked?: boolean };
+
+/** 막거나 푼 뒤 다음 주기를 기다리지 않고 신호를 보내요. 연결이 돌아오면 신호를 바로 보내는 동작을 빌려요 */
+async function setHeartbeatBlocked(page: Page, isBlocked: boolean) {
+  await page.evaluate((blocked) => {
+    (window as unknown as HeartbeatWindow).__isHeartbeatBlocked = blocked;
+    window.dispatchEvent(new Event("online"));
+  }, isBlocked);
+}
+
+const connectionToast = (page: Page) =>
+  page.getByText(TOAST_MESSAGES.RECORDING_DISCONNECTED.message);
+
+test.describe("연결이 끊긴 동안", () => {
+  test("[STT-R53] 신호가 닿지 않아도 녹음이 이어지고, 끊김 토스트가 보였다가 연결이 돌아오면 닫힌다", async ({
+    page,
+  }) => {
+    await blockableHeartbeat(page);
+    await startRecordingFromDock(page);
+
+    await setHeartbeatBlocked(page, true);
+
+    await expect(connectionToast(page)).toBeVisible();
+    await expectRecordingContinues(page);
+
+    await setHeartbeatBlocked(page, false);
+
+    await expect(connectionToast(page)).toBeHidden();
+    await expectRecordingContinues(page);
+  });
+
+  test("[STT-R53] 끊김 토스트는 화면을 옮겨도 같은 자리에 남고, X로 닫으면 끊긴 동안 다시 뜨지 않는다", async ({
+    page,
+  }) => {
+    await blockableHeartbeat(page);
+    await startRecordingFromDock(page);
+    await setHeartbeatBlocked(page, true);
+    const toastList = page.getByTestId("toast-list");
+    await expect(toastList).toContainText(
+      TOAST_MESSAGES.RECORDING_DISCONNECTED.message,
+    );
+
+    await page.getByRole("button", { name: "홈", exact: true }).click();
+
+    await expect(toastList).toContainText(
+      TOAST_MESSAGES.RECORDING_DISCONNECTED.message,
+    );
+
+    await toastList.getByRole("button", { name: "닫기" }).click();
+
+    await expect(connectionToast(page)).toBeHidden();
+
+    await setHeartbeatBlocked(page, true);
+
+    await expect(connectionToast(page)).toBeHidden();
+  });
+});
+
+test.describe("화면 꺼짐 방지", () => {
+  type WakeLockWindow = Window & {
+    __wakeLock: { requested: number; released: number };
+  };
+
+  test("[STT-R13] 녹음 중에는 화면 잠금을 잡고, 일시정지하면 놓는다", async ({
+    page,
+  }) => {
+    await page.addInitScript(() => {
+      const wakeLock = { requested: 0, released: 0 };
+      (window as unknown as WakeLockWindow).__wakeLock = wakeLock;
+
+      Object.defineProperty(navigator, "wakeLock", {
+        value: {
+          request: async () => {
+            wakeLock.requested += 1;
+
+            return {
+              release: async () => {
+                wakeLock.released += 1;
+              },
+            };
+          },
+        },
+      });
+    });
+    await startRecordingFromDock(page);
+    const wakeLock = () =>
+      page.evaluate(() => (window as unknown as WakeLockWindow).__wakeLock);
+
+    await expect.poll(wakeLock).toMatchObject({ requested: 1, released: 0 });
+
+    await recorderBar(page).getByRole("button", { name: "일시정지" }).click();
+
+    await expect.poll(wakeLock).toMatchObject({ released: 1 });
+  });
+});
+
+test.describe("새로고침 뒤 이어서 녹음", () => {
+  /** 녹음을 시작한 뒤 새로고침해요. 서버는 녹음을 끝내지 않아, 새로고침 뒤 현재 녹음 조회는 녹음 중이라고 답해요 */
+  async function reloadWhileRecording(page: Page) {
+    await page.goto(HOME_PATH);
+    await page.getByRole("button", { name: "회의 녹음 시작" }).click();
+    await expect(recorderBar(page)).toContainText("녹음 중");
+    await page.evaluate(() =>
+      localStorage.setItem(
+        "knot.mock.scenario",
+        JSON.stringify({ currentRecording: "recording" }),
+      ),
+    );
+    page.on("dialog", (dialog) => void dialog.accept());
+    await page.reload();
+  }
+
+  test("[STT-R26] 새로고침한 같은 탭에 「이어서 녹음」이 보이고, 누르면 같은 녹음이 이어진다", async ({
+    page,
+  }) => {
+    await reloadWhileRecording(page);
+
+    await expect(recorderBar(page)).toContainText("녹음 멈춤");
+    await recorderBar(page)
+      .getByRole("button", { name: "이어서 녹음" })
+      .click();
+
+    await expectRecordingContinues(page);
+  });
+
+  test("[STT-R26] 새로고침 뒤 홈에서도 녹음 화면으로 돌아가 이어 갈 수 있다", async ({
+    page,
+  }) => {
+    await reloadWhileRecording(page);
+    await page.getByRole("button", { name: "홈", exact: true }).click();
+
+    await page.getByRole("button", { name: "녹음 화면으로", exact: true }).click();
+
+    await expect(
+      recorderBar(page).getByRole("button", { name: "이어서 녹음" }),
+    ).toBeVisible();
+  });
+});
+
+test.describe("다른 탭에서 녹음 중", () => {
+  const OTHER_TAB_HOME_PATH = `${HOME_PATH}?mock.currentRecording=recording`;
+  const endButton = (scope: Page | Locator) =>
+    scope.getByRole("button", { name: "녹음 끝내기" });
+  /** 접힌 독은 파형만 보여, 열어야 끝내기 버튼이 나와요 */
+  const openDock = (page: Page) =>
+    page.getByRole("button", { name: "독 열기" }).click();
+
+  test("[STT-R28, STT-R24] 다른 탭 홈 맨 위 줄에 상태와 안내, 비활성 「녹음 화면으로」 하나가 있다", async ({
+    page,
+  }) => {
+    await page.goto(OTHER_TAB_HOME_PATH);
+    const recordingCard = page.getByRole("region", { name: "녹음 기록" });
+
+    await expect(
+      page.getByText("녹음 중인 탭에서 일시정지·이어서 녹음을 할 수 있어요"),
+    ).toBeVisible();
+    await expect(
+      recordingCard.getByRole("button", { name: "녹음 화면으로", exact: true }),
+    ).toBeDisabled();
+    await expect(endButton(recordingCard)).toHaveCount(0);
+  });
+
+  test("[STT-R28] 다른 탭의 독에 시간 칩과 끝내기 버튼이 있고, 마이크와 일시정지 버튼은 없다", async ({
+    page,
+  }) => {
+    await page.goto(OTHER_TAB_HOME_PATH);
+
+    await openDock(page);
+
+    await expect(endButton(page)).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "회의 녹음 시작" }),
+    ).toBeHidden();
+    await expect(page.getByRole("button", { name: "일시정지" })).toBeHidden();
+    await expect(
+      page.getByRole("button", { name: "이어서 녹음" }),
+    ).toBeHidden();
+  });
+
+  test("[STT-R28] 독의 끝내기 버튼은 확인 창을 거치고, 취소하면 끝나지 않으며 확정하면 본문 없이 끝낸다", async ({
+    page,
+  }) => {
+    await page.goto(OTHER_TAB_HOME_PATH);
+    const endRequests: (string | null)[] = [];
+    page.on("request", (request) => {
+      if (request.url().endsWith("/end")) {
+        endRequests.push(request.postData());
+      }
+    });
+    const dialog = page.getByRole("dialog", { name: "녹음을 끝낼까요?" });
+
+    await openDock(page);
+    await endButton(page).click();
+    await dialog.getByRole("button", { name: "계속 녹음" }).click();
+    await expect(dialog).toBeHidden();
+    expect(endRequests).toEqual([]);
+
+    await openDock(page);
+    await endButton(page).click();
+    await dialog.getByRole("button", { name: "녹음 끝내기" }).click();
+
+    await expect.poll(() => endRequests).toEqual([null]);
+  });
+
+  test("[STT-R26, STT-R28] 증명이 없는 탭은 녹음 화면 주소로 들어가도 홈으로 간다", async ({
+    page,
+  }) => {
+    await page.goto(`${HOME_PATH}/recording?mock.currentRecording=recording`);
+
+    await expect(page).toHaveURL(new RegExp(`${HOME_PATH}(\\?.*)?$`));
   });
 });

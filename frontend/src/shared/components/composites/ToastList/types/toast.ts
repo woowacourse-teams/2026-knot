@@ -11,4 +11,6 @@ export interface ShownToast {
   shownAt: number;
   /** 화면에 떠 있는 시간이 다 돼 사라지는 애니메이션이 재생되는 중이에요 */
   isLeaving: boolean;
+  /** 있으면 고정 토스트예요. 시간이 지나도 사라지지 않고 X로 닫으며, 이 이름으로 문구를 바꾸거나 내려요 */
+  pinKey?: string;
 }

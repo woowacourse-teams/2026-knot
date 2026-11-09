@@ -111,7 +111,7 @@ const grantSilentMicrophone = () => {
  * - 녹음 시작 요청이 네트워크 문제로 응답을 받지 못하면 마이크를 끄고 「연결이 잠시 끊겼어요」 모달로 알린 뒤 지금 화면에 남아요. 「다시 시도」는 같은 시작 요청을 다시 보내고, 「닫기」·바깥·`Esc`는 모달만 닫아요.
  * - 새로고침 전 녹음이 이미 끝났거나 버려졌으면 새 녹음으로 한 번만 다시 시작해요. 시작 요청이 오가는 동안 마이크를 다시 눌러도 겹쳐 보내지 않아요.
  * - 녹음 화면이 아닌 곳에서 녹음 중이면 마이크 자리에 녹음한 시간 칩을 둬요. 칩의 구슬은 청록으로 바뀌어 목소리가 들어올 때마다 파형으로 펼쳐져요. 칩을 누르면 권한을 다시 묻지 않고 녹음 화면으로 가요.
- * - 다른 탭에서 녹음 중이면 접힌 독과 펼친 독 모두 마이크 자리에 구슬과 녹음한 시간만 보여 줘요. 이 탭의 소리가 아니라 구슬은 조용한 구름이고, 일시정지면 빛무리도 쉬어요. 녹음 화면은 녹음을 시작한 탭에서만 열 수 있어 칩을 누를 수 없고 중지 버튼도 두지 않아요.
+ * - 다른 탭에서 녹음 중이면 접힌 독과 펼친 독 모두 마이크 자리에 구슬과 녹음한 시간만 보여 줘요. 이 탭의 소리가 아니라 구슬은 조용한 구름이고, 일시정지면 빛무리도 쉬어요. 녹음 화면은 녹음을 시작한 탭에서만 열 수 있어 칩을 눌러도 이동하지 않고, 접힌 독의 중지 버튼으로 끝낼 수 있어요.
  * - 접힌 독은 칩 옆에 중지 버튼을 둬요. 누르면 녹음을 끝내고 그 녹음의 문서 정리 화면으로 가요. 펼친 독은 옆에 보내기 버튼이 있어 중지 버튼을 두지 않아요.
  * - 녹음 화면에서는 갈 곳이 없어 마이크와 녹음 칩을 숨겨요.
  * - 녹음 중에 마이크가 빠지면 어느 화면에 있든 같은 모달로 알리고, 녹음은 일시정지로 남겨요.
@@ -301,7 +301,7 @@ export const RecordingOnChatScreen: Story = {
   beforeEach: startRecordingAt12m48s,
 };
 
-/** 다른 탭에서 녹음 중인 접힌 독이에요. 파형이 청록이고 아래에 시간이 떠요. 파형을 누르면 마이크 자리에 구슬과 녹음한 시간만 보이고 누를 수 없어요. 예: 녹음을 켜 둔 채 새 탭으로 홈을 연 사용자 */
+/** 다른 탭에서 녹음 중인 접힌 독이에요. 파형이 청록이고 아래에 시간이 떠요. 파형을 누르면 마이크 자리에 구슬과 녹음한 시간, 끝내기 버튼이 보여요. 예: 녹음을 켜 둔 채 새 탭으로 홈을 연 사용자 */
 export const RecordingInOtherTab: Story = {
   parameters: {
     docs: ISOLATED_DOCS,
@@ -315,7 +315,28 @@ export const RecordingInOtherTab: Story = {
   },
 };
 
-/** 다른 탭의 녹음이 일시정지된 접힌 독이에요. 회색 점과 멈춘 시간만 보이고 누를 수 없어요. 예: 다른 탭에서 녹음을 잠시 멈춘 사용자 */
+/** 녹음 탭의 연결이 끊겼을 때 X로 닫는 토스트가 떠요. 예: 회의실 노트북의 인터넷이 끊긴 채 다른 기기로 홈을 연 사용자 */
+export const OtherTabConnectionLost: Story = {
+  parameters: {
+    docs: ISOLATED_DOCS,
+    design: {
+      type: "figma",
+      url: "https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=6117-54065",
+    },
+    msw: {
+      handlers: {
+        currentRecording: http.get(CURRENT_RECORDING_URL, () =>
+          HttpResponse.json({
+            ...currentRecordingResponse,
+            connectionStatus: "DISCONNECTED",
+          }),
+        ),
+      },
+    },
+  },
+};
+
+/** 다른 탭의 녹음이 일시정지된 접힌 독이에요. 회색 점과 멈춘 시간, 끝내기 버튼이 보여요. 예: 다른 탭에서 녹음을 잠시 멈춘 사용자 */
 export const PausedInOtherTab: Story = {
   parameters: {
     docs: ISOLATED_DOCS,

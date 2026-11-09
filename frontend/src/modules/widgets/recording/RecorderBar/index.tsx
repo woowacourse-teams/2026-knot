@@ -12,42 +12,69 @@ import Waveform from "./ui/Waveform";
  * 녹음 화면 상단 바.
  *
  * 왼쪽에 녹음 상태·녹음한 시간·파형을, 오른쪽에 일시정지(이어서 녹음)와 녹음 끝내기 버튼을 둬요.
+ * 새로고침한 탭은 파형 자리에 안내를 두고 「이어서 녹음」으로 같은 녹음을 이어 받아요(STT-R26).
+ * 끝내는 동안은 두 버튼을 막아요. 끊긴 채 끝내면 소리를 다 올릴 때까지 오래 걸릴 수 있어요.
  * 녹음을 시작한 사람 혼자 쓰는 화면이라 권한에 따른 구분은 없어요.
  * 파형은 마이크 소리 크기를 따라 움직이고, 녹음 파일 업로드는 아직 연결하지 않았어요.
  */
 export default function RecorderBar() {
   const {
     isPaused,
+    isReloaded,
+    isReloadedWhilePaused,
     elapsedTime,
     analyser,
+    isEnding,
     handlePause,
     handleResume,
     handleEnd,
   } = useRecorderBar();
+
+  const getStatusLabel = () => {
+    if (isReloaded && !isReloadedWhilePaused) return "녹음 멈춤";
+
+    return isPaused ? "일시정지" : "녹음 중";
+  };
 
   return (
     <Container aria-label="녹음 조작">
       <Info>
         <Status $isPaused={isPaused}>
           <RecDot aria-hidden="true" $isPaused={isPaused} />
-          {isPaused ? "일시정지" : "녹음 중"}
+          {getStatusLabel()}
         </Status>
 
         <ElapsedTime aria-label="녹음한 시간">{elapsedTime}</ElapsedTime>
 
-        <Waveform analyser={analyser} isActive={!isPaused} />
+        {isReloaded ? (
+          <ReloadedNotice>
+            새로고침으로 녹음이 멈췄어요. 이어서 녹음을 눌러 주세요
+          </ReloadedNotice>
+        ) : (
+          <Waveform analyser={analyser} isActive={!isPaused} />
+        )}
       </Info>
 
       <Controls>
         {isPaused ? (
-          <ControlButton size="md" variant="outline" onClick={handleResume}>
+          <ControlButton
+            size="md"
+            variant="outline"
+            disabled={isEnding}
+            onClick={handleResume}
+          >
             <IconBox>
               <PlayIcon size={14} />
             </IconBox>
             이어서 녹음
           </ControlButton>
         ) : (
-          <ControlButton size="md" variant="outline" onClick={handlePause}>
+          <ControlButton
+            size="md"
+            variant="outline"
+            disabled={isEnding}
+            onClick={handlePause}
+          >
             <IconBox>
               <PauseIcon size={14} />
             </IconBox>
@@ -55,7 +82,12 @@ export default function RecorderBar() {
           </ControlButton>
         )}
 
-        <Button size="md" variant="filled" onClick={handleEnd}>
+        <Button
+          size="md"
+          variant="filled"
+          disabled={isEnding}
+          onClick={handleEnd}
+        >
           <IconBox>
             <StopMark />
           </IconBox>
@@ -127,6 +159,19 @@ const ElapsedTime = styled.p`
 
   ${MEDIA_QUERY.mobile} {
     ${({ theme }) => theme.text.heading02};
+  }
+`;
+
+/** 파형 자리에 놓이는 안내. 좁아지면 파형처럼 끝부터 잘려요 */
+const ReloadedNotice = styled.p`
+  overflow: hidden;
+  color: ${({ theme }) => theme.neutral[500]};
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  ${({ theme }) => theme.text.caption02};
+
+  ${MEDIA_QUERY.mobile} {
+    white-space: normal;
   }
 `;
 

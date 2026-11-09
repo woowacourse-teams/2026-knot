@@ -40,6 +40,12 @@ interface ToastLocationState {
   toast?: ToastOptions;
 }
 
+interface PinToastParams {
+  /** 어느 고정 토스트인지 가리키는 이름. 같은 이름이 떠 있으면 쌓지 않고 문구를 바꿔요 */
+  pinKey: string;
+  toast: ToastOptions;
+}
+
 export interface ToastControls {
   /**
    * 토스트를 띄워요.
@@ -48,6 +54,10 @@ export interface ToastControls {
   show: (toast: ToastOptions) => void;
   /** 화면을 옮기고, 도착한 화면에서 토스트를 띄워요 */
   navigateWithToast: (params: NavigateWithToastParams) => void;
+  /** 고정 토스트를 띄워요 */
+  pin: (params: PinToastParams) => void;
+  /** 고정 토스트를 내려요 */
+  unpin: (pinKey: string) => void;
 }
 
 const ToastContext = createContext<ToastControls | null>(null);
@@ -59,15 +69,28 @@ const ToastStackContext = createContext<ReturnType<typeof useToastStack> | null>
 const isSameToast = (a: ToastOptions, b: ToastOptions) =>
   a.variant === b.variant && a.message === b.message;
 
+/** 떠 있는 토스트가 최대 개수를 넘으면 가장 오래된 일반 토스트를 빼요. 고정 토스트는 밀려나지 않아요 */
+const trimToasts = (toasts: ShownToast[]) => {
+  const stayingToasts = toasts.filter((toast) => !toast.isLeaving);
+
+  if (stayingToasts.length <= MAX_TOAST_COUNT) return toasts;
+
+  const oldestToast = stayingToasts.find((toast) => toast.pinKey === undefined);
+
+  return toasts.filter((toast) => toast !== oldestToast);
+};
+
 const useToastStack = (hasDock: boolean) => {
   const [toasts, setToasts] = useState<ShownToast[]>([]);
   const [previousHasDock, setPreviousHasDock] = useState(hasDock);
   const nextIdRef = useRef(0);
 
-  // 자식이 새 화면의 알림을 요청하기 전에 이전 목록을 정리해요.
+  // 자식이 새 화면의 알림을 요청하기 전에 이전 목록을 정리해요. 고정 토스트는 화면과 상관없는 알림이라 남겨요.
   if (previousHasDock !== hasDock) {
     setPreviousHasDock(hasDock);
-    setToasts([]);
+    setToasts((current) =>
+      current.filter((toast) => toast.pinKey !== undefined),
+    );
   }
 
   const show = useCallback((nextToast: ToastOptions) => {
@@ -85,16 +108,40 @@ const useToastStack = (hasDock: boolean) => {
         );
       }
 
-      const next = [
+      return trimToasts([
         ...current,
         { ...nextToast, id, shownAt, isLeaving: false },
-      ];
-      const stayingToasts = next.filter((toast) => !toast.isLeaving);
-
-      if (stayingToasts.length <= MAX_TOAST_COUNT) return next;
-
-      return next.filter((toast) => toast !== stayingToasts[0]);
+      ]);
     });
+  }, []);
+
+  const pin = useCallback(({ pinKey, toast: nextToast }: PinToastParams) => {
+    const shownAt = Date.now();
+    const id = nextIdRef.current++;
+
+    setToasts((current) => {
+      const isStayingPin = (toast: ShownToast) =>
+        !toast.isLeaving && toast.pinKey === pinKey;
+
+      if (current.some(isStayingPin)) {
+        return current.map((toast) =>
+          isStayingPin(toast) ? { ...toast, ...nextToast } : toast,
+        );
+      }
+
+      return trimToasts([
+        ...current,
+        { ...nextToast, id, shownAt, isLeaving: false, pinKey },
+      ]);
+    });
+  }, []);
+
+  const unpin = useCallback((pinKey: string) => {
+    setToasts((current) =>
+      current.map((toast) =>
+        toast.pinKey === pinKey ? { ...toast, isLeaving: true } : toast,
+      ),
+    );
   }, []);
 
   const leave = useCallback((id: number) => {
@@ -109,14 +156,14 @@ const useToastStack = (hasDock: boolean) => {
     setToasts((current) => current.filter((toast) => toast.id !== id));
   }, []);
 
-  return { toasts, show, leave, remove };
+  return { toasts, show, pin, unpin, leave, remove };
 };
 
 /**
  * 앱 전체에서 `useToast`로 토스트를 띄울 수 있게 해 주는 프로바이더.
  * 가장 최근 토스트가 맨 아래에 쌓여요.
  *
- * 라우터 안에 한 번 두고, 독 유무가 바뀌면 이전 알림을 정리해요.
+ * 라우터 안에 한 번 두고, 독 유무가 바뀌면 고정 토스트만 남기고 이전 알림을 정리해요.
  */
 interface ToastProviderProps {
   children: ReactNode;
@@ -129,7 +176,7 @@ export function ToastProvider({
   hasDock = false,
 }: ToastProviderProps) {
   const stack = useToastStack(hasDock);
-  const { show } = stack;
+  const { show, pin, unpin } = stack;
   const location = useLocation();
   const navigate = useNavigate();
   const [consumedLocationKey, setConsumedLocationKey] = useState<string | null>(
@@ -175,8 +222,8 @@ export function ToastProvider({
   }, [location, navigate, show, consumedLocationKey]);
 
   const contextValue = useMemo<ToastControls>(
-    () => ({ show, navigateWithToast }),
-    [show, navigateWithToast],
+    () => ({ show, navigateWithToast, pin, unpin }),
+    [show, navigateWithToast, pin, unpin],
   );
 
   return (
@@ -226,6 +273,29 @@ export const useToast = () => {
   const { show, navigateWithToast } = useToastContext("useToast");
 
   return { show, navigateWithToast };
+};
+
+interface UsePinnedToastParams {
+  /** 어느 고정 토스트인지 가리키는 이름. 쓰는 곳마다 달라, 한쪽이 내려도 다른 쪽의 토스트는 남아요 */
+  pinKey: string;
+  /** 띄울 토스트. `TOAST_MESSAGES`의 값을 그대로 넘겨요. `null`이면 내려요 */
+  toast: ToastOptions | null;
+}
+
+/**
+ * 시간이 지나도 사라지지 않고 X로 닫는 고정 토스트를 띄워요. `ToastProvider` 안에서만 부를 수 있어요.
+ *
+ * `toast`가 바뀌면 쌓지 않고 문구를 바꾸고, `null`이 되면 내려요.
+ * X로 닫아도 `toast`가 그대로면 다시 띄우지 않고, 다른 값으로 바뀌거나 `null`을 거쳐 다시 오면 띄워요.
+ * 화면을 옮겨도 남고, 일반 토스트가 쌓여도 밀려나지 않아요. 부르던 컴포넌트가 사라져도 내리지 않아요.
+ */
+export const usePinnedToast = ({ pinKey, toast }: UsePinnedToastParams) => {
+  const { pin, unpin } = useToastContext("usePinnedToast");
+
+  useEffect(() => {
+    if (toast) pin({ pinKey, toast });
+    else unpin(pinKey);
+  }, [pin, pinKey, toast, unpin]);
 };
 
 /**

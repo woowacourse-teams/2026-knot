@@ -1542,7 +1542,7 @@ describe("WorkspaceDock", () => {
         ).not.toBeInTheDocument();
       });
 
-      it("칩을 눌러 녹음 화면으로 가거나 녹음을 끝낼 수 없다 (STT-20)", async () => {
+      it("칩을 눌러도 녹음 화면으로 가지 않고, 끝내기 버튼은 있다 (STT-R28)", async () => {
         respondCurrentRecordingStatus("RECORDING");
         renderDock();
 
@@ -1553,8 +1553,118 @@ describe("WorkspaceDock", () => {
           screen.queryByRole("button", { name: "녹음 화면으로 이동" }),
         ).not.toBeInTheDocument();
         expect(
-          screen.queryByRole("button", { name: "녹음 끝내기" }),
-        ).not.toBeInTheDocument();
+          screen.getByRole("button", { name: "녹음 끝내기" }),
+        ).toBeInTheDocument();
+      });
+
+      it("끝내기 버튼은 확인 창을 거쳐 그 녹음을 본문 없이 끝낸다 (STT-R28)", async () => {
+        respondCurrentRecordingStatus("RECORDING");
+        const bodies: string[] = [];
+        mockServer.use(
+          http.post(
+            "*/api/v1/workspaces/:workspaceId/recordings/:recordingId/end",
+            async ({ request }) => {
+              bodies.push(await request.clone().text());
+
+              return HttpResponse.json(recordingEndResponse);
+            },
+          ),
+        );
+        renderDock();
+
+        fireEvent.click(
+          await screen.findByRole("button", { name: "녹음 끝내기" }),
+        );
+        const dialog = await screen.findByRole("dialog", {
+          name: "녹음을 끝낼까요?",
+        });
+        fireEvent.click(
+          within(dialog).getByRole("button", { name: "녹음 끝내기" }),
+        );
+
+        await waitFor(() => expect(bodies).toEqual([""]));
+      });
+
+      describe("녹음 탭의 연결이 끊기면 (STT-R28)", () => {
+        const OTHER_TAB_LOST =
+          TOAST_MESSAGES.OTHER_TAB_RECORDING_DISCONNECTED.message;
+
+        const respondDisconnected = () => {
+          const responses: unknown[] = [];
+
+          mockServer.use(
+            http.get(CURRENT_RECORDING_URL, () => {
+              const response = {
+                ...currentRecordingResponse,
+                status: "RECORDING",
+                connectionStatus: "DISCONNECTED",
+              };
+              responses.push(response);
+
+              return HttpResponse.json(response);
+            }),
+          );
+
+          return { responses };
+        };
+
+        /** 창으로 돌아와 현재 녹음을 다시 받아요 */
+        const refetchCurrentRecording = () =>
+          act(() => {
+            focusManager.setFocused(false);
+            focusManager.setFocused(true);
+          });
+
+        const expectNoToast = () =>
+          waitFor(() =>
+            expect(screen.queryByText(OTHER_TAB_LOST)).not.toBeInTheDocument(),
+          );
+
+        afterEach(() => focusManager.setFocused(undefined));
+
+        it("끊김 토스트를 띄운다", async () => {
+          respondDisconnected();
+          renderDock();
+
+          expect(await screen.findByText(OTHER_TAB_LOST)).toBeInTheDocument();
+        });
+
+        it("연결이 돌아오면 끊김 토스트를 닫는다", async () => {
+          respondDisconnected();
+          renderDock();
+          await screen.findByText(OTHER_TAB_LOST);
+
+          respondCurrentRecordingStatus("RECORDING");
+          refetchCurrentRecording();
+
+          await expectNoToast();
+        });
+
+        it("녹음이 끝나면 끊김 토스트를 닫는다", async () => {
+          respondDisconnected();
+          renderDock();
+          await screen.findByText(OTHER_TAB_LOST);
+
+          respondNoCurrentRecording();
+          refetchCurrentRecording();
+
+          await expectNoToast();
+        });
+
+        it("X로 닫으면 같은 상태가 이어져도 다시 띄우지 않는다", async () => {
+          const { responses } = respondDisconnected();
+          renderDock();
+          await screen.findByText(OTHER_TAB_LOST);
+
+          fireEvent.click(screen.getByRole("button", { name: "닫기" }));
+          await expectNoToast();
+
+          refetchCurrentRecording();
+          await waitFor(() => expect(responses).toHaveLength(2));
+          await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+
+          expect(screen.queryByText(OTHER_TAB_LOST)).not.toBeInTheDocument();
+        });
       });
 
       it("일시정지면 회색 점과 멈춘 시간을 보여준다 (STT-R28)", async () => {

@@ -17,6 +17,8 @@ interface PauseRecordingMutationVariables extends PostRecordingPauseRequestInput
  */
 const usePauseRecordingMutation = () => {
   return useMutation({
+    // 오프라인이어도 멈춰 두지 않고 실패로 끝내, 다시 보내기와 안내를 부르는 쪽이 정해요
+    networkMode: "always",
     mutationFn: ({
       workspaceId,
       recordingId,

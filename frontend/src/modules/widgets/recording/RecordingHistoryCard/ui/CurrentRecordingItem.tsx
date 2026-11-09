@@ -8,7 +8,9 @@ import type { CurrentRecordingStatus } from "@/shared/types/recording";
 
 import {
   CURRENT_RECORDING_COPY,
+  OTHER_TAB_CONNECTION_LOST_HINT,
   OTHER_TAB_RECORDING_HINT,
+  RELOADED_RECORDING_COPY,
 } from "../constants/recordingStatus";
 
 type CurrentRecordingItemStatus = Extract<
@@ -24,20 +26,46 @@ interface CurrentRecordingItemProps {
   elapsedTime: string;
   /** 이 탭의 녹음이면 넘겨요. 없으면 다른 탭의 녹음이라 「녹음 화면으로」를 누를 수 없어요(STT-R28) */
   onOpenRecording?: () => void;
+  /** 이 탭을 새로고침해 아직 이어 받지 않은 녹음인지(STT-R26) */
+  isReloaded?: boolean;
+  /** 다른 탭의 녹음에서 녹음 탭의 연결이 끊겼는지(STT-R28) */
+  isConnectionLost?: boolean;
 }
 
 /**
  * 녹음 기록 카드 맨 위의 내 녹음 중 · 일시정지 녹음 한 줄. 녹음 이름 / 상태 줄(점 + 상태 · 시간) / 안내 한 줄과 오른쪽 「녹음 화면으로」로 이뤄져요(STT-R24).
+ * 다른 탭의 녹음이면 「녹음 화면으로」를 누를 수 없고, 안내는 줄을 바꿔 다 보여 줘요. 끝내기는 독의 ■로 해요.
+ *
+ * @see https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=6061-44336 다른 탭 평소
+ * @see https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=6061-44533 다른 탭 끊김
+ * @see https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=6061-44922 다른 탭 모바일
  */
 export default function CurrentRecordingItem({
   recordingStatus,
   title,
   elapsedTime,
   onOpenRecording,
+  isReloaded = false,
+  isConnectionLost = false,
 }: CurrentRecordingItemProps) {
   const { label, hint } = CURRENT_RECORDING_COPY[recordingStatus];
   const isOtherTab = onOpenRecording === undefined;
-  const visibleHint = isOtherTab ? OTHER_TAB_RECORDING_HINT : hint;
+  // 새로고침 뒤 서버는 녹음 중이어도 소리를 받지 않아 일시정지처럼 보여 줘요
+  const visibleStatus = isReloaded ? "paused" : recordingStatus;
+  const visibleLabel =
+    isReloaded && recordingStatus === "recording"
+      ? RELOADED_RECORDING_COPY.label
+      : label;
+
+  const getHint = () => {
+    if (isReloaded) return RELOADED_RECORDING_COPY.hint;
+    if (!isOtherTab) return hint;
+
+    return isConnectionLost
+      ? OTHER_TAB_CONNECTION_LOST_HINT
+      : OTHER_TAB_RECORDING_HINT;
+  };
+  const visibleHint = getHint();
 
   return (
     <Container>
@@ -47,11 +75,15 @@ export default function CurrentRecordingItem({
 
       <Info>
         <Title title={title}>{title}</Title>
-        <Status $recordingStatus={recordingStatus}>
-          <StatusDot aria-hidden="true" $recordingStatus={recordingStatus} />
-          <StatusText>{`${label} · ${elapsedTime}`}</StatusText>
+        <Status $recordingStatus={visibleStatus}>
+          <StatusDot aria-hidden="true" $recordingStatus={visibleStatus} />
+          <StatusText>{`${visibleLabel} · ${elapsedTime}`}</StatusText>
         </Status>
-        {visibleHint && <Hint>{visibleHint}</Hint>}
+        {visibleHint && (
+          <Hint $isOtherTab={isOtherTab} $isCaution={isConnectionLost}>
+            {visibleHint}
+          </Hint>
+        )}
       </Info>
 
       <Button
@@ -150,11 +182,12 @@ const StatusText = styled.span`
   white-space: nowrap;
 `;
 
-const Hint = styled.p`
+const Hint = styled.p<{ $isOtherTab: boolean; $isCaution: boolean }>`
   overflow: hidden;
-  color: ${({ theme }) => theme.neutral[500]};
+  color: ${({ theme, $isCaution }) =>
+    $isCaution ? theme.sub.caution[700] : theme.neutral[500]};
   text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: ${({ $isOtherTab }) => ($isOtherTab ? "normal" : "nowrap")};
   ${({ theme }) => theme.text.caption01};
 
   ${MEDIA_QUERY.mobile} {

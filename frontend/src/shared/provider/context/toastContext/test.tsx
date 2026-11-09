@@ -1,6 +1,6 @@
 import { ThemeProvider } from "@emotion/react";
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
-import { StrictMode, useEffect, useLayoutEffect } from "react";
+import { StrictMode, useEffect, useLayoutEffect, useState } from "react";
 import {
   BrowserRouter,
   createMemoryRouter,
@@ -18,7 +18,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { theme } from "@provider/themeProvider";
 import AppProviders from "@provider/AppProviders";
 
-import { ToastProvider, ToastViewport, useToast } from ".";
+import { ToastProvider, ToastViewport, usePinnedToast, useToast } from ".";
 
 function RedirectToastTrigger() {
   const { navigateWithToast } = useToast();
@@ -167,6 +167,54 @@ const getLeavingMessages = () =>
   getToastSlots()
     .filter(isLeaving)
     .map((slot) => slot.textContent);
+
+const PINNED_LOST = { variant: "caution", message: "끊김" } as const;
+const PINNED_ENDING = { variant: "caution", message: "끝내는 중" } as const;
+const CLOSE_TOAST = "닫기";
+
+/** 고정 토스트 값을 버튼으로 바꿔요. 화면을 옮겨도 남도록 라우터 바깥쪽에 둬요 */
+function PinnedToastControls({ pinKey = "connection" }: { pinKey?: string }) {
+  const [toast, setToast] = useState<
+    typeof PINNED_LOST | typeof PINNED_ENDING | null
+  >(null);
+
+  usePinnedToast({ pinKey, toast });
+
+  return (
+    <>
+      <button type="button" onClick={() => setToast(PINNED_LOST)}>
+        {pinKey} 끊김 고정
+      </button>
+      <button type="button" onClick={() => setToast(PINNED_ENDING)}>
+        {pinKey} 끝내는 중 고정
+      </button>
+      <button type="button" onClick={() => setToast(null)}>
+        {pinKey} 고정 풀기
+      </button>
+    </>
+  );
+}
+
+const renderPinnedToastPage = () =>
+  render(
+    <ThemeProvider theme={theme}>
+      <MemoryRouter>
+        <ToastProvider>
+          <ToastTriggerPage />
+          <PinnedToastControls />
+          <PinnedToastControls pinKey="otherTab" />
+        </ToastProvider>
+      </MemoryRouter>
+    </ThemeProvider>,
+  );
+
+const clickButton = (name: string) =>
+  fireEvent.click(screen.getByRole("button", { name }));
+
+const closePinnedToast = () => {
+  clickButton(CLOSE_TOAST);
+  advanceTimers(LEAVE_DURATION_MS);
+};
 
 describe("ToastProvider", () => {
   beforeEach(() => {
@@ -527,6 +575,7 @@ const createToastRouter = (initialPath: string) => {
       {
         element: (
           <AppProviders routes={layouts}>
+            <PinnedToastControls />
             <Outlet />
           </AppProviders>
         ),
@@ -561,6 +610,142 @@ const clickAndSettle = async (name: string) => {
     fireEvent.click(screen.getByRole("button", { name }));
   });
 };
+
+describe("고정 토스트", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("시간이 지나도 사라지지 않고, X를 누르면 닫힌다", () => {
+    renderPinnedToastPage();
+
+    clickButton("connection 끊김 고정");
+    advanceTimers(CAUTION_DURATION_MS * 10);
+
+    expect(getShownMessages()).toEqual([PINNED_LOST.message]);
+
+    closePinnedToast();
+
+    expect(getShownMessages()).toHaveLength(0);
+    expect(getLeavingMessages()).toHaveLength(0);
+  });
+
+  it("X만 클릭을 받고, 목록이 덮은 자리의 클릭은 가리지 않는다", () => {
+    renderPinnedToastPage();
+
+    clickButton("connection 끊김 고정");
+
+    expect(getToastList()).toHaveStyle({ pointerEvents: "none" });
+    expect(screen.getByRole("button", { name: CLOSE_TOAST })).toHaveStyle({
+      pointerEvents: "auto",
+    });
+  });
+
+  it("일반 토스트에는 X가 없다", () => {
+    renderPinnedToastPage();
+
+    clickShow(SAVED);
+
+    expect(
+      screen.queryByRole("button", { name: CLOSE_TOAST }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("낭독기가 읽도록 알림 역할을 준다", () => {
+    renderPinnedToastPage();
+
+    clickButton("connection 끊김 고정");
+
+    expect(screen.getByRole("status")).toHaveTextContent(PINNED_LOST.message);
+  });
+
+  it("일반 토스트가 쌓여 4번째가 와도 밀려나지 않고, 가장 오래된 일반 토스트가 빠진다", () => {
+    renderPinnedToastPage();
+
+    clickButton("connection 끊김 고정");
+    clickShow(SAVED);
+    clickShow(COPIED);
+    clickShow(SYNCED);
+
+    expect(getShownMessages()).toEqual([PINNED_LOST.message, COPIED, SYNCED]);
+  });
+
+  it("일반 토스트가 3개 떠 있을 때 띄워도 떠 있는 토스트는 3개다", () => {
+    renderPinnedToastPage();
+
+    clickShow(SAVED);
+    clickShow(COPIED);
+    clickShow(SYNCED);
+    clickButton("connection 끊김 고정");
+
+    expect(getShownMessages()).toEqual([COPIED, SYNCED, PINNED_LOST.message]);
+  });
+
+  it("값이 바뀌면 쌓지 않고 문구를 바꾼다", () => {
+    renderPinnedToastPage();
+
+    clickButton("connection 끊김 고정");
+    clickButton("connection 끝내는 중 고정");
+
+    expect(getShownMessages()).toEqual([PINNED_ENDING.message]);
+    expect(getLeavingMessages()).toHaveLength(0);
+  });
+
+  it("X로 닫은 뒤 값이 그대로면 다시 띄우지 않고, 값이 바뀌면 다시 띄운다", () => {
+    renderPinnedToastPage();
+
+    clickButton("connection 끊김 고정");
+    closePinnedToast();
+    clickButton("connection 끊김 고정");
+
+    expect(getShownMessages()).toHaveLength(0);
+
+    clickButton("connection 끝내는 중 고정");
+
+    expect(getShownMessages()).toEqual([PINNED_ENDING.message]);
+  });
+
+  it("값이 없어지면 닫히고, 다시 생기면 띄운다", () => {
+    renderPinnedToastPage();
+
+    clickButton("connection 끊김 고정");
+    clickButton("connection 고정 풀기");
+    advanceTimers(LEAVE_DURATION_MS);
+
+    expect(getShownMessages()).toHaveLength(0);
+    expect(getLeavingMessages()).toHaveLength(0);
+
+    clickButton("connection 끊김 고정");
+
+    expect(getShownMessages()).toEqual([PINNED_LOST.message]);
+  });
+
+  it("X로 닫은 뒤에도 값이 없어졌다 다시 생기면 띄운다", () => {
+    renderPinnedToastPage();
+
+    clickButton("connection 끊김 고정");
+    closePinnedToast();
+    clickButton("connection 고정 풀기");
+    clickButton("connection 끊김 고정");
+
+    expect(getShownMessages()).toEqual([PINNED_LOST.message]);
+  });
+
+  it("이름이 다른 고정 토스트의 값이 없어져도 남는다", () => {
+    renderPinnedToastPage();
+
+    clickButton("connection 끊김 고정");
+    clickButton("otherTab 끝내는 중 고정");
+    clickButton("otherTab 고정 풀기");
+    advanceTimers(LEAVE_DURATION_MS);
+
+    expect(getShownMessages()).toEqual([PINNED_LOST.message]);
+  });
+});
 
 describe("ToastProvider 화면 이동", () => {
   beforeEach(() => {
@@ -610,6 +795,23 @@ describe("ToastProvider 화면 이동", () => {
 
     expect(screen.getByText(WORKSPACE_HOME_TEXT)).toBeInTheDocument();
     expect(within(getToastList()).queryByText(SAVED)).not.toBeInTheDocument();
+  });
+
+  it("고정 토스트는 독 유무가 바뀌어도 남고, 일반 토스트만 지워진다", async () => {
+    const { router } = renderRoutes(WORKSPACE_HOME_PATH);
+
+    await clickAndSettle("connection 끊김 고정");
+    await clickAndSettle(`${SAVED} 알리기`);
+    await clickAndSettle("로그인으로 이동");
+
+    expect(screen.getByText(LOGIN_TEXT)).toBeInTheDocument();
+    expect(within(getToastList()).getByText(PINNED_LOST.message)).toBeVisible();
+    expect(within(getToastList()).queryByText(SAVED)).not.toBeInTheDocument();
+
+    await act(() => router.navigate(WORKSPACE_HOME_PATH));
+
+    expect(screen.getByTestId("dock-area")).toContainElement(getToastList());
+    expect(within(getToastList()).getByText(PINNED_LOST.message)).toBeVisible();
   });
 
   it("[공통 UI 규칙·화면이 바뀌면] 같은 레이아웃 안에서 이동하면 토스트가 남는다", async () => {
