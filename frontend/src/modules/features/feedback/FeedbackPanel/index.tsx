@@ -86,8 +86,8 @@ export default function FeedbackPanel({ onClose }: FeedbackPanelProps) {
 
       <Notice>
         <p>
-          닉네임, 지금 보고 있는 화면 주소와 최근 사용 기록이 함께 전달돼요.
-          회의 내용이나 개인 정보는 적지 말아 주세요.
+          지금 보고 있는 화면 주소와 최근 사용 기록이 함께 전달돼요. 회의
+          내용이나 개인 정보는 적지 말아 주세요.
         </p>
         <p>답장은 바로 오지 않아요. 팀이 평일에 모아서 확인해요.</p>
       </Notice>

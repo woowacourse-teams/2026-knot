@@ -138,16 +138,6 @@ describe("FeedbackPanel", () => {
       expect(screen.getByRole("radio", { name: "불편해요" })).toHaveFocus();
     });
 
-    it("닉네임이 함께 전달된다고 안내한다", () => {
-      renderPanel();
-
-      expect(
-        screen.getByText(
-          "닉네임, 지금 보고 있는 화면 주소와 최근 사용 기록이 함께 전달돼요. 회의 내용이나 개인 정보는 적지 말아 주세요.",
-        ),
-      ).toBeInTheDocument();
-    });
-
     it("X를 누르면 패널을 닫는다", () => {
       const { onClose } = renderPanel();
 
