@@ -54,3 +54,14 @@ export const clearLastConversationId = (workspaceId: string) => {
     // 비울 수 없어도 화면 이동은 그대로 해요
   }
 };
+
+/** 로그아웃하면 불러 이 탭에 남은 모든 워크스페이스의 대화를 지워요(AUTH-R20) */
+export const clearAllLastConversationIds = () => {
+  try {
+    Object.keys(sessionStorage)
+      .filter((key) => key.startsWith(LAST_CONVERSATION_KEY_PREFIX))
+      .forEach((key) => sessionStorage.removeItem(key));
+  } catch {
+    // 지우지 못해도 로그아웃은 이어 가요
+  }
+};

@@ -52,3 +52,8 @@ export const consumeAuthSessionExpired = () => {
 
   return true;
 };
+
+/** 로그아웃에 성공하면 불러 기록을 지워요. 뒤따르는 재발급 거절이 로그인 만료로 남지 않아요(AUTH-R21) */
+export const clearAuthSession = () => {
+  writeAuthSession(null);
+};

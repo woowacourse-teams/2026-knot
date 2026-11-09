@@ -9,6 +9,8 @@ const ME_URL = "http://localhost:3000/api/v1/auth/me";
 const NICKNAME_URL = "http://localhost:3000/api/v1/auth/nickname";
 const REFRESH_URL = "http://localhost:3000/api/v1/auth/refresh";
 const ACCEPT_URL = "http://localhost:3000/api/v1/invitations/accept";
+const LOGOUT_URL = "http://localhost:3000/api/v1/auth/logout";
+const WORKSPACES_URL = "http://localhost:3000/api/v1/workspaces";
 
 // axios(jsdom XHR)는 jar의 쿠키를 요청에 싣지 않아, fetch로 쿠키 헤더를 직접 실어 보내요
 const requestMe = (cookie?: string) =>
@@ -39,6 +41,9 @@ const requestAccept = (cookie?: string) =>
     },
     body: JSON.stringify({ credential: "X35D3S" }),
   });
+
+const requestWorkspaces = (cookie?: string) =>
+  fetch(WORKSPACES_URL, { headers: cookie === undefined ? {} : { cookie } });
 
 const memberCookie = `${MOCK_AUTH_COOKIE_NAME}=${MOCK_AUTH_STATUS.MEMBER}`;
 const onboardingCookie = `${MOCK_AUTH_COOKIE_NAME}=${MOCK_AUTH_STATUS.ONBOARDING}`;
@@ -106,6 +111,31 @@ describe("개발 브라우저 전용 인증 핸들러", () => {
       const response = await requestRefresh(memberCookie);
 
       expect(response.status).toBe(204);
+    });
+  });
+
+  describe("POST /api/v1/auth/logout", () => {
+    it("204로 답하고 로그인 쿠키를 지워 로그인 확인이 401이 된다", async () => {
+      document.cookie = `${memberCookie}; path=/`;
+
+      const response = await fetch(LOGOUT_URL, { method: "POST" });
+
+      expect(response.status).toBe(204);
+      expect(document.cookie).not.toContain(MOCK_AUTH_COOKIE_NAME);
+    });
+  });
+
+  describe("/api/v1/workspaces", () => {
+    it("로그인 쿠키가 없으면 401을 돌려준다", async () => {
+      const response = await requestWorkspaces();
+
+      expect(response.status).toBe(401);
+    });
+
+    it("member 쿠키가 있으면 기본 핸들러가 응답한다", async () => {
+      const response = await requestWorkspaces(memberCookie);
+
+      expect(response.status).toBe(200);
     });
   });
 
