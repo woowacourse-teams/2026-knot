@@ -173,7 +173,9 @@ const FEEDBACK_KIND = {
 /** 적은 내용의 최대 길이. Notion 글 칸 한 덩어리의 한도이고, 패널 입력창도 같은 길이로 막아요 */
 const MAX_FEEDBACK_CONTENT_LENGTH = 2000;
 const MAX_FEEDBACK_URL_LENGTH = 2000;
-/** 요청 본문의 최대 길이. 내용과 주소 둘을 다 채워도 넘지 않아요 */
+/** 닉네임의 최대 길이. 서버가 회원 닉네임에 두는 한도와 같아요 */
+const MAX_FEEDBACK_NICKNAME_LENGTH = 20;
+/** 요청 본문의 최대 길이. 내용, 주소 둘, 닉네임을 다 채워도 넘지 않아요 */
 const MAX_FEEDBACK_BODY_LENGTH = 8 * 1024;
 const MAX_FEEDBACK_TITLE_LENGTH = 60;
 /** 원문 링크로 받는 PostHog 리플레이 주소. `src/index.tsx`의 `ui_host`와 맞춰요 */
@@ -186,6 +188,7 @@ interface Feedback {
   content: string;
   pageUrl: string;
   replayUrl?: string;
+  nickname?: string;
 }
 
 const isShortString = (value: unknown, maxLength: number): value is string =>
@@ -212,7 +215,10 @@ const readFeedback = (text: string, origin: string): Feedback | null => {
   }
   if (typeof body !== "object" || body === null) return null;
 
-  const { type, content, pageUrl, replayUrl } = body as Record<string, unknown>;
+  const { type, content, pageUrl, replayUrl, nickname } = body as Record<
+    string,
+    unknown
+  >;
   if (
     !isFeedbackType(type) ||
     !isShortString(content, MAX_FEEDBACK_CONTENT_LENGTH) ||
@@ -230,15 +236,28 @@ const readFeedback = (text: string, origin: string): Feedback | null => {
   ) {
     return null;
   }
+  // 없으면 받아요. 배포 직후 옛 탭은 닉네임 없이 보내고, 닉네임을 불러오지 못한 화면도 그래요
+  if (
+    nickname !== undefined &&
+    !isShortString(nickname, MAX_FEEDBACK_NICKNAME_LENGTH)
+  ) {
+    return null;
+  }
 
-  return { type, content, pageUrl, replayUrl };
+  return { type, content, pageUrl, replayUrl, nickname };
 };
 
 const toRichText = (content: string) =>
   content ? [{ text: { content } }] : [];
 
-/** 접수함에 한 줄로 넣을 Notion 페이지. 제목은 적은 내용의 첫 줄 앞부분이고, 닉네임은 적지 않아요 */
-const toNotionPage = ({ type, content, pageUrl, replayUrl }: Feedback) => {
+/** 접수함에 한 줄로 넣을 Notion 페이지. 제목은 적은 내용의 첫 줄 앞부분이고, 닉네임이 없으면 별칭 칸을 비워요 */
+const toNotionPage = ({
+  type,
+  content,
+  pageUrl,
+  replayUrl,
+  nickname,
+}: Feedback) => {
   const title =
     content.trim().split("\n")[0].slice(0, MAX_FEEDBACK_TITLE_LENGTH) ||
     "(내용 없음)";
@@ -253,6 +272,7 @@ const toNotionPage = ({ type, content, pageUrl, replayUrl }: Feedback) => {
       종류: { select: { name: FEEDBACK_KIND[type] } },
       내용: { rich_text: toRichText(content) },
       "사용 상황": { rich_text: toRichText(pageUrl) },
+      "팀이나 제보자 별칭": { rich_text: toRichText(nickname ?? "") },
       "원문 링크": { url: replayUrl ?? null },
       "접수 경로": { select: { name: "앱 내" } },
       "출처 유형": { select: { name: "사용자 제보" } },
@@ -264,7 +284,7 @@ const toNotionPage = ({ type, content, pageUrl, replayUrl }: Feedback) => {
 
 /**
  * @description 우리 화면에서 `/relay/f`로 보낸 피드백을 Notion 「사용자 피드백 접수함」에 한 줄로 넣어요(ADR 930)
- * @param request - 피드백 패널이 보낸 요청. 예: `POST /relay/f`, 본문 `{ type, content, pageUrl, replayUrl? }`
+ * @param request - 피드백 패널이 보낸 요청. 예: `POST /relay/f`, 본문 `{ type, content, pageUrl, replayUrl?, nickname? }`
  * @param env - Worker 바인딩. Notion 토큰은 `env.NOTION_FEEDBACK_TOKEN`이에요
  * @returns 넣었으면 201, Notion이 거절하면 Notion의 응답 코드 그대로
  * @example

@@ -1,8 +1,11 @@
+import { GetMeResponseDto } from "@api/dto/auth";
 import {
   GetReleaseNotesResponseDto,
   ReleaseNoteItemDto,
 } from "@api/dto/releaseNote";
 import { GetWorkspacesResponseDto } from "@api/dto/workspace";
+import { FEEDBACK_RELAY_PATH } from "@api/fetch/relay/f";
+import { meResponse } from "@api/mock/responses/auth";
 import {
   hiddenReleaseNote,
   imageReleaseNoteItems,
@@ -17,7 +20,7 @@ import { expect, test, type Page } from "@playwright/test";
  *
  * 워크스페이스 화면 어디서나 GNB 오른쪽 버튼으로 새 소식과 피드백 보내기 메뉴를 열고,
  * 피드백 패널에서 유형을 골라 보내는 플로우를 확인해요. 휴대폰에서는 사이드바 맨 아래 「피드백」으로 시트를 열어요.
- * 피드백 저장(`/relay/f`)은 dev 서버의 msw mock이 받은 것처럼만 응답해요(`API_MOCKING`).
+ * 피드백 저장(`/relay/f`)은 dev 서버의 msw mock이 받은 것처럼만 응답해요(`API_MOCKING`). 접수함 칸은 여기서 보지 못해 보낸 본문까지 확인하고, Worker 검사와 저장은 `src/worker/relay/test.ts`가 봐요.
  * 새 소식 노트(`/relay/n`)도 msw mock이 주고, 읽음은 이 기기 localStorage에만 남아요.
  * 노트의 github.com 사진은 msw mock이 주소에 적힌 크기(`news-1596x1386`)의 사진으로 돌려주고, 크기가 없는 주소는 404예요.
  * 기본은 이미 다 본 사용자(`playwright.config.ts`의 storageState)라, 안 읽은 소식은 테스트에서 따로 만들어요.
@@ -40,6 +43,10 @@ const LAST_SEEN_NOTE_ID_KEY = "knot.releaseNote.lastSeenId";
 const READ_BUTTON_NAME = "새 소식과 피드백";
 const UNREAD_BUTTON_NAME = "새 소식과 피드백, 읽지 않은 소식 있음";
 const PANEL_DESCRIPTION = "새로 생기거나 달라진 점을 모아 둬요";
+const NICKNAME = new GetMeResponseDto(meResponse).nickname;
+const AUTH_ME_PATH = "/api/v1/auth/me";
+const FEEDBACK_FAILED_MESSAGE =
+  "보내지 못했어요. 적은 내용은 그대로 있으니 다시 보내 주세요.";
 
 /** 「소식과 피드백」 버튼. 안 읽은 소식이 있으면 이름 뒤에 안내가 붙어요 */
 const getMenuButton = (page: Page) =>
@@ -109,6 +116,63 @@ const openFeedbackPanel = async (page: Page) => {
   await page.getByRole("button", { name: "피드백 보내기" }).click();
   await expect(getFeedbackPanel(page)).toBeVisible();
 };
+
+/** 패널의 「보내기」나 「다시 보내기」를 눌러요 */
+const clickSendButton = (page: Page) =>
+  getFeedbackPanel(page).getByRole("button", { name: "보내기" }).click();
+
+/** 홈 인사말로 닉네임을 불러온 것을 확인해요. 패널도 같은 회원 정보를 써서, 이 뒤에 보내면 닉네임이 실려요 */
+const waitForNickname = (page: Page) =>
+  expect(page.getByText(`반가워요, ${NICKNAME} 님`)).toBeVisible();
+
+/** 피드백 저장 요청의 본문을 모아요. mock 워커가 응답해도 요청은 페이지에서 보여요 */
+const collectFeedbackBodies = (page: Page) => {
+  const bodies: Record<string, unknown>[] = [];
+
+  page.on("request", (request) => {
+    if (new URL(request.url()).pathname === FEEDBACK_RELAY_PATH) {
+      bodies.push(request.postDataJSON());
+    }
+  });
+
+  return bodies;
+};
+
+/**
+ * 주소에 `path`가 든 요청을 닿지 않는 주소로 보내 `times`번 실패시켜요.
+ * mock 워커가 먼저 받는 요청은 page.route가 잡지 못해요
+ */
+const failRequests = (
+  page: Page,
+  path: string,
+  times = Number.MAX_SAFE_INTEGER,
+) =>
+  page.addInitScript(
+    ([failedPath, maxFailures]) => {
+      const open = XMLHttpRequest.prototype.open;
+      let failures = 0;
+
+      XMLHttpRequest.prototype.open = function (
+        this: XMLHttpRequest,
+        method: string,
+        url: string | URL,
+        ...rest: [boolean, string?, string?]
+      ) {
+        const shouldFail =
+          String(url).includes(String(failedPath)) &&
+          failures < Number(maxFailures);
+        if (shouldFail) failures += 1;
+
+        return open.call(
+          this,
+          method,
+          shouldFail ? "http://127.0.0.1:1/" : url,
+          ...rest,
+        );
+      } as typeof XMLHttpRequest.prototype.open;
+    },
+    [path, times],
+  );
 
 test.describe("소식과 피드백", () => {
   test("[NEWS-R3] 「소식과 피드백」을 누르면 「새 소식」과 「피드백 보내기」 메뉴가 열리고, 「새 소식」을 고르면 같은 자리에 새 소식 패널이 열린다", async ({
@@ -328,6 +392,114 @@ test.describe("소식과 피드백", () => {
     await expect(
       getFeedbackPanel(page).getByRole("textbox", { name: "내용" }),
     ).toHaveValue("문서 복사 버튼을 눌렀는데 표가 깨져요.");
+  });
+
+  test("[FEEDBACK-R9] 보내면 내 닉네임이 함께 가고, 내용을 비워 보내도 닉네임은 그대로 간다", async ({
+    page,
+  }) => {
+    const bodies = collectFeedbackBodies(page);
+    await openFeedbackPanel(page);
+    await waitForNickname(page);
+
+    await page.getByText("오류가 있어요", { exact: true }).click();
+    await getFeedbackPanel(page)
+      .getByRole("textbox", { name: "내용" })
+      .fill("QA 확인");
+    await clickSendButton(page);
+
+    await expect(getFeedbackPanel(page)).toBeHidden();
+    await expect(
+      page.getByText(TOAST_MESSAGES.FEEDBACK_SENT.message),
+    ).toBeVisible();
+
+    await getMenuButton(page).click();
+    await page.getByRole("button", { name: "피드백 보내기" }).click();
+    await page.getByText("좋았어요", { exact: true }).click();
+    await clickSendButton(page);
+
+    await expect(getFeedbackPanel(page)).toBeHidden();
+    expect(bodies).toMatchObject([
+      { content: "QA 확인", nickname: NICKNAME },
+      { content: "", nickname: NICKNAME },
+    ]);
+  });
+
+  test("[FEEDBACK-R9] 닉네임을 불러오지 못해도 「보내기」가 켜지고, 닉네임 없이 보내면 패널이 닫히며 완료 토스트가 뜬다", async ({
+    page,
+  }) => {
+    const bodies = collectFeedbackBodies(page);
+    await failRequests(page, AUTH_ME_PATH);
+    await openFeedbackPanel(page);
+
+    await page.getByText("오류가 있어요", { exact: true }).click();
+    await getFeedbackPanel(page)
+      .getByRole("textbox", { name: "내용" })
+      .fill("QA 확인 닉네임 없음");
+    await expect(
+      getFeedbackPanel(page).getByRole("button", { name: "보내기" }),
+    ).toBeEnabled();
+    await clickSendButton(page);
+
+    await expect(getFeedbackPanel(page)).toBeHidden();
+    await expect(
+      page.getByText(TOAST_MESSAGES.FEEDBACK_SENT.message),
+    ).toBeVisible();
+    expect(bodies).toHaveLength(1);
+    expect(bodies[0]).toMatchObject({ content: "QA 확인 닉네임 없음" });
+    expect(bodies[0]).not.toHaveProperty("nickname");
+  });
+
+  test("[FEEDBACK-R9] 패널에서 입력하거나 고를 수 있는 것은 유형과 내용뿐이라 닉네임을 고치거나 뺄 수 없다", async ({
+    page,
+  }) => {
+    await openFeedbackPanel(page);
+    const panel = getFeedbackPanel(page);
+
+    await expect(panel.getByRole("radio")).toHaveCount(4);
+    await expect(panel.getByRole("textbox")).toHaveCount(1);
+    await expect(panel.getByRole("textbox", { name: "내용" })).toBeVisible();
+    await expect(panel.getByRole("checkbox")).toHaveCount(0);
+    await expect(panel.getByRole("combobox")).toHaveCount(0);
+  });
+
+  test("[FEEDBACK-R7, FEEDBACK-R8, FEEDBACK-R9] 저장에 실패하면 패널을 닫지 않고 고른 유형과 적은 내용을 남기며, 「다시 보내기」에 성공하면 닉네임과 함께 한 번만 저장된다", async ({
+    page,
+  }) => {
+    const bodies = collectFeedbackBodies(page);
+    await failRequests(page, FEEDBACK_RELAY_PATH, 1);
+    await openFeedbackPanel(page);
+    await waitForNickname(page);
+    const panel = getFeedbackPanel(page);
+
+    await page.getByText("오류가 있어요", { exact: true }).click();
+    await panel
+      .getByRole("textbox", { name: "내용" })
+      .fill("QA 확인 저장 실패");
+    await clickSendButton(page);
+
+    await expect(panel.getByRole("alert")).toHaveText(FEEDBACK_FAILED_MESSAGE);
+    await expect(
+      panel.getByRole("button", { name: "다시 보내기" }),
+    ).toBeVisible();
+    await expect(
+      panel.getByRole("radio", { name: "오류가 있어요" }),
+    ).toBeChecked();
+    await expect(panel.getByRole("textbox", { name: "내용" })).toHaveValue(
+      "QA 확인 저장 실패",
+    );
+    expect(bodies).toHaveLength(0);
+
+    await clickSendButton(page);
+
+    await expect(panel).toBeHidden();
+    await expect(
+      page.getByText(TOAST_MESSAGES.FEEDBACK_SENT.message),
+    ).toBeVisible();
+    expect(bodies).toHaveLength(1);
+    expect(bodies[0]).toMatchObject({
+      content: "QA 확인 저장 실패",
+      nickname: NICKNAME,
+    });
   });
 
   test.describe("휴대폰", () => {
