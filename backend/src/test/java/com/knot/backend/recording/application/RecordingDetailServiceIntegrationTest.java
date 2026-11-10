@@ -409,13 +409,13 @@ class RecordingDetailServiceIntegrationTest {
                 .update();
     }
 
-    // 실제 30초를 기다리지 않도록 녹음의 모든 시각을 같은 만큼 과거로 옮겨 신호가 끊긴 상태를 만든다
+    // 실제 30분을 기다리지 않도록 녹음의 모든 시각을 같은 만큼 과거로 옮겨 끊김 유예가 지난 상태를 만든다
     private void disconnect(long recordingId) {
         jdbcClient.sql("""
                 UPDATE recording_sessions
-                SET started_at = started_at - INTERVAL '5 minutes',
-                    current_interval_started_at = current_interval_started_at - INTERVAL '5 minutes',
-                    last_seen_at = last_seen_at - INTERVAL '5 minutes'
+                SET started_at = started_at - INTERVAL '35 minutes',
+                    current_interval_started_at = current_interval_started_at - INTERVAL '35 minutes',
+                    last_seen_at = last_seen_at - INTERVAL '35 minutes'
                 WHERE id = :recordingId
                 """)
                 .param(

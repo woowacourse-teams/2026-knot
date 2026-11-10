@@ -26,10 +26,12 @@ public interface RecordingHeartbeatApi {
     // @formatter:off
     @Operation(
             summary = "녹음 생존 신호",
-            description = "녹음을 시작한 최초 탭이 10초마다 보낸다. 시작 때의 tabId와 controlToken으로 증명한다. "
-                    + "서버는 신호를 반영하기 전에 마지막 유효 신호부터 30초가 지났는지 먼저 판정하고, 지났으면 "
-                    + "마지막 신호 + 30초를 종료 시각으로 CONNECTION_EXPIRED 종료를 확정한다. 늦은 신호는 종료를 되돌리지 않는다. "
-                    + "이미 종료된 녹음도 200으로 종료 상태를 돌려주며 lastSeenAt을 갱신하지 않는다",
+            description = "녹음 탭이 10초마다 보낸다. 현재 녹음 탭 증명(tabId·controlToken, 이어 받기로 바뀌었으면 바뀐 값)으로 증명한다. "
+                    + "생존 신호는 신호·일시정지·이어서 녹음·조각 예약·조각 완료 확인·이어 받기다. "
+                    + "서버는 신호를 반영하기 전에 마지막 생존 시각부터 끊김 유예(기본 30분)가 지났는지 먼저 판정하고, 지났으면 "
+                    + "마지막 생존 시각을 끝난 시각으로 CONNECTION_EXPIRED 종료를 확정한다. 2시간 상한에 먼저 닿았으면 MAX_DURATION이다. "
+                    + "늦은 신호는 종료를 되돌리지 않는다. 이미 끝난 녹음도 200으로 종료 상태를 돌려주며 lastSeenAt을 갱신하지 않는다. "
+                    + "connectionStatus는 응답 시각으로 계산하며 진행 중 녹음의 신호 응답은 CONNECTED다",
             parameters = @Parameter(
                     name = OpenApiConfig.CSRF_TOKEN_HEADER_NAME,
                     in = ParameterIn.HEADER,

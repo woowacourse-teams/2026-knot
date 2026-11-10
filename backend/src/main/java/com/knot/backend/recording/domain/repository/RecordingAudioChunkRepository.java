@@ -14,4 +14,6 @@ public interface RecordingAudioChunkRepository {
     );
 
     List<RecordingAudioChunk> findAllByRecordingIdOrderBySequence(long recordingId);
+
+    void deleteAll(List<RecordingAudioChunk> values);
 }

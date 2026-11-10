@@ -16,7 +16,8 @@ interface UseRecordingMaxDurationParams {
  * `beforeMs`를 주면 상한보다 그만큼 앞선 순간을 알려요. 예: 15분 전 안내
  *
  * 일시정지 중에는 시간이 흐르지 않아 기다리지 않고, 이어서 녹음하거나 녹음한 시간이 서버 값으로 맞춰지면
- * 남은 시간으로 다시 기다려요. 한 번 알린 뒤에는 녹음한 시간이 다시 맞춰져 남은 시간이 생길 때만 다시 알려요.
+ * 남은 시간으로 다시 기다려요. 알릴 시점을 이미 지난 시간으로 맞춰지거나 이어서 녹음하면 바로 다시 알리므로,
+ * 한 번만 알리려면 부르는 쪽이 막아요. 상한을 채운 시간으로 맞춰지면 알리지 않아요.
  *
  * 콜백은 항상 가장 최근에 전달된 함수가 실행돼요.
  */
@@ -37,15 +38,14 @@ const useRecordingMaxDuration = ({
     // TODO: 너무 useRecordingStore의 내부 로직에 의존적인 코드임. 수정 필요함.
     if (resumedAt === null) return;
 
-    const reachedAtMs = MAX_RECORDING_DURATION_MS - beforeMs;
-
     // 상한을 이미 채운 시간으로 맞춰졌다면 기다리지 않아요. 바로 알리면 알림과 시간 맞추기가 쉬지 않고 되풀이돼요
-    if (accumulatedMs >= reachedAtMs) return;
+    if (accumulatedMs >= MAX_RECORDING_DURATION_MS) return;
 
+    const reachedAtMs = MAX_RECORDING_DURATION_MS - beforeMs;
     const remainingMs = reachedAtMs - accumulatedMs - (Date.now() - resumedAt);
 
     // 남은 시간이 딱 지날 때 콜백을 실행시키도록 한다.
-    // 맞춘 뒤 이 Effect가 늦게 실행돼 남은 시간을 이미 넘겼다면, 아직 알리지 않았으므로 바로 알려요
+    // 서버 시간으로 맞춰 알릴 시점을 이미 넘겼거나, 맞춘 뒤 이 Effect가 늦게 실행돼 넘겼다면 바로 알려요
     const timer = setTimeout(
       () => onReachedRef.current(),
       Math.max(remainingMs, 0),

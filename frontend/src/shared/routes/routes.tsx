@@ -22,7 +22,7 @@ import WorkspaceCodePage from "@pages/workspace/code";
 import WorkspaceCreatePage from "@pages/workspace/create";
 import RecordingHeartbeat from "@widgets/recording/RecordingHeartbeat";
 import WorkspaceAnalytics from "@/shared/components/domain/WorkspaceAnalytics";
-import type { RouteObject } from "react-router";
+import { Outlet, type RouteObject } from "react-router";
 
 import AuthGuard from "./AuthGuard";
 import DocumentsRedirect from "./DocumentsRedirect";
@@ -51,7 +51,7 @@ import RecordingGuard from "./RecordingGuard";
  * 가드는 레이아웃 안쪽에 둬요. 판정 중 로딩과 실패 안내가 로고가 있는 자리에서 보여야
  * 화면이 비어 보이지 않기 때문이에요.
  */
-export const routes: RouteObject[] = [
+const screenRoutes: RouteObject[] = [
   // 홈 — 로그인하지 않은 사람은 화면 전체를 쓰는 랜딩을, 로그인한 사람은 진입 분기를 거쳐 워크스페이스로
   {
     path: PATH_ROUTE.HOME,
@@ -124,14 +124,11 @@ export const routes: RouteObject[] = [
   // GNB — 워크스페이스 입장 후
   {
     handle: { hasDock: true },
-    // 녹음은 레이아웃 안의 어느 화면에서나 이어지므로, 생존 신호가 끊기지 않게 레이아웃째 감싸요.
-    // 사용 기록도 화면 코드와 섞이지 않게 레이아웃 바깥에서 감싸요
+    // 사용 기록은 화면 코드와 섞이지 않게 레이아웃 바깥에서 감싸요
     element: (
-      <RecordingHeartbeat>
-        <WorkspaceAnalytics>
-          <WorkspaceLayout />
-        </WorkspaceAnalytics>
-      </RecordingHeartbeat>
+      <WorkspaceAnalytics>
+        <WorkspaceLayout />
+      </WorkspaceAnalytics>
     ),
     children: [
       {
@@ -193,5 +190,20 @@ export const routes: RouteObject[] = [
   {
     path: "*",
     element: <NotFoundPage />,
+  },
+];
+
+/**
+ * 녹음은 워크스페이스 밖 화면으로 옮겨 가도 이어지므로(STT-R5), 생존 신호가 끊기지 않게 모든 화면을 한 번에 감싸요.
+ * 화면을 옮겨도 다시 그려지지 않아 10초 주기도 끊기지 않아요. 녹음은 로그인한 뒤에만 있어, 로그인 전 화면에서는 신호를 보내지 않아요
+ */
+export const routes: RouteObject[] = [
+  {
+    element: (
+      <RecordingHeartbeat>
+        <Outlet />
+      </RecordingHeartbeat>
+    ),
+    children: screenRoutes,
   },
 ];

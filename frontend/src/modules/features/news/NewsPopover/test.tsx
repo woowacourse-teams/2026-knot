@@ -5,6 +5,7 @@ import {
 import { FEEDBACK_RELAY_PATH } from "@api/fetch/relay/f";
 import { RELEASE_NOTES_RELAY_PATH } from "@api/fetch/relay/n";
 import {
+  hiddenReleaseNote,
   imageReleaseNoteItems,
   releaseNotesResponse,
 } from "@api/mock/responses/releaseNote";
@@ -210,6 +211,14 @@ describe("NewsPopover", () => {
       expect(localStorage.getItem(LAST_SEEN_NOTE_ID_KEY)).toBeNull();
     });
 
+    it("노트가 있어도 3일이 지났거나 숨겨 패널에 보일 노트가 없으면 저절로 열지 않고 안 읽음도 알리지 않는다", async () => {
+      const { button } = await renderPopover([hiddenReleaseNote]);
+
+      expect(button).toHaveAttribute("aria-expanded", "false");
+      expect(button).toHaveAccessibleName(READ_BUTTON_NAME);
+      expect(localStorage.getItem(LAST_SEEN_NOTE_ID_KEY)).toBeNull();
+    });
+
     it("노트를 받지 못하면 저절로 열지 않고, 새 소식 패널은 빈 상태를 보여 준다", async () => {
       mockServer.use(
         http.get(
@@ -298,6 +307,31 @@ describe("NewsPopover", () => {
 
       expect(button).toHaveAccessibleName(UNREAD_BUTTON_NAME);
       expect(localStorage.getItem(LAST_SEEN_NOTE_ID_KEY)).toBe(NOTES[1].id);
+    });
+
+    it("마지막으로 연 노트가 패널에서 빠져도 그 뒤에 나온 노트는 안 읽음으로 알리고, 그보다 앞선 노트에는 NEW를 붙이지 않는다", async () => {
+      localStorage.setItem(LAST_SEEN_NOTE_ID_KEY, hiddenReleaseNote.id);
+
+      const { button } = await renderOpenMenu();
+
+      expect(button).toHaveAccessibleName(UNREAD_BUTTON_NAME);
+
+      fireEvent.click(getNewsMenuItem());
+
+      // 빠진 노트보다 위에 있는 맨 위 노트만 안 읽음이에요
+      expect(screen.getAllByText("NEW")).toHaveLength(NOTES[0].items.length);
+    });
+
+    it("마지막으로 연 뒤에 올라온 노트가 숨겨져 패널에 보이지 않으면 안 읽음을 알리지 않는다", async () => {
+      localStorage.setItem(LAST_SEEN_NOTE_ID_KEY, NOTES[0].id);
+
+      const { button } = await renderOpenMenu([
+        { ...hiddenReleaseNote, id: "pr-1070" },
+        ...NOTES,
+      ]);
+
+      expect(button).toHaveAccessibleName(READ_BUTTON_NAME);
+      expect(screen.queryByText("NEW")).not.toBeInTheDocument();
     });
 
     it("마지막으로 연 노트가 목록에 없으면 모두 읽은 것으로 본다", async () => {
@@ -670,6 +704,19 @@ describe("NewsPopover", () => {
     it("노트가 없으면 빈 상태를 보여 준다", async () => {
       await renderOpenPanel([]);
 
+      expect(screen.getByText("아직 새 소식이 없어요")).toBeInTheDocument();
+      expect(
+        screen.getByText("바뀐 점이 생기면 여기에 모아 둘게요"),
+      ).toBeInTheDocument();
+      expect(screen.queryByRole("listitem")).not.toBeInTheDocument();
+    });
+
+    it("패널에서 빠진 노트는 날짜 묶음도 없이 건너뛰고, 보일 노트가 없으면 빈 상태를 보여 준다", async () => {
+      await renderOpenPanel([hiddenReleaseNote]);
+
+      expect(
+        screen.queryByText(formatReleaseDate(hiddenReleaseNote.releasedAt)),
+      ).not.toBeInTheDocument();
       expect(screen.getByText("아직 새 소식이 없어요")).toBeInTheDocument();
       expect(
         screen.getByText("바뀐 점이 생기면 여기에 모아 둘게요"),

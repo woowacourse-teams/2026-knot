@@ -2,16 +2,12 @@ import useDocumentQuery from "@api/queries/useDocumentQuery";
 import useRecordingDocumentQuery from "@api/queries/useRecordingDocumentQuery";
 import useWorkspaceQuery from "@api/queries/useWorkspaceQuery";
 import { MEDIA_QUERY } from "@constants/breakpoint";
-import {
-  DOCUMENT_FROM_PARAM,
-  DOCUMENT_FROM_RECORDING,
-} from "@constants/document";
 import styled from "@emotion/styled";
 import useWorkspaceNav from "@hooks/domain/workspace/useWorkspaceNav";
 import Avatar from "@primitives/ui/Avatar";
 import Skeleton from "@primitives/ui/Skeleton";
 import { PATH_ROUTE } from "@routes/PATH_ROUTE";
-import { useMatch, useParams, useSearchParams } from "react-router";
+import { useMatch, useParams } from "react-router";
 
 import ChevronRightIcon from "@/assets/icons/chevronRight.svg";
 
@@ -22,7 +18,7 @@ const TAB_NAMES = ["홈", "탐색", "문서"];
  * GNB 왼쪽 패널 버튼 옆에서 지금 있는 워크스페이스와 탭을 알려 주는 위치 표시(WS-R15).
  *
  * 워크스페이스 아이콘과 이름 뒤에 지금 탭 이름을 `›`로 이어요. 문서 하나를 보는 화면에서는 `문서 › 문서 제목`, 녹음 문서 화면에서는 `문서 › 녹음 제목`이에요.
- * 녹음, 녹음 직후 문서 확인(`?from=recording`)처럼 탭이 아닌 화면과 1024 미만에서는 아이콘과 워크스페이스 이름만 보여요.
+ * 녹음처럼 탭이 아닌 화면과 1024 미만에서는 아이콘과 워크스페이스 이름만 보여요.
  * 767 이하에서는 GNB 왼쪽에 자리가 없어 위치 표시를 숨겨요.
  * 보여 주기만 하고 눌러도 아무 일도 없어요. 워크스페이스 전환은 사이드바 위쪽 이름에서 해요(WS-07).
  * 이름은 200px까지, 문서 제목은 남은 자리만큼 한 줄로 두고 넘치면 말줄임해요.
@@ -32,13 +28,10 @@ const TAB_NAMES = ["홈", "탐색", "문서"];
  */
 export default function WorkspaceLocation() {
   const params = useParams();
-  const [searchParams] = useSearchParams();
   const workspaceId = Number(params.workspaceId);
   const isDocumentScreen = params.documentId !== undefined;
   const isRecordingDocumentScreen =
     useMatch(PATH_ROUTE.RECORDING_DOCUMENT) !== null;
-  const isFromRecording =
-    searchParams.get(DOCUMENT_FROM_PARAM) === DOCUMENT_FROM_RECORDING;
   const { activeTabIndex } = useWorkspaceNav();
   const { data: workspace } = useWorkspaceQuery({ workspaceId });
   const { data: documentDetail, isError: isDocumentError } = useDocumentQuery({
@@ -53,8 +46,8 @@ export default function WorkspaceLocation() {
       isEnabled: isRecordingDocumentScreen,
     });
 
-  // 녹음처럼 탭이 아닌 화면은 자리가 -1이라 탭 이름이 없어요. 녹음 직후 문서 확인도 녹음의 이어지는 단계라 탭으로 보지 않아요
-  const tabName = isFromRecording ? undefined : TAB_NAMES[activeTabIndex];
+  // 녹음처럼 탭이 아닌 화면은 자리가 -1이라 탭 이름이 없어요
+  const tabName = TAB_NAMES[activeTabIndex];
   // 문서 하나나 녹음 문서를 보는 화면의 제목이에요. 아직 불러오는 중이면 undefined예요
   const screenTitle = isDocumentScreen
     ? documentDetail?.title

@@ -15,11 +15,9 @@ import {
 } from "@api/mock/responses/workspace";
 import { mockServer } from "@api/mock/server";
 import DockablePanel from "@composites/DockablePanel";
-import {
-  DOCUMENT_FROM_PARAM,
-  DOCUMENT_FROM_RECORDING,
-} from "@constants/document";
 import { ThemeProvider } from "@emotion/react";
+import { DialogProvider } from "@provider/context/dialogContext";
+import { ToastProvider } from "@provider/context/toastContext";
 import { theme } from "@provider/themeProvider";
 import { getRouterPath, PATH_ROUTE } from "@routes/PATH_ROUTE";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -134,10 +132,10 @@ const renderGnb = (initialPath = HOME_PATH) => {
   const router = createBrowserRouter([
     {
       element: (
-        <>
+        <ToastProvider>
           {element}
           <Outlet />
-        </>
+        </ToastProvider>
       ),
       children: [
         PATH_ROUTE.WORKSPACE_HOME,
@@ -156,7 +154,9 @@ const renderGnb = (initialPath = HOME_PATH) => {
   render(
     <ThemeProvider theme={theme}>
       <QueryClientProvider client={queryClient}>
-        <RouterProvider router={router} />
+        <DialogProvider>
+          <RouterProvider router={router} />
+        </DialogProvider>
       </QueryClientProvider>
     </ThemeProvider>,
   );
@@ -385,7 +385,7 @@ describe("WorkspaceGnb", () => {
     renderGnb();
 
     const right = screen.getByRole("button", { name: RIGHT_TEXT });
-    const avatar = screen.getByRole("img", { name: "내 프로필" });
+    const avatar = screen.getByRole("button", { name: "내 프로필" });
 
     expect(right.parentElement).toBe(avatar.parentElement);
     expect(right.compareDocumentPosition(avatar)).toBe(
@@ -519,10 +519,6 @@ describe("WorkspaceGnb 위치 표시", () => {
   it.each([
     { screenName: "녹음 화면", path: RECORDING_PATH },
     { screenName: "녹음 뒤 정리 중 화면", path: RECORDING_DOCUMENTS_PATH },
-    {
-      screenName: "녹음 직후 문서 확인 화면",
-      path: `${DOCUMENT_PATH}?${DOCUMENT_FROM_PARAM}=${DOCUMENT_FROM_RECORDING}`,
-    },
   ])(
     "[WS-QA-060] $screenName처럼 탭이 아닌 화면에서는 워크스페이스 이름만 보여준다",
     async ({ path }) => {

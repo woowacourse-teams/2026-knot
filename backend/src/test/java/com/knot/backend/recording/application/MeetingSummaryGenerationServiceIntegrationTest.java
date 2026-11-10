@@ -25,6 +25,8 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -90,6 +92,40 @@ class MeetingSummaryGenerationServiceIntegrationTest {
         MeetingSummaryGenerator generator = mock(MeetingSummaryGenerator.class);
         CountDownLatch started = new CountDownLatch(1);
         CountDownLatch finish = new CountDownLatch(1);
+        CountDownLatch renewed = new CountDownLatch(1);
+        ScheduledThreadPoolExecutor scheduler = new ScheduledThreadPoolExecutor(1) {
+            @Override
+            public ScheduledFuture<?> scheduleAtFixedRate(
+                    Runnable command,
+                    long initialDelay,
+                    long period,
+                    TimeUnit unit
+            ) {
+                assertThat(initialDelay).isEqualTo(30);
+                assertThat(period).isEqualTo(30);
+                assertThat(unit).isEqualTo(TimeUnit.SECONDS);
+                return super.scheduleAtFixedRate(() -> {
+                    try {
+                        if (!started.await(
+                                5,
+                                TimeUnit.SECONDS
+                        )) {
+                            throw new AssertionError("요약 생성이 시작되지 않았습니다");
+                        }
+                    } catch (InterruptedException exception) {
+                        Thread.currentThread()
+                                .interrupt();
+                        return;
+                    }
+                    command.run();
+                    renewed.countDown();
+                },
+                        1,
+                        TimeUnit.DAYS.toMillis(1),
+                        TimeUnit.MILLISECONDS
+                );
+            }
+        };
         when(generator.generate(anyString())).thenAnswer(invocation -> {
             started.countDown();
             if (!finish.await(
@@ -102,29 +138,44 @@ class MeetingSummaryGenerationServiceIntegrationTest {
         });
         MeetingSummaryWorker worker = new MeetingSummaryWorker(
                 service,
-                generator
+                generator,
+                scheduler
         );
         try (ExecutorService executor = Executors.newSingleThreadExecutor()) {
-            Future<?> execution = executor.submit(() -> worker.process(task));
+            when(clock.instant()).thenReturn(NOW.plusSeconds(120));
+            try {
+                Future<?> execution = executor.submit(() -> worker.process(task));
+                assertThat(
+                        started.await(
+                                5,
+                                TimeUnit.SECONDS
+                        )
+                ).isTrue();
+                assertThat(
+                        renewed.await(
+                                5,
+                                TimeUnit.SECONDS
+                        )
+                ).isTrue();
+                when(clock.instant()).thenReturn(NOW.plusSeconds(181));
+                assertThat(service.claim(recording)).isEmpty();
+                finish.countDown();
+                execution.get(
+                        10,
+                        TimeUnit.SECONDS
+                );
+                assertThat(row(recording).get("status")).isEqualTo("SUCCEEDED");
+            } finally {
+                finish.countDown();
+                worker.shutdown();
+            }
+        } finally {
             assertThat(
-                    started.await(
+                    scheduler.awaitTermination(
                             5,
                             TimeUnit.SECONDS
                     )
             ).isTrue();
-            when(clock.instant()).thenReturn(NOW.plusSeconds(120));
-            Thread.sleep(32_000);
-            when(clock.instant()).thenReturn(NOW.plusSeconds(181));
-            assertThat(service.claim(recording)).isEmpty();
-            finish.countDown();
-            execution.get(
-                    10,
-                    TimeUnit.SECONDS
-            );
-            assertThat(row(recording).get("status")).isEqualTo("SUCCEEDED");
-        } finally {
-            finish.countDown();
-            worker.shutdown();
         }
     }
 

@@ -1,5 +1,7 @@
 package com.knot.backend.recording.presentation;
 
+import com.knot.backend.testsupport.RecordingConnectionPolicyFixture;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.hasItems;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -791,7 +793,8 @@ class RecordingStartAcceptanceTest {
                     .orElseThrow();
             session.end(
                     session.getStartedAt()
-                            .plusSeconds(60)
+                            .plusSeconds(60),
+                    RecordingConnectionPolicyFixture.DEFAULT
             );
             recordingSessionRepository.save(session);
         });

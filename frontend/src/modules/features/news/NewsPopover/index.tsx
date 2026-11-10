@@ -33,6 +33,7 @@ interface NewsPopoverProps {
  * 열려 있는 동안 버튼은 채워진 모양이고, 닫혀 있을 때 올리거나 포커스하면 툴팁 「새 소식과 피드백」을 보여 줘요.
  *
  * 노트는 프론트 Worker가 Notion 새 소식 DB에서 읽어 와요(ADR 956). 받지 못하면 새 소식 패널은 빈 상태를 보여 줘요.
+ * 최근 3일 안에 배포한 노트와 Notion에서 「항상 보이기」로 남긴 노트만 보이고, 점과 NEW, 저절로 열기도 보이는 노트만 봐요(NEWS-R15).
  * 이 기기에서 새 소식을 한 번도 열지 않은 사용자에게는 노트를 받은 뒤 메뉴 없이 새 소식 패널을 저절로 열어 줘요(NEWS-R6).
  * 안 읽은 새 소식이 있으면 버튼 오른쪽 위에 점을 켜고 aria-label에 알려요. 새 소식 패널을 열면 꺼요(NEWS-R1, NEWS-R2).
  * 휴대폰에서는 피드백을 사이드바에서 열어서(FEEDBACK-R2), 누르면 메뉴 없이 새 소식 패널을 바로 열어요.
@@ -40,7 +41,10 @@ interface NewsPopoverProps {
 export default function NewsPopover({ renderFeedbackPanel }: NewsPopoverProps) {
   const { data, isPending } = useReleaseNotesQuery();
   const notes = data?.notes ?? [];
-  const { isAutoOpen, unreadNoteIds, markAsSeen } = useLastSeenNote({ notes });
+  const { isAutoOpen, unreadNoteIds, markAsSeen } = useLastSeenNote({
+    notes,
+    noteIds: data?.noteIds ?? [],
+  });
   const hasUnreadNews = unreadNoteIds.length > 0;
   const { isMatched: isMobile } = useMediaQuery(SCREEN_CONDITION.mobile);
   const { isSendingFeedback } = useIsSendingFeedback();
@@ -92,7 +96,7 @@ const Tooltip = styled.span`
   position: absolute;
   top: calc(100% + 0.5rem); /* 8px */
   right: 0;
-  z-index: 30; /* 화면 위에 떠 있는 패널(20)보다 위에 떠요 */
+  z-index: 28; /* 화면 위에 떠 있는 패널(20)보다 위, 열린 팝오버(29)보다 아래에 떠요 */
   display: none;
   padding: 0.375rem 0.625rem; /* 6px 10px */
   border-radius: 0.375rem; /* 6px */

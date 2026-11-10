@@ -141,4 +141,28 @@ export const devScenarioHandlers = [
     }
     return HttpResponse.json(failedResponse(currentRecording));
   }),
+  // 진행 중인 녹음을 고르면 그 녹음의 상세도 진행 중이라고 답해, 새로고침 뒤 이어서 녹음을 볼 수 있어요
+  http.get(
+    "*/api/v1/workspaces/:workspaceId/recordings/:recordingId",
+    ({ params }) => {
+      const { currentRecording } = readMockScenario();
+      const isInProgress =
+        currentRecording === "recording" || currentRecording === "paused";
+
+      if (
+        !isInProgress ||
+        Number(params.recordingId) !== currentRecordingResponse.recordingId
+      ) {
+        return undefined;
+      }
+
+      return HttpResponse.json({
+        status: STATUS_BY_SCENARIO[currentRecording],
+        elapsedMillis: currentRecordingResponse.elapsedMillis,
+        endedAt: null,
+        endReason: null,
+        audioUploadStatus: null,
+      });
+    },
+  ),
 ];

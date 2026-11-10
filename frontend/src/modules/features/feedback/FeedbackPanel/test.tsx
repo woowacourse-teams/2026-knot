@@ -1,5 +1,9 @@
+import { GetMeResponseDto } from "@api/dto/auth";
+import { AUTH_ME_API_PATH } from "@api/fetch/api/v1/auth/me";
 import { FEEDBACK_RELAY_PATH } from "@api/fetch/relay/f";
+import { meResponse } from "@api/mock/responses/auth";
 import { mockServer } from "@api/mock/server";
+import { authKeys } from "@api/queryKey/auth";
 import { TOAST_MESSAGES } from "@constants/toastMessages";
 import { ThemeProvider } from "@emotion/react";
 import { ToastProvider } from "@provider/context/toastContext";
@@ -20,6 +24,7 @@ vi.mock("@utils/captureAnalyticsEvent", () => ({
 const FEEDBACK_REQUEST = `*${FEEDBACK_RELAY_PATH}`;
 const FAILED_MESSAGE =
   "보내지 못했어요. 적은 내용은 그대로 있으니 다시 보내 주세요.";
+const { nickname } = new GetMeResponseDto(meResponse);
 
 const renderPanel = () => {
   const onClose = vi.fn();
@@ -37,7 +42,18 @@ const renderPanel = () => {
     </ThemeProvider>,
   );
 
-  return { ...rendered, onClose };
+  return { ...rendered, onClose, queryClient };
+};
+
+/** 패널을 그리고 닉네임을 불러올 때까지 기다려요. 닉네임은 화면에 없어 쿼리 캐시로 봐요 */
+const renderPanelWithNickname = async () => {
+  const rendered = renderPanel();
+
+  await waitFor(() =>
+    expect(rendered.queryClient.getQueryData(authKeys.me())).toBeDefined(),
+  );
+
+  return rendered;
 };
 
 const getSendButton = () => screen.getByRole("button", { name: /보내기/ });
@@ -132,9 +148,9 @@ describe("FeedbackPanel", () => {
   });
 
   describe("보내기", () => {
-    it("고른 유형, 앞뒤 공백을 지운 내용, 보고 있는 화면 주소를 보낸다", async () => {
+    it("고른 유형, 앞뒤 공백을 지운 내용, 보고 있는 화면 주소, 닉네임을 보낸다", async () => {
       const bodies = captureFeedbackRequests();
-      renderPanel();
+      await renderPanelWithNickname();
 
       fireEvent.click(screen.getByRole("radio", { name: "오류가 있어요" }));
       fireEvent.change(getContentField(), {
@@ -147,7 +163,22 @@ describe("FeedbackPanel", () => {
         type: "bug",
         content: "표가 깨져요",
         pageUrl: window.location.href,
+        nickname,
       });
+    });
+
+    it("회원 정보를 불러오지 못해도 막지 않고 닉네임 없이 보낸다", async () => {
+      const bodies = captureFeedbackRequests();
+      const meRequest = vi.fn(() => new HttpResponse(null, { status: 500 }));
+      mockServer.use(http.get(`*${AUTH_ME_API_PATH}`, meRequest));
+      const { onClose } = renderPanel();
+
+      await waitFor(() => expect(meRequest).toHaveBeenCalled());
+      fireEvent.click(screen.getByRole("radio", { name: "오류가 있어요" }));
+      fireEvent.click(getSendButton());
+
+      await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+      expect(bodies[0]).not.toHaveProperty("nickname");
     });
 
     it("보내는 동안에는 「보내기」가 로딩이고, X와 유형 · 내용을 막는다", async () => {
@@ -205,6 +236,21 @@ describe("FeedbackPanel", () => {
           feedback_score: 1,
           feedback_content: "표가 깨져요",
         },
+      });
+    });
+
+    it("닉네임은 접수함으로만 보내고 PostHog `survey sent`에는 넣지 않는다", async () => {
+      const bodies = captureFeedbackRequests();
+      const { onClose } = await renderPanelWithNickname();
+
+      fireEvent.click(screen.getByRole("radio", { name: "좋았어요" }));
+      fireEvent.click(getSendButton());
+
+      await waitFor(() => expect(onClose).toHaveBeenCalled());
+      expect(bodies[0]).toHaveProperty("nickname", nickname);
+      expect(captureAnalyticsEvent).toHaveBeenCalledWith({
+        event: "survey sent",
+        properties: { feedback_type: "좋았어요", feedback_score: 4 },
       });
     });
 

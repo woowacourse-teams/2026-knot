@@ -13,6 +13,7 @@ import com.knot.backend.auth.domain.model.AuthenticatedMember;
 import com.knot.backend.global.exception.GlobalExceptionHandler;
 import com.knot.backend.recording.application.RecordingService;
 import com.knot.backend.recording.application.dto.result.RecordingHeartbeatResult;
+import com.knot.backend.recording.domain.model.RecordingConnectionStatus;
 import com.knot.backend.recording.domain.model.RecordingEndReason;
 import com.knot.backend.recording.domain.RecordingErrorCode;
 import com.knot.backend.recording.domain.RecordingException;
@@ -80,9 +81,10 @@ class RecordingHeartbeatControllerTest {
                         RecordingStatus.RECORDING,
                         90_000L,
                         SEEN_AT,
-                        SEEN_AT.plusSeconds(30),
+                        SEEN_AT.plusSeconds(1_800),
                         null,
                         null,
+                        RecordingConnectionStatus.CONNECTED,
                         SEEN_AT
                 )
         );
@@ -103,9 +105,10 @@ class RecordingHeartbeatControllerTest {
                 .andExpect(jsonPath("$.status").value("RECORDING"))
                 .andExpect(jsonPath("$.elapsedMillis").value(90_000L))
                 .andExpect(jsonPath("$.lastSeenAt").value("2026-10-09T00:01:30Z"))
-                .andExpect(jsonPath("$.expiresAt").value("2026-10-09T00:02:00Z"))
+                .andExpect(jsonPath("$.expiresAt").value("2026-10-09T00:31:30Z"))
                 .andExpect(jsonPath("$.endedAt").isEmpty())
                 .andExpect(jsonPath("$.endReason").isEmpty())
+                .andExpect(jsonPath("$.connectionStatus").value("CONNECTED"))
                 .andExpect(jsonPath("$.serverNow").value("2026-10-09T00:01:30Z"));
     }
 
@@ -129,9 +132,10 @@ class RecordingHeartbeatControllerTest {
                         120_000L,
                         SEEN_AT,
                         null,
-                        SEEN_AT.plusSeconds(30),
+                        SEEN_AT,
                         RecordingEndReason.CONNECTION_EXPIRED,
-                        SEEN_AT.plusSeconds(300)
+                        null,
+                        SEEN_AT.plusSeconds(1_830)
                 )
         );
 
@@ -148,9 +152,10 @@ class RecordingHeartbeatControllerTest {
         // then
         result.andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("ENDED"))
-                .andExpect(jsonPath("$.endedAt").value("2026-10-09T00:02:00Z"))
+                .andExpect(jsonPath("$.endedAt").value("2026-10-09T00:01:30Z"))
                 .andExpect(jsonPath("$.endReason").value("CONNECTION_EXPIRED"))
-                .andExpect(jsonPath("$.expiresAt").isEmpty());
+                .andExpect(jsonPath("$.expiresAt").isEmpty())
+                .andExpect(jsonPath("$.connectionStatus").isEmpty());
     }
 
     @Test

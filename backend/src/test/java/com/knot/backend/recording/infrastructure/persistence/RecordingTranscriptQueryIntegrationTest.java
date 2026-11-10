@@ -142,7 +142,57 @@ class RecordingTranscriptQueryIntegrationTest {
     }
 
     @Test
-    @DisplayName("전사 전·전사 실패·주제 분류 전·NO_CONTENT 녹음은 보여 줄 전사가 없다")
+    @DisplayName("주제가 없어 문서를 만들지 않은 NO_CONTENT 녹음도 문서 정리 입력 전사를 준다")
+    void find_success_noContentTranscript() {
+        // given
+        long recordingId = saved(0);
+        long transcriptId = sourceTranscriptId(
+                fixture.batch(
+                        recordingId,
+                        "NO_CONTENT",
+                        "NO_CONTENT"
+                )
+        );
+
+        // when
+        Optional<RecordingTranscriptResult> result = recordingTranscriptQuery.find(recordingId);
+
+        // then
+        assertThat(result).get()
+                .extracting(RecordingTranscriptResult::transcriptId)
+                .isEqualTo(transcriptId);
+    }
+
+    @Test
+    @DisplayName("입력 전사를 이미 정리한 지난 NO_CONTENT 녹음은 보여 줄 전사가 없다")
+    void find_fail_releasedNoContentTranscript() {
+        // given
+        long recordingId = saved(0);
+        long batchId = fixture.batch(
+                recordingId,
+                "NO_CONTENT",
+                "NO_CONTENT"
+        );
+        jdbcClient.sql("""
+                UPDATE document_generation_batches
+                SET released_transcript_id = transcript_id, transcript_id = NULL, input_released_at = finished_at
+                WHERE id = :batchId
+                """)
+                .param(
+                        "batchId",
+                        batchId
+                )
+                .update();
+
+        // when
+        Optional<RecordingTranscriptResult> result = recordingTranscriptQuery.find(recordingId);
+
+        // then
+        assertThat(result).isEmpty();
+    }
+
+    @Test
+    @DisplayName("전사 전·전사 실패·주제 분류 전 녹음은 보여 줄 전사가 없다")
     void find_fail_noTranscriptToShow() {
         // given
         long beforeTranscription = saved(0);
@@ -154,19 +204,12 @@ class RecordingTranscriptQueryIntegrationTest {
                 "WAITING_CLASSIFICATION",
                 "QUEUED"
         );
-        long noContent = saved(3);
-        fixture.batch(
-                noContent,
-                "NO_CONTENT",
-                "NO_CONTENT"
-        );
 
         // when
         List<Optional<RecordingTranscriptResult>> results = List.of(
                 beforeTranscription,
                 transcriptionFailed,
-                waitingClassification,
-                noContent
+                waitingClassification
         )
                 .stream()
                 .map(recordingTranscriptQuery::find)

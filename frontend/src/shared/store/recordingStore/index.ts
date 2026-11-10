@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { captureAnalyticsEvent } from "@utils/captureAnalyticsEvent";
 import { markRecordingStart } from "@utils/recordingStartTrace";
+import { forgetUnfinishedRecording } from "@utils/unfinishedRecording";
 
 import type { RecordingAudioMode } from "@/shared/types/recording";
 
@@ -13,10 +14,15 @@ import {
 } from "./microphoneConnection";
 import PcmChunkUploadQueue, {
   type PcmAudioSeal,
-  type PcmChunkUploadQueueParams,
+  type PcmChunkRequests,
 } from "./pcmChunkUploadQueue";
 import PcmCollector from "./pcmCollector";
 import RecordedAudio from "./recordedAudio";
+import {
+  deleteRecordingChunks,
+  deleteRecordingChunksThrough,
+  saveRecordingChunk,
+} from "./recordingChunkArchive";
 
 /** 녹음이 없는 상태·녹음 중·일시정지. 한 번에 하나만 녹음해요. */
 export type RecordingStatus = "idle" | "recording" | "paused";
@@ -47,19 +53,33 @@ interface ConnectMicrophoneParams {
   audioMode?: RecordingAudioMode;
 }
 
-interface DiscardRecordingParams {
+export interface DiscardRecordingParams {
   /**
    * 끝낸 PCM 녹음의 남은 조각을 서버가 받아 주는 시한(ISO 8601). 주면 큐를 남겨 그때까지 뒤에서 올리고,
    * 주지 않으면 큐도 비워요
    */
   acceptUntil?: string;
+  /** 다른 탭이 이어 받은 녹음이면 보관본과 기록을 그 탭의 몫으로 남겨요 */
+  isTakenOver?: boolean;
 }
 
 interface StartRecordingParams {
   workspaceId: number;
   recordingId: number;
   /** PCM 조각의 예약·PUT·저장 확인 요청. 도메인 훅이 세션과 최초 탭 증명을 묶어 넘겨요. PCM으로 마이크를 받았을 때만 써요 */
-  chunkRequests?: PcmChunkUploadQueueParams;
+  chunkRequests?: PcmChunkRequests;
+}
+
+interface RestoreRecordingParams extends StartRecordingParams {
+  audioMode: RecordingAudioMode;
+  /** 서버가 알려 준 누적 시간(ms) */
+  elapsedMs: number;
+  /** 이어서 쓸 조각 번호. 서버가 저장을 확인한 다음 번호예요 */
+  nextSequence: number;
+  /** 이어서 쓸 프레임 위치. 서버가 저장을 확인한 끝 프레임이에요 */
+  nextSampleOffset: number;
+  /** 새로고침 전에 보관해 둔, 서버가 아직 확인하지 않은 조각. 번호 순서예요 */
+  archivedChunks: ArrayBuffer[];
 }
 
 interface RecordingState {
@@ -82,6 +102,12 @@ interface RecordingState {
   isUploadingChunks: boolean;
   /** 회의 소리를 함께 녹음하는지. 녹음을 비우면 `off`로 돌아가요 */
   meetingAudioStatus: MeetingAudioStatus;
+  /** 생존 신호가 일시 실패로 닿지 못하고 있는지. 다음 신호가 닿으면 `false`가 돼요 */
+  isHeartbeatFailing: boolean;
+  /** 조각 전송이 일시 실패로 밀리고 있는지. 조각 저장이 확인되면 `false`가 돼요 */
+  isChunkTransferStalled: boolean;
+  /** 브라우저가 조각 보관을 거절했는지. 저장 공간이 모자란 경우예요. 녹음을 비우면 `false`로 돌아가요 */
+  isChunkArchiveFailed: boolean;
 }
 
 interface RecordingActions {
@@ -93,6 +119,11 @@ interface RecordingActions {
   connectMicrophone: (params?: ConnectMicrophoneParams) => Promise<boolean>;
   /** 받아 둔 마이크로 녹음을 시작해요. 서버에 녹음을 연 뒤에 불러요 */
   startRecording: (params: StartRecordingParams) => void;
+  /**
+   * 새로고침 전 녹음을 마이크 없이 일시정지로 되살리고, 보관한 조각을 먼저 올려요.
+   * 이어 받기가 받아들여진 뒤에 부르고, 소리는 「이어서 녹음」이 마이크를 받아 이어 가요
+   */
+  restoreRecording: (params: RestoreRecordingParams) => void;
   /** 수집을 멈춰요. PCM이면 남은 소리를 마지막 조각으로 봉인해 큐에 넣을 때까지 기다려요 */
   pauseRecording: () => Promise<void>;
   /**
@@ -108,9 +139,16 @@ interface RecordingActions {
   cancelEnding: () => void;
   /** 녹음한 시간을 서버가 알려 준 누적 시간(ms)으로 맞춰요. 녹음 중이면 그 값에서 이어서 재요 */
   syncElapsedTime: (elapsedMs: number) => void;
+  /** 생존 신호가 닿지 못하는지 표시해요 */
+  setHeartbeatFailing: (isFailing: boolean) => void;
+  /** 아직 저장 확인을 받지 못한 조각 수를 돌려줘요 */
+  getUnsentChunkCount: () => number;
   /** 수집을 멈추고 지금까지 녹음한 오디오를 파일 하나로 돌려줘요. PCM이면 남은 소리를 마지막 조각으로 봉인해요. 녹음은 비우지 않아요 */
   stopRecording: () => Promise<Blob>;
-  /** PCM 수집을 멈추고 마지막 조각을 봉인한 뒤 종료 요청에 담을 `audioSeal`을 돌려줘요. 녹음은 비우지 않아요 */
+  /**
+   * PCM 수집을 멈추고 마지막 조각을 봉인한 뒤 종료 요청에 담을 `audioSeal`을 돌려줘요. 녹음은 비우지 않아요.
+   * 끊겨서 쌓인 조각이 있으면 먼저 올릴 때까지 기다려요. 종료 뒤 수신 창은 120초뿐이라 그 안에 다 못 올릴 수 있어요
+   */
   sealRecording: () => Promise<PcmAudioSeal>;
   /** PCM 수집기만 닫고 마이크는 둬요. 서버가 조각 저장을 꺼 뒀을 때 받아 둔 마이크로 WebM 녹음을 시작하려고 써요 */
   closePcmCollector: () => void;
@@ -136,6 +174,9 @@ const IDLE_STATE: RecordingState = {
   isEnding: false,
   isUploadingChunks: false,
   meetingAudioStatus: "off",
+  isHeartbeatFailing: false,
+  isChunkTransferStalled: false,
+  isChunkArchiveFailed: false,
 };
 
 /** 진행 중인 구간을 누적 시간에 더해 시간 표시를 멈춰요 */
@@ -162,6 +203,7 @@ const freezeElapsed = ({
  * WebM 녹음은 녹음기의 조각을 모아 뒀다가 끝낼 때 파일 하나로 묶어요. PCM 녹음은 수집기가 봉인한 5초 조각을
  * 전송 큐가 바로 올리고, 일시정지하면 남은 소리를 마지막 조각으로 봉인해요. 끝낸 뒤에도 큐는 녹음과 따로 남아
  * 시한까지 남은 조각을 올리고, 그동안은 `isUploadingChunks`로 알려요.
+ * 저장이 확인되지 않은 조각은 IndexedDB에도 보관해, 같은 탭을 새로고침한 뒤 이어 받으면 `restoreRecording`이 먼저 올려요.
  *
  * 회의 소리는 녹음 중에 공유 창으로 받아 녹음기와 PCM 수집기에 마이크와 섞어 넣어요. 마이크나 수집기를 새로 받으면
  * 다시 섞고, 브라우저의 공유 중지로 끝나면 마이크 끊김과 달리 일시정지하지 않고 마이크만으로 이어 가요.
@@ -196,6 +238,26 @@ export const useRecordingStore = create<RecordingState & RecordingActions>()((
     onData: (chunk) => recordedAudio.append(chunk),
     onLost: handleLost,
   });
+
+  /** 녹음 하나의 조각 전송 큐를 만들어요. 저장 확인 전까지 조각을 브라우저에 함께 보관해요 */
+  const createChunkQueue = (
+    recordingId: number,
+    chunkRequests: PcmChunkRequests,
+    start?: Pick<RestoreRecordingParams, "nextSequence" | "nextSampleOffset">,
+  ) =>
+    new PcmChunkUploadQueue({
+      ...chunkRequests,
+      ...start,
+      archive: {
+        save: (sequence, pcm) =>
+          saveRecordingChunk({ recordingId, sequence, pcm }),
+        removeThrough: (sequence) =>
+          deleteRecordingChunksThrough(recordingId, sequence),
+      },
+      onArchiveFailed: () => set({ isChunkArchiveFailed: true }),
+      onStalledChange: (isStalled) =>
+        set({ isChunkTransferStalled: isStalled }),
+    });
 
   /** 받아 둔 마이크로 PCM 수집기를 만들어요. 봉인한 조각은 큐로 넘기고, 함께 녹음 중인 회의 소리도 섞어요 */
   const createPcmCollector = async (stream: MediaStream) => {
@@ -240,7 +302,7 @@ export const useRecordingStore = create<RecordingState & RecordingActions>()((
       recordedAudio.clear();
       chunkQueue = null;
       if (pcmCollector && chunkRequests) {
-        chunkQueue = new PcmChunkUploadQueue(chunkRequests);
+        chunkQueue = createChunkQueue(recordingId, chunkRequests);
         pcmCollector.start();
       } else {
         microphone.start();
@@ -254,6 +316,42 @@ export const useRecordingStore = create<RecordingState & RecordingActions>()((
         },
         accumulatedMs: 0,
         resumedAt: Date.now(),
+        // 지난 녹음의 큐가 뒤에서 남긴 표시를 이어받지 않아요
+        isChunkTransferStalled: false,
+        isChunkArchiveFailed: false,
+      });
+    },
+
+    restoreRecording: ({
+      workspaceId,
+      recordingId,
+      audioMode,
+      chunkRequests,
+      elapsedMs,
+      nextSequence,
+      nextSampleOffset,
+      archivedChunks,
+    }) => {
+      if (get().status !== "idle") return;
+
+      recordedAudio.clear();
+      chunkQueue = chunkRequests
+        ? createChunkQueue(recordingId, chunkRequests, {
+            nextSequence,
+            nextSampleOffset,
+          })
+        : null;
+      // 올리지 못한 조각은 큐가 들고 있다가 drain으로 알려 주므로 여기선 삼켜요
+      archivedChunks.forEach(
+        (pcm) => void chunkQueue?.enqueue(pcm).catch(() => undefined),
+      );
+      set({
+        status: "paused",
+        session: { workspaceId, recordingId, audioMode },
+        accumulatedMs: elapsedMs,
+        resumedAt: null,
+        isChunkTransferStalled: false,
+        isChunkArchiveFailed: false,
       });
     },
 
@@ -272,17 +370,20 @@ export const useRecordingStore = create<RecordingState & RecordingActions>()((
     },
 
     ensureMicrophone: async () => {
-      if (microphone.isLive() && (pcmCollector?.isLive ?? true)) return true;
+      const isPcm = get().session?.audioMode === "PCM16_CHUNKS_V1";
+      // 되살린 PCM 녹음은 수집기를 만들기 전까지 소리를 모으지 못해요
+      const isCollectorReady = pcmCollector?.isLive ?? !isPcm;
+      if (microphone.isLive() && isCollectorReady) return true;
 
       const connection = await microphone.connect();
       set({ microphoneErrorName: microphone.errorName });
       if (!connection) return false;
       if (meetingAudio) connection.addAudio(meetingAudio);
 
-      if (pcmCollector) {
+      if (pcmCollector || isPcm) {
         // 멈춘 수집기의 마지막 봉인이 끝난 뒤에 닫아야 그 조각을 잃지 않아요
         await pcmFlushed;
-        pcmCollector.close();
+        pcmCollector?.close();
         pcmCollector = await createPcmCollector(connection.stream);
       } else {
         microphone.start();
@@ -321,6 +422,11 @@ export const useRecordingStore = create<RecordingState & RecordingActions>()((
       });
     },
 
+    setHeartbeatFailing: (isFailing) =>
+      set({ isHeartbeatFailing: isFailing }),
+
+    getUnsentChunkCount: () => chunkQueue?.pendingSequences.length ?? 0,
+
     beginEnding: () => set({ isEnding: true }),
 
     cancelEnding: () => set({ isEnding: false }),
@@ -338,6 +444,8 @@ export const useRecordingStore = create<RecordingState & RecordingActions>()((
 
     sealRecording: async () => {
       await get().stopRecording();
+      // 끝내 올리지 못한 조각은 봉인으로 막을 일이 아니라 종료를 이어 가요
+      if (chunkQueue?.hasBacklog) await chunkQueue.drain().catch(() => undefined);
 
       return (
         chunkQueue?.seal() ?? {
@@ -353,7 +461,16 @@ export const useRecordingStore = create<RecordingState & RecordingActions>()((
       pcmCollector = null;
     },
 
-    discardRecording: ({ acceptUntil } = {}) => {
+    discardRecording: ({ acceptUntil, isTakenOver = false } = {}) => {
+      const recordingId = get().session?.recordingId;
+      /** 끝났거나 버린 녹음은 브라우저에 남길 조각이 없어요 */
+      const forgetRecording = () => {
+        if (recordingId === undefined || isTakenOver) return;
+
+        forgetUnfinishedRecording(recordingId);
+        void deleteRecordingChunks(recordingId).catch(() => undefined);
+      };
+
       microphone.disconnect();
       stopMeetingAudio();
       // 서버가 먼저 끝낸 녹음의 남은 소리는 봉인하지 않고 버려요
@@ -368,10 +485,14 @@ export const useRecordingStore = create<RecordingState & RecordingActions>()((
         void queue
           .drain()
           .catch(() => undefined)
-          .finally(() => set({ isUploadingChunks: false }));
+          .finally(() => {
+            set({ isUploadingChunks: false });
+            forgetRecording();
+          });
       } else {
         queue?.clear();
         chunkQueue = null;
+        forgetRecording();
       }
       set({ ...IDLE_STATE, isUploadingChunks: chunkQueue !== null });
     },

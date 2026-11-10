@@ -273,7 +273,7 @@ export default function WorkspaceDock() {
                     isPaused={isRecordingPaused}
                     analyser={isOpen ? analyser : null}
                     onOpen={isOtherTabRecording ? undefined : handleOpenRecording}
-                    onStop={isOtherTabRecording ? undefined : handleStopRecording}
+                    onStop={handleStopRecording}
                   />
                 </RecordSlot>
               )}

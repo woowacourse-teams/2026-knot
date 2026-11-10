@@ -97,18 +97,6 @@ test.describe("이 문서가 나온 녹음 (DOC-R25)", () => {
     ).toBeVisible();
   });
 
-  test("[DOC-R25] 녹음 직후 문서 화면에도 같은 카드가 보인다", async ({
-    page,
-  }) => {
-    await page.goto(`${DOCUMENT_PATH}?from=recording`);
-
-    await expect(
-      page
-        .getByRole("region", { name: SOURCE_RECORDING_NAME })
-        .getByRole("link"),
-    ).toContainText(expectedRecording.title);
-  });
-
   test("[DOC-R25] 폭 390에서는 카드가 본문 폭을 채운다", async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto(DOCUMENT_PATH);

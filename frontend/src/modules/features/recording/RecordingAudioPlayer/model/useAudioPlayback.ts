@@ -5,8 +5,8 @@ interface UseAudioPlaybackParams {
   playbackUrl: string;
   /** URL 만료 시각(ISO 8601). 서버가 주지 않으면 null이에요 */
   expiresAt: string | null;
-  /** 새 서명 URL을 받아요. 만료된 URL로 재생하거나 불러오기에 실패해 다시 시도할 때 불러요 */
-  refreshPlaybackUrl: () => Promise<unknown>;
+  /** 새 서명 URL을 받았으면 true예요. 조회 실패·미지원이면 이전 주소로 재생하지 않아요 */
+  refreshPlaybackUrl: () => Promise<boolean>;
 }
 
 /** 이미 만료됐거나 곧 만료될 URL인지. 재생을 시작하는 사이에 끊기지 않게 10초 앞당겨 봐요 */
@@ -98,7 +98,13 @@ export const useAudioPlayback = ({
 
     resumeAtRef.current = audio.currentTime;
     shouldPlayAfterLoadRef.current = shouldPlay;
-    await refreshPlaybackUrl();
+    const isRefreshed = await refreshPlaybackUrl();
+    if (audioRef.current !== audio) return;
+    if (!isRefreshed) {
+      shouldPlayAfterLoadRef.current = false;
+      setHasLoadError(true);
+      return;
+    }
     // URL이 그대로여도 다시 불러오도록 직접 불러요
     audio.load();
   };

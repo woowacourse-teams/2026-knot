@@ -69,15 +69,16 @@ export const recordingEndResponse = {
   endedAt: fromNow(0),
 } satisfies RecordingEndResponse;
 
-// 서버는 마지막 신호부터 30초 동안 신호가 없으면 녹음을 끝내요
+// 서버는 마지막 신호부터 30분 동안 아무것도 오지 않으면 녹음을 끝내요
 export const recordingHeartbeatResponse = {
   recordingId: 10,
   status: "RECORDING",
   elapsedMillis: 10 * MINUTE,
   lastSeenAt: fromNow(0),
-  expiresAt: fromNow(MINUTE / 2),
+  expiresAt: fromNow(30 * MINUTE),
   endedAt: null,
   endReason: null,
+  connectionStatus: "CONNECTED",
   serverNow: fromNow(0),
 } satisfies RecordingHeartbeatResponse;
 
@@ -103,7 +104,7 @@ const transcribedRecording = {
 } satisfies Partial<RecordingDetailResponse>;
 
 // 문서 mock의 문서(회원 탈퇴 정책 · 홈 개편 논의)가 나온 녹음의 ID.
-// 정리가 끝난 녹음을 이 ID로 둬야, 정리 화면이 그 녹음의 문서로 이어져요
+// 정리가 끝난 녹음을 이 ID로 둬야, 정리 화면에서 넘어간 녹음 문서가 그 녹음의 문서를 보여줘요
 const [{ recordingSessionId: COMPLETED_RECORDING_ID }] =
   documentDetailsResponse;
 

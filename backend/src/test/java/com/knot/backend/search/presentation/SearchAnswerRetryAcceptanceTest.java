@@ -53,10 +53,12 @@ import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.simple.JdbcClient;
+import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import tools.jackson.databind.JsonNode;
@@ -88,6 +90,9 @@ class SearchAnswerRetryAcceptanceTest {
     private SearchAnswerWorker worker;
     @Autowired
     private SearchWorkerProperties limits;
+    @Autowired
+    @Qualifier("searchStreamExecutor")
+    private ThreadPoolTaskExecutor streamExecutor;
     @MockitoBean
     private SearchGenerationAvailability availability;
     @MockitoBean
@@ -107,6 +112,7 @@ class SearchAnswerRetryAcceptanceTest {
 
     @BeforeEach
     void setUp() throws Exception {
+        awaitStreamsIdle();
         when(
                 classifier.classify(
                         any(),
@@ -213,11 +219,27 @@ class SearchAnswerRetryAcceptanceTest {
     }
 
     @AfterEach
-    void finishAcceptedWork() {
-        jdbc.sql("SELECT id FROM search_messages WHERE status = 'STREAMING'")
-                .query(Long.class)
-                .list()
-                .forEach(worker::execute);
+    void finishAcceptedWork() throws InterruptedException {
+        try {
+            jdbc.sql("SELECT id FROM search_messages WHERE status = 'STREAMING'")
+                    .query(Long.class)
+                    .list()
+                    .forEach(worker::execute);
+        } finally {
+            awaitStreamsIdle();
+        }
+    }
+
+    private void awaitStreamsIdle() throws InterruptedException {
+        long deadline = System.nanoTime() + Duration.ofSeconds(5)
+                .toNanos();
+        while ((streamExecutor.getActiveCount() != 0 || streamExecutor.getQueueSize() != 0)
+                && System.nanoTime() < deadline) {
+            Thread.sleep(10);
+        }
+        assertThat(streamExecutor.getActiveCount()).as("다음 TRUNCATE 전에 이전 SSE 작업이 종료되어야 한다")
+                .isZero();
+        assertThat(streamExecutor.getQueueSize()).isZero();
     }
 
     @Test

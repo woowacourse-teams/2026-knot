@@ -8,6 +8,7 @@ import useRedirectToLoginOnUnauthorized from "@hooks/domain/auth/useRedirectToLo
 import useAnalyticsScreenTarget from "@hooks/domain/document/useAnalyticsScreenTarget";
 import Chip from "@primitives/ui/Chip";
 import Divider from "@primitives/ui/Divider";
+import UpdatePreparingNotice from "@primitives/ui/UpdatePreparingNotice";
 import { captureAnalyticsEvent } from "@utils/captureAnalyticsEvent";
 import { formatDate } from "@utils/formatDate";
 import { formatDurationFromSeconds } from "@utils/formatDurationFromSeconds";
@@ -60,6 +61,7 @@ export default function TranscriptPanel() {
     footerNotice,
     error,
     isError,
+    isUnsupported,
     refetch,
   } = useTranscriptSource();
   const { isUnauthorized } = useRedirectToLoginOnUnauthorized({ error });
@@ -82,6 +84,15 @@ export default function TranscriptPanel() {
   const shouldShowLoadFailed =
     isUnavailableError(error) ||
     (segments === undefined && isError && !isUnauthorized);
+
+  if (isUnsupported) {
+    return (
+      <Container aria-labelledby={titleId}>
+        <Title id={titleId}>원문</Title>
+        <UpdatePreparingNotice onCheck={handleRetry} />
+      </Container>
+    );
+  }
 
   if (shouldShowLoadFailed) {
     return <TranscriptLoadFailed onRetry={handleRetry} />;

@@ -3,6 +3,7 @@ import { documentDetailsResponse } from "@api/mock/responses/document";
 import type { Meta, StoryObj } from "@storybook/react-webpack5";
 import { delay, http, HttpResponse } from "msw";
 import { MemoryRouter } from "react-router";
+import { expect, userEvent, within } from "storybook/test";
 
 import SourceRecording from ".";
 
@@ -61,6 +62,16 @@ type Story = StoryObj<typeof meta>;
 /** 녹음 제목을 받은 기본 모양이에요 */
 export const Default: Story = {};
 
+/** 녹음 문서 API가 미지원이면 출처 카드만 준비 안내로 바꿔요. 기존 문서 본문과 확인·복사는 유지돼요. */
+export const UnsupportedApi: Story = {
+  parameters: {
+    docs: { story: { inline: false, iframeHeight: 300 } },
+    msw: { handlers: { sourceRecording: http.get(RECORDING_DOCUMENT_REQUEST, () =>
+      HttpResponse.json({ code: "REQUEST_PATH_NOT_FOUND" }, { status: 404 }),
+    ) } },
+  },
+};
+
 /** 녹음 제목을 받는 동안이에요. 제목 자리만 회색이고, 눌러도 녹음 문서로 가요 */
 export const Loading: Story = {
   parameters: {
@@ -88,5 +99,26 @@ export const TitleLoadFailed: Story = {
       ],
     },
     docs: ISOLATED_DOCS,
+  },
+};
+
+let supportCheckCount = 0;
+
+/** 미지원 안내에서 다시 확인했지만 서버 오류가 났을 때예요. 새 조회가 성공하기 전까지 출처 이동을 제한해요. */
+export const UnsupportedRetryFailed: Story = {
+  beforeEach: () => { supportCheckCount = 0; },
+  parameters: {
+    docs: { story: { inline: false, iframeHeight: 300 } },
+    msw: { handlers: { sourceRecording: http.get(RECORDING_DOCUMENT_REQUEST, () => {
+      supportCheckCount += 1;
+      return supportCheckCount === 1
+        ? HttpResponse.json({ code: "REQUEST_PATH_NOT_FOUND" }, { status: 404 })
+        : new HttpResponse(null, { status: 500 });
+    }) } },
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(await canvas.findByRole("button", { name: "다시 확인" }));
+    await expect(await canvas.findByRole("alert")).toHaveTextContent("녹음을 불러오지 못했어요");
   },
 };

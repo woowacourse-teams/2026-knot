@@ -6,6 +6,9 @@ import { useQuery } from "@tanstack/react-query";
 /** 문서 정리 중인 녹음을 다시 물어보는 간격(ms). 정리 화면의 녹음 조회와 같아요 */
 const POLL_INTERVAL_MS = 3000;
 
+/** 진행 중인 녹음을 다시 물어보는 간격(ms). 다른 기기에서 끝냈거나 녹음 탭의 연결이 끊긴 것을 이 간격 안에 알아요(STT-R28) */
+const IN_PROGRESS_POLL_INTERVAL_MS = 30 * 1000;
+
 interface UseCurrentRecordingQueryParams {
   workspaceId: number;
 }
@@ -18,7 +21,7 @@ interface UseCurrentRecordingQueryParams {
  * 문서 정리 중(`PROCESSING`)인 동안에는 3초 간격으로 다시 물어봐요. 정리가 끝나면 이전 실패를 다시 표시하거나, 후보가 없으면 204로 답해 멈춰요.
  * 다시 물어봐도 결과가 같은 오류(4xx: 로그인 만료 · 권한 없음)를 받으면 멈춰요. 실패해도 받은 정리 중 응답이 남아 있어 멈추지 않으면 끝없이 물어봐요.
  * 네트워크 끊김이나 서버 오류는 잠깐의 문제일 수 있어 같은 간격으로 계속 물어봐요.
- * 녹음 중 · 일시정지는 시간을 화면에서 늘리므로 다시 물어보지 않아요.
+ * 녹음 중 · 일시정지는 시간을 화면에서 늘리고, 끝났는지와 연결 상태만 살피려 30초 간격으로 물어봐요.
  * 실패 상태는 주기적으로 묻지 않고, 홈 재진입·창 포커스·재시도 접수 후에 다시 확인해요.
  * 다시 시도가 접수되면 재시도 뮤테이션이 녹음 쿼리를 무효화해 다시 받아요.
  *
@@ -33,7 +36,11 @@ const useCurrentRecordingQuery = ({
     refetchInterval: ({ state: { data, error } }) => {
       if (isHttpError(error) && error.isClientError) return false;
 
-      return data?.status === "PROCESSING" ? POLL_INTERVAL_MS : false;
+      if (data?.status === "PROCESSING") return POLL_INTERVAL_MS;
+
+      return data?.status === "RECORDING" || data?.status === "PAUSED"
+        ? IN_PROGRESS_POLL_INTERVAL_MS
+        : false;
     },
   });
 };

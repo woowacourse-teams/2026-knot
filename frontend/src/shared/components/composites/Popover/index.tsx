@@ -113,6 +113,6 @@ export default function Popover({
 // 트리거와 달리 내용은 body에 fixed로 떠서, 감싸도 화면의 다른 요소 배치가 바뀌지 않아요
 const ContentWrapper = styled(Unfold)`
   position: fixed;
-  z-index: 30; /* 화면 위에 떠 있는 패널(20)보다 위에 떠요 */
+  z-index: 29; /* 화면 위에 떠 있는 패널(20)보다 위, 열어 둔 채 뜨는 모달의 배경 막(30)보다 아래에 떠요 */
   width: max-content; /* 직전에 열린 가로 위치와 관계없이 내용 폭 그대로 재서 위치를 정해요 */
 `;

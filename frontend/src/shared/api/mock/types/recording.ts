@@ -161,6 +161,7 @@ export interface RecordingHeartbeatResponse {
   /** 진행 중이면 null */
   endReason: "USER_ENDED" | "CONNECTION_EXPIRED" | "MAX_DURATION" | null;
   /** ISO 8601 */
+  connectionStatus: "CONNECTED" | "DISCONNECTED" | null;
   serverNow: string;
 }
 

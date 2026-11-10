@@ -19,11 +19,17 @@ const collectPaths = (route: RouteObject): string[] => [
   ...(route.children ?? []).flatMap(collectPaths),
 ];
 
+/** 라우트와 그 아래 라우트를 모두 모아요 */
+const collectRoutes = (route: RouteObject): RouteObject[] => [
+  route,
+  ...(route.children ?? []).flatMap(collectRoutes),
+];
+
 const allPaths = routes.flatMap(collectPaths).filter((path) => path !== "*");
 const isWorkspaceLayoutRoute = (route: RouteObject) =>
   route.children?.some(({ path }) => path === PATH_ROUTE.WORKSPACE_HOME);
 const workspaceLayoutPaths = collectPaths(
-  routes.find(isWorkspaceLayoutRoute) as RouteObject,
+  routes.flatMap(collectRoutes).find(isWorkspaceLayoutRoute) as RouteObject,
 );
 
 /** 주소의 변수를 채워요. 워크스페이스는 3이에요 */

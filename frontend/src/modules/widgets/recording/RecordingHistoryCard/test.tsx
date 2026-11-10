@@ -14,6 +14,11 @@ import {
 } from "@api/mock/responses/recording";
 import { mockServer } from "@api/mock/server";
 import { ThemeProvider } from "@emotion/react";
+import {
+  clearRecordingStartProof,
+  getRecordingStartProof,
+  saveRecordingResumeProof,
+} from "@utils/recordingControlProof";
 import { ToastProvider } from "@provider/context/toastContext";
 import { theme } from "@provider/themeProvider";
 import { getRouterPath, PATH_ROUTE } from "@routes/PATH_ROUTE";
@@ -65,7 +70,7 @@ const RECORDING_TITLE = `${new GetMeResponseDto(meResponse).nickname} 님의 녹
 const OPEN_RECORDING = "녹음 화면으로";
 const VIEW_RECORDING = "녹음 보기";
 const RETRY = "다시 시도";
-const OTHER_TAB_HINT = "녹음 중인 탭에서 일시정지·끝내기를 할 수 있어요";
+const OTHER_TAB_HINT = "녹음 중인 탭에서 일시정지·이어서 녹음을 할 수 있어요";
 const EMPTY_TEXT = "아직 녹음이 없어요";
 const LOAD_FAILED_TEXT = "녹음 기록을 불러오지 못했어요. 다시 시도해 주세요.";
 const RETRY_FAILED_TOAST =
@@ -186,7 +191,7 @@ const renderCard = () => {
     </ThemeProvider>,
   );
 
-  return { router };
+  return { router, queryClient };
 };
 
 const getCard = () => screen.getByRole("region", { name: CARD_TITLE });
@@ -694,6 +699,137 @@ describe("RecordingHistoryCard", () => {
 
       expect(await screen.findByText(RECORDING_TITLE)).toBeInTheDocument();
       expect(screen.queryByText(EMPTY_TEXT)).not.toBeInTheDocument();
+    });
+  });
+
+  describe("배포 호환성 (ERR-QA-002 · ERR-QA-003 · ERR-QA-006)", () => {
+    it.each([undefined, null, "FUTURE_STATUS", "", "constructor", "__proto__"])(
+      "처리 상태 %s인 행의 메타정보와 정상 행을 유지하고 신규 동작을 제한한다", async (processingStatus) => {
+        respondNoCurrentRecording();
+        respondRecordings(() => HttpResponse.json({
+          items: [{ ...COMPLETED_ITEM, processingStatus, retryable: true }, NO_CONTENT_ITEM],
+          nextCursor: null,
+        }));
+        renderCard();
+        expect(await screen.findByText("처리 상태를 확인할 수 없어요")).toBeInTheDocument();
+        const expectedRow = new GetRecordingsResponseDto({ items: [COMPLETED_ITEM], nextCursor: null }).items[0];
+        const row = screen.getByText(expectedRow.title).closest("li")!;
+        expect(within(row).getByText(formatDate(expectedRow.startedAt))).toBeInTheDocument();
+        expect(within(row).getByText(formatDurationFromSeconds(expectedRow.recordingDurationSeconds))).toBeInTheDocument();
+        const link = within(row).getByRole("link", { name: VIEW_RECORDING });
+        expect(link).toHaveAttribute("aria-disabled", "true");
+        expect(link).not.toHaveAttribute("href");
+        expect(within(row).queryByRole("button", { name: RETRY })).not.toBeInTheDocument();
+        expect(screen.getByText(STATUS_TEXT.NO_CONTENT)).toBeInTheDocument();
+      },
+    );
+
+    it.each([undefined, null, false])("알려진 실패라도 retryable=%s이면 재시도하지 않는다", async (retryable) => {
+      respondNoCurrentRecording();
+      respondRecordings(() => HttpResponse.json({
+        items: [{ ...TRANSCRIPTION_FAILED_ITEM, retryable }], nextCursor: null,
+      }));
+      renderCard();
+      expect(await screen.findByText(STATUS_TEXT.TRANSCRIPTION_FAILED)).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: RETRY })).not.toBeInTheDocument();
+      expect(screen.getByRole("link", { name: VIEW_RECORDING })).toHaveAttribute("href");
+    });
+
+    it("열린 카드에서 정상→상태 누락→정상 재조회가 전체 새로고침 없이 반영된다", async () => {
+      respondNoCurrentRecording(); respondItems([COMPLETED_ITEM]);
+      const { queryClient } = renderCard();
+      expect(await screen.findByRole("link", { name: VIEW_RECORDING })).toHaveAttribute("href");
+      respondRecordings(() => HttpResponse.json({ items: [{ ...COMPLETED_ITEM, processingStatus: undefined }], nextCursor: null }));
+      await act(async () => { await queryClient.invalidateQueries(); });
+      expect(await screen.findByText("처리 상태를 확인할 수 없어요")).toBeInTheDocument();
+      expect(screen.getByRole("link", { name: VIEW_RECORDING })).not.toHaveAttribute("href");
+      respondItems([COMPLETED_ITEM]);
+      await act(async () => { await queryClient.invalidateQueries(); });
+      await waitFor(() => expect(screen.getByRole("link", { name: VIEW_RECORDING })).toHaveAttribute("href"));
+      expect(screen.queryByText("처리 상태를 확인할 수 없어요")).not.toBeInTheDocument();
+    });
+
+    it("이후 묶음의 미지 상태도 앞 묶음을 유지하며 안전하게 표시한다", async () => {
+      respondNoCurrentRecording();
+      respondRecordings(({ request }) => HttpResponse.json(new URL(request.url).searchParams.has("cursor")
+        ? { items: [{ ...NO_CONTENT_ITEM, processingStatus: "FUTURE_STATUS" }], nextCursor: null }
+        : { items: [COMPLETED_ITEM], nextCursor: "next-page" }));
+      renderCard();
+      const expectedRow = new GetRecordingsResponseDto({ items: [COMPLETED_ITEM], nextCursor: null }).items[0];
+      await screen.findByText(expectedRow.title); reachEnd();
+      expect(await screen.findByText("처리 상태를 확인할 수 없어요")).toBeInTheDocument();
+      expect(screen.getByText(expectedRow.title)).toBeInTheDocument();
+    });
+  });
+
+  describe("다른 탭과 새로고침한 탭의 맨 위 줄 (STT-R26 · R28)", () => {
+    const END_RECORDING = "녹음 끝내기";
+
+    const respondCurrent = (
+      fields: Partial<typeof currentRecordingResponse> & {
+        connectionStatus?: string;
+      },
+    ) =>
+      mockServer.use(
+        http.get(CURRENT_URL, () =>
+          HttpResponse.json({ ...currentRecordingResponse, ...fields }),
+        ),
+      );
+
+    afterEach(() => clearRecordingStartProof());
+
+    it("다른 탭의 녹음에는 비활성 「녹음 화면으로」 하나만 있고 끝내기 버튼이 없다", async () => {
+      respondItems([]);
+      renderCard();
+
+      expect(await screen.findByText(OTHER_TAB_HINT)).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: OPEN_RECORDING }),
+      ).toBeDisabled();
+      expect(
+        screen.queryByRole("button", { name: END_RECORDING }),
+      ).not.toBeInTheDocument();
+    });
+
+    it("녹음 탭의 연결이 끊겼으면 안내 자리에 끊김을 보여 준다", async () => {
+      respondItems([]);
+      respondCurrent({ connectionStatus: "DISCONNECTED" });
+      renderCard();
+
+      expect(
+        await screen.findByText("녹음 중인 탭의 연결이 끊겼어요"),
+      ).toBeInTheDocument();
+      expect(screen.queryByText(OTHER_TAB_HINT)).not.toBeInTheDocument();
+    });
+
+    it("이 탭을 새로고침한 녹음은 「녹음 화면으로」로 갈 수 있고 끝내기 버튼이 없다", async () => {
+      respondItems([]);
+      getRecordingStartProof();
+      saveRecordingResumeProof({
+        workspaceId: WORKSPACE_ID,
+        recordingId: expectedCurrent.recordingId,
+        audioMode: "PCM16_CHUNKS_V1",
+      });
+      const { router } = renderCard();
+
+      expect(
+        await screen.findByText("녹음 화면에서 이어서 녹음할 수 있어요"),
+      ).toBeInTheDocument();
+      expect(screen.getByText(/^녹음 멈춤 · /)).toBeInTheDocument();
+      expect(
+        screen.queryByRole("button", { name: END_RECORDING }),
+      ).not.toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole("button", { name: OPEN_RECORDING }));
+
+      await waitFor(() =>
+        expect(router.state.location.pathname).toBe(
+          getRouterPath({
+            routeKey: "RECORDING",
+            params: { workspaceId: String(WORKSPACE_ID) },
+          }),
+        ),
+      );
     });
   });
 });

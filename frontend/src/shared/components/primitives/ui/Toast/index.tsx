@@ -4,6 +4,7 @@ import styled from "@emotion/styled";
 import AlertIcon from "@/assets/icons/alert.svg";
 import CautionIcon from "@/assets/icons/caution18.svg";
 import CheckIcon from "@/assets/icons/check18.svg";
+import CloseIcon from "@/assets/icons/close.svg";
 
 /**
  * 토스트 종류. 피그마 Toast의 정상·주의·오류에 대응해요.
@@ -25,6 +26,8 @@ interface ToastProps {
   message: string;
   /** 종류의 기본 아이콘 대신 그릴 아이콘. 예: 화상 회의를 연결한 뒤 이어폰 안내의 헤드폰 */
   icon?: ToastIcon;
+  /** 넘기면 오른쪽에 X를 두고, 누르면 불러요. 예: 저절로 사라지지 않는 연결 끊김 안내 */
+  onClose?: () => void;
 }
 
 const TOAST_ICON = {
@@ -44,27 +47,33 @@ const toastBackground = (theme: Theme) => {
 /**
  * 잠깐 떠서 일의 결과를 알리는 토스트의 겉모양.
  *
- * 종류에 따라 배경색과 아이콘만 바뀌어요.
+ * 종류에 따라 배경색과 아이콘만 바뀌어요. `onClose`를 넘기면 오른쪽에 X를 둬요.
  * 낭독기에 읽히게 하는 `role`은 토스트를 쌓는 목록 쪽에서 붙여요.
  */
-export default function Toast({ variant, message, icon }: ToastProps) {
+export default function Toast({ variant, message, icon, onClose }: ToastProps) {
   const Icon = icon ?? TOAST_ICON[variant];
 
   return (
-    <Container $variant={variant}>
+    <Container $variant={variant} $hasClose={onClose !== undefined}>
       <IconWrapper aria-hidden>
         <Icon size={18} />
       </IconWrapper>
       <Message>{message}</Message>
+      {onClose && (
+        <CloseButton type="button" aria-label="닫기" onClick={onClose}>
+          <CloseIcon size={18} />
+        </CloseButton>
+      )}
     </Container>
   );
 }
 
-const Container = styled.div<{ $variant: ToastVariant }>`
+const Container = styled.div<{ $variant: ToastVariant; $hasClose: boolean }>`
   display: inline-flex;
   align-items: flex-start;
   gap: 0.625rem; /* 10px */
-  padding: 0.875rem 1.375rem 0.875rem 1.125rem; /* 14px 22px 14px 18px */
+  padding: 0.875rem ${({ $hasClose }) => ($hasClose ? "0.875rem" : "1.375rem")}
+    0.875rem 1.125rem; /* 14px 14px(X가 없으면 22px) 14px 18px */
   border-radius: 1rem; /* 16px */
   overflow: hidden;
   background-color: ${({ theme, $variant }) =>
@@ -85,4 +94,21 @@ const Message = styled.p`
   min-width: 0;
   word-break: keep-all; /* 한글 어절 중간에서 줄이 끊기지 않게 해요 */
   overflow-wrap: break-word;
+`;
+
+/** Figma CloseButton: 24px 칸 가운데에 18px 아이콘. 토스트 자리는 클릭을 받지 않아 이 버튼만 받게 해요 */
+const CloseButton = styled.button`
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem; /* 24px */
+  height: 1.5rem;
+  border-radius: 0.375rem; /* 6px */
+  color: ${({ theme }) => theme.neutral[0]};
+  pointer-events: auto;
+
+  &:focus-visible {
+    outline: 2px solid ${({ theme }) => theme.neutral[0]};
+  }
 `;

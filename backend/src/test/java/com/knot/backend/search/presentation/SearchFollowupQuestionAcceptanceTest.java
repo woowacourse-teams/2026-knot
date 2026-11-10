@@ -548,6 +548,7 @@ class SearchFollowupQuestionAcceptanceTest {
     void ask_failure_inProgressAndConflict() throws Exception {
         // given
         UUID request = UUID.randomUUID();
+        long answerId;
         try (InputStream first = connect(
                 body(
                         request,
@@ -555,6 +556,8 @@ class SearchFollowupQuestionAcceptanceTest {
                 )
         ).body(); BufferedReader reader = reader(first)) {
             JsonNode ids = accepted(reader);
+            answerId = ids.path("answerMessageId")
+                    .asLong();
             // when & then
             assertError(
                     post(
@@ -592,6 +595,7 @@ class SearchFollowupQuestionAcceptanceTest {
             }
         }
         assertThat(countMessages()).isEqualTo(4);
+        completeAnswerForCleanup(answerId);
     }
 
     @ParameterizedTest
@@ -683,6 +687,7 @@ class SearchFollowupQuestionAcceptanceTest {
     @DisplayName("2,000 이모지 질문을 원문 그대로 접수한다")
     void ask_success_unicodeBoundary(String letter) throws Exception {
         // when
+        long answerId;
         try (InputStream stream = connect(
                 body(
                         UUID.randomUUID(),
@@ -690,6 +695,8 @@ class SearchFollowupQuestionAcceptanceTest {
                 )
         ).body(); BufferedReader reader = reader(stream)) {
             JsonNode ids = accepted(reader);
+            answerId = ids.path("answerMessageId")
+                    .asLong();
             // then
             assertThat(
                     jdbc.sql("SELECT content FROM search_messages WHERE id = :id")
@@ -702,6 +709,7 @@ class SearchFollowupQuestionAcceptanceTest {
                             .single()
             ).isEqualTo(letter.repeat(2000));
         }
+        completeAnswerForCleanup(answerId);
     }
 
     @Test
@@ -828,18 +836,36 @@ class SearchFollowupQuestionAcceptanceTest {
         assertThat(countMessages()).isEqualTo(2);
         doNothing().when(availability)
                 .requireAvailable();
+        long answerId;
         try (InputStream stream = connect(
                 body(
                         UUID.randomUUID(),
                         "재접수"
                 )
         ).body(); BufferedReader reader = reader(stream)) {
+            JsonNode receipt = accepted(reader);
+            answerId = receipt.path("answerMessageId")
+                    .asLong();
             assertThat(
-                    accepted(reader).path("conversationId")
+                    receipt.path("conversationId")
                             .asLong()
             ).isEqualTo(conversation);
         }
         assertThat(countMessages()).isEqualTo(4);
+        completeAnswerForCleanup(answerId);
+    }
+
+    private void completeAnswerForCleanup(long answerId) {
+        worker.execute(answerId);
+        assertThat(
+                jdbc.sql("SELECT status FROM search_messages WHERE id = :id")
+                        .param(
+                                "id",
+                                answerId
+                        )
+                        .query(String.class)
+                        .single()
+        ).isEqualTo("COMPLETED");
     }
 
     private void assertError(

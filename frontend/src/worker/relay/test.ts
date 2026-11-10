@@ -335,6 +335,7 @@ describe("relayToNotion", () => {
         종류: { select: { name: "버그" } },
         내용: { rich_text: [{ text: { content: feedback.content } }] },
         "사용 상황": { rich_text: [{ text: { content: feedback.pageUrl } }] },
+        "팀이나 제보자 별칭": { rich_text: [] },
         "원문 링크": { url: feedback.replayUrl },
         "접수 경로": { select: { name: "앱 내" } },
         "출처 유형": { select: { name: "사용자 제보" } },
@@ -417,6 +418,18 @@ describe("relayToNotion", () => {
       reason: "원문 링크가 PostHog 리플레이가 아니면",
       body: { ...feedback, replayUrl: "https://evil.example.com/x" },
     },
+    {
+      reason: "닉네임이 20자를 넘으면",
+      body: { ...feedback, nickname: "가".repeat(21) },
+    },
+    {
+      reason: "닉네임이 숫자이면",
+      body: { ...feedback, nickname: 20 },
+    },
+    {
+      reason: "닉네임이 null이면",
+      body: { ...feedback, nickname: null },
+    },
     { reason: "본문이 객체가 아니면", body: "피드백" },
   ])("$reason 넣지 않고 400을 돌려준다", async ({ body }) => {
     const requests = captureNotionRequests();
@@ -425,6 +438,22 @@ describe("relayToNotion", () => {
 
     expect(response.status).toBe(400);
     expect(requests).toHaveLength(0);
+  });
+
+  it("닉네임이 정확히 20자면 자르지 않고 칸 「팀이나 제보자 별칭」에 그대로 넣는다", async () => {
+    const nickname = "가".repeat(20);
+    const requests = captureNotionRequests();
+
+    const response = await relayToNotion(
+      toFeedbackRequest({ ...feedback, nickname }),
+      env,
+    );
+
+    expect(response.status).toBe(201);
+    const { properties } = await requests[0].json();
+    expect(properties["팀이나 제보자 별칭"]).toEqual({
+      rich_text: [{ text: { content: nickname } }],
+    });
   });
 
   it("본문이 너무 길면 넣지 않고 413을 돌려준다", async () => {
@@ -483,6 +512,8 @@ describe("relayReleaseNotes", () => {
   };
 
   interface RowParams {
+    /** Notion 페이지 ID. 두 조회에 함께 걸린 줄을 한 번만 쓰는 기준이에요 */
+    id?: string;
     noteId?: string;
     releasedAt?: string;
     title?: string;
@@ -507,8 +538,10 @@ describe("relayReleaseNotes", () => {
     isFromFeedback = false,
     isHighlight = false,
     order = 1,
+    id = `${noteId}/${order}/${title}`,
   }: RowParams = {}) => ({
     object: "page",
+    id,
     properties: {
       제목: { type: "title", title: toText(title) },
       "노트 id": { type: "rich_text", rich_text: toText(noteId) },
@@ -525,26 +558,36 @@ describe("relayReleaseNotes", () => {
     },
   });
 
-  /** Notion 조회로 넘어간 요청을 남기고, 정해 둔 응답을 돌려줘요 */
+  /** Notion 조회로 넘어간 요청을 남기고, 조회 본문에 따라 정해 둔 응답을 돌려줘요 */
   const captureNotionQueries = (
-    createResponse: () => Response = () =>
+    createResponse: (body: { filter?: unknown }) => Response = () =>
       HttpResponse.json({ results: [], has_more: false }),
   ) => {
     const requests: Request[] = [];
     mockServer.use(
-      http.post(NOTION_QUERY_URL, ({ request }) => {
+      http.post(NOTION_QUERY_URL, async ({ request }) => {
         requests.push(request.clone());
 
-        return createResponse();
+        return createResponse((await request.json()) as { filter?: unknown });
       }),
     );
 
     return requests;
   };
 
-  const respondRows = (rows: ReturnType<typeof toRow>[]) =>
-    captureNotionQueries(() =>
-      HttpResponse.json({ results: rows, has_more: false }),
+  /**
+   * 조회 조건이 있는 조회(패널에 보일 줄)에는 `visibleRows`를, 조건이 없는 조회(최근 줄)에는 `recentRows`를 돌려줘요.
+   * `recentRows`를 넘기지 않으면 두 조회가 같은 줄을 받아 모든 줄이 패널에 보여요
+   */
+  const respondRows = (
+    visibleRows: ReturnType<typeof toRow>[],
+    recentRows = visibleRows,
+  ) =>
+    captureNotionQueries(({ filter }) =>
+      HttpResponse.json({
+        results: filter ? visibleRows : recentRows,
+        has_more: false,
+      }),
     );
 
   const requestNotes = (path = "/relay/n", { method = "GET" } = {}) =>
@@ -562,7 +605,10 @@ describe("relayReleaseNotes", () => {
       }),
     });
   });
-  afterEach(() => vi.unstubAllGlobals());
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.useRealTimers();
+  });
 
   it("새 소식 DB를 읽어 노트별로 묶고, 최신 노트를 맨 앞에, 항목은 순서대로 돌려준다", async () => {
     const requests = respondRows([
@@ -616,13 +662,104 @@ describe("relayReleaseNotes", () => {
         ],
       },
     ]);
-    const [upstream] = requests;
-    expect(upstream.headers.get("Authorization")).toBe("Bearer secret_read");
-    expect(upstream.headers.get("Notion-Version")).toBe("2022-06-28");
-    expect(await upstream.json()).toEqual({
-      page_size: 100,
-      sorts: [{ property: "배포 날짜", direction: "descending" }],
+    for (const upstream of requests) {
+      expect(upstream.headers.get("Authorization")).toBe("Bearer secret_read");
+      expect(upstream.headers.get("Notion-Version")).toBe("2022-06-28");
+    }
+  });
+
+  it("패널에 보일 줄은 「보이기」와 한국 날짜로 오늘을 넣은 3일을 조회 조건으로 거르고, 읽음 순서는 조건 없이 최근 100줄로 만든다", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    // 한국은 10월 29일이지만 UTC로는 아직 10월 28일인 때예요
+    vi.setSystemTime(new Date("2026-10-29T00:30:00+09:00"));
+    const requests = respondRows([]);
+
+    await requestNotes();
+
+    const sorts = [{ property: "배포 날짜", direction: "descending" }];
+    const isRecent = {
+      property: "배포 날짜",
+      date: { on_or_after: "2026-10-27" },
+    };
+    const bodies = await Promise.all(requests.map((request) => request.json()));
+    expect(bodies).toHaveLength(2);
+    expect(bodies).toEqual(
+      expect.arrayContaining([
+        {
+          page_size: 100,
+          sorts,
+          filter: {
+            or: [
+              { property: "보이기", select: { equals: "항상 보이기" } },
+              {
+                and: [
+                  isRecent,
+                  { property: "보이기", select: { equals: "자동" } },
+                ],
+              },
+              {
+                and: [
+                  isRecent,
+                  { property: "보이기", select: { is_empty: true } },
+                ],
+              },
+            ],
+          },
+        },
+        { page_size: 100, sorts },
+      ]),
+    );
+  });
+
+  it("조회 조건에 걸린 줄만 항목으로 넘기고, 최근 줄에만 있는 노트는 글 없이 id와 자리만 남긴다", async () => {
+    const latest = toRow({
+      noteId: "pr-1060",
+      releasedAt: "2026-10-29",
+      title: "새 항목",
     });
+    respondRows(
+      [
+        latest,
+        toRow({
+          noteId: "v0.1.0",
+          releasedAt: "2026-10-19",
+          title: "항상 보이는 옛 항목",
+        }),
+      ],
+      [
+        latest,
+        toRow({
+          noteId: "pr-1050",
+          releasedAt: "2026-10-25",
+          title: "3일 지난 항목",
+        }),
+      ],
+    );
+
+    const response = await requestNotes();
+    const notes: { id: string; items: { title: string }[] }[] =
+      await response.json();
+
+    expect(
+      notes.map(({ id, items }) => [id, items.map(({ title }) => title)]),
+    ).toEqual([
+      ["pr-1060", ["새 항목"]],
+      ["pr-1050", []],
+      ["v0.1.0", ["항상 보이는 옛 항목"]],
+    ]);
+    expect(JSON.stringify(notes)).not.toContain("3일 지난 항목");
+  });
+
+  it("노트의 줄 일부만 조회 조건에 걸리면 걸린 항목만 넘긴다", async () => {
+    const shown = toRow({ title: "보이는 항목", order: 1 });
+    respondRows([shown], [shown, toRow({ title: "숨긴 항목", order: 2 })]);
+
+    const response = await requestNotes();
+    const [note] = await response.json();
+
+    expect(note.items.map(({ title }: { title: string }) => title)).toEqual([
+      "보이는 항목",
+    ]);
   });
 
   it("같은 날 낸 노트는 나중에 머지한 PR의 노트를 앞에 둔다", async () => {
@@ -696,7 +833,8 @@ describe("relayReleaseNotes", () => {
     await requestNotes();
     const cached = await requestNotes("/relay/n?nocache=1");
 
-    expect(requests).toHaveLength(1);
+    // 처음 한 번 읽을 때 부른 두 조회뿐이에요
+    expect(requests).toHaveLength(2);
     expect(await cached.json()).toHaveLength(1);
   });
 
@@ -724,7 +862,20 @@ describe("relayReleaseNotes", () => {
     await requestNotes();
 
     expect(response.status).toBe(404);
-    expect(requests).toHaveLength(2);
+    // 캐시하지 않아 두 번 읽을 때마다 두 조회를 다시 불러요
+    expect(requests).toHaveLength(4);
+  });
+
+  it("DB에 「보이기」 칸이 없어 조회 조건을 거절하면 최근 줄 조회가 성공해도 그 코드를 돌려준다", async () => {
+    captureNotionQueries(({ filter }) =>
+      filter
+        ? new HttpResponse('{"code":"validation_error"}', { status: 400 })
+        : HttpResponse.json({ results: [toRow()], has_more: false }),
+    );
+
+    const response = await requestNotes();
+
+    expect(response.status).toBe(400);
   });
 
   it("GET이 아니면 읽지 않고 405를 돌려준다", async () => {

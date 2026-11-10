@@ -53,16 +53,38 @@ interface UploadParams {
 
 interface CompleteResult {
   status: PcmChunkStatus;
+  /** 첫 조각부터 빈틈없이 저장이 확인된 마지막 번호 */
+  verifiedThroughSequence: number;
   verifiedThroughFrame: number;
 }
 
-export interface PcmChunkUploadQueueParams {
+/** 조각의 서버 요청. 도메인 훅이 세션과 탭 증명을 묶어 넘겨요 */
+export interface PcmChunkRequests {
   /** 조각 예약. 도메인 훅이 세션과 탭 증명을 붙인 뮤테이션을 넘겨요 */
   reserve: (descriptor: PcmChunkDescriptor) => Promise<ReserveResult>;
   /** 예약 응답의 서명 URL로 PCM을 PUT */
   upload: (params: UploadParams) => Promise<unknown>;
   /** 조각 저장 확인 */
   complete: (sequence: number) => Promise<CompleteResult>;
+}
+
+/** 저장이 확인될 때까지 조각을 브라우저에 보관하는 곳. 새로고침해도 남아요 */
+interface PcmChunkArchive {
+  save: (sequence: number, pcm: ArrayBuffer) => Promise<unknown>;
+  /** 이 번호까지의 조각을 지워요 */
+  removeThrough: (sequence: number) => Promise<unknown>;
+}
+
+export interface PcmChunkUploadQueueParams extends PcmChunkRequests {
+  /** 첫 조각의 번호. 이어 받은 녹음은 서버가 확인한 다음 번호부터 이어요. 기본은 1이에요 */
+  nextSequence?: number;
+  /** 첫 조각의 시작 프레임. 기본은 0이에요 */
+  nextSampleOffset?: number;
+  archive?: PcmChunkArchive;
+  /** 조각을 보관하지 못했을 때 불러요. 저장 공간이 모자란 경우예요. 전송은 메모리의 바이트로 이어 가요 */
+  onArchiveFailed?: () => void;
+  /** 일시 실패로 조각이 밀리기 시작하거나(`true`) 저장 확인을 받아 풀릴 때(`false`) 불러요 */
+  onStalledChange?: (isStalled: boolean) => void;
 }
 
 /** 번호와 길이는 넣는 즉시 고정하고, 해시는 전송 직전에 계산해 붙여요 */
@@ -121,15 +143,21 @@ const isUploadPossiblyStored = (error: unknown) =>
  * - 다시 시도하는 실패는 시도마다 보내지 않고 연속 실패의 첫 번째만 보내요. 조각의 저장이 확인되면 다시 세요.
  *   그래서 조각 요청 뮤테이션은 MutationCache가 보고하지 않아요(`meta.errorReport`)
  * - `seal()`은 종료 요청에 담을 마지막 번호와 예약 응답을 아직 받지 못한 조각을 줘요. 종료 뒤에도 그 조각은 평소대로 예약부터 올려요
+ * - 저장 확인을 받을 때까지 `archive`에도 조각을 보관해, 새로고침해도 다시 올릴 수 있어요. 보관에 실패해도 전송은 이어 가요
  * - 서버 요청은 밖에서 받아요. 이 저장소는 브라우저 안의 녹음만 다루고 API 호출은 도메인 훅이 맡아요
  */
 export default class PcmChunkUploadQueue {
   private readonly reserve: PcmChunkUploadQueueParams["reserve"];
   private readonly upload: PcmChunkUploadQueueParams["upload"];
   private readonly complete: PcmChunkUploadQueueParams["complete"];
+  private readonly archive: PcmChunkUploadQueueParams["archive"];
+  private readonly onArchiveFailed: PcmChunkUploadQueueParams["onArchiveFailed"];
+  private readonly onStalledChange: PcmChunkUploadQueueParams["onStalledChange"];
 
-  private nextSequence = 1;
-  private nextSampleOffset = 0;
+  private nextSequence: number;
+  private nextSampleOffset: number;
+  /** 일시 실패가 이어져 조각이 밀리고 있는지 */
+  private isStalled = false;
   /** 저장 확인 전까지 들고 있는 조각 */
   private readonly pending = new Map<number, ArrayBuffer>();
   /** 예약 응답을 아직 받지 못한 조각의 descriptor. 해시를 전송 직전에 계산해 붙이므로 Promise로 들고 있어요 */
@@ -149,10 +177,24 @@ export default class PcmChunkUploadQueue {
     action: "녹음 조각 올리기",
   });
 
-  constructor({ reserve, upload, complete }: PcmChunkUploadQueueParams) {
+  constructor({
+    reserve,
+    upload,
+    complete,
+    nextSequence = 1,
+    nextSampleOffset = 0,
+    archive,
+    onArchiveFailed,
+    onStalledChange,
+  }: PcmChunkUploadQueueParams) {
     this.reserve = reserve;
     this.upload = upload;
     this.complete = complete;
+    this.nextSequence = nextSequence;
+    this.nextSampleOffset = nextSampleOffset;
+    this.archive = archive;
+    this.onArchiveFailed = onArchiveFailed;
+    this.onStalledChange = onStalledChange;
   }
 
   /** 첫 조각부터 빈틈없이 저장이 확인된 끝 프레임(그 프레임은 제외) */
@@ -163,6 +205,11 @@ export default class PcmChunkUploadQueue {
   /** 아직 저장 확인을 받지 못해 들고 있는 조각 번호 */
   get pendingSequences() {
     return [...this.pending.keys()];
+  }
+
+  /** 끊겨서 조각이 쌓여 있는지. 종료 뒤 수신 창으로 미루지 않고 먼저 올려야 해요 */
+  get hasBacklog() {
+    return this.isStalled || this.pending.size > MAX_CONCURRENT_TRANSFERS;
   }
 
   /** 조각을 봉인해 전송을 예약해요. 돌려주는 Promise는 그 조각의 저장이 확인되면 끝나고, 조각이 멈추면 그 이유로 거부돼요 */
@@ -178,7 +225,10 @@ export default class PcmChunkUploadQueue {
     this.nextSequence += 1;
     this.nextSampleOffset += frameCount;
     // 멈춘 뒤에 들어온 조각은 올릴 수 없어 들고 있지 않아요
-    if (!this.stopReason) this.pending.set(chunk.sequence, pcm);
+    if (!this.stopReason) {
+      this.pending.set(chunk.sequence, pcm);
+      this.archive?.save(chunk.sequence, pcm).catch(() => this.onArchiveFailed?.());
+    }
 
     const task: Promise<void> = this.transfer(chunk).finally(() => {
       this.inflight.delete(task);
@@ -330,7 +380,7 @@ export default class PcmChunkUploadQueue {
         } catch (error) {
           // 403(URL 만료)을 포함한 나머지 PUT 실패는 재예약해 새 URL로 다시 보내요
           if (!isUploadPossiblyStored(error)) {
-            this.retriedFailures.report({ error });
+            this.reportRetriedFailure(error);
 
             return "reserveAgain";
           }
@@ -344,7 +394,12 @@ export default class PcmChunkUploadQueue {
         if (completed.status !== "VERIFIED") return "reserveAgain";
 
         this.pending.delete(sequence);
+        // 앞 조각이 비어 있으면 서버는 이어 받을 때 뒤 조각도 지우므로, 빈틈없이 확인된 데까지만 보관본을 놓아요
+        void this.archive
+          ?.removeThrough(completed.verifiedThroughSequence)
+          .catch(() => undefined);
         this.retriedFailures.reset();
+        this.setStalled(false);
         // 뒤 조각의 응답이 먼저 와도 watermark가 줄지 않게 큰 값만 받아요
         this.verifiedFrame = Math.max(
           this.verifiedFrame,
@@ -359,7 +414,7 @@ export default class PcmChunkUploadQueue {
           return "reserveAgain";
         }
         if (isTransientApiError(error)) {
-          this.retriedFailures.report({ error });
+          this.reportRetriedFailure(error);
 
           return "completeAgain";
         }
@@ -381,10 +436,22 @@ export default class PcmChunkUploadQueue {
         return await request();
       } catch (error) {
         if (!isTransientApiError(error)) throw error;
-        this.retriedFailures.report({ error });
+        this.reportRetriedFailure(error);
       }
       await this.wait(nextDelay());
     }
+  }
+
+  private reportRetriedFailure(error: unknown) {
+    this.retriedFailures.report({ error });
+    this.setStalled(true);
+  }
+
+  private setStalled(isStalled: boolean) {
+    if (this.isStalled === isStalled) return;
+
+    this.isStalled = isStalled;
+    this.onStalledChange?.(isStalled);
   }
 
   /** 재시도 간격을 기다려요. 그 사이 큐가 멈추면 그 이유로 바로 깨어나요 */

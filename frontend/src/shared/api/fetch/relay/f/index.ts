@@ -11,7 +11,7 @@ const TIMEOUT_DURATION = 10_000;
 
 /**
  * @description 피드백을 프론트 Worker로 보내 Notion 「사용자 피드백 접수함」에 넣습니다
- * @param body - 고른 유형 · 적은 내용 · 화면 주소 · 리플레이 주소
+ * @param body - 고른 유형 · 적은 내용 · 화면 주소 · 리플레이 주소 · 닉네임
  * @returns 없음
  * @example
  * await sendFeedbackApi(new PostFeedbackRequestDto({ type: "bug", content, pageUrl }));

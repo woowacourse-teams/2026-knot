@@ -146,7 +146,28 @@ class RecordingTranscriptServiceIntegrationTest {
     }
 
     @Test
-    @DisplayName("전사 전·전사 실패·NO_CONTENT 녹음은 RECORDING_TRANSCRIPT_NOT_FOUND다")
+    @DisplayName("NO_CONTENT 녹음도 현재 멤버가 전사를 읽는다")
+    void find_success_noContentRecording() {
+        // given
+        long recordingId = saved(
+                teammateId,
+                0
+        );
+        fixture.batch(
+                recordingId,
+                "NO_CONTENT",
+                "NO_CONTENT"
+        );
+
+        // when
+        RecordingTranscriptResult result = find(recordingId);
+
+        // then
+        assertThat(result.transcriptText()).isEqualTo("회원 탈퇴 정책을 정했다.");
+    }
+
+    @Test
+    @DisplayName("전사 전·전사 실패 녹음은 RECORDING_TRANSCRIPT_NOT_FOUND다")
     void find_fail_transcriptNotFound() {
         // given
         long beforeTranscription = saved(
@@ -158,21 +179,11 @@ class RecordingTranscriptServiceIntegrationTest {
                 1
         );
         fixture.transcriptionFailed(transcriptionFailed);
-        long noContent = saved(
-                teammateId,
-                2
-        );
-        fixture.batch(
-                noContent,
-                "NO_CONTENT",
-                "NO_CONTENT"
-        );
 
         // when
         List<ErrorCode> errorCodes = List.of(
                 beforeTranscription,
-                transcriptionFailed,
-                noContent
+                transcriptionFailed
         )
                 .stream()
                 .map(this::errorCode)

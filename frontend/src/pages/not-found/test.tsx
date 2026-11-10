@@ -1,13 +1,14 @@
 import { AUTH_ME_API_PATH } from "@api/fetch/api/v1/auth/me";
 import { mockServer } from "@api/mock/server";
 import { ThemeProvider } from "@emotion/react";
+import AppProviders from "@provider/AppProviders";
 import { theme } from "@provider/themeProvider";
 import { PATH_ROUTE } from "@routes/PATH_ROUTE";
 import { routes } from "@routes/routes";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { delay, http, HttpResponse } from "msw";
-import { createMemoryRouter, RouterProvider } from "react-router";
+import { createMemoryRouter, Outlet, RouterProvider } from "react-router";
 import { describe, expect, it } from "vitest";
 
 // 피그마 ERR-01(잘못된 요청) 화면의 문구예요
@@ -22,7 +23,20 @@ const renderApp = (initialPath: string) => {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
-  const router = createMemoryRouter(routes, { initialEntries: [initialPath] });
+  // 모든 화면을 감싼 생존 신호가 토스트와 모달을 쓰므로, 앱처럼 프로바이더 안에 그려요
+  const router = createMemoryRouter(
+    [
+      {
+        element: (
+          <AppProviders routes={routes}>
+            <Outlet />
+          </AppProviders>
+        ),
+        children: routes,
+      },
+    ],
+    { initialEntries: [initialPath] },
+  );
 
   render(
     <ThemeProvider theme={theme}>

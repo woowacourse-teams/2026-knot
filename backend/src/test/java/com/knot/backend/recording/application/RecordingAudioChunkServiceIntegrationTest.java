@@ -1,5 +1,7 @@
 package com.knot.backend.recording.application;
 
+import com.knot.backend.testsupport.RecordingConnectionPolicyFixture;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowable;
 import static org.mockito.ArgumentMatchers.any;
@@ -9,6 +11,8 @@ import static org.mockito.Mockito.when;
 
 import com.knot.backend.global.exception.ProjectException;
 import com.knot.backend.recording.application.dto.command.RecordingAudioChunkCommand;
+import com.knot.backend.recording.application.dto.command.RecordingAudioSealCommand;
+import com.knot.backend.recording.application.dto.command.RecordingReconnectCommand;
 import com.knot.backend.recording.application.dto.command.RecordingControlCommand;
 import com.knot.backend.recording.application.dto.result.PresignedAudioChunk;
 import com.knot.backend.recording.application.dto.result.RecordingAudioChunkCompletionResult;
@@ -22,6 +26,7 @@ import com.knot.backend.testsupport.TestcontainersConfiguration;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.Base64;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -36,6 +41,7 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
@@ -49,6 +55,8 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 @SpringBootTest(properties = "recording.audio-chunks.enabled=true")
 class RecordingAudioChunkServiceIntegrationTest {
     private static final Instant NOW = Instant.parse("2026-10-17T00:00:10Z");
+    private static final Instant EXPIRED_LAST_SEEN_AT = NOW.minus(RecordingConnectionPolicyFixture.GRACE)
+            .minusSeconds(10);
     private static final String HASH = Base64.getEncoder()
             .encodeToString(new byte[32]);
     private static final UUID TAB = UUID.fromString("11111111-1111-1111-1111-111111111111");
@@ -57,6 +65,8 @@ class RecordingAudioChunkServiceIntegrationTest {
 
     @Autowired
     private RecordingAudioChunkService service;
+    @Autowired
+    private RecordingService controls;
     @Autowired
     private RecordingControlTokenHasher hasher;
     @Autowired
@@ -187,7 +197,7 @@ class RecordingAudioChunkServiceIntegrationTest {
         ).isEqualTo(1);
         assertThat(countChunks()).isEqualTo(1);
         assertThat(nextSequence()).isEqualTo(2);
-        assertThat(lastSeenAt()).isEqualTo(NOW.minusSeconds(10));
+        assertThat(lastSeenAt()).isEqualTo(NOW);
     }
 
     @Test
@@ -274,7 +284,7 @@ class RecordingAudioChunkServiceIntegrationTest {
         assertThat(first.verifiedThroughSequence()).isEqualTo(2);
         assertThat(first.verifiedThroughFrame()).isEqualTo(160000);
         assertThat(first.verifiedAudioMillis()).isEqualTo(10000);
-        assertThat(lastSeenAt()).isEqualTo(NOW.minusSeconds(10));
+        assertThat(lastSeenAt()).isEqualTo(NOW);
     }
 
     @ParameterizedTest
@@ -333,8 +343,7 @@ class RecordingAudioChunkServiceIntegrationTest {
                 """)
                 .param(
                         "past",
-                        NOW.minusSeconds(40)
-                                .toString()
+                        EXPIRED_LAST_SEEN_AT.toString()
                 )
                 .param(
                         "id",
@@ -374,9 +383,150 @@ class RecordingAudioChunkServiceIntegrationTest {
                         )
                         .query(Instant.class)
                         .single()
-        ).isEqualTo(NOW.minusSeconds(10));
+        ).isEqualTo(EXPIRED_LAST_SEEN_AT);
         assertThat(countChunks()).isZero();
         assertThat(nextSequence()).isEqualTo(1);
+    }
+
+    @ParameterizedTest
+    @CsvSource({"false,false", "false,true", "true,false", "true,true"})
+    @DisplayName("이어 받기 뒤 일반·종료 예약은 기존 객체와 늦은 PUT을 피해 새 음성을 저장하고 재시도 키는 유지한다")
+    void reconnect_success_isolatesReplacementObject(
+            boolean lateOldUpload,
+            boolean reserveOnEnd
+    ) {
+        // given: PUT만 끝나고 complete가 오지 않은 조각 또는 아직 도착하지 않은 이전 PUT
+        Map<String, StoredAudioChunk> objects = new HashMap<>();
+        service.reserve(
+                workspaceId,
+                memberId,
+                recordingId,
+                command(
+                        1,
+                        HASH
+                )
+        );
+        String oldKey = chunkStorageKey();
+        StoredAudioChunk oldObject = stored();
+        if (!lateOldUpload) {
+            objects.put(
+                    oldKey,
+                    oldObject
+            );
+        }
+        RecordingControlCommand replacementControl = new RecordingControlCommand(
+                UUID.randomUUID(),
+                "replacement-control-token"
+        );
+        controls.reconnect(
+                workspaceId,
+                memberId,
+                recordingId,
+                new RecordingReconnectCommand(
+                        TAB,
+                        TOKEN,
+                        replacementControl.tabId(),
+                        replacementControl.controlToken()
+                )
+        );
+        byte[] differentHash = new byte[32];
+        differentHash[0] = 1;
+        String replacementHash = Base64.getEncoder()
+                .encodeToString(differentHash);
+        AudioChunkDescriptor descriptor = new AudioChunkDescriptor(
+                1,
+                0,
+                80000,
+                160000,
+                replacementHash
+        );
+        RecordingAudioChunkCommand replacementCommand = new RecordingAudioChunkCommand(
+                replacementControl,
+                descriptor
+        );
+
+        // when: 종료 본문의 pendingDescriptors 경로도 같은 새 키 정책을 사용한다
+        if (reserveOnEnd) {
+            controls.end(
+                    workspaceId,
+                    memberId,
+                    recordingId,
+                    replacementControl,
+                    new RecordingAudioSealCommand(
+                            1,
+                            80000,
+                            List.of(descriptor)
+                    )
+            );
+        }
+        service.reserve(
+                workspaceId,
+                memberId,
+                recordingId,
+                replacementCommand
+        );
+        String replacementKey = chunkStorageKey();
+        assertThat(replacementKey).isNotEqualTo(oldKey)
+                .startsWith("recordings/" + recordingId + "/chunks/1/");
+        objects.putIfAbsent(
+                oldKey,
+                oldObject
+        );
+        StoredAudioChunk replacementObject = new StoredAudioChunk(
+                true,
+                160000,
+                "application/octet-stream",
+                replacementHash,
+                "replacement-version"
+        );
+        // S3 If-None-Match:*처럼 이미 저장된 객체는 덮어쓰지 않는다
+        assertThat(
+                objects.putIfAbsent(
+                        replacementKey,
+                        replacementObject
+                )
+        ).isNull();
+        service.reserve(
+                workspaceId,
+                memberId,
+                recordingId,
+                replacementCommand
+        );
+        assertThat(chunkStorageKey()).isEqualTo(replacementKey);
+        when(storage.findStoredObject(anyString()))
+                .thenAnswer(invocation -> objects.get(invocation.<String>getArgument(0)));
+        RecordingAudioChunkCompletionResult result = service.complete(
+                workspaceId,
+                memberId,
+                recordingId,
+                1,
+                replacementControl
+        );
+
+        // then
+        assertThat(result.verifiedThroughSequence()).isEqualTo(1);
+        assertThat(result.verifiedThroughFrame()).isEqualTo(80000);
+        assertThat(objects.get(oldKey)).isEqualTo(oldObject);
+        assertThat(
+                jdbcClient.sql("SELECT storage_version_id FROM recording_audio_chunks WHERE recording_id = :id")
+                        .param(
+                                "id",
+                                recordingId
+                        )
+                        .query(String.class)
+                        .single()
+        ).isEqualTo("replacement-version");
+    }
+
+    private String chunkStorageKey() {
+        return jdbcClient
+                .sql("SELECT storage_key FROM recording_audio_chunks WHERE recording_id = :id AND sequence = 1")
+                .param(
+                        "id",
+                        recordingId
+                )
+                .query(String.class)
+                .single();
     }
 
     private List<Object> reserveConcurrently(

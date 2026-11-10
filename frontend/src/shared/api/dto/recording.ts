@@ -8,6 +8,7 @@
  * - POST /api/v1/workspaces/{workspaceId}/recordings/{recordingId}/resume
  * - POST /api/v1/workspaces/{workspaceId}/recordings/{recordingId}/end
  * - POST /api/v1/workspaces/{workspaceId}/recordings/{recordingId}/heartbeat
+ * - POST /api/v1/workspaces/{workspaceId}/recordings/{recordingId}/reconnect
  * - POST /api/v1/workspaces/{workspaceId}/recordings/{recordingId}/audio-upload-url
  * - POST /api/v1/workspaces/{workspaceId}/recordings/{recordingId}/audio-upload-complete
  * - POST /api/v1/workspaces/{workspaceId}/recordings/{recordingId}/audio-chunks
@@ -20,6 +21,9 @@
 /** 녹음 세션 상태. 시작·일시정지·재개·종료 응답과 녹음 상세 조회가 공유하는 서버 값. `DISCARDED`는 서버가 버린 녹음이에요 */
 export type RecordingSessionStatus =
   "RECORDING" | "PAUSED" | "ENDED" | "DISCARDED";
+
+/** 녹음 탭의 연결 상태. 마지막 생존 신호 뒤 30초가 지나면 `DISCONNECTED`예요. 진행 중인 녹음에만 값이 있어요 */
+export type RecordingConnectionStatus = "CONNECTED" | "DISCONNECTED";
 
 /**
  * 오디오 저장 방식. `FINAL_WEBM_V1`은 종료 뒤 최종 WebM 파일을 한 번에 올리는 기존 방식,
@@ -211,6 +215,7 @@ export interface GetCurrentRecordingResponseRaw {
   elapsedMillis: number;
   retryable?: boolean;
   retryableJobIds?: number[];
+  connectionStatus?: RecordingConnectionStatus | null;
 }
 
 /** 내 현재 녹음 조회 응답. 표시할 녹음이 없으면 서버가 본문 없이 204로 답하고 요청 함수가 `null`을 돌려줘요 */
@@ -230,6 +235,8 @@ export class GetCurrentRecordingResponseDto {
   isRetryable: boolean;
   /** 문서 실패 중 현재 접수 가능한 작업 ID. 다른 상태와 확장 전 응답은 빈 배열이에요 */
   retryableJobIds: number[];
+  /** 녹음 탭의 연결 상태. 녹음 중 · 일시정지일 때만 값이 있고 나머지는 null이에요 */
+  connectionStatus: RecordingConnectionStatus | null;
 
   constructor(raw: GetCurrentRecordingResponseRaw) {
     this.recordingId = raw.recordingId;
@@ -238,6 +245,7 @@ export class GetCurrentRecordingResponseDto {
     this.elapsedMillis = raw.elapsedMillis;
     this.isRetryable = raw.retryable ?? false;
     this.retryableJobIds = raw.retryableJobIds ?? [];
+    this.connectionStatus = raw.connectionStatus ?? null;
   }
 }
 
@@ -256,15 +264,15 @@ export type RecordingProcessingStatus =
 
 /**
  * 녹음 기록 한 행의 서버 응답 모양.
- * `retryableJobIds`는 행 다시 시도와 함께 더해진 값이라, 그 전의 서버는 필드 자체를 주지 않아요
+ * 처리 상태와 다시 시도 정보가 더해지기 전의 서버는 해당 필드를 주지 않아요
  */
 export interface RecordingHistoryItemRaw {
   recordingId: number;
   title: string;
   startedAt: string;
   recordingDurationSeconds: number;
-  processingStatus: RecordingProcessingStatus;
-  retryable: boolean;
+  processingStatus?: RecordingProcessingStatus | null;
+  retryable?: boolean | null;
   retryableJobIds?: number[];
 }
 
@@ -278,9 +286,9 @@ export class RecordingHistoryItemDto {
   startedAt: string;
   /** 일시정지를 뺀 녹음 길이(초) */
   recordingDurationSeconds: number;
-  /** 처리 상태 */
-  processingStatus: RecordingProcessingStatus;
-  /** 실패한 처리를 지금 다시 접수할 수 있으면 true. 서버 필드 `retryable`을 이름만 바꿨어요 */
+  /** 처리 상태. 이전 서버의 필드 누락은 null로 보존하며 정상 상태로 추정하지 않아요 */
+  processingStatus: RecordingProcessingStatus | null;
+  /** 실패한 처리를 지금 다시 접수할 수 있으면 true. 서버 필드 `retryable`을 이름만 바꾸고 누락·null은 false로 둬요 */
   isRetryable: boolean;
   /** 문서 생성 실패 중 지금 접수할 수 있는 작업 ID. 다른 상태와 확장 전 응답은 빈 배열이에요 */
   retryableJobIds: number[];
@@ -290,8 +298,8 @@ export class RecordingHistoryItemDto {
     this.title = raw.title;
     this.startedAt = raw.startedAt;
     this.recordingDurationSeconds = raw.recordingDurationSeconds;
-    this.processingStatus = raw.processingStatus;
-    this.isRetryable = raw.retryable;
+    this.processingStatus = raw.processingStatus ?? null;
+    this.isRetryable = raw.retryable ?? false;
     this.retryableJobIds = raw.retryableJobIds ?? [];
   }
 }
@@ -735,6 +743,7 @@ export interface PostRecordingHeartbeatResponseRaw {
   expiresAt: string | null;
   endedAt: string | null;
   endReason: RecordingEndReason | null;
+  connectionStatus?: RecordingConnectionStatus | null;
   serverNow: string;
 }
 
@@ -754,6 +763,8 @@ export class PostRecordingHeartbeatResponseDto {
   endedAt: string | null;
   /** 종료 사유. 진행 중이거나 이 값을 기록하기 전에 끝난 녹음이면 null */
   endReason: RecordingEndReason | null;
+  /** 녹음 탭의 연결 상태. 끝난 녹음이면 null이에요 */
+  connectionStatus: RecordingConnectionStatus | null;
   /** 응답을 만든 서버 시각(ISO 8601) */
   serverNow: string;
 
@@ -765,9 +776,47 @@ export class PostRecordingHeartbeatResponseDto {
     this.expiresAt = raw.expiresAt;
     this.endedAt = raw.endedAt;
     this.endReason = raw.endReason;
+    this.connectionStatus = raw.connectionStatus ?? null;
     this.serverNow = raw.serverNow;
   }
 }
+
+// POST /api/v1/workspaces/{workspaceId}/recordings/{recordingId}/reconnect
+
+/** 같은 탭 새로고침 뒤 녹음을 이어 받을 때 앱이 넘기는 값. 이전 증명으로 확인하고 새 증명으로 바꿔요 */
+export interface PostRecordingReconnectRequestInput {
+  previousTabId: string;
+  previousControlToken: string;
+  tabId: string;
+  controlToken: string;
+}
+
+/** 녹음 이어 받기 요청 본문 */
+export class PostRecordingReconnectRequestDto {
+  /** 새로고침 전 녹음 탭의 UUID */
+  previousTabId: string;
+  /** 새로고침 전 녹음 탭의 제어 증명(43자 Base64URL) */
+  previousControlToken: string;
+  /** 새로 만든 탭 UUID. `previousTabId`와 달라야 해요 */
+  tabId: string;
+  /** 새로 만든 제어 증명. 재시도에는 같은 값을 보내요 */
+  controlToken: string;
+
+  constructor({
+    previousTabId,
+    previousControlToken,
+    tabId,
+    controlToken,
+  }: PostRecordingReconnectRequestInput) {
+    this.previousTabId = previousTabId;
+    this.previousControlToken = previousControlToken;
+    this.tabId = tabId;
+    this.controlToken = controlToken;
+  }
+}
+
+/** 녹음 이어 받기 응답. 생존 신호 응답과 필드가 같아요. 이미 끝난 녹음이면 증명을 바꾸지 않고 끝난 결과만 줘요 */
+export class PostRecordingReconnectResponseDto extends PostRecordingHeartbeatResponseDto {}
 
 // POST /api/v1/workspaces/{workspaceId}/recordings/{recordingId}/audio-upload-url
 

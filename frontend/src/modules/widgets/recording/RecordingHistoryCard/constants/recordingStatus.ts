@@ -19,7 +19,16 @@ export const CURRENT_RECORDING_COPY = {
 
 /** 다른 탭의 녹음이면 이 탭에서 녹음 화면에 갈 수 없어 대신 보여 주는 안내(STT-R28) */
 export const OTHER_TAB_RECORDING_HINT =
-  "녹음 중인 탭에서 일시정지·끝내기를 할 수 있어요";
+  "녹음 중인 탭에서 일시정지·이어서 녹음을 할 수 있어요";
+
+/** 다른 탭의 녹음에서 녹음 탭의 연결이 끊겼을 때 안내 자리에 보여 주는 문구(STT-R28) */
+export const OTHER_TAB_CONNECTION_LOST_HINT = "녹음 중인 탭의 연결이 끊겼어요";
+
+/** 이 탭을 새로고침해 아직 이어 받지 않은 녹음의 상태 이름과 안내(STT-R26) */
+export const RELOADED_RECORDING_COPY = {
+  label: "녹음 멈춤",
+  hint: "녹음 화면에서 이어서 녹음할 수 있어요",
+} as const;
 
 /** 완료가 아닌 행이 날짜와 길이 자리에 보여 주는 처리 상태 문구(STT-R51). 주제 분류 실패도 문서 생성 실패예요 */
 export const PROCESSING_STATUS_LABEL = {

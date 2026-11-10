@@ -132,6 +132,18 @@ export default meta;
 
 type Story = StoryObj<typeof meta>;
 
+/** 신규 녹음 원문 API만 미지원일 때예요. 기존 문서의 원문 오류에는 이 안내를 쓰지 않아요. */
+export const UnsupportedRecordingTranscript: Story = {
+  parameters: {
+    path: RECORDING_DOCUMENT_PATH,
+    docs: { story: { inline: false, iframeHeight: 300 } },
+    msw: { handlers: { recordingTranscript: http.get(
+      "*/api/v1/workspaces/:workspaceId/recordings/:recordingId/transcript",
+      () => HttpResponse.json({ code: "REQUEST_PATH_NOT_FOUND" }, { status: 404 }),
+    ) } },
+  },
+};
+
 /**
  * 원문을 받은 기본 모습이에요. 문서 101을 만든 32분 회의의 발화 12줄이 서버가 준 순서로 놓여요.
  * `08:20`의 「네, 좋아요.」는 화자를 알 수 없는 구간이라 문장만 보여요.

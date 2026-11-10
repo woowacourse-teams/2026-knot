@@ -13,12 +13,13 @@ import org.springframework.stereotype.Repository;
 @Repository
 @RequiredArgsConstructor
 public class RecordingTranscriptQueryAdapter implements RecordingTranscriptQuery {
-    // 주제가 등록돼 NO_CONTENT가 아님이 정해진 녹음의 문서 정리 입력 전사다. 주제별 문서의 원문과 같은 Transcript다.
+    // 주제 분류를 마친 녹음의 문서 정리 입력 전사다. 주제별 문서의 원문과 같은 Transcript이고, 주제가 없어 문서를 만들지 않은
+    // NO_CONTENT도 같다.
     private static final String SOURCE_SQL = """
             SELECT t.id, t.content
             FROM document_generation_batches b
             JOIN transcripts t ON t.id = b.transcript_id AND t.recording_session_id = b.recording_session_id
-            WHERE b.recording_session_id = :recordingId AND b.topic_registration_state = 'TOPICS_REGISTERED'
+            WHERE b.recording_session_id = :recordingId AND b.topic_registration_state IN ('TOPICS_REGISTERED', 'NO_CONTENT')
             """;
 
     private final JdbcClient jdbcClient;

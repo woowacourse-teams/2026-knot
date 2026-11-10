@@ -173,7 +173,9 @@ const FEEDBACK_KIND = {
 /** 적은 내용의 최대 길이. Notion 글 칸 한 덩어리의 한도이고, 패널 입력창도 같은 길이로 막아요 */
 const MAX_FEEDBACK_CONTENT_LENGTH = 2000;
 const MAX_FEEDBACK_URL_LENGTH = 2000;
-/** 요청 본문의 최대 길이. 내용과 주소 둘을 다 채워도 넘지 않아요 */
+/** 닉네임의 최대 길이. 서버가 회원 닉네임에 두는 한도와 같아요 */
+const MAX_FEEDBACK_NICKNAME_LENGTH = 20;
+/** 요청 본문의 최대 길이. 내용, 주소 둘, 닉네임을 다 채워도 넘지 않아요 */
 const MAX_FEEDBACK_BODY_LENGTH = 8 * 1024;
 const MAX_FEEDBACK_TITLE_LENGTH = 60;
 /** 원문 링크로 받는 PostHog 리플레이 주소. `src/index.tsx`의 `ui_host`와 맞춰요 */
@@ -186,6 +188,7 @@ interface Feedback {
   content: string;
   pageUrl: string;
   replayUrl?: string;
+  nickname?: string;
 }
 
 const isShortString = (value: unknown, maxLength: number): value is string =>
@@ -212,7 +215,10 @@ const readFeedback = (text: string, origin: string): Feedback | null => {
   }
   if (typeof body !== "object" || body === null) return null;
 
-  const { type, content, pageUrl, replayUrl } = body as Record<string, unknown>;
+  const { type, content, pageUrl, replayUrl, nickname } = body as Record<
+    string,
+    unknown
+  >;
   if (
     !isFeedbackType(type) ||
     !isShortString(content, MAX_FEEDBACK_CONTENT_LENGTH) ||
@@ -230,15 +236,28 @@ const readFeedback = (text: string, origin: string): Feedback | null => {
   ) {
     return null;
   }
+  // 없으면 받아요. 배포 직후 옛 탭은 닉네임 없이 보내고, 닉네임을 불러오지 못한 화면도 그래요
+  if (
+    nickname !== undefined &&
+    !isShortString(nickname, MAX_FEEDBACK_NICKNAME_LENGTH)
+  ) {
+    return null;
+  }
 
-  return { type, content, pageUrl, replayUrl };
+  return { type, content, pageUrl, replayUrl, nickname };
 };
 
 const toRichText = (content: string) =>
   content ? [{ text: { content } }] : [];
 
-/** 접수함에 한 줄로 넣을 Notion 페이지. 제목은 적은 내용의 첫 줄 앞부분이고, 닉네임은 적지 않아요 */
-const toNotionPage = ({ type, content, pageUrl, replayUrl }: Feedback) => {
+/** 접수함에 한 줄로 넣을 Notion 페이지. 제목은 적은 내용의 첫 줄 앞부분이고, 닉네임이 없으면 별칭 칸을 비워요 */
+const toNotionPage = ({
+  type,
+  content,
+  pageUrl,
+  replayUrl,
+  nickname,
+}: Feedback) => {
   const title =
     content.trim().split("\n")[0].slice(0, MAX_FEEDBACK_TITLE_LENGTH) ||
     "(내용 없음)";
@@ -253,6 +272,7 @@ const toNotionPage = ({ type, content, pageUrl, replayUrl }: Feedback) => {
       종류: { select: { name: FEEDBACK_KIND[type] } },
       내용: { rich_text: toRichText(content) },
       "사용 상황": { rich_text: toRichText(pageUrl) },
+      "팀이나 제보자 별칭": { rich_text: toRichText(nickname ?? "") },
       "원문 링크": { url: replayUrl ?? null },
       "접수 경로": { select: { name: "앱 내" } },
       "출처 유형": { select: { name: "사용자 제보" } },
@@ -264,7 +284,7 @@ const toNotionPage = ({ type, content, pageUrl, replayUrl }: Feedback) => {
 
 /**
  * @description 우리 화면에서 `/relay/f`로 보낸 피드백을 Notion 「사용자 피드백 접수함」에 한 줄로 넣어요(ADR 930)
- * @param request - 피드백 패널이 보낸 요청. 예: `POST /relay/f`, 본문 `{ type, content, pageUrl, replayUrl? }`
+ * @param request - 피드백 패널이 보낸 요청. 예: `POST /relay/f`, 본문 `{ type, content, pageUrl, replayUrl?, nickname? }`
  * @param env - Worker 바인딩. Notion 토큰은 `env.NOTION_FEEDBACK_TOKEN`이에요
  * @returns 넣었으면 201, Notion이 거절하면 Notion의 응답 코드 그대로
  * @example
@@ -316,6 +336,29 @@ const RELEASE_NOTES_RELAY_PATH = `${RELAY_PATH}/n`;
 
 /** 읽은 노트를 Worker 캐시에 두는 시간(초). Notion에서 고친 노트는 길어야 이만큼 뒤에 보여요 */
 const RELEASE_NOTES_CACHE_SECONDS = 300;
+
+/** 「보이기」가 「자동」이거나 비어 있는 줄이 패널에 보이는 날 수. 오늘(한국 날짜)을 넣어 세요(NEWS-R15) */
+const RELEASE_NOTE_VISIBLE_DAYS = 3;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * 패널에 보일 줄만 고르는 Notion 조회 조건이에요(NEWS-R15). 칸 이름과 선택지는 새 소식 DB 「보이기」 칸과 같아야 해요.
+ * 「항상 보이기」는 날짜와 관계없이, 「자동」이거나 비어 있으면 `visibleSince`부터 배포한 줄만 걸려요. 「숨기기」는 걸리지 않아요
+ */
+const toVisibleRowFilter = (visibleSince: string) => {
+  const isRecent = {
+    property: "배포 날짜",
+    date: { on_or_after: visibleSince },
+  };
+
+  return {
+    or: [
+      { property: "보이기", select: { equals: "항상 보이기" } },
+      { and: [isRecent, { property: "보이기", select: { equals: "자동" } }] },
+      { and: [isRecent, { property: "보이기", select: { is_empty: true } }] },
+    ],
+  };
+};
 
 interface NotionProperty {
   title?: { plain_text: string }[];
@@ -385,12 +428,31 @@ const readReleaseNoteRow = (
   };
 };
 
-/** DB 줄을 노트로 묶어요. 최신 배포 날짜부터, 같은 날이면 나중에 머지한 PR(`pr-1002`가 `pr-998`보다 앞)부터, 항목은 순서대로예요 */
+/** Notion 조회 결과의 줄 하나. `id`는 Notion 페이지 ID예요 */
+interface NotionPage {
+  id: string;
+  properties?: Record<string, NotionProperty>;
+}
+
+/**
+ * DB 줄을 노트로 묶어요. 최신 배포 날짜부터, 같은 날이면 나중에 머지한 PR(`pr-1002`가 `pr-998`보다 앞)부터, 항목은 순서대로예요.
+ * 패널에 보일 줄(`visiblePages`)만 항목으로 넣어요. 최근 줄(`recentPages`)에만 있는 노트는 글 없이 빈 `items`로 자리만 남겨,
+ * 앱이 안 읽은 노트를 가리는 순서에 써요(NEWS-R16)
+ */
 const toReleaseNotes = (
-  pages: { properties?: Record<string, NotionProperty> }[],
+  visiblePages: NotionPage[],
+  recentPages: NotionPage[],
 ) => {
-  const rows = pages
-    .map(({ properties = {} }) => readReleaseNoteRow(properties))
+  const visiblePageIds = new Set(visiblePages.map(({ id }) => id));
+  // 두 조회에 함께 걸린 줄은 한 번만 써요
+  const pages = new Map(
+    [...recentPages, ...visiblePages].map((page) => [page.id, page]),
+  );
+  const rows = [...pages.values()]
+    .map(({ id, properties = {} }) => {
+      const row = readReleaseNoteRow(properties);
+      return row && { ...row, isVisible: visiblePageIds.has(id) };
+    })
     .filter((row) => row !== null)
     .sort(
       (a, b) =>
@@ -401,14 +463,11 @@ const toReleaseNotes = (
 
   return rows.reduce<
     { id: string; releasedAt: string; items: ReleaseNoteRow["item"][] }[]
-  >((notes, { noteId, releasedAt, item }) => {
-    const lastNote = notes[notes.length - 1];
-
-    if (lastNote?.id === noteId) {
-      lastNote.items.push(item);
-    } else {
-      notes.push({ id: noteId, releasedAt, items: [item] });
+  >((notes, { noteId, releasedAt, item, isVisible }) => {
+    if (notes[notes.length - 1]?.id !== noteId) {
+      notes.push({ id: noteId, releasedAt, items: [] });
     }
+    if (isVisible) notes[notes.length - 1].items.push(item);
 
     return notes;
   }, []);
@@ -418,20 +477,25 @@ const toReleaseNotes = (
  * @description 우리 화면이 `/relay/n`으로 부르면 Notion 새 소식 DB를 읽어 새 소식 노트로 바꿔 돌려줘요(ADR 956)
  * @param request - 새 소식 쿼리가 보낸 요청. 예: `GET /relay/n`
  * @param env - Worker 바인딩. Notion 토큰과 DB ID는 `env.NOTION_RELEASE_NOTE_TOKEN`, `env.NOTION_RELEASE_NOTE_DATABASE_ID`예요
- * @returns 노트 배열(`ReleaseNote[]`, 최신 노트가 맨 앞). Notion이 실패하면 Notion의 응답 코드 그대로
+ * @returns 노트 배열(`ReleaseNote[]`, 최신 노트가 맨 앞). 패널에 보이지 않는 노트는 `items`가 비어 있어요. Notion이 실패하면 Notion의 응답 코드 그대로
  * @example
  * if (pathname === "/relay/n") return relayReleaseNotes(request, env);
  *
  * 노트는 GitHub Actions의 Claude가 main 머지마다 DB에 쓰고, 이 경로는 읽기만 해요. 형식이 맞지 않는 줄은 빼고 돌려줘요.
+ * Notion은 두 번 불러요. 패널에 보일 줄은 「보이기」와 배포 날짜를 조회 조건으로 걸러 읽어, 「항상 보이기」로 남긴 옛 줄도 빠지지 않아요(NEWS-R15).
+ * 안 읽은 노트를 가릴 순서는 최근 100줄로 만들고, 보이지 않는 노트는 글 없이 id와 자리만 넘겨요(NEWS-R16).
  * 읽은 결과는 5분 동안 Worker 캐시에서 돌려줘 Notion을 사용자마다 부르지 않아요. 쿼리 문자열은 캐시 키에서 빼요.
  * GET이 아니면 405, 토큰이나 DB ID가 없으면 503이에요. 화면은 실패하면 빈 패널을 보여 주고 오류는 Sentry에 남겨요.
+ * DB에 「보이기」 칸이 없으면 Notion이 400으로 거절해 패널이 비므로, 칸을 먼저 더한 뒤 배포해요.
  */
 export const relayReleaseNotes = async (request: Request, env: Env) => {
   if (request.method !== "GET") {
     return new Response("Method Not Allowed", { status: 405 });
   }
 
-  if (!env.NOTION_RELEASE_NOTE_TOKEN || !env.NOTION_RELEASE_NOTE_DATABASE_ID) {
+  const token = env.NOTION_RELEASE_NOTE_TOKEN;
+  const databaseId = env.NOTION_RELEASE_NOTE_DATABASE_ID;
+  if (!token || !databaseId) {
     return new Response("Service Unavailable", { status: 503 });
   }
 
@@ -440,35 +504,51 @@ export const relayReleaseNotes = async (request: Request, env: Env) => {
   const cachedResponse = await cache.match(cacheKey);
   if (cachedResponse) return cachedResponse;
 
-  // shortcut: 최근 100줄만 읽어요. 오래된 노트까지 보여 줘야 하면 next_cursor로 이어 읽어요
-  const notionResponse = await fetch(
-    `https://api.notion.com/v1/databases/${env.NOTION_RELEASE_NOTE_DATABASE_ID}/query`,
-    {
+  const queryRows = (body: object) =>
+    fetch(`https://api.notion.com/v1/databases/${databaseId}/query`, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${env.NOTION_RELEASE_NOTE_TOKEN}`,
+        Authorization: `Bearer ${token}`,
         "Notion-Version": NOTION_VERSION,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
         page_size: 100,
         sorts: [{ property: "배포 날짜", direction: "descending" }],
+        ...body,
       }),
-    },
-  );
-  if (!notionResponse.ok) {
-    return new Response(null, { status: notionResponse.status });
+    });
+  const visibleSince = new Date(
+    Date.now() + KST_OFFSET_MS - (RELEASE_NOTE_VISIBLE_DAYS - 1) * DAY_MS,
+  )
+    .toISOString()
+    .slice(0, 10);
+  const notionResponses = await Promise.all([
+    queryRows({ filter: toVisibleRowFilter(visibleSince) }),
+    // shortcut: 읽음 순서는 최근 100줄로만 만들어요. 마지막으로 연 노트가 이보다 오래되면 모두 읽음으로 봐요(NEWS-R7). 놓치는 사람이 생기면 next_cursor로 이어 읽어요
+    queryRows({}),
+  ]);
+  const failedResponse = notionResponses.find(({ ok }) => !ok);
+  if (failedResponse) {
+    return new Response(null, { status: failedResponse.status });
   }
 
-  const { results = [] } = (await notionResponse.json()) as {
-    results?: { properties?: Record<string, NotionProperty> }[];
-  };
-  const response = new Response(JSON.stringify(toReleaseNotes(results)), {
-    headers: {
-      "Content-Type": "application/json",
-      "Cache-Control": `public, max-age=${RELEASE_NOTES_CACHE_SECONDS}`,
+  const [visiblePages, recentPages] = await Promise.all(
+    notionResponses.map(
+      async (notionResponse) =>
+        ((await notionResponse.json()) as { results?: NotionPage[] }).results ??
+        [],
+    ),
+  );
+  const response = new Response(
+    JSON.stringify(toReleaseNotes(visiblePages, recentPages)),
+    {
+      headers: {
+        "Content-Type": "application/json",
+        "Cache-Control": `public, max-age=${RELEASE_NOTES_CACHE_SECONDS}`,
+      },
     },
-  });
+  );
   await cache.put(cacheKey, response.clone());
 
   return response;

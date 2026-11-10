@@ -2,11 +2,8 @@ import { DOCUMENT_API_PATH } from "@api/fetch/api/v1/workspaces/[workspaceId]/do
 import { WORKSPACE_API_PATH } from "@api/fetch/api/v1/workspaces/[workspaceId]";
 import { documentDetailsResponse } from "@api/mock/responses/document";
 import DockablePanel from "@composites/DockablePanel";
-import {
-  DOCUMENT_FROM_PARAM,
-  DOCUMENT_FROM_RECORDING,
-} from "@constants/document";
 import SearchEvidenceToggle from "@features/search/SearchEvidenceToggle";
+import { DialogProvider } from "@provider/context/dialogContext";
 import { ToastProvider } from "@provider/context/toastContext";
 import { getRouterPath, PATH_ROUTE } from "@routes/PATH_ROUTE";
 import type { Meta, StoryObj } from "@storybook/react-webpack5";
@@ -79,7 +76,7 @@ const FIGMA_LOADING_AND_LONG_NAME = {
  *   이 스토리에는 모든 화면에 공통인 사이드바 버튼만 넣었어요.
  *   버튼 오른쪽에는 지금 있는 워크스페이스와 탭을 알려 주는 위치 표시가 있어요. 예: `Knot 팀 › 홈`, 문서 하나를 볼 때는 `Knot 팀 › 문서 › 회원 탈퇴 정책`.
  * - 가운데: 홈 · 탐색 · 문서를 오가는 내비 필이에요. 지금 있는 화면이 채워진 모양으로 표시돼요.
- * - 오른쪽: 오른쪽 패널을 여는 버튼과 로그인한 사람의 GitHub 프로필 이미지예요. 프로필은 지금은 보여 주기만 하고 누를 수 없어요.
+ * - 오른쪽: 오른쪽 패널을 여는 버튼과 로그인한 사람의 GitHub 프로필 이미지예요. 프로필 사진을 누르면 「로그아웃」이 있는 메뉴가 열려요.
  *   오른쪽 패널 버튼(찾은 기록)은 탐색 화면에만 있어 왼쪽 버튼처럼 화면 레이아웃이 넣어 줘요.
  *
  * **동작 규칙**
@@ -150,39 +147,41 @@ const meta = {
   decorators: [
     (Story, { parameters }) => {
       return (
-        <MemoryRouter initialEntries={[parameters.initialPath]}>
-          <ToastProvider>
-            <Routes>
-              {/* 찾은 기록 버튼이 대화 ID를 읽도록 대화 경로를 따로 둬요 */}
-              {/* 위치 표시가 문서 ID · 녹음 ID를 읽도록 문서 경로와 녹음 문서 경로도 따로 둬요 */}
-              {[
-                `${PATH_ROUTE.WORKSPACE_HOME}/*`,
-                PATH_ROUTE.CHAT_SESSION,
-                PATH_ROUTE.DOCUMENT,
-                PATH_ROUTE.RECORDING_DOCUMENT,
-              ].map((path) => (
-                <Route
-                  key={path}
-                  path={path}
-                  element={
-                    // 화면 레이아웃처럼 GNB 위에 여백을, 아래에 사이드바를 고정할 자리를 둬요
-                    <div style={{ paddingTop: "1.5rem" }}>
-                      <Story />
-                      <div
-                        id={DOCK_RAIL_ID}
-                        style={{
-                          display: "flex",
-                          height: "30rem",
-                          padding: "1.25rem 0 0 2.5rem",
-                        }}
-                      />
-                    </div>
-                  }
-                />
-              ))}
-            </Routes>
-          </ToastProvider>
-        </MemoryRouter>
+        <DialogProvider>
+          <MemoryRouter initialEntries={[parameters.initialPath]}>
+            <ToastProvider>
+              <Routes>
+                {/* 찾은 기록 버튼이 대화 ID를 읽도록 대화 경로를 따로 둬요 */}
+                {/* 위치 표시가 문서 ID · 녹음 ID를 읽도록 문서 경로와 녹음 문서 경로도 따로 둬요 */}
+                {[
+                  `${PATH_ROUTE.WORKSPACE_HOME}/*`,
+                  PATH_ROUTE.CHAT_SESSION,
+                  PATH_ROUTE.DOCUMENT,
+                  PATH_ROUTE.RECORDING_DOCUMENT,
+                ].map((path) => (
+                  <Route
+                    key={path}
+                    path={path}
+                    element={
+                      // 화면 레이아웃처럼 GNB 위에 여백을, 아래에 사이드바를 고정할 자리를 둬요
+                      <div style={{ paddingTop: "1.5rem" }}>
+                        <Story />
+                        <div
+                          id={DOCK_RAIL_ID}
+                          style={{
+                            display: "flex",
+                            height: "30rem",
+                            padding: "1.25rem 0 0 2.5rem",
+                          }}
+                        />
+                      </div>
+                    }
+                  />
+                ))}
+              </Routes>
+            </ToastProvider>
+          </MemoryRouter>
+        </DialogProvider>
       );
     },
   ],
@@ -257,16 +256,6 @@ export const OnRecordingDocumentViewerScreen: Story = {
       type: "figma",
       url: "https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=5373-3187",
     },
-  },
-};
-
-/**
- * 녹음을 끝내고 만든 문서를 확인하는 화면이에요. 탭이 아니라서 위치 표시에 아이콘과 워크스페이스 이름만 있어요.
- * 녹음 중인 화면도 같은 모양이에요.
- */
-export const OnRecordingDocumentScreen: Story = {
-  parameters: {
-    initialPath: `${DOCUMENT_PATH}?${DOCUMENT_FROM_PARAM}=${DOCUMENT_FROM_RECORDING}`,
   },
 };
 
