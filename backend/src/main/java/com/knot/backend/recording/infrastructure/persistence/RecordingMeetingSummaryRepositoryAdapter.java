@@ -38,32 +38,100 @@ public class RecordingMeetingSummaryRepositoryAdapter implements RecordingMeetin
             Instant now,
             int limit
     ) {
+        int inserted = 0;
+        long after = 0;
+        while (inserted < limit) {
+            List<SummaryInput> candidates = candidates(
+                    after,
+                    limit
+            );
+            if (candidates.isEmpty()) {
+                return inserted;
+            }
+            for (SummaryInput input : candidates) {
+                after = input.batchId();
+                if (hasText(input.content())) {
+                    inserted += register(
+                            input,
+                            now
+                    );
+                }
+                if (inserted == limit) {
+                    return inserted;
+                }
+            }
+        }
+        return inserted;
+    }
+
+    // Keyset paging skips empty inputs without letting an early empty batch starve
+    // later recordings.
+    private List<SummaryInput> candidates(
+            long after,
+            int limit
+    ) {
         return jdbc.sql(
-                """
-                        INSERT INTO recording_meeting_summaries(recording_id,transcript_id,status,next_run_at,created_at)
-                        SELECT s.id,t.id,'QUEUED',:now,:now
+                "SELECT b.id AS batch_id,s.id AS recording_id,t.id AS transcript_id,t.content " + RECORDING_FROM + """
+                        JOIN document_generation_batches b ON b.recording_session_id=s.id
+                        JOIN transcripts t ON t.id=b.transcript_id AND t.recording_session_id=s.id
+                        JOIN recording_meeting_summary_activation a ON a.id=1
+                        WHERE s.ended_at>=a.activated_at AND b.id>:after AND
+                        """ + READABLE + """
+                        AND NOT EXISTS (SELECT 1 FROM recording_meeting_summaries g WHERE g.recording_id=s.id)
+                        ORDER BY b.id LIMIT :limit
                         """
-                        + RECORDING_FROM
-                        + """
-                                JOIN document_generation_batches b ON b.recording_session_id=s.id AND b.topic_registration_state='TOPICS_REGISTERED'
-                                JOIN transcripts t ON t.id=b.transcript_id AND t.recording_session_id=s.id
-                                JOIN recording_meeting_summary_activation a ON a.id=1
-                                WHERE s.ended_at>=a.activated_at AND
-                                """
-                        + READABLE + """
-                                AND NOT EXISTS (SELECT 1 FROM recording_meeting_summaries g WHERE g.recording_id=s.id)
-                                ORDER BY b.id LIMIT :limit ON CONFLICT (recording_id) DO NOTHING
-                                """
         )
                 .param(
-                        "now",
-                        Timestamp.from(now)
+                        "after",
+                        after
                 )
                 .param(
                         "limit",
                         limit
                 )
+                .query(
+                        (
+                                row,
+                                index
+                        ) -> new SummaryInput(
+                                row.getLong("batch_id"),
+                                row.getLong("recording_id"),
+                                row.getLong("transcript_id"),
+                                row.getString("content")
+                        )
+                )
+                .list();
+    }
+
+    private int register(
+            SummaryInput input,
+            Instant now
+    ) {
+        return jdbc.sql("""
+                INSERT INTO recording_meeting_summaries(recording_id,transcript_id,status,next_run_at,created_at)
+                VALUES (:recordingId,:transcriptId,'QUEUED',:now,:now) ON CONFLICT (recording_id) DO NOTHING
+                """)
+                .param(
+                        "recordingId",
+                        input.recordingId()
+                )
+                .param(
+                        "transcriptId",
+                        input.transcriptId()
+                )
+                .param(
+                        "now",
+                        Timestamp.from(now)
+                )
                 .update();
+    }
+
+    private record SummaryInput(
+            long batchId,
+            long recordingId,
+            long transcriptId,
+            String content
+    ) {
     }
 
     @Override
@@ -127,16 +195,11 @@ public class RecordingMeetingSummaryRepositoryAdapter implements RecordingMeetin
             long recordingId,
             long transcriptId
     ) {
-        return jdbc
-                .sql(
-                        "SELECT t.content " + RECORDING_FROM
-                                + """
-                                        JOIN document_generation_batches b ON b.recording_session_id=s.id AND b.topic_registration_state='TOPICS_REGISTERED'
-                                        JOIN transcripts t ON t.id=b.transcript_id AND t.recording_session_id=s.id
-                                        WHERE s.id=:id AND t.id=:transcriptId AND
-                                        """
-                                + READABLE
-                )
+        return jdbc.sql("SELECT t.content " + RECORDING_FROM + """
+                JOIN document_generation_batches b ON b.recording_session_id=s.id
+                JOIN transcripts t ON t.id=b.transcript_id AND t.recording_session_id=s.id
+                WHERE s.id=:id AND t.id=:transcriptId AND
+                """ + READABLE)
                 .param(
                         "id",
                         recordingId
@@ -151,7 +214,8 @@ public class RecordingMeetingSummaryRepositoryAdapter implements RecordingMeetin
     }
 
     private boolean hasText(String value) {
-        return value.codePoints()
-                .anyMatch(character -> !Character.isWhitespace(character) && !Character.isSpaceChar(character));
+        String text = new com.knot.backend.document.infrastructure.persistence.DocumentTranscriptTextReader()
+                .read(value);
+        return RecordingOutputQueryAdapter.hasText(text);
     }
 }

@@ -5,6 +5,8 @@ import com.knot.backend.document.application.dto.result.DocumentTranscriptSnapsh
 import com.knot.backend.recording.application.dto.result.TranscriptSegmentResult;
 import com.knot.backend.recording.domain.repository.TranscriptSegmentRepository;
 import java.util.Optional;
+import java.util.Map;
+import com.knot.backend.recording.application.RecordingSpeakerNames;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Repository;
 
@@ -14,6 +16,8 @@ public class DocumentTranscriptQueryAdapter implements DocumentTranscriptQuery {
 
     private final DocumentTranscriptReadJpaRepository documents;
     private final TranscriptSegmentRepository segments;
+
+    private final RecordingSpeakerNames speakerNames;
 
     @Override
     public Optional<DocumentTranscriptSnapshot> find(
@@ -28,6 +32,7 @@ public class DocumentTranscriptQueryAdapter implements DocumentTranscriptQuery {
     }
 
     private DocumentTranscriptSnapshot toSnapshot(DocumentTranscriptSourceRow row) {
+        Map<Integer, String> names = speakerNames.findByTranscriptId(row.transcriptId());
         return new DocumentTranscriptSnapshot(
                 row.transcriptId(),
                 row.recordingDurationMillis(),
@@ -35,6 +40,7 @@ public class DocumentTranscriptQueryAdapter implements DocumentTranscriptQuery {
                 segments.findAllByTranscriptId(row.transcriptId())
                         .stream()
                         .map(TranscriptSegmentResult::from)
+                        .map(segment -> segment.withDisplayName(names.get(segment.speakerNumber())))
                         .toList()
         );
     }
