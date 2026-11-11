@@ -5,7 +5,7 @@ const MILLIS_PER_SECOND = 1000;
 
 type TranscriptSegment = Pick<
   DocumentTranscriptSegmentDto,
-  "startMillis" | "speakerNumber" | "text"
+  "startMillis" | "speakerNumber" | "speakerDisplayName" | "text"
 >;
 
 /**
@@ -18,9 +18,9 @@ type TranscriptSegment = Pick<
  */
 export const formatTranscriptText = (segments: TranscriptSegment[]) =>
   segments
-    .map(({ startMillis, speakerNumber, text }) => {
+    .map(({ startMillis, speakerNumber, speakerDisplayName, text }) => {
       const time = formatRecordingTime(startMillis / MILLIS_PER_SECOND);
-      const speaker = speakerNumber !== null ? `참여자 ${speakerNumber}: ` : "";
+      const speaker = `${speakerDisplayName ?? (speakerNumber !== null ? `참여자 ${speakerNumber}` : "미상")}: `;
 
       return `${time} ${speaker}${text}`;
     })
