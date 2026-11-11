@@ -1,8 +1,24 @@
+export type RecordingTranscriptStatus =
+  | "NOT_READY"
+  | "READY"
+  | "EMPTY"
+  | "FAILED"
+  | "UNAVAILABLE";
+export type TopicClassificationStatus =
+  | "NOT_STARTED"
+  | "PROCESSING"
+  | "SUCCEEDED"
+  | "NO_CONTENT"
+  | "FAILED";
+
 import type { DocumentTranscriptSegment } from "@api/mock/types/document";
 
 /** 회의 전체 요약 상태. QUEUED · RUNNING은 화면의 「만드는 중」 */
 export type MeetingSummaryStatus =
-  "QUEUED" | "RUNNING" | "SUCCEEDED" | "FAILED";
+  | "QUEUED"
+  | "RUNNING"
+  | "SUCCEEDED"
+  | "FAILED";
 
 export interface RecordingMeetingSummary {
   status: MeetingSummaryStatus;
@@ -27,6 +43,8 @@ export interface RecordingDocumentResponse {
   startedAt: string;
   recordingDurationSeconds: number;
   processingStatus: RecordingDocumentProcessingStatus;
+  transcriptStatus?: RecordingTranscriptStatus;
+  topicClassificationStatus?: TopicClassificationStatus;
   retryable: boolean;
   /** DOCUMENT_FAILED에서만 값이 있음. 나머지는 빈 배열 */
   retryableJobIds: number[];
@@ -44,7 +62,9 @@ export interface RecordingTranscriptResponse {
 
 /** AVAILABLE(들을 수 있음) · PREPARING(음성 합치는 중) · NO_AUDIO(음성 파일 없음) */
 export type RecordingAudioPlaybackStatus =
-  "AVAILABLE" | "PREPARING" | "NO_AUDIO";
+  | "AVAILABLE"
+  | "PREPARING"
+  | "NO_AUDIO";
 
 export interface RecordingAudioPlaybackResponse {
   recordingId: number;

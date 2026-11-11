@@ -95,6 +95,8 @@ export const recordingDocumentResponse = {
   startedAt: fromNow(2 * DAY),
   recordingDurationSeconds: withdrawalTranscript.recordingDurationSeconds,
   processingStatus: "COMPLETED",
+  transcriptStatus: "READY",
+  topicClassificationStatus: "SUCCEEDED",
   retryable: false,
   retryableJobIds: [],
   meetingSummary: {

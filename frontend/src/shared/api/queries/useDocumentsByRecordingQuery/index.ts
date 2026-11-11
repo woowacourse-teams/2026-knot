@@ -1,5 +1,6 @@
 import { getAllDocumentsApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/documents";
 import { documentKeys } from "@api/queryKey/document";
+import { useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 interface UseDocumentsByRecordingQueryParams {
@@ -8,6 +9,8 @@ interface UseDocumentsByRecordingQueryParams {
   recordingSessionId: number;
   /** `false`면 조회하지 않아요. 녹음 정리가 끝나기 전처럼 아직 문서가 없을 때 꺼 둬요. 기본값은 `true` */
   isEnabled?: boolean;
+  /** 주제별 문서를 생성 중이면 목록을 갱신해요. */
+  isPolling?: boolean;
 }
 
 /**
@@ -23,12 +26,30 @@ const useDocumentsByRecordingQuery = ({
   workspaceId,
   recordingSessionId,
   isEnabled = true,
+  isPolling = false,
 }: UseDocumentsByRecordingQueryParams) => {
-  return useQuery({
+  const query = useQuery({
     queryKey: documentKeys.list({ workspaceId, recordingSessionId }),
     queryFn: () => getAllDocumentsApi({ workspaceId, recordingSessionId }),
     enabled: isEnabled,
+    refetchInterval: isPolling ? 3000 : false,
   });
+  const previous = useRef({ workspaceId, recordingSessionId, isPolling });
+  const { refetch } = query;
+  useEffect(() => {
+    const last = previous.current;
+    previous.current = { workspaceId, recordingSessionId, isPolling };
+    // 마지막 목록 조회 뒤 생성이 끝나면 타이머가 취소되므로 최종 결과를 한 번 더 받아요.
+    if (
+      isEnabled &&
+      last.workspaceId === workspaceId &&
+      last.recordingSessionId === recordingSessionId &&
+      last.isPolling &&
+      !isPolling
+    )
+      void refetch();
+  }, [workspaceId, recordingSessionId, isEnabled, isPolling, refetch]);
+  return query;
 };
 
 export default useDocumentsByRecordingQuery;

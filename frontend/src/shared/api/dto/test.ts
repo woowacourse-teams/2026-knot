@@ -314,7 +314,10 @@ describe("DTO 생성자 변환", () => {
       expect(dto).toEqual({
         transcriptId: 81,
         recordingDurationSeconds: 1850,
-        segments,
+        segments: segments.map((segment) => ({
+          ...segment,
+          speakerDisplayName: null,
+        })),
       });
     });
   });

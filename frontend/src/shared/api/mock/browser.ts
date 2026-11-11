@@ -1,3 +1,4 @@
+import { recordingDemoHandlers } from "./handlers/dev/recordingDemo";
 import { focusManager } from "@tanstack/react-query";
 import { setupWorker } from "msw/browser";
 
@@ -17,7 +18,13 @@ import {
 // 먼저 맞는 핸들러가 이기므로, 개발 전용 핸들러(쿠키 로그인 판정 me·nickname·refresh·초대 참여)를
 // 앞에 둬 기본 핸들러만 덮어요.
 // vitest(server.ts)에는 넣지 않아요
-export const mockWorker = setupWorker(...devAuthHandlers, ...deploymentCompatibilityHandlers, ...devScenarioHandlers, ...handlers);
+export const mockWorker = setupWorker(
+  ...recordingDemoHandlers,
+  ...devAuthHandlers,
+  ...deploymentCompatibilityHandlers,
+  ...devScenarioHandlers,
+  ...handlers,
+);
 
 /** 워커의 답을 기다리는 가장 긴 시간(ms). 멈춰 있던 워커도 실제로는 몇 ms 안에 답해요 */
 const MOCK_WORKER_REPLY_TIMEOUT_MS = 1000;
@@ -124,7 +131,9 @@ declare global {
 export const installMockScenarioSwitch = () => {
   if (applyMockScenarioFromQuery(window.location.search)) {
     const url = new URL(window.location.href);
-    [...url.searchParams.keys()].filter((key) => key.startsWith("mock.")).forEach((key) => url.searchParams.delete(key));
+    [...url.searchParams.keys()]
+      .filter((key) => key.startsWith("mock."))
+      .forEach((key) => url.searchParams.delete(key));
     window.history.replaceState(null, "", url);
   }
 
