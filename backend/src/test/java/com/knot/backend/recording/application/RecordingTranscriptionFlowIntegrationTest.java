@@ -15,7 +15,7 @@ import com.knot.backend.recording.domain.model.StoredAudioObject;
 import com.knot.backend.recording.domain.model.TranscriptionStatus;
 import com.knot.backend.testsupport.LlmHttpServer;
 import com.knot.backend.testsupport.TestApplicationProperties;
-import com.knot.backend.testsupport.TestcontainersConfiguration;
+import com.knot.backend.testsupport.IsolatedPostgresTest;
 import com.sun.net.httpserver.HttpExchange;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -39,7 +39,6 @@ import org.junit.jupiter.api.TestInstance;
 import org.junit.jupiter.api.TestMethodOrder;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.DynamicPropertyRegistry;
@@ -52,7 +51,7 @@ import tools.jackson.databind.node.ObjectNode;
 
 @Tag("integration")
 @SpringBootTest
-@Import(TestcontainersConfiguration.class)
+@IsolatedPostgresTest
 @TestApplicationProperties
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 @TestMethodOrder(RecordingTranscriptionMethodOrderer.class)

@@ -7,7 +7,7 @@ import com.knot.backend.recording.domain.model.RecordingAudioMode;
 import com.knot.backend.recording.domain.model.RecordingSession;
 import com.knot.backend.recording.domain.model.RecordingTranscriptionWindow;
 import com.knot.backend.recording.domain.repository.RecordingTranscriptionWindowRepository;
-import com.knot.backend.testsupport.TestcontainersConfiguration;
+import com.knot.backend.testsupport.IsolatedPostgresTest;
 import jakarta.persistence.EntityManager;
 import java.time.Duration;
 import java.time.Instant;
@@ -33,7 +33,8 @@ import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.support.TransactionTemplate;
 
 @Tag("integration")
-@Import({TestcontainersConfiguration.class, RecordingTranscriptionWindowRepositoryAdapter.class})
+@IsolatedPostgresTest
+@Import({RecordingTranscriptionWindowRepositoryAdapter.class})
 @DataJpaTest
 class RecordingTranscriptionWindowRepositoryIntegrationTest {
     private static final Instant NOW = Instant.parse("2026-10-18T00:00:00Z");

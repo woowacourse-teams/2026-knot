@@ -24,7 +24,7 @@ import com.knot.backend.recording.domain.model.RecordingTranscriptionWindow;
 import com.knot.backend.recording.domain.repository.RecordingTranscriptionRepository;
 import com.knot.backend.recording.domain.repository.RecordingTranscriptionWindowRepository;
 import com.knot.backend.testsupport.TestApplicationProperties;
-import com.knot.backend.testsupport.TestcontainersConfiguration;
+import com.knot.backend.testsupport.IsolatedPostgresTest;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -42,12 +42,11 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 @Tag("integration")
-@Import(TestcontainersConfiguration.class)
+@IsolatedPostgresTest
 @TestApplicationProperties
 @SpringBootTest
 class IncrementalTranscriptionIntegrationTest {

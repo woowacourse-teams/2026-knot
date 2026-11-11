@@ -15,7 +15,7 @@ import com.knot.backend.recording.domain.model.AudioChunkDescriptor;
 import com.knot.backend.recording.domain.model.RecordingAudioChunkStatus;
 import com.knot.backend.recording.domain.model.RecordingAudioMode;
 import com.knot.backend.testsupport.TestApplicationProperties;
-import com.knot.backend.testsupport.TestcontainersConfiguration;
+import com.knot.backend.testsupport.IsolatedPostgresTest;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -48,7 +48,8 @@ import software.amazon.awssdk.services.s3.presigner.S3Presigner;
 
 @Tag("integration")
 @EnabledIfEnvironmentVariable(named = "KNOT_RECORDING_REAL_S3", matches = "true")
-@Import({TestcontainersConfiguration.class, RecordingAudioChunkRealS3IntegrationTest.RealStorageConfiguration.class})
+@IsolatedPostgresTest
+@Import({RecordingAudioChunkRealS3IntegrationTest.RealStorageConfiguration.class})
 @TestApplicationProperties
 @SpringBootTest(properties = "recording.audio-chunks.enabled=true")
 class RecordingAudioChunkRealS3IntegrationTest {
