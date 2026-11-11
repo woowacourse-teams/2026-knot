@@ -13,6 +13,8 @@ public class WorkspaceMemberCursor {
     private static final String VERSION = "1";
     private static final int FIELD_COUNT = 4;
     private static final int MAX_LENGTH = 512;
+    private static final Instant MIN_JOINED_AT = Instant.parse("0001-01-01T00:00:00Z");
+    private static final Instant MAX_JOINED_AT = Instant.parse("9999-12-31T23:59:59.999999Z");
 
     private final long workspaceId;
     private final Instant joinedAt;
@@ -23,7 +25,8 @@ public class WorkspaceMemberCursor {
             Instant joinedAt,
             long memberId
     ) {
-        if (workspaceId <= 0 || joinedAt == null || memberId <= 0) {
+        if (workspaceId <= 0 || joinedAt == null || joinedAt.isBefore(MIN_JOINED_AT) || joinedAt.isAfter(MAX_JOINED_AT)
+                || memberId <= 0) {
             throw invalid();
         }
         this.workspaceId = workspaceId;

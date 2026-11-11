@@ -97,6 +97,10 @@ public class IncrementalTranscriptMerger {
                 reclustered,
                 speakerCount
         );
+        if (speakerCount != null && !reclustered && owned.stream()
+                .anyMatch(tokens -> !tokens.isEmpty())) {
+            throw invalidData();
+        }
         List<AiTranscript.Utterance> utterances = new ArrayList<>();
         List<VoiceCentroid> centroids = new ArrayList<>();
         for (int index = 0; index < ordered.size(); index++) {

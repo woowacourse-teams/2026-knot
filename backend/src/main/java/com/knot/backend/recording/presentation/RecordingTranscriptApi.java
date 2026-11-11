@@ -25,7 +25,7 @@ public interface RecordingTranscriptApi {
             description = "녹음 문서 화면이 제목·요약과 따로 전사를 불러온다. 현재 Workspace 멤버는 녹음을 시작한 Member·녹음 참여 여부와 "
                     + "관계없이 조회한다. 열 수 있는 녹음은 최근 녹음 목록의 포함 조건과 같다. "
                     + "성공 Transcript가 저장되면 분류·문서 완료를 기다리지 않고 200이며, 정상 빈 전사도 200이다. 그 녹음의 문서 정리 입력으로 쓴 "
-                    + "전체 원문과 구간을 문서 원문 조회와 같은 데이터·정렬로 준다. 화면은 processingStatus가 DOCUMENT_FAILED·COMPLETED·NO_CONTENT일 때 부른다. "
+                    + "전체 원문과 구간을 문서 원문 조회와 같은 데이터·정렬로 준다. 화면은 transcriptStatus가 READY·EMPTY일 때 부른다. "
                     + "조회는 녹음·전사·문서 확인 기록을 바꾸지 않는다"
     )
     @ApiResponses({
