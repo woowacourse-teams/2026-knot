@@ -95,12 +95,15 @@ const overrideInvitationStatus = (status: number) => {
 };
 
 const holdInvitationResponse = () => {
+  const started = vi.fn();
   mockServer.use(
     http.post(`*${WORKSPACE_INVITATIONS_API_PATH(WORKSPACE_ID)}`, async () => {
+      started();
       await delay("infinite");
       return HttpResponse.json(workspaceInvitationResponse);
     }),
   );
+  return started;
 };
 
 const click = async (element: HTMLElement) => {
@@ -137,8 +140,8 @@ describe("WorkspaceInviteCard", () => {
     Reflect.deleteProperty(navigator, "clipboard");
   });
 
-  it("초대를 불러오는 동안에는 코드와 링크 복사를 막는다", () => {
-    holdInvitationResponse();
+  it("초대를 불러오는 동안에는 코드와 링크 복사를 막는다", async () => {
+    const requestStarted = holdInvitationResponse();
     renderCard();
 
     expect(getCodeButton()).toBeDisabled();
@@ -146,6 +149,8 @@ describe("WorkspaceInviteCard", () => {
     expect(getCopyLinkButton()).toBeDisabled();
     expect(getCopyLinkButton()).toHaveAttribute("aria-busy", "true");
     expect(getLinkInput()).toHaveValue("");
+    // 이 테스트의 지연 요청이 다음 테스트의 요청 관찰에 섞이지 않게 시작까지 기다려요.
+    await waitFor(() => expect(requestStarted).toHaveBeenCalledOnce());
   });
 
   it("workspaceId가 정수가 아니면 초대를 요청하지 않고 복사를 막는다", async () => {
