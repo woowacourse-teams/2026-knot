@@ -25,7 +25,7 @@ import {
   RouterProvider,
   useParams,
 } from "react-router";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import TopicDocumentList from ".";
 
@@ -147,13 +147,13 @@ const manyDocumentsResponse: DocumentsResponse = {
 const manyDocuments = new GetDocumentsResponseDto(manyDocumentsResponse).items;
 
 // jsdom은 레이아웃을 계산하지 않아 크기와 위치가 모두 0이에요.
-// 스크롤 영역의 보이는 높이를 정하고, 카드 위쪽 끝이 스크롤 영역 위쪽 끝에서 몇 px 떨어졌는지 바꿀 수 있게 해요
+// 스크롤 영역의 보이는 높이와, 카드 위쪽 끝이 스크롤 영역 위쪽 끝에서 몇 px 떨어졌는지 바꿀 수 있게 해요
 const mockLayout = () => {
-  const layout = { cardTop: 0 };
+  const layout = { cardTop: 0, mainHeight: MAIN_HEIGHT };
 
   vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockImplementation(
     function (this: HTMLElement) {
-      return this.tagName === "MAIN" ? MAIN_HEIGHT : 0;
+      return this.tagName === "MAIN" ? layout.mainHeight : 0;
     },
   );
   vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(
@@ -166,6 +166,42 @@ const mockLayout = () => {
 
   return layout;
 };
+
+// jsdom의 ResizeObserver는 크기 변화를 알리지 않는 빈 구현이에요.
+// 테스트가 정한 때에 지켜보는 중인 ResizeObserver에 크기 변화를 알릴 수 있게 바꿔요
+const stubResizeObserver = () => {
+  const observers = new Set<{ notify: () => void }>();
+
+  vi.stubGlobal(
+    "ResizeObserver",
+    class {
+      notify: () => void;
+
+      constructor(callback: ResizeObserverCallback) {
+        this.notify = () => callback([], this);
+      }
+
+      observe() {
+        observers.add(this);
+      }
+
+      unobserve() {}
+
+      disconnect() {
+        observers.delete(this);
+      }
+    },
+  );
+
+  return {
+    notifyResize: () =>
+      act(() => observers.forEach((observer) => observer.notify())),
+  };
+};
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 const clickRetry = async () =>
   fireEvent.click(await screen.findByRole("button", { name: "다시 시도" }));
@@ -583,5 +619,51 @@ describe("TopicDocumentList", () => {
     expect(await findRow(documentAtScrolledView.title)).toBeInTheDocument();
     expect(queryRow(firstDocument.title)).not.toBeInTheDocument();
     expect(queryRow(lastDocument.title)).not.toBeInTheDocument();
+  });
+
+  it("스크롤로 위쪽 행을 지워도 그린 첫 행의 위쪽에 구분선을 그어, 행을 모두 그렸을 때와 같은 높이로 둔다", async () => {
+    const layout = mockLayout();
+    respondWith(manyDocumentsResponse);
+    const [firstDocument] = manyDocuments;
+    // 카드 위쪽 끝을 3,000px 올리면 그리는 범위가 42번째 행부터 시작해요
+    const firstDrawnDocument = manyDocuments[41];
+
+    renderDocumentList({ isInMain: true });
+    const folder = await findFolder(firstDocument.topic);
+
+    // 폴더의 첫 행에는 구분선을 긋지 않아요
+    expect(within(folder).getAllByRole("listitem")[0]).not.toHaveStyle({
+      borderTopWidth: "1px",
+    });
+
+    layout.cardTop = -3000;
+    fireEvent.scroll(screen.getByRole("main"));
+    await findRow(firstDrawnDocument.title);
+
+    const [firstDrawnRow, secondDrawnRow] =
+      within(folder).getAllByRole("listitem");
+
+    expect(firstDrawnRow).toHaveTextContent(firstDrawnDocument.title);
+    expect(firstDrawnRow).toHaveStyle({ borderTopWidth: "1px" });
+    expect(secondDrawnRow).toHaveStyle({ borderTopWidth: "1px" });
+  });
+
+  it("스크롤 영역의 높이가 바뀌면 스크롤하지 않아도 넓어진 화면 근처의 행을 그린다", async () => {
+    const { notifyResize } = stubResizeObserver();
+    const layout = mockLayout();
+    respondWith(manyDocumentsResponse);
+    const [firstDocument] = manyDocuments;
+    // 카드 맨 위에서 1,299~1,364px에 있어, 스크롤 영역이 1,200px로 높아지면 미리 그릴 거리 안에 들어오는 21번째 행이에요
+    const documentNearGrownView = manyDocuments[20];
+
+    renderDocumentList({ isInMain: true });
+    await findRow(firstDocument.title);
+
+    expect(queryRow(documentNearGrownView.title)).not.toBeInTheDocument();
+
+    layout.mainHeight = 1200;
+    notifyResize();
+
+    expect(await findRow(documentNearGrownView.title)).toBeInTheDocument();
   });
 });

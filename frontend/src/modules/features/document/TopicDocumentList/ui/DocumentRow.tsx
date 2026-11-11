@@ -16,6 +16,11 @@ interface DocumentRowProps {
   createdAt: string;
   /** 녹음 길이(초) */
   recordingDurationSeconds: number;
+  /**
+   * 폴더의 첫 행인지. 첫 행이 아니면 위쪽에 구분선을 그어요.
+   * 카드에는 화면 근처의 행만 그려서, 카드의 첫 행이 폴더의 첫 행이 아닐 수 있어요
+   */
+  isFirstRow: boolean;
 }
 
 /**
@@ -29,9 +34,10 @@ export default function DocumentRow({
   summary,
   createdAt,
   recordingDurationSeconds,
+  isFirstRow,
 }: DocumentRowProps) {
   return (
-    <Item>
+    <Item $isFirstRow={isFirstRow}>
       <RowLink href={href}>
         <TextBlock>
           <Title>{title}</Title>
@@ -49,11 +55,10 @@ export default function DocumentRow({
   );
 }
 
-/** 피그마 Divider: 행 사이에만 1px 선을 그어요 */
-const Item = styled.li`
-  & + & {
-    border-top: 1px solid ${({ theme }) => theme.neutral[200]};
-  }
+/** 피그마 Divider: 행 사이에 1px 선을 그어요. 폴더의 첫 행 위에는 긋지 않아요 */
+const Item = styled.li<{ $isFirstRow: boolean }>`
+  border-top: ${({ theme, $isFirstRow }) =>
+    $isFirstRow ? "none" : `1px solid ${theme.neutral[200]}`};
 `;
 
 /** 피그마 Doc 행: 안쪽 여백 20px 24px, 글 묶음 · 날짜 묶음 · 화살표 사이 16px */

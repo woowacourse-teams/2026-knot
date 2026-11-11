@@ -58,7 +58,10 @@ export default function DocumentFolder({
         style={{ height: cardHeight, paddingTop: firstRowTop }}
       >
         {visibleDocuments.map(
-          ({ id, title, summary, createdAt, recordingDurationSeconds }) => (
+          (
+            { id, title, summary, createdAt, recordingDurationSeconds },
+            index,
+          ) => (
             <DocumentRow
               key={id}
               href={getRouterPath({
@@ -72,6 +75,7 @@ export default function DocumentFolder({
               summary={summary}
               createdAt={createdAt}
               recordingDurationSeconds={recordingDurationSeconds}
+              isFirstRow={start + index === 0}
             />
           ),
         )}

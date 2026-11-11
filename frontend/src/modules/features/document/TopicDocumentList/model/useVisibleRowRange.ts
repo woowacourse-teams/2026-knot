@@ -28,7 +28,7 @@ const getRemPx = () =>
 /**
  * 폴더 카드 안에서 화면 근처에 있어 그려야 할 행의 범위를 구해요.
  *
- * 스크롤 영역은 카드를 감싼 `main`이에요. 카드가 그려진 뒤와 `main`을 스크롤할 때마다 카드 위치를 재서 범위를 다시 구해요.
+ * 스크롤 영역은 카드를 감싼 `main`이에요. 카드가 그려진 뒤와 `main`을 스크롤하거나 `main`의 크기가 바뀔 때마다 카드 위치를 재서 범위를 다시 구해요.
  * `main`을 찾지 못하면 위치를 잴 기준이 없어 행을 모두 그려요.
  * 카드 높이와 그린 첫 행의 위쪽 끝도 함께 돌려줘서, 행을 일부만 그려도 카드 높이와 행 위치가 행을 모두 그린 것과 같게 해요.
  */
@@ -80,8 +80,15 @@ export const useVisibleRowRange = ({
 
     updateRange();
     main.addEventListener("scroll", updateRange, { passive: true });
+    // 창 크기가 바뀌어 `main`이 높아지면 scroll 이벤트 없이 화면이 넓어져서, 크기가 바뀔 때도 범위를 다시 구해요
+    const resizeObserver = new ResizeObserver(updateRange);
 
-    return () => main.removeEventListener("scroll", updateRange);
+    resizeObserver.observe(main);
+
+    return () => {
+      main.removeEventListener("scroll", updateRange);
+      resizeObserver.disconnect();
+    };
   }, [cardRef, offsets]);
 
   return {
