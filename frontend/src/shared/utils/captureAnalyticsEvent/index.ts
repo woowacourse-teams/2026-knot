@@ -91,6 +91,42 @@ interface AnalyticsEventMap {
     /** 질문을 보낸 뒤 떠날 때까지 기다린 시간(초, 소수 첫째 자리까지) */
     waited_seconds: number;
   };
+  /** 탐색 튜토리얼 1단계를 띄웠어요. 처음 뜬 것과 미룬 뒤 두 번째로 뜬 것, 탐색 사용법 보기로 다시 연 것을 함께 세요 */
+  search_tutorial_shown: {
+    /** 띄운 화면. 탐색 사용법 보기로 다시 열었으면 `replay`예요 */
+    source:
+      | "home"
+      | "search"
+      | "documents"
+      | "document"
+      | "recording_document"
+      | "replay";
+    /** 「다음에 볼게요」를 누른 뒤 두 번째로 뜬 것인지 */
+    is_again: boolean;
+    workspace_id: number;
+  };
+  /** 탐색 튜토리얼의 한 단계를 보여 줬어요. 1단계는 `search_tutorial_shown`과 함께 와요 */
+  search_tutorial_step_viewed: {
+    step: 1 | 2 | 3 | 4;
+    workspace_id: number;
+  };
+  /**
+   * 탐색 튜토리얼이 끝났어요.
+   * - `completed`: 4단계에서 질문 종류 카드를 누르거나, 직접 보내거나, 끝내기를 눌렀어요
+   * - `skipped`: 2~4단계에서 건너뛰기를 눌렀어요
+   * - `snoozed`: 1단계에서 「다음에 볼게요」를 눌렀어요. 다음 날 이후 한 번 더 떠요
+   * - `closed`: 두 번째로 뜬 1단계에서 닫기를 눌렀어요
+   */
+  search_tutorial_ended: {
+    result: "completed" | "skipped" | "snoozed" | "closed";
+    /** 끝낸 단계 */
+    step: 1 | 2 | 3 | 4;
+    /** 끝낸 방법. `completed`일 때만 있어요. 질문 종류 카드(`question_kind`), 직접 보냄(`typed`), 끝내기 버튼(`finish_button`) */
+    via?: "question_kind" | "typed" | "finish_button";
+    /** 질문 종류 카드로 끝냈을 때 고른 종류 */
+    question_kind?: "past_decision" | "undecided" | "next_meeting";
+    workspace_id: number;
+  };
   /**
    * 피드백 패널에서 보낸 피드백이 접수함에 저장됐어요. 저장에 실패하면 보내지 않아요(FEEDBACK-R7).
    * 이름은 PostHog 설문 응답 이벤트 이름을 그대로 써서 snake_case가 아니에요. 화면 경로는 PostHog가 자동으로 붙여요
