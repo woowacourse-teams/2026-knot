@@ -25,7 +25,7 @@ import {
   RouterProvider,
   useParams,
 } from "react-router";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import TopicDocumentList from ".";
 
@@ -40,6 +40,9 @@ const MAX_REQUEST_COUNT = 20;
 const MOCK_PAGE_SIZE = 3;
 const LOADING_LABEL = "문서 목록을 불러오고 있어요";
 const LOAD_FAILED_NOTICE = "목록을 불러오지 못했어요. 다시 시도해 주세요.";
+// 화면 근처의 행만 그리는지 확인할 때 쓰는 폴더 하나의 문서 수와 스크롤 영역 높이
+const MANY_DOCUMENT_COUNT = 100;
+const MAIN_HEIGHT = 640;
 
 // 어느 문서로 갔는지 확인할 수 있게 문서 보기 경로에 표시만 하는 화면을 둬요
 function DocumentViewStub() {
@@ -48,8 +51,17 @@ function DocumentViewStub() {
   return <p>문서 보기 화면 {documentId}</p>;
 }
 
+interface RenderDocumentListParams {
+  workspaceId?: string;
+  /** 앱처럼 스크롤 영역(`main`) 안에 그릴지 */
+  isInMain?: boolean;
+}
+
 // 이동을 확인할 수 있게 로그인 · 워크스페이스 선택 경로에 표시만 하는 화면을 둬요
-const renderDocumentList = (workspaceId = WORKSPACE_ID) => {
+const renderDocumentList = ({
+  workspaceId = WORKSPACE_ID,
+  isInMain = false,
+}: RenderDocumentListParams = {}) => {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
@@ -64,7 +76,13 @@ const renderDocumentList = (workspaceId = WORKSPACE_ID) => {
         children: [
           {
             path: PATH_ROUTE.DOCUMENTS_BY_TOPIC,
-            element: <TopicDocumentList />,
+            element: isInMain ? (
+              <main>
+                <TopicDocumentList />
+              </main>
+            ) : (
+              <TopicDocumentList />
+            ),
           },
           { path: PATH_ROUTE.DOCUMENT, element: <DocumentViewStub /> },
           { path: PATH_ROUTE.LOGIN, element: <p>로그인 화면</p> },
@@ -106,8 +124,48 @@ const findFolder = (topic: string) =>
 const findRow = (title: string) =>
   screen.findByRole("link", { name: (name) => name.startsWith(title) });
 
+const queryRow = (title: string) =>
+  screen.queryByRole("link", { name: (name) => name.startsWith(title) });
+
 const documentsOf = (topic: string) =>
   expected.items.filter((item) => item.topic === topic);
+
+// 요약 없는 문서가 많은 폴더 하나. 녹음 ID를 거꾸로 매겨 만든 순서 그대로 놓이게 해요
+const [baseItem] = documentsResponse.items;
+const manyDocumentsResponse: DocumentsResponse = {
+  topics: [{ topic: baseItem.topic, documentCount: MANY_DOCUMENT_COUNT }],
+  items: Array.from({ length: MANY_DOCUMENT_COUNT }, (_, index) => ({
+    ...baseItem,
+    id: index + 1,
+    // 「1번째 문서」가 「11번째 문서」의 앞부분과 겹치지 않게 번호를 앞에 둬요
+    title: `${index + 1}번째 문서`,
+    summary: null,
+    recordingSessionId: MANY_DOCUMENT_COUNT - index,
+  })),
+  nextCursor: null,
+};
+const manyDocuments = new GetDocumentsResponseDto(manyDocumentsResponse).items;
+
+// jsdom은 레이아웃을 계산하지 않아 크기와 위치가 모두 0이에요.
+// 스크롤 영역의 보이는 높이를 정하고, 카드 위쪽 끝이 스크롤 영역 위쪽 끝에서 몇 px 떨어졌는지 바꿀 수 있게 해요
+const mockLayout = () => {
+  const layout = { cardTop: 0 };
+
+  vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockImplementation(
+    function (this: HTMLElement) {
+      return this.tagName === "MAIN" ? MAIN_HEIGHT : 0;
+    },
+  );
+  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(
+    function (this: HTMLElement) {
+      return DOMRect.fromRect({
+        y: this.tagName === "UL" ? layout.cardTop : 0,
+      });
+    },
+  );
+
+  return layout;
+};
 
 const clickRetry = async () =>
   fireEvent.click(await screen.findByRole("button", { name: "다시 시도" }));
@@ -475,11 +533,55 @@ describe("TopicDocumentList", () => {
       }),
     );
 
-    renderDocumentList("abc");
+    renderDocumentList({ workspaceId: "abc" });
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
       LOAD_FAILED_NOTICE,
     );
     expect(requestCount).toBe(1);
+  });
+
+  it("스크롤 영역 안에서는 화면 근처의 행만 그리고, 카드는 행을 모두 그린 높이로 둔다", async () => {
+    mockLayout();
+    respondWith(manyDocumentsResponse);
+    const [firstDocument] = manyDocuments;
+    // 카드 맨 위에서 584~649px에 있어 화면 아래쪽 끝(640px)에 걸치는 행이에요
+    const documentAtViewEnd = manyDocuments[9];
+    const lastDocument = manyDocuments[MANY_DOCUMENT_COUNT - 1];
+
+    renderDocumentList({ isInMain: true });
+
+    const folder = await findFolder(firstDocument.topic);
+
+    expect(await findRow(firstDocument.title)).toBeInTheDocument();
+    expect(queryRow(documentAtViewEnd.title)).toBeInTheDocument();
+    expect(queryRow(lastDocument.title)).not.toBeInTheDocument();
+    expect(within(folder).getAllByRole("listitem").length).toBeLessThan(
+      MANY_DOCUMENT_COUNT,
+    );
+    // 요약 없는 행은 64px이고, 둘째 행부터 구분선 1px을 더해 65px이에요
+    expect(within(folder).getByRole("list")).toHaveStyle({
+      height: `${64 + 65 * (MANY_DOCUMENT_COUNT - 1)}px`,
+    });
+  });
+
+  it("스크롤하면 화면 근처로 온 행을 그리고 멀어진 행은 지운다", async () => {
+    const layout = mockLayout();
+    respondWith(manyDocumentsResponse);
+    const [firstDocument] = manyDocuments;
+    // 카드 맨 위에서 2,989~3,054px에 있는 47번째 행이에요
+    const documentAtScrolledView = manyDocuments[46];
+    const lastDocument = manyDocuments[MANY_DOCUMENT_COUNT - 1];
+
+    renderDocumentList({ isInMain: true });
+    await findRow(firstDocument.title);
+
+    // 카드 위쪽 끝이 스크롤 영역 위쪽 끝보다 3,000px 위로 올라가게 스크롤해요
+    layout.cardTop = -3000;
+    fireEvent.scroll(screen.getByRole("main"));
+
+    expect(await findRow(documentAtScrolledView.title)).toBeInTheDocument();
+    expect(queryRow(firstDocument.title)).not.toBeInTheDocument();
+    expect(queryRow(lastDocument.title)).not.toBeInTheDocument();
   });
 });

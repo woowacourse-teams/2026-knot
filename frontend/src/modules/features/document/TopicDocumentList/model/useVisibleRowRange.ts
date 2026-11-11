@@ -1,0 +1,95 @@
+import { type RefObject, useLayoutEffect, useMemo, useState } from "react";
+
+import { OVERSCAN_PX } from "../constants/overscan";
+import { getRowOffsets } from "../utils/getRowOffsets";
+import { getVisibleRange } from "../utils/getVisibleRange";
+
+interface RowDocument {
+  /** 한 줄 요약. 없으면 null이에요 */
+  summary: string | null;
+}
+
+interface UseVisibleRowRangeParams {
+  /** 행을 담는 폴더 카드 */
+  cardRef: RefObject<HTMLUListElement | null>;
+  /** 폴더의 문서. 화면에 그리는 순서 그대로예요 */
+  documents: RowDocument[];
+}
+
+interface RowRange {
+  start: number;
+  end: number;
+}
+
+// 브라우저 글자 크기 설정에 따라 1rem의 px 값이 달라져서, 행 위치를 계산할 때 화면에서 읽어요
+const getRemPx = () =>
+  parseFloat(getComputedStyle(document.documentElement).fontSize);
+
+/**
+ * 폴더 카드 안에서 화면 근처에 있어 그려야 할 행의 범위를 구해요.
+ *
+ * 스크롤 영역은 카드를 감싼 `main`이에요. 카드가 그려진 뒤와 `main`을 스크롤할 때마다 카드 위치를 재서 범위를 다시 구해요.
+ * `main`을 찾지 못하면 위치를 잴 기준이 없어 행을 모두 그려요.
+ * 카드 높이와 그린 첫 행의 위쪽 끝도 함께 돌려줘서, 행을 일부만 그려도 카드 높이와 행 위치가 행을 모두 그린 것과 같게 해요.
+ */
+export const useVisibleRowRange = ({
+  cardRef,
+  documents,
+}: UseVisibleRowRangeParams) => {
+  const offsets = useMemo(
+    () => getRowOffsets({ documents, remPx: getRemPx() }),
+    [documents],
+  );
+  // 카드 위치를 재기 전에는 행을 그리지 않아요. 첫 렌더링에서 행을 모두 만들면 가상화로 줄이려던 일을 그대로 하게 돼요
+  const [range, setRange] = useState<RowRange>({ start: 0, end: 0 });
+
+  // 화면을 그리기 전에 범위를 구해서, 행이 없는 카드가 한 번 보이지 않게 해요
+  useLayoutEffect(() => {
+    const card = cardRef.current;
+
+    if (card === null) return;
+
+    // 범위가 그대로면 이전 값을 돌려줘서, 스크롤할 때마다 다시 렌더링하지 않게 해요
+    const applyRange = (next: RowRange) => {
+      setRange((previous) =>
+        previous.start === next.start && previous.end === next.end
+          ? previous
+          : next,
+      );
+    };
+    const main = card.closest("main");
+
+    if (main === null) {
+      applyRange({ start: 0, end: offsets.length - 1 });
+      return;
+    }
+
+    const updateRange = () => {
+      const viewStart =
+        main.getBoundingClientRect().top - card.getBoundingClientRect().top;
+
+      applyRange(
+        getVisibleRange({
+          offsets,
+          viewStart,
+          viewEnd: viewStart + main.clientHeight,
+          overscanPx: OVERSCAN_PX,
+        }),
+      );
+    };
+
+    updateRange();
+    main.addEventListener("scroll", updateRange, { passive: true });
+
+    return () => main.removeEventListener("scroll", updateRange);
+  }, [cardRef, offsets]);
+
+  return {
+    start: range.start,
+    end: range.end,
+    /** 행을 모두 그린 카드의 높이(px) */
+    cardHeight: offsets[offsets.length - 1],
+    /** 그린 첫 행의 위쪽 끝이 카드 맨 위에서 몇 px 아래에 있는지 */
+    firstRowTop: offsets[range.start],
+  };
+};

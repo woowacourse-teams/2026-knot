@@ -1,7 +1,8 @@
 import styled from "@emotion/styled";
 import { getRouterPath } from "@routes/PATH_ROUTE";
-import { useId } from "react";
+import { useId, useRef } from "react";
 
+import { useVisibleRowRange } from "../model/useVisibleRowRange";
 import DocumentRow from "./DocumentRow";
 
 interface FolderDocument {
@@ -28,6 +29,8 @@ interface DocumentFolderProps {
 
 /**
  * 문서 목록의 폴더 하나. 폴더 이름과 문서 수 아래에, 그 폴더의 문서 행을 카드 하나로 묶어 보여줘요.
+ *
+ * 문서가 많아도 카드 안에는 화면 근처의 행만 그려요. 카드는 행을 모두 그린 높이를 갖고, 그린 행은 위쪽 여백으로 제자리에 놓아요.
  */
 export default function DocumentFolder({
   workspaceId,
@@ -36,6 +39,12 @@ export default function DocumentFolder({
   documents,
 }: DocumentFolderProps) {
   const topicId = useId();
+  const cardRef = useRef<HTMLUListElement>(null);
+  const { start, end, cardHeight, firstRowTop } = useVisibleRowRange({
+    cardRef,
+    documents,
+  });
+  const visibleDocuments = documents.slice(start, end);
 
   return (
     <Container aria-labelledby={topicId}>
@@ -43,8 +52,12 @@ export default function DocumentFolder({
         <Topic id={topicId}>{topic}</Topic>
         <DocumentCount>{documentCount}</DocumentCount>
       </TopicHeader>
-      <Card>
-        {documents.map(
+      {/* 스크롤할 때마다 바뀌는 값이라 Emotion 클래스를 새로 만들지 않게 인라인 스타일로 넣어요 */}
+      <Card
+        ref={cardRef}
+        style={{ height: cardHeight, paddingTop: firstRowTop }}
+      >
+        {visibleDocuments.map(
           ({ id, title, summary, createdAt, recordingDurationSeconds }) => (
             <DocumentRow
               key={id}
