@@ -738,10 +738,21 @@ describe("TranscriptPanel · 녹음 문서 화면 (STT-R39)", () => {
     expect(dialog.getByLabelText("새 이름")).toHaveValue("새 이름");
     expect(dialog.getByRole("button", { name: "바꾸기" })).toBeDisabled();
     expect(patchCount).toBe(1);
+    fireEvent.click(dialog.getByRole("button", { name: "취소" }));
+    fireEvent.click(
+      screen.getAllByRole("button", { name: "참여자 1 이름 바꾸기" })[0],
+    );
+    const reopened = within(
+      await screen.findByRole("dialog", { name: "이름 바꾸기" }),
+    );
+    fireEvent.change(reopened.getByLabelText("새 이름"), {
+      target: { value: "새 이름" },
+    });
+    expect(reopened.getByRole("button", { name: "바꾸기" })).toBeDisabled();
     isUnavailable = false;
-    fireEvent.click(dialog.getByRole("button", { name: "다시 확인" }));
+    fireEvent.click(reopened.getByRole("button", { name: "다시 확인" }));
     await waitFor(() =>
-      expect(dialog.getByRole("button", { name: "바꾸기" })).toBeEnabled(),
+      expect(reopened.getByRole("button", { name: "바꾸기" })).toBeEnabled(),
     );
     expect(
       screen.getAllByRole("button", { name: "새 이름 이름 바꾸기" }).length,

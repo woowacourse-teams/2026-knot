@@ -40,8 +40,8 @@ export default function RenameSpeaker({
           currentName={displayName}
           isSaving={mutation.isPending}
           hasSaveError={mutation.isError}
-          isVerificationFailed={mutation.isError && verification.isError}
-          isVerifying={mutation.isError && verification.isFetching}
+          isVerificationFailed={verification.isError}
+          isVerifying={verification.isFetching}
           onVerify={() => void verification.refetch()}
           onClose={close}
           onSave={(name) =>
