@@ -82,7 +82,18 @@ public class RecordingSession {
     @Column(name = "accumulated_recording_millis", nullable = false)
     private long accumulatedRecordingMillis;
 
+    @Column(name = "speaker_count")
+    private Integer speakerCount;
+
     protected RecordingSession() {}
+
+    public void changeSpeakerCount(Integer count) {
+        ensureActive();
+        if (count != null && (count < 1 || count > 10)) {
+            throw new RecordingException(RecordingErrorCode.INVALID_RECORDING_DATA);
+        }
+        speakerCount = count;
+    }
 
     public void enableIncrementalTranscription(String pipelineVersion) {
         if (id != null || audioMode != RecordingAudioMode.PCM16_CHUNKS_V1 || pipelineVersion == null

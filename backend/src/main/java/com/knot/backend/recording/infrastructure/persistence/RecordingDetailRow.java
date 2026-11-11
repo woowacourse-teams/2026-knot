@@ -12,6 +12,7 @@ record RecordingDetailRow(
         long accumulatedRecordingMillis,
         Instant endedAt,
         RecordingEndReason endReason,
-        RecordingAudioUploadStatus audioUploadStatus
+        RecordingAudioUploadStatus audioUploadStatus,
+        Integer speakerCount
 ) {
 }

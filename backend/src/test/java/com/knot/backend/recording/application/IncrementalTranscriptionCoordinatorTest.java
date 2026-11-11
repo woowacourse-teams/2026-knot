@@ -255,12 +255,14 @@ class IncrementalTranscriptionCoordinatorTest {
                 "{\"transcription\":[]}",
                 List.of()
         );
+        when(session.getSpeakerCount()).thenReturn(3);
         when(
                 merger.merge(
                         List.of(completed),
                         16_000,
                         .65,
-                        false
+                        false,
+                        3
                 )
         ).thenReturn(transcript);
 
@@ -337,12 +339,14 @@ class IncrementalTranscriptionCoordinatorTest {
                         PIPELINE
                 )
         ).thenReturn(List.of(completed));
+        when(session.getSpeakerCount()).thenReturn(3);
         when(
                 merger.merge(
                         List.of(completed),
                         16_000,
                         .65,
-                        false
+                        false,
+                        3
                 )
         ).thenThrow(new RecordingException(RecordingErrorCode.INVALID_RECORDING_DATA));
 
