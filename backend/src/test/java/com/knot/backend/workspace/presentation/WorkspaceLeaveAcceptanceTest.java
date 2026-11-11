@@ -173,7 +173,8 @@ class WorkspaceLeaveAcceptanceTest {
 
         // then
         result.andExpect(status().isConflict())
-                .andExpect(jsonPath("$.code").value("WORKSPACE_OWNER_TRANSFER_REQUIRED"));
+                .andExpect(jsonPath("$.code").value("WORKSPACE_OWNER_TRANSFER_REQUIRED"))
+                .andExpect(jsonPath("$.message").value("OWNER 권한을 승계하거나 워크스페이스를 삭제해야 합니다"));
     }
 
     @Test

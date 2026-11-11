@@ -16,7 +16,6 @@ import com.knot.backend.workspace.application.WorkspaceLeaveService;
 import com.knot.backend.workspace.domain.WorkspaceErrorCode;
 import java.time.Instant;
 import java.time.OffsetDateTime;
-import java.time.temporal.ChronoUnit;
 import java.util.UUID;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CyclicBarrier;
@@ -46,20 +45,17 @@ class RecordingEndIntegrationTest {
 
     private final RecordingService recordingService;
     private final WorkspaceLeaveService workspaceLeaveService;
-    private final RecordingControlTokenHasher recordingControlTokenHasher;
     private final TransactionTemplate transactionTemplate;
     private final JdbcClient jdbcClient;
 
     RecordingEndIntegrationTest(
             RecordingService recordingService,
             WorkspaceLeaveService workspaceLeaveService,
-            RecordingControlTokenHasher recordingControlTokenHasher,
             TransactionTemplate transactionTemplate,
             JdbcClient jdbcClient
     ) {
         this.recordingService = recordingService;
         this.workspaceLeaveService = workspaceLeaveService;
-        this.recordingControlTokenHasher = recordingControlTokenHasher;
         this.transactionTemplate = transactionTemplate;
         this.jdbcClient = jdbcClient;
     }
@@ -85,13 +81,28 @@ class RecordingEndIntegrationTest {
                 memberId,
                 "OWNER"
         );
-        RecordingControlCommand control = control(UUID.randomUUID());
-        long recordingId = savePausedRecording(
+        StartedRecording recording = startRecording(
+                workspaceId,
+                memberId
+        );
+        long recordingId = recording.id();
+        RecordingControlCommand control = recording.control();
+        jdbcClient.sql(
+                "UPDATE recording_sessions SET started_at = started_at - INTERVAL '5 seconds', "
+                        + "current_interval_started_at = current_interval_started_at - INTERVAL '5 seconds' WHERE id = :id"
+        )
+                .param(
+                        "id",
+                        recordingId
+                )
+                .update();
+        var paused = recordingService.pause(
                 workspaceId,
                 memberId,
-                control,
-                30_000L
+                recordingId,
+                control
         );
+        assertThat(paused.elapsedMillis()).isGreaterThanOrEqualTo(5_000L);
 
         // when
         RecordingEndResult result = recordingService.end(
@@ -106,7 +117,16 @@ class RecordingEndIntegrationTest {
         assertThat(result.status()).isEqualTo(RecordingStatus.ENDED);
         assertThat(state.status()).isEqualTo("ENDED");
         assertThat(state.endedAt()).isEqualTo(result.endedAt());
-        assertThat(state.accumulatedMillis()).isEqualTo(30_000L);
+        assertThat(state.accumulatedMillis()).isEqualTo(paused.elapsedMillis());
+        assertThat(
+                jdbcClient.sql("SELECT paused_at FROM recording_sessions WHERE id = :id")
+                        .param(
+                                "id",
+                                recordingId
+                        )
+                        .query(Instant.class)
+                        .single()
+        ).isEqualTo(paused.pausedAt());
         assertThat(endReason(recordingId)).isEqualTo("USER_ENDED");
     }
 
@@ -515,64 +535,6 @@ class RecordingEndIntegrationTest {
                         JOINED_AT.toString()
                 )
                 .update();
-    }
-
-    private long savePausedRecording(
-            long workspaceId,
-            long memberId,
-            RecordingControlCommand control,
-            long accumulatedMillis
-    ) {
-        Instant pausedAt = recentPausedAt();
-        return jdbcClient.sql("""
-                INSERT INTO recording_sessions (
-                    workspace_id, member_id, request_id, tab_id, control_token_hash, status,
-                    started_at, current_interval_started_at, ended_at, last_seen_at, accumulated_recording_millis
-                )
-                VALUES (
-                    :workspaceId, :memberId, gen_random_uuid(), :tabId, :controlTokenHash, 'PAUSED',
-                    CAST(:startedAt AS TIMESTAMPTZ), NULL, NULL, CAST(:pausedAt AS TIMESTAMPTZ), :accumulatedMillis
-                )
-                RETURNING id
-                """)
-                .param(
-                        "workspaceId",
-                        workspaceId
-                )
-                .param(
-                        "memberId",
-                        memberId
-                )
-                .param(
-                        "tabId",
-                        control.tabId()
-                )
-                .param(
-                        "controlTokenHash",
-                        recordingControlTokenHasher.hash(control.controlToken())
-                )
-                .param(
-                        "startedAt",
-                        pausedAt.minusMillis(accumulatedMillis)
-                                .toString()
-                )
-                .param(
-                        "pausedAt",
-                        pausedAt.toString()
-                )
-                .param(
-                        "accumulatedMillis",
-                        accumulatedMillis
-                )
-                .query(Long.class)
-                .single();
-    }
-
-    // 연결 만료가 아닌 사용자 종료를 검증하도록 마지막 신호를 방금 전으로 둔다
-    private Instant recentPausedAt() {
-        return Instant.now()
-                .truncatedTo(ChronoUnit.SECONDS)
-                .minusSeconds(10);
     }
 
     private String endReason(long recordingId) {

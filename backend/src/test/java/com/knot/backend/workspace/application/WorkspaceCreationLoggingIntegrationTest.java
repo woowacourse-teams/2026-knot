@@ -14,6 +14,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.test.context.TestConstructor;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -58,7 +59,12 @@ class WorkspaceCreationLoggingIntegrationTest {
             );
 
             // then
-            assertThat(failure).isNotNull();
+            assertThat(failure).isInstanceOf(DataIntegrityViolationException.class);
+            assertThat(
+                    jdbc.sql("SELECT COUNT(*) FROM workspace_members")
+                            .query(Long.class)
+                            .single()
+            ).isZero();
             assertThat(countWorkspaces()).isZero();
             assertThat(terminal(logs)).containsEntry(
                     "outcome",

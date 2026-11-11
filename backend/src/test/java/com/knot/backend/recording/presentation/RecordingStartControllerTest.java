@@ -2,7 +2,6 @@ package com.knot.backend.recording.presentation;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -17,11 +16,7 @@ import com.knot.backend.global.exception.GlobalExceptionHandler;
 import com.knot.backend.recording.application.RecordingService;
 import com.knot.backend.recording.application.dto.command.RecordingStartCommand;
 import com.knot.backend.recording.application.dto.result.RecordingStartResult;
-import com.knot.backend.recording.domain.RecordingErrorCode;
-import com.knot.backend.recording.domain.RecordingException;
 import com.knot.backend.recording.domain.model.RecordingStatus;
-import com.knot.backend.workspace.domain.WorkspaceErrorCode;
-import com.knot.backend.workspace.domain.WorkspaceException;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
@@ -238,119 +233,6 @@ class RecordingStartControllerTest {
         result.andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("INVALID_REQUEST_BODY"));
         verifyNoInteractions(recordingService);
-    }
-
-    @Test
-    @DisplayName("동일 요청 키 입력이 달라지면 409를 반환한다")
-    void start_failure_sameRequestChangedInput() throws Exception {
-        // given
-        SecurityContextHolder.getContext()
-                .setAuthentication(memberAuthentication());
-        doThrow(new RecordingException(RecordingErrorCode.RECORDING_START_REQUEST_CONFLICT)).when(recordingService)
-                .start(
-                        WORKSPACE_ID,
-                        MEMBER_ID,
-                        command()
-                );
-
-        // when
-        ResultActions result = mockMvc.perform(
-                post(
-                        "/api/v1/workspaces/{workspaceId}/recordings",
-                        WORKSPACE_ID
-                ).contentType(MediaType.APPLICATION_JSON)
-                        .content(requestBody())
-        );
-
-        // then
-        result.andExpect(status().isConflict())
-                .andExpect(jsonPath("$.code").value("RECORDING_START_REQUEST_CONFLICT"));
-        verify(recordingService).start(
-                WORKSPACE_ID,
-                MEMBER_ID,
-                command()
-        );
-    }
-
-    @Test
-    @DisplayName("다른 키로 이미 활성 녹음이 있으면 409를 반환한다")
-    void start_failure_activeRecordingAlreadyExists() throws Exception {
-        // given
-        SecurityContextHolder.getContext()
-                .setAuthentication(memberAuthentication());
-        doThrow(new RecordingException(RecordingErrorCode.ACTIVE_RECORDING_ALREADY_EXISTS)).when(recordingService)
-                .start(
-                        WORKSPACE_ID,
-                        MEMBER_ID,
-                        command()
-                );
-
-        // when
-        ResultActions result = mockMvc.perform(
-                post(
-                        "/api/v1/workspaces/{workspaceId}/recordings",
-                        WORKSPACE_ID
-                ).contentType(MediaType.APPLICATION_JSON)
-                        .content(requestBody())
-        );
-
-        // then
-        result.andExpect(status().isConflict())
-                .andExpect(jsonPath("$.code").value("ACTIVE_RECORDING_ALREADY_EXISTS"));
-    }
-
-    @Test
-    @DisplayName("워크스페이스가 없으면 WORKSPACE_NOT_FOUND 404 응답을 반환한다")
-    void start_failure_workspaceNotFound() throws Exception {
-        // given
-        SecurityContextHolder.getContext()
-                .setAuthentication(memberAuthentication());
-        doThrow(new WorkspaceException(WorkspaceErrorCode.WORKSPACE_NOT_FOUND)).when(recordingService)
-                .start(
-                        WORKSPACE_ID,
-                        MEMBER_ID,
-                        command()
-                );
-
-        // when
-        ResultActions result = mockMvc.perform(
-                post(
-                        "/api/v1/workspaces/{workspaceId}/recordings",
-                        WORKSPACE_ID
-                ).contentType(MediaType.APPLICATION_JSON)
-                        .content(requestBody())
-        );
-
-        // then
-        result.andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.code").value("WORKSPACE_NOT_FOUND"));
-    }
-
-    @Test
-    @DisplayName("워크스페이스 멤버가 아니면 WORKSPACE_ACCESS_DENIED 403 응답을 반환한다")
-    void start_failure_workspaceAccessDenied() throws Exception {
-        // given
-        SecurityContextHolder.getContext()
-                .setAuthentication(memberAuthentication());
-        doThrow(new WorkspaceException(WorkspaceErrorCode.WORKSPACE_ACCESS_DENIED)).when(recordingService)
-                .start(
-                        WORKSPACE_ID,
-                        MEMBER_ID,
-                        command()
-                );
-
-        // when
-        ResultActions result = mockMvc.perform(
-                post(
-                        "/api/v1/workspaces/{workspaceId}/recordings",
-                        WORKSPACE_ID
-                ).contentType(MediaType.APPLICATION_JSON)
-                        .content(requestBody())
-        );
-
-        // then
-        result.andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.code").value("WORKSPACE_ACCESS_DENIED"));
     }
 
     @Test

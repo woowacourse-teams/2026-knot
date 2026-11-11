@@ -199,7 +199,8 @@ class RecordingResumeAcceptanceTest {
 
         // then
         result.andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.code").value("RECORDING_CONTROL_DENIED"));
+                .andExpect(jsonPath("$.code").value("RECORDING_CONTROL_DENIED"))
+                .andExpect(jsonPath("$.message").value("녹음을 제어할 권한이 없습니다"));
         assertThat(recordingStatus(recording.id())).isEqualTo("PAUSED");
     }
 

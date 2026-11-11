@@ -10,7 +10,6 @@ import com.knot.backend.recording.application.dto.command.RecordingStartCommand;
 import com.knot.backend.recording.application.dto.result.RecordingEndResult;
 import com.knot.backend.recording.application.dto.result.RecordingPauseResult;
 import com.knot.backend.recording.domain.RecordingErrorCode;
-import com.knot.backend.recording.domain.model.RecordingStatus;
 import com.knot.backend.testsupport.TestApplicationProperties;
 import com.knot.backend.testsupport.IsolatedPostgresTest;
 import java.time.Instant;
@@ -64,43 +63,6 @@ class RecordingPauseIntegrationTest {
                 RESTART IDENTITY CASCADE
                 """)
                 .update();
-    }
-
-    @Test
-    @DisplayName("일시정지한 뒤 종료하면 일시정지 구간을 누적하지 않고 같은 누적 시간으로 종료한다")
-    void pause_success_endAfterPauseKeepsElapsedTime() {
-        // given
-        long memberId = saveMember("member");
-        long workspaceId = saveWorkspace("팀");
-        saveWorkspaceMember(
-                workspaceId,
-                memberId,
-                "OWNER"
-        );
-        StartedRecording recording = startRecording(
-                workspaceId,
-                memberId
-        );
-        RecordingPauseResult paused = recordingService.pause(
-                workspaceId,
-                memberId,
-                recording.id(),
-                recording.control()
-        );
-
-        // when
-        RecordingEndResult ended = recordingService.end(
-                workspaceId,
-                memberId,
-                recording.id(),
-                recording.control()
-        );
-
-        // then
-        RecordingState state = recordingState(recording.id());
-        assertThat(ended.status()).isEqualTo(RecordingStatus.ENDED);
-        assertThat(state.accumulatedMillis()).isEqualTo(paused.elapsedMillis());
-        assertThat(state.pausedAt()).isEqualTo(paused.pausedAt());
     }
 
     @Test

@@ -170,7 +170,8 @@ class WorkspaceAcceptanceTest {
 
         // then
         result.andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("INVALID_WORKSPACE_NAME"));
+                .andExpect(jsonPath("$.code").value("INVALID_WORKSPACE_NAME"))
+                .andExpect(jsonPath("$.message").value("워크스페이스 이름이 올바르지 않습니다"));
         assertThat(count("workspaces")).isZero();
         assertThat(count("workspace_members")).isZero();
     }
