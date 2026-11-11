@@ -34,18 +34,29 @@ public class LlmProperties {
             return;
         }
         validateProvider();
-        if ("claude".equals(provider) && (claudeThinkingType == null || !Set.of(
-                "disabled",
-                "adaptive",
-                "between_tools"
-        )
-                .contains(claudeThinkingType))) {
-            throw invalidConfiguration();
-        }
+        validateClaudeModel();
         validateBaseUrl();
         validateCredentials();
         validateTimeouts();
         validateResponseLimit();
+    }
+
+    private void validateClaudeModel() {
+        if (!"claude".equals(provider))
+            return;
+        Set<String> supported = switch (model == null ? "" : model) {
+            case "claude-sonnet-5-5" -> Set.of(
+                    "between_tools",
+                    "adaptive"
+            );
+            case "claude-haiku-5-5" -> Set.of(
+                    "disabled",
+                    "adaptive"
+            );
+            default -> Set.of();
+        };
+        if (claudeThinkingType == null || !supported.contains(claudeThinkingType))
+            throw invalidConfiguration();
     }
 
     private void validateProvider() {

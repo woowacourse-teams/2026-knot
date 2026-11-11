@@ -19,7 +19,7 @@ class ClaudeClientTest {
         p.setProvider("claude");
         p.setBaseUrl(server.baseUrl());
         p.setApiToken("test-secret");
-        p.setModel("test-model");
+        p.setModel("claude-sonnet-5-5");
         p.setRequestTimeout(Duration.ofSeconds(3));
         return new ClaudeClient(
                 HttpClient.newHttpClient(),

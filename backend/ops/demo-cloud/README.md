@@ -7,8 +7,9 @@ CLOVA Speech는 최종 음성 파일의 서명 URL을 받아 한 번 동기 전�
 1. BE #1121을 먼저 배포한 뒤 FE #1122를 배포한다. DB V73은 nullable 참가자 수와 별도 표시명 테이블을 추가한다. 롤백 때 데이터 테이블을 삭제하지 않는다.
 2. 새 녹음 접수를 잠시 중지하고 진행 중 녹음, 음성 최종화, 전사 입력 준비, 구간 전사, 전사 및 LLM 작업을 모두 소진한다. 공급자는 프로세스 설정이므로 실행 중 교체하면 이전 작업에 새 공급자가 적용된다. 배포 인스턴스가 서로 다른 공급자를 사용하지 않도록 한다.
 3. `demo.env.example`을 저장소 밖 권한 600 파일 또는 배포 비밀 저장소에 복사한다. CLOVA invoke URL에는 `/recognizer/url`을 붙이지 않는다. 키·서명 URL·전사 원문을 로그나 PR에 남기지 않는다.
-4. NCP 도메인의 화자 인식을 활성화하고, 서명 다운로드 URL에 NCP가 접근할 수 있는지 확인한다. `RECORDING_INCREMENTAL_TRANSCRIPTION_ENABLED=false`가 필수이며, 잘못된 조합은 기동 시 거절한다. 최종 WAV 생성·저장은 기존 서버가 맡고 Mac mini의 입력 준비/구간 전사는 새 녹음에 사용하지 않는다.
-5. Claude 키의 크레딧·만료와 모델 접근을 확인한다. `LLM_PROVIDER`는 요약과 주제별 문서뿐 아니라 같은 포트를 쓰는 제목·탐색 등에도 적용된다. 실행 중인 요청을 소진한 뒤 모든 인스턴스에 같은 설정을 적용한다.
+4. NCP 도메인의 화자 인식을 활성화하고, 서명 다운로드 URL에 NCP가 접근할 수 있는지 확인한다. `RECORDING_INCREMENTAL_TRANSCRIPTION_ENABLED=false`가 필수이며, 잘못된 조합은 기동 시 거절한다. PCM 조각 녹음은 `RECORDING_AUDIO_FINALIZATION_ENABLED=true`로 최종 WAV 생성을 켠다(기본 false). 최종 WAV 생성·저장은 기존 서버가 맡고 Mac mini의 입력 준비/구간 전사는 새 녹음에 사용하지 않는다.
+5. `MEETING_SUMMARY_WORKER_ENABLED=true`와 `DOCUMENT_GENERATION_WORKER_ENABLED=true`를 확인한다. 두 기본값은 false이며 폴링 간격만 지정하면 실행되지 않는다.
+6. Claude 키의 크레딧·만료와 모델 접근을 확인한다. `LLM_PROVIDER`는 요약과 주제별 문서뿐 아니라 같은 포트를 쓰는 제목·탐색 등에도 적용된다. 실행 중인 요청을 소진한 뒤 모든 인스턴스에 같은 설정을 적용한다.
 
 ## 리허설과 관측
 
@@ -26,3 +27,7 @@ CLOVA Speech는 최종 음성 파일의 서명 URL을 받아 한 번 동기 전�
 새 접수를 잠시 중지하고 위 작업을 다시 소진한다. 이전의 `TRANSCRIPTION_PROVIDER=local`, 증분 전사 플래그, Mac mini URL/토큰, `LLM_PROVIDER=lm-studio`, 로컬 LLM URL/모델/토큰/시간 제한을 복원하고 인스턴스를 재시작한다. 클라우드 키는 런타임에서 제거하고 사용을 끝낸 키는 콘솔에서 폐기한다.
 
 복귀 후 짧은 녹음으로 전사 먼저 보기·전체 요약·이름 수정·참가자 수 저장을 재검증한다. 로컬 증분 전사에서는 2분 구간을 자동으로 처리하고, 종료 후 전체 화자 재군집 단계에 확정한 참가자 수를 적용한다. 이미 처리한 구간을 다시 전사하지 않는다. 클라우드 어댑터를 코드에서 제거할 때도 이 영구 기능과 V73 데이터는 유지한다.
+
+Claude 데모 어댑터는 Sonnet 5.5의 `between_tools`/`adaptive`, Haiku 5.5의 `disabled`/`adaptive` 조합을 지원한다. 로컬 모델용 temperature/top-p/top-k/repeat-penalty/개별 thinking 옵션은 공급자 간 공통 보장이 아니며, Claude에서는 서버의 모델·thinking 설정과 모델 기본 샘플링을 사용하고 maxTokens를 전달한다. [Thinking 공식 문서](https://platform.claude.com/docs/en/build-with-claude/thinking)를 기준으로 지원 조합을 검증한다.
+
+로컬 증분 전사의 고정 참가자 수는 재군집 가능한 증거가 필요하다. 증거가 없는 이전 파이프라인 결과는 고정 수를 무시해 성공시키지 않고 병합 오류로 처리한다. 자동 감지의 기존 병합 동작은 유지한다.
