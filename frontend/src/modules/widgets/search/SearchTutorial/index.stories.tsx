@@ -124,7 +124,7 @@ export const ShownAgain: Story = {
   parameters: { variant: "again" },
 };
 
-/** 녹음 문서를 살짝 확인한 뒤 뜬 1단계예요. 제목이 지금 회의를 가리켜요. */
+/** 녹음 문서를 살짝 확인한 뒤 뜬 1단계예요. 제목이 문서를 읽다 궁금한 게 생기면 물어보라고 안내해요. */
 export const OnRecordingDocument: Story = {
   parameters: { variant: "document", design: { type: "figma", url: `${FIGMA}6348-5084` } },
 };

@@ -6,7 +6,7 @@ export type SearchTutorialStep = 1 | 2 | 3 | 4;
 /**
  * 1단계 안내 카드의 상황.
  * - `default`: 처음 뜰 때
- * - `document`: 녹음 문서 화면에서 뜰 때. 제목이 「이 회의 내용, 탐색에서 물어볼 수 있어요」예요
+ * - `document`: 녹음 문서 화면에서 뜰 때. 제목이 「궁금한 게 생기면 탐색에 물어보세요」예요
  * - `again`: 「다음에 볼게요」를 누른 뒤 두 번째로 뜰 때. 미루기 대신 닫기만 둬요
  */
 export type SearchTutorialVariant = "default" | "document" | "again";

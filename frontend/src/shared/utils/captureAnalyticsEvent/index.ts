@@ -124,7 +124,7 @@ interface AnalyticsEventMap {
     /** 끝낸 방법. `completed`일 때만 있어요. 질문 종류 카드(`question_kind`), 직접 보냄(`typed`), 끝내기 버튼(`finish_button`) */
     via?: "question_kind" | "typed" | "finish_button";
     /** 질문 종류 카드로 끝냈을 때 고른 종류 */
-    question_kind?: "past_decision" | "undecided" | "next_meeting";
+    question_kind?: "past_decision" | "undecided" | "next_action";
     workspace_id: number;
   };
   /**

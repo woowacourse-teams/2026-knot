@@ -160,7 +160,7 @@ describe("SearchTutorial", () => {
     expect(JSON.parse(localStorage.getItem(RECORD_KEY) ?? "null")).toEqual({ state: "done" });
   });
 
-  it("녹음 문서 화면에서는 문서를 살짝 확인한 뒤 이 회의를 가리키는 제목으로 띄운다", async () => {
+  it("녹음 문서 화면에서는 문서를 살짝 확인한 뒤 문서 화면용 제목으로 띄운다", async () => {
     renderTutorial(RECORDING_DOCUMENT_PATH);
 
     expect(screen.queryByText(DOCUMENT_COACH_TITLE)).not.toBeInTheDocument();
