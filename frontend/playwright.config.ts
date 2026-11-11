@@ -35,7 +35,12 @@ export default defineConfig({
       origins: [
         {
           origin: BASE_URL,
-          localStorage: [{ name: "knot.releaseNote.lastSeenId", value: "e2e" }],
+          localStorage: [
+            { name: "knot.releaseNote.lastSeenId", value: "e2e" },
+            // 탐색 튜토리얼을 이미 끝낸 멤버(mock 회원 1)로 시작해요. 처음 온 멤버면 문서가 있는 워크스페이스에 들어가자마자 딤드가 화면을 덮어요.
+            // 튜토리얼 E2E(searchTutorial.test.ts)만 이 기록을 지우고 시작해요
+            { name: "knot.searchTutorial.1", value: '{"state":"done"}' },
+          ],
         },
       ],
     },
