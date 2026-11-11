@@ -39,7 +39,9 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 /** 이름을 누르면 열리는 기본 팝오버예요. 이름 선택 후 바꾸기를 눌러 저장해요. */
-export const Default: Story = {};
+export const Default: Story = {
+  parameters: { docs: { story: { inline: false, iframeHeight: 760 } } },
+};
 /** 멤버를 불러오지 못해도 이름을 직접 입력할 수 있어요. 저장 실패 시 입력한 이름을 유지해요. */
 export const MemberAndSaveFailure: Story = {
   parameters: {
