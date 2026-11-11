@@ -1,22 +1,39 @@
 import styled from "@emotion/styled";
-import { type ReactNode, useId } from "react";
+import { getRouterPath } from "@routes/PATH_ROUTE";
+import { useId } from "react";
+
+import DocumentRow from "./DocumentRow";
+
+interface FolderDocument {
+  id: number;
+  title: string;
+  /** 한 줄 요약. 없으면 null이에요 */
+  summary: string | null;
+  /** 문서 생성 시각(ISO 8601) */
+  createdAt: string;
+  /** 녹음 길이(초) */
+  recordingDurationSeconds: number;
+}
 
 interface DocumentFolderProps {
+  /** 행을 누르면 갈 문서 보기 주소의 워크스페이스 id */
+  workspaceId: number;
   /** 폴더 이름. AI가 분류한 주제예요 */
   topic: string;
   /** 이 폴더의 전체 문서 수. 아래에 그린 행을 센 값이 아니라 서버가 준 값이에요 */
   documentCount: number;
-  /** 폴더에 담을 행(`DocumentRow`) */
-  children: ReactNode;
+  /** 폴더의 문서. 화면에 그리는 순서 그대로예요 */
+  documents: FolderDocument[];
 }
 
 /**
  * 문서 목록의 폴더 하나. 폴더 이름과 문서 수 아래에, 그 폴더의 문서 행을 카드 하나로 묶어 보여줘요.
  */
 export default function DocumentFolder({
+  workspaceId,
   topic,
   documentCount,
-  children,
+  documents,
 }: DocumentFolderProps) {
   const topicId = useId();
 
@@ -26,7 +43,26 @@ export default function DocumentFolder({
         <Topic id={topicId}>{topic}</Topic>
         <DocumentCount>{documentCount}</DocumentCount>
       </TopicHeader>
-      <Card>{children}</Card>
+      <Card>
+        {documents.map(
+          ({ id, title, summary, createdAt, recordingDurationSeconds }) => (
+            <DocumentRow
+              key={id}
+              href={getRouterPath({
+                routeKey: "DOCUMENT",
+                params: {
+                  workspaceId: String(workspaceId),
+                  documentId: String(id),
+                },
+              })}
+              title={title}
+              summary={summary}
+              createdAt={createdAt}
+              recordingDurationSeconds={recordingDurationSeconds}
+            />
+          ),
+        )}
+      </Card>
     </Container>
   );
 }
