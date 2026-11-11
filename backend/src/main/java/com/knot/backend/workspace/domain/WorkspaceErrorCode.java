@@ -6,6 +6,16 @@ import lombok.Getter;
 
 @Getter
 public enum WorkspaceErrorCode implements ErrorCode {
+    INVALID_LIMIT(
+            ErrorCategory.INVALID_INPUT,
+            "INVALID_LIMIT",
+            "조회 개수는 1~100이어야 합니다"
+    ),
+    INVALID_PARAMETER(
+            ErrorCategory.INVALID_INPUT,
+            "INVALID_PARAMETER",
+            "커서 형식이 올바르지 않습니다"
+    ),
     INVALID_WORKSPACE_NAME(
             ErrorCategory.INVALID_INPUT,
             "INVALID_WORKSPACE_NAME",
