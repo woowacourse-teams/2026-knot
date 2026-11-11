@@ -24,6 +24,7 @@ public class LlmProperties {
     private URI baseUrl;
     private String apiToken;
     private String model;
+    private String claudeThinkingType = "between_tools";
     private Duration connectTimeout = Duration.ofSeconds(3);
     private Duration requestTimeout = Duration.ofSeconds(120);
     private long maxResponseBytes = 262144;
@@ -33,6 +34,14 @@ public class LlmProperties {
             return;
         }
         validateProvider();
+        if ("claude".equals(provider) && (claudeThinkingType == null || !Set.of(
+                "disabled",
+                "adaptive",
+                "between_tools"
+        )
+                .contains(claudeThinkingType))) {
+            throw invalidConfiguration();
+        }
         validateBaseUrl();
         validateCredentials();
         validateTimeouts();
@@ -40,7 +49,11 @@ public class LlmProperties {
     }
 
     private void validateProvider() {
-        if (!"lm-studio".equals(provider)) {
+        if (provider == null || !Set.of(
+                "lm-studio",
+                "claude"
+        )
+                .contains(provider)) {
             throw invalidConfiguration();
         }
     }

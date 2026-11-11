@@ -36,4 +36,18 @@ public class LlmConfig {
                 properties
         );
     }
+    @Bean
+    @ConditionalOnProperty(prefix = "knot.llm", name = "provider", havingValue = "claude")
+    public com.knot.backend.global.infrastructure.llm.ClaudeClient claudeClient(
+            HttpClient llmHttpClient,
+            ObjectMapper mapper,
+            LlmProperties properties
+    ) {
+        return new com.knot.backend.global.infrastructure.llm.ClaudeClient(
+                llmHttpClient,
+                mapper,
+                properties
+        );
+    }
+
 }
