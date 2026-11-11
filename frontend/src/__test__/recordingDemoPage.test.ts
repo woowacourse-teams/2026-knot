@@ -17,7 +17,7 @@ const scenario = (page: import("@playwright/test").Page, value: string) =>
     value,
   );
 
-test("[415b435175228189a9fcdd112f8c042a] 문서 생성 중이어도 전사가 완료되면 녹음 상세와 전사를 먼저 연다 @core", async ({
+test("[STT-R18, STT-R20] 문서 생성 중이어도 전사가 완료되면 녹음 상세와 전사를 먼저 연다 @core", async ({
   page,
 }) => {
   await scenario(page, "processing");
@@ -30,7 +30,7 @@ test("[415b435175228189a9fcdd112f8c042a] 문서 생성 중이어도 전사가 �
     page.getByRole("heading", { name: "이 회의에서 나온 문서" }),
   ).toBeVisible();
 });
-test("[415b4351752281bf84e0fb578bb7a347] 같은 녹음의 같은 화자 이름을 멤버 이름으로 변경한다 @core", async ({
+test("[STT-R39] 같은 녹음의 같은 화자 이름을 멤버 이름으로 변경한다 @core", async ({
   page,
 }) => {
   await page.goto(detail);
@@ -47,7 +47,7 @@ test("[415b4351752281bf84e0fb578bb7a347] 같은 녹음의 같은 화자 이름�
   ).toHaveCount(count);
   await expect(buttons).toHaveCount(0);
 });
-test("[415b4351752281c4a349d82e8f18228d] 주제가 없는 인사말 녹음도 전체 요약을 보여 준다 @core", async ({
+test("[STT-R41, STT-R16] 주제가 없는 인사말 녹음도 전체 요약을 보여 준다 @core", async ({
   page,
 }) => {
   await scenario(page, "greeting");
@@ -60,7 +60,7 @@ test("[415b4351752281c4a349d82e8f18228d] 주제가 없는 인사말 녹음도 �
     page.getByRole("region", { name: "원문", exact: true }),
   ).toBeVisible();
 });
-test("[404b4351752281a1a50ad6749bd3c719] 실제 빈 전사는 녹음 음성을 보존하고 요약과 문서를 만들지 않는다", async ({
+test("[STT-R16, STT-R42] 실제 빈 전사는 녹음 음성을 보존하고 요약과 문서를 만들지 않는다", async ({
   page,
 }) => {
   await scenario(page, "empty");
@@ -77,7 +77,7 @@ test("[404b4351752281a1a50ad6749bd3c719] 실제 빈 전사는 녹음 음성을 �
 });
 
 test.describe("녹음 참가자 수", () => {
-  test("[415b4351752281b1bf41fbf4379566c4] 녹음·일시정지 중 참가자 수를 자동에서 1~10명으로 저장한다 @core", async ({
+  test("[STT-R54] 녹음·일시정지 중 참가자 수를 자동에서 1~10명으로 저장한다 @core", async ({
     page,
   }) => {
     await scenario(page, "participants");
@@ -104,7 +104,7 @@ test.describe("녹음 참가자 수", () => {
     await expect(less).toBeEnabled();
   });
 });
-test("[415b435175228149aac0c36e39267afb] 다른 화면에서는 전사가 준비돼도 이동하지 않는다", async ({
+test("[STT-R18] 다른 화면에서는 전사가 준비돼도 이동하지 않는다", async ({
   page,
 }) => {
   await scenario(page, "processing");
