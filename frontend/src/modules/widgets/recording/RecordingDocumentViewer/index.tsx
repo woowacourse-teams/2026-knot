@@ -22,34 +22,13 @@ import RecordingDocumentCopyButton from "./ui/RecordingDocumentCopyButton";
 import RecordingDocumentLoadFailed from "./ui/RecordingDocumentLoadFailed";
 import RecordingDocumentSkeleton from "./ui/RecordingDocumentSkeleton";
 
-/**
- * 녹음 문서 섹션(STT-R36). 녹음 하나의 제목 · 녹음 음성 · 회의 전체 요약 · 이 회의에서 나온 문서를 위에서부터 한 열로 보여줘요.
- * 전사는 이 섹션이 아니라 오른쪽 원문 패널이 보여 주고, 패널을 둘지는 레이아웃이 같은 처리 상태로 정해요(STT-R39).
- * 어느 녹음 문서를 보고 있는지는 GNB의 위치 표시가 `워크스페이스 이름 › 문서 › 녹음 제목`으로 알려요.
- *
- * 제목은 서버가 준 그대로예요. AI 녹음 제목이 없으면 서버가 「OO 님의 녹음」으로 채워 줘요(STT-R37).
- * 제목 아래에는 녹음을 시작한 날과 녹음 길이를 둬요.
- * 회의 전체 요약이 완료일 때만 제목 줄 오른쪽 끝에 녹음 제목과 요약을 복사하는 버튼을 둬요(STT-R38).
- *
- * 그 아래는 처리 상태(`useRecordingDocumentStatus`)마다 달라요(STT-R42).
- * - 문서 정리 중: 정리 중 안내만. 처리가 끝나면 녹음 문서를 다시 받아 저절로 바뀌어요. 3초마다 다시 묻는 일은 이 섹션만 해요
- * - 전사 실패 · 주제 분류 실패: 실패 안내. 서버가 다시 시도할 수 있다고 하면 「다시 시도」로 전사나 주제 분류부터 다시 접수하고, 접수되면 정리 중으로 바뀌어요
- * - 정리할 내용 없음: 녹음 음성과 「변환된 음성 기록이 없어요.」
- * - 완료 · 문서 생성 실패: 녹음 음성, 회의 전체 요약, 구분선, 이 회의에서 나온 문서. 문서 생성 실패의 다시 시도는 이 회의에서 나온 문서의 실패 카드에 있어요
- *
- * 녹음 음성은 정리를 마친 녹음(완료 · 문서 생성 실패 · 정리할 내용 없음)에만 둬요(STT-R50). 다시 시도 버튼은 현재 멤버 누구에게나 보여요.
- *
- * 처리 상태가 정해진 것과 요약 복사는 사용 기록으로도 보내요(`useRecordingDocumentAnalytics`).
- *
- * 주소의 두 id는 숫자인지 확인하지 않고 그대로 요청해요. 잘못된 주소인지는 서버가 판단하고, 여기서는 그 응답에 따라 녹음을 불러오지 못했다고 알려요.
- * 로그인이 풀렸으면(401) 로그인 화면으로 보내요.
- */
+/** 전사·전체 요약·주제별 문서가 준비되는 대로 각각 표시하는 녹음 상세. */
 export default function RecordingDocumentViewer() {
   const titleId = useId();
   const params = useParams();
   const workspaceId = Number(params.workspaceId);
   const recordingId = Number(params.recordingId);
-  const { status, recordingDocument, error, retryLoad } =
+  const { status, recordingDocument, error, retryLoad, isTranscriptAvailable } =
     useRecordingDocumentStatus({ workspaceId, recordingId, isPolling: true });
   useRedirectToLoginOnUnauthorized({ error });
   const failedStatus =
@@ -98,13 +77,16 @@ export default function RecordingDocumentViewer() {
     isRetryable,
     meetingSummary,
   } = recordingDocument;
-  const hasDocuments = status === "completed" || status === "documentFailed";
-  const hasPlayer = hasDocuments || status === "noContent";
+  const hasDocuments =
+    recordingDocument.topicClassificationStatus === "SUCCEEDED" ||
+    status === "completed" ||
+    status === "documentFailed";
+  const hasPlayer =
+    isTranscriptAvailable || hasDocuments || status === "noContent";
+  const isEmptyTranscript = recordingDocument.transcriptStatus === "EMPTY";
   // 요약이 완료일 때만 복사할 요약이 있어요. 요약 자리가 없는 처리 상태에서는 요약이 와도 버튼을 두지 않아요
   const copyableSummary =
-    hasDocuments && meetingSummary?.status === "SUCCEEDED"
-      ? meetingSummary.content
-      : null;
+    meetingSummary?.status === "SUCCEEDED" ? meetingSummary.content : null;
 
   return (
     // 다른 녹음 문서로 옮기면 「복사됨」 같은 앞 녹음의 표시가 남지 않게, 녹음마다 새로 그려요
@@ -140,15 +122,21 @@ export default function RecordingDocumentViewer() {
 
       {hasPlayer && <RecordingAudioPlayer />}
 
-      {status === "noContent" && <NoContentState />}
+      {isEmptyTranscript && <NoContentState />}
+
+      {!isEmptyTranscript && (meetingSummary !== null || hasDocuments) && (
+        <MeetingSummary
+          meetingSummary={meetingSummary}
+          onRetry={retryMeetingSummary}
+          isRetrying={isMeetingSummaryRetrying}
+        />
+      )}
+      {status === "noContent" && !isEmptyTranscript && (
+        <p>이 녹음에서 생성된 주제별 문서는 없어요.</p>
+      )}
 
       {hasDocuments && (
         <>
-          <MeetingSummary
-            meetingSummary={meetingSummary}
-            onRetry={retryMeetingSummary}
-            isRetrying={isMeetingSummaryRetrying}
-          />
           <Divider />
           <MeetingDocumentList />
         </>

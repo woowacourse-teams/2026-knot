@@ -1221,13 +1221,29 @@ describe("WorkspaceLayout의 원문 패널", () => {
   });
 
   it.each([
-    { label: "문서 정리 중", processingStatus: "PROCESSING" },
-    { label: "전사 실패", processingStatus: "TRANSCRIPTION_FAILED" },
-    { label: "정리할 내용 없음", processingStatus: "NO_CONTENT" },
+    {
+      label: "전사 전",
+      processingStatus: "PROCESSING",
+      transcriptStatus: "NOT_READY",
+    },
+    {
+      label: "전사 실패",
+      processingStatus: "TRANSCRIPTION_FAILED",
+      transcriptStatus: "FAILED",
+    },
+    {
+      label: "전사 사용 불가",
+      processingStatus: "NO_CONTENT",
+      transcriptStatus: "UNAVAILABLE",
+    },
   ] as const)(
     "녹음 문서가 $label이면 원문 버튼과 패널을 두지 않는다 (STT-R39)",
-    async ({ processingStatus }) => {
-      respondWithRecordingDocument({ processingStatus, meetingSummary: null });
+    async ({ processingStatus, transcriptStatus }) => {
+      respondWithRecordingDocument({
+        processingStatus,
+        transcriptStatus,
+        meetingSummary: null,
+      });
       renderLayoutAsFirstVisit(RECORDING_DOCUMENT_PATH);
 
       expect(
@@ -1242,10 +1258,12 @@ describe("WorkspaceLayout의 원문 패널", () => {
     },
   );
 
-  it("녹음 문서가 주제 분류 실패면(전사 없음 · 요약 없음) 원문 버튼과 패널을 두지 않는다 (STT-R39)", async () => {
+  it("녹음 문서가 전사가 사용 불가하면 원문 버튼과 패널을 두지 않는다 (STT-R39)", async () => {
     let transcriptRequestCount = 0;
     respondWithRecordingDocument({
       processingStatus: "DOCUMENT_FAILED",
+      transcriptStatus: "UNAVAILABLE",
+      topicClassificationStatus: "FAILED",
       retryable: true,
       retryableJobIds: [88],
       meetingSummary: null,
@@ -1270,13 +1288,26 @@ describe("WorkspaceLayout의 원문 패널", () => {
     expect(
       await screen.findByText(RECORDING_DOCUMENT_TEXT),
     ).toBeInTheDocument();
-    await waitFor(() => expect(transcriptRequestCount).toBe(1));
+    expect(transcriptRequestCount).toBe(0);
     await waitForMember();
 
     expect(
       screen.queryByRole("button", { name: /^원문/ }),
     ).not.toBeInTheDocument();
     expect(queryTranscriptPanel()).not.toBeInTheDocument();
+  });
+
+  it("이전 서버가 새 전사 상태를 생략해도 완료 녹음의 원문을 보여 준다", async () => {
+    respondWithRecordingDocument({
+      processingStatus: "COMPLETED",
+      transcriptStatus: undefined,
+      topicClassificationStatus: undefined,
+    });
+    renderLayoutAsFirstVisit(RECORDING_DOCUMENT_PATH);
+    expect(await findToggle(CLOSE_LABEL)).toBeInTheDocument();
+    expect(
+      await screen.findByRole("region", { name: TRANSCRIPT_PANEL_TITLE }),
+    ).toBeInTheDocument();
   });
 
   describe("원문 패널 스크롤 기록", () => {

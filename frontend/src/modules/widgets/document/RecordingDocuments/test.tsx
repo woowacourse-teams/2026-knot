@@ -2,7 +2,7 @@ import { GetRecordingResponseDto } from "@api/dto/recording";
 import { documentGenerationJobRetryResponse } from "@api/mock/responses/documentGenerationJob";
 import {
   recordingAudioSaveResponse,
-  recordingDetailsResponse,
+  recordingDetailsResponse as currentRecordingDetailsResponse,
 } from "@api/mock/responses/recording";
 import type {
   RecordingAudioSaveResponse,
@@ -39,6 +39,39 @@ vi.mock("@utils/captureAnalyticsEvent", () => ({
   captureAnalyticsEvent: vi.fn(),
 }));
 
+// 이전 응답에서 전사 결과가 빠진 경우의 문서 상태 fallback도 유지해요.
+// 현재 서버의 SUCCEEDED 즉시 이동 계약은 아래 별도 describe에서 검증해요.
+const recordingDetailsResponse = currentRecordingDetailsResponse.map(
+  (recording) => ({
+    ...recording,
+    detail: {
+      ...recording.detail,
+      transcriptionStatus:
+        recording.detail.transcriptionStatus === "SUCCEEDED"
+          ? null
+          : recording.detail.transcriptionStatus,
+    },
+  }),
+);
+import { findRecordingDetail } from "@api/mock/state/recording";
+beforeEach(() => {
+  mockServer.use(
+    http.get(
+      "*/api/v1/workspaces/:workspaceId/recordings/:recordingId",
+      ({ params }) => {
+        const detail = findRecordingDetail(Number(params.recordingId));
+        if (!detail) return new HttpResponse(null, { status: 404 });
+        return HttpResponse.json({
+          ...detail,
+          transcriptionStatus:
+            detail.transcriptionStatus === "SUCCEEDED"
+              ? null
+              : detail.transcriptionStatus,
+        });
+      },
+    ),
+  );
+});
 const WORKSPACE_ID = 1;
 // 상태가 서로 다른 mock 녹음: 정리 중 · 내용 없음 · 문서 만들기 실패 · 전사 실패 · 정리 완료.
 // 서버 응답에는 녹음 ID가 없어서, 녹음 ID(`recordingId`)와 응답(`detail`)이 한 쌍으로 있어요
@@ -1863,7 +1896,10 @@ describe("RecordingDocuments", () => {
       });
 
       expect(
-        await screen.findByRole("heading", { level: 2, name: ORGANIZING_TITLE }),
+        await screen.findByRole("heading", {
+          level: 2,
+          name: ORGANIZING_TITLE,
+        }),
       ).toBeInTheDocument();
       expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     });
@@ -1883,7 +1919,10 @@ describe("RecordingDocuments", () => {
       fireEvent.click(screen.getByRole("button", { name: "다시 시도" }));
 
       expect(
-        await screen.findByRole("heading", { level: 2, name: ORGANIZING_TITLE }),
+        await screen.findByRole("heading", {
+          level: 2,
+          name: ORGANIZING_TITLE,
+        }),
       ).toBeInTheDocument();
       expect(counts.audioSave).toBe(2);
       expect(counts.recording).toBe(recordingCountBeforeRetry);
@@ -2325,4 +2364,39 @@ describe("RecordingDocuments의 다시 시도 결과 기록", () => {
       expect(getRetryEvents()).toHaveLength(0);
     });
   });
+});
+
+describe("전사 완료 즉시 녹음 상세 이동", () => {
+  it.each([
+    null,
+    "QUEUED",
+    "RUNNING",
+    "SUCCEEDED",
+    "FAILED",
+    "NO_CONTENT",
+  ] as const)(
+    "문서 생성 상태가 %s여도 전사가 완료되면 이동한다",
+    async (status) => {
+      const recording = currentRecordingDetailsResponse[0];
+      mockServer.use(
+        http.get(RECORDING_REQUEST, () =>
+          HttpResponse.json({
+            ...recording.detail,
+            sessionStatus: "ENDED",
+            transcriptionStatus: "SUCCEEDED",
+            documentGeneration:
+              status === null
+                ? null
+                : { status, succeededCount: 0, failedJobIds: [] },
+          }),
+        ),
+      );
+      const { router } = renderRecordingDocuments(recording.recordingId);
+      await waitFor(() =>
+        expect(router.state.location.pathname).toBe(
+          getRecordingDocumentPath(recording.recordingId),
+        ),
+      );
+    },
+  );
 });

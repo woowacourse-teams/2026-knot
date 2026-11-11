@@ -66,7 +66,7 @@ const setRecordingInThisTab = (status: "recording" | "paused") => {
  * - 맨 위 줄은 카드 머리 아래에 고정되고, 목록만 카드 안에서 스크롤돼요. 목록 아래 40px은 흐리게 보여요. 스크롤 끝에 닿으면 다음 20개를 이어 받아요.
  * - 행은 제목을 한 줄로 자르고, 마우스를 올리면 전체 제목을 브라우저 툴팁으로 보여 줘요.
  * - 완료 행은 녹음 날짜와 녹음 길이 칩을, 그 밖의 행은 처리 상태(문서 정리 중 · 녹음을 글로 옮기지 못했어요 · 문서를 만들지 못했어요 · 변환된 음성 기록이 없어요.)를 보여 줘요.
- * - 「녹음 보기」로 그 녹음의 녹음 문서에 가요. 문서 정리 중 행의 「녹음 보기」는 흐리게 보이고 누를 수 없어요.
+ * - 「녹음 보기」로 그 녹음의 녹음 문서에 가요. 전사가 준비된 행은 문서 정리 중에도 「녹음 보기」를 누를 수 있어요.
  * - 서버가 다시 시도할 수 있다고 알려 준 실패 행에는 「녹음 보기」 대신 「다시 시도」가 있어요. 누르면 그 행이 문서 정리 중으로 바뀌어요.
  * - 문서 정리 중 행이 있는 동안 3초마다 목록을 다시 받아요.
  * - 맨 위 줄과 목록이 모두 없으면 카드 크기를 그대로 두고 빈 상태 문구를 보여 줘요. 불러오지 못하면 목록 자리에 안내와 「다시 시도」를 둬요.
@@ -114,15 +114,29 @@ type Story = StoryObj<typeof meta>;
 export const UnknownProcessingStatus: Story = {
   parameters: {
     docs: ISOLATED_DOCS,
-    msw: { handlers: {
-      currentRecording: noCurrentRecording,
-      recordings: http.get(RECORDINGS_URL, () => HttpResponse.json({
-        ...recordingsResponse,
-        items: recordingsResponse.items.map(({ recordingId, title, startedAt, recordingDurationSeconds }) => ({
-          recordingId, title, startedAt, recordingDurationSeconds,
-        })),
-      })),
-    } },
+    msw: {
+      handlers: {
+        currentRecording: noCurrentRecording,
+        recordings: http.get(RECORDINGS_URL, () =>
+          HttpResponse.json({
+            ...recordingsResponse,
+            items: recordingsResponse.items.map(
+              ({
+                recordingId,
+                title,
+                startedAt,
+                recordingDurationSeconds,
+              }) => ({
+                recordingId,
+                title,
+                startedAt,
+                recordingDurationSeconds,
+              }),
+            ),
+          }),
+        ),
+      },
+    },
   },
 };
 
@@ -270,5 +284,31 @@ export const Empty: Story = {
       },
     },
     design: { type: "figma", url: figmaUrl("5476-65117") },
+  },
+};
+
+/** 전사가 준비되면 문서 생성 중에도 녹음 보기를 사용할 수 있어요. */
+export const TranscriptReadyWhileProcessing: Story = {
+  parameters: {
+    docs: ISOLATED_DOCS,
+    msw: {
+      handlers: {
+        currentRecording: noCurrentRecording,
+        recordings: http.get(RECORDINGS_URL, () =>
+          HttpResponse.json({
+            ...recordingsResponse,
+            items: [
+              {
+                ...recordingsResponse.items[0],
+                processingStatus: "PROCESSING",
+                transcriptStatus: "READY",
+              },
+            ],
+            hasNext: false,
+            nextCursor: null,
+          }),
+        ),
+      },
+    },
   },
 };

@@ -1,3 +1,4 @@
+import { recordingDocumentKeys } from "@api/queryKey/recordingDocument";
 import {
   GetDocumentsResponseDto,
   type DocumentListItemDto,
@@ -425,9 +426,11 @@ describe("RecordingDocumentViewer", () => {
   });
 
   describe("처리 상태 (STT-R42)", () => {
-    it("문서 정리 중이면 정리 중임을 보여 주고 녹음 음성 · 요약 · 문서 목록 · 복사를 두지 않는다", async () => {
+    it("전사 전이면 정리 중임을 보여 주고 녹음 음성 · 요약 · 문서 목록 · 복사를 두지 않는다", async () => {
       respondWithRecordingDocument({
         processingStatus: "PROCESSING",
+        transcriptStatus: "NOT_READY",
+        topicClassificationStatus: "NOT_STARTED",
         meetingSummary: null,
       });
       renderViewer();
@@ -541,15 +544,15 @@ describe("RecordingDocumentViewer", () => {
       ).not.toBeInTheDocument();
     });
 
-    it("주제 분류 실패면 「문서를 만들지 못했어요」만 두고 녹음 음성 · 요약 · 문서 목록을 두지 않으며, 「다시 시도」로 실패한 작업을 다시 접수한다", async () => {
+    it("주제 분류 실패여도 녹음 음성을 유지하며, 「다시 시도」로 실패한 작업을 다시 접수한다", async () => {
       const retriedJobIds: string[] = [];
       respondWithRecordingDocument({
         processingStatus: "DOCUMENT_FAILED",
+        topicClassificationStatus: "FAILED",
         retryable: true,
         retryableJobIds: [documentGenerationJobRetryResponse.jobId],
         meetingSummary: null,
       });
-      respondWithTranscriptNotFound();
       mockServer.use(
         http.post(JOB_RETRY_REQUEST, ({ params }) => {
           retriedJobIds.push(String(params.jobId));
@@ -564,8 +567,8 @@ describe("RecordingDocumentViewer", () => {
         await screen.findByRole("heading", { name: DOCUMENT_FAILED_TITLE }),
       ).toBeInTheDocument();
       expect(
-        screen.queryByRole("group", { name: "녹음 음성" }),
-      ).not.toBeInTheDocument();
+        await screen.findByRole("group", { name: "녹음 음성" }),
+      ).toBeInTheDocument();
       expect(
         screen.queryByRole("region", { name: RELATED_HEADING }),
       ).not.toBeInTheDocument();
@@ -699,6 +702,8 @@ describe("RecordingDocumentViewer", () => {
     it("정리할 내용이 없으면 녹음 음성과 「변환된 음성 기록이 없어요.」만 두고 요약 · 문서 목록을 두지 않는다", async () => {
       respondWithRecordingDocument({
         processingStatus: "NO_CONTENT",
+        transcriptStatus: "EMPTY",
+        topicClassificationStatus: "NO_CONTENT",
         meetingSummary: null,
       });
       renderViewer();
@@ -717,6 +722,37 @@ describe("RecordingDocumentViewer", () => {
         screen.queryByRole("button", { name: "다시 시도" }),
       ).not.toBeInTheDocument();
     });
+  });
+
+  it("주제 문서 생성 중에도 먼저 만든 문서와 대기 중인 전체 요약을 보여 준다", async () => {
+    respondWithRecordingDocument({
+      processingStatus: "PROCESSING",
+      transcriptStatus: "READY",
+      topicClassificationStatus: "SUCCEEDED",
+      meetingSummary: { status: "QUEUED", content: null, retryable: false },
+    });
+    renderViewer();
+    await expectCardTitles(recordingDocuments);
+    expect(
+      await screen.findByRole("group", { name: "녹음 음성" }),
+    ).toBeInTheDocument();
+  });
+  it("전사가 있고 주제가 0개여도 전체 요약을 표시한다", async () => {
+    respondWithRecordingDocument({
+      processingStatus: "NO_CONTENT",
+      transcriptStatus: "READY",
+      topicClassificationStatus: "NO_CONTENT",
+    });
+    renderViewer();
+    expect(
+      await screen.findByRole("heading", { name: "한눈에 보기" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("이 녹음에서 생성된 주제별 문서는 없어요."),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText("변환된 음성 기록이 없어요."),
+    ).not.toBeInTheDocument();
   });
 
   describe("녹음 다시 듣기 (STT-R50)", () => {
@@ -847,40 +883,67 @@ describe("RecordingDocumentViewer", () => {
       await waitFor(() => expect(requestCount).toBe(2));
     });
 
-    it.each([500, 0])("만료 주소 갱신이 일반 오류(%s)면 오류와 다시 시도를 유지한다", async (status) => {
-      mockServer.use(http.get(AUDIO_PLAYBACK_REQUEST, () => HttpResponse.json({
-        ...recordingAudioPlaybackResponse,
-        expiresAt: new Date(Date.now() - 60_000).toISOString(),
-      })));
-      renderViewer();
-      const player = within(await findPlayer());
-      await player.findByRole("button", { name: "재생" });
-      mockServer.use(http.get(AUDIO_PLAYBACK_REQUEST, () => status === 0
-        ? HttpResponse.error()
-        : new HttpResponse(null, { status }),
-      ));
-      fireEvent.click(player.getByRole("button", { name: "재생" }));
-      expect(await player.findByRole("alert")).toHaveTextContent("음성을 불러오지 못했어요");
-      expect(player.queryByText("업데이트 준비 중")).not.toBeInTheDocument();
-      expect(HTMLMediaElement.prototype.load).not.toHaveBeenCalled();
-      expect(HTMLMediaElement.prototype.play).not.toHaveBeenCalled();
-      mockServer.use(http.get(AUDIO_PLAYBACK_REQUEST, () => HttpResponse.json(recordingAudioPlaybackResponse)));
-      fireEvent.click(player.getByRole("button", { name: "다시 시도" }));
-      await waitFor(() => expect(HTMLMediaElement.prototype.load).toHaveBeenCalled());
-      expect(player.queryByRole("alert")).not.toBeInTheDocument();
-    });
+    it.each([500, 0])(
+      "만료 주소 갱신이 일반 오류(%s)면 오류와 다시 시도를 유지한다",
+      async (status) => {
+        mockServer.use(
+          http.get(AUDIO_PLAYBACK_REQUEST, () =>
+            HttpResponse.json({
+              ...recordingAudioPlaybackResponse,
+              expiresAt: new Date(Date.now() - 60_000).toISOString(),
+            }),
+          ),
+        );
+        renderViewer();
+        const player = within(await findPlayer());
+        await player.findByRole("button", { name: "재생" });
+        mockServer.use(
+          http.get(AUDIO_PLAYBACK_REQUEST, () =>
+            status === 0
+              ? HttpResponse.error()
+              : new HttpResponse(null, { status }),
+          ),
+        );
+        fireEvent.click(player.getByRole("button", { name: "재생" }));
+        expect(await player.findByRole("alert")).toHaveTextContent(
+          "음성을 불러오지 못했어요",
+        );
+        expect(player.queryByText("업데이트 준비 중")).not.toBeInTheDocument();
+        expect(HTMLMediaElement.prototype.load).not.toHaveBeenCalled();
+        expect(HTMLMediaElement.prototype.play).not.toHaveBeenCalled();
+        mockServer.use(
+          http.get(AUDIO_PLAYBACK_REQUEST, () =>
+            HttpResponse.json(recordingAudioPlaybackResponse),
+          ),
+        );
+        fireEvent.click(player.getByRole("button", { name: "다시 시도" }));
+        await waitFor(() =>
+          expect(HTMLMediaElement.prototype.load).toHaveBeenCalled(),
+        );
+        expect(player.queryByRole("alert")).not.toBeInTheDocument();
+      },
+    );
 
     it("만료 주소 갱신 중 API 미지원이 확인되면 이전 음성을 불러오거나 재생하지 않는다", async () => {
-      mockServer.use(http.get(AUDIO_PLAYBACK_REQUEST, () => HttpResponse.json({
-        ...recordingAudioPlaybackResponse,
-        expiresAt: new Date(Date.now() - 60_000).toISOString(),
-      })));
+      mockServer.use(
+        http.get(AUDIO_PLAYBACK_REQUEST, () =>
+          HttpResponse.json({
+            ...recordingAudioPlaybackResponse,
+            expiresAt: new Date(Date.now() - 60_000).toISOString(),
+          }),
+        ),
+      );
       renderViewer();
       const player = within(await findPlayer());
       await player.findByRole("button", { name: "재생" });
-      mockServer.use(http.get(AUDIO_PLAYBACK_REQUEST, () => HttpResponse.json(
-        { code: "REQUEST_PATH_NOT_FOUND" }, { status: 404 },
-      )));
+      mockServer.use(
+        http.get(AUDIO_PLAYBACK_REQUEST, () =>
+          HttpResponse.json(
+            { code: "REQUEST_PATH_NOT_FOUND" },
+            { status: 404 },
+          ),
+        ),
+      );
 
       fireEvent.click(player.getByRole("button", { name: "재생" }));
 
@@ -1111,9 +1174,9 @@ describe("RecordingDocumentViewer의 사용 기록", () => {
     it("주제 분류 실패면 주제 분류 실패와 요약 없음을 보내고 문서 수는 보내지 않는다", async () => {
       respondWithRecordingDocument({
         processingStatus: "DOCUMENT_FAILED",
+        topicClassificationStatus: "FAILED",
         meetingSummary: null,
       });
-      respondWithTranscriptNotFound();
       renderViewer();
 
       await screen.findByRole("heading", { name: DOCUMENT_FAILED_TITLE });
@@ -1474,9 +1537,9 @@ describe("RecordingDocumentViewer의 사용 기록", () => {
   });
 });
 
-
 describe("녹음 문서·음성 배포 호환성 (ERR-QA-004 · ERR-QA-005 · ERR-QA-006)", () => {
-  const unsupported = () => HttpResponse.json({ code: "REQUEST_PATH_NOT_FOUND" }, { status: 404 });
+  const unsupported = () =>
+    HttpResponse.json({ code: "REQUEST_PATH_NOT_FOUND" }, { status: 404 });
 
   it("녹음 문서 경로가 미지원이면 이 기능만 준비 안내하고 정상으로 복구된다", async () => {
     mockServer.use(http.get(RECORDING_DOCUMENT_REQUEST, unsupported));
@@ -1492,16 +1555,34 @@ describe("녹음 문서·음성 배포 호환성 (ERR-QA-004 · ERR-QA-005 · ER
     const { queryClient } = renderViewer();
     await findTitle();
     mockServer.use(http.get(RECORDING_DOCUMENT_REQUEST, unsupported));
-    await act(async () => { await queryClient.invalidateQueries(); });
+    await act(async () => {
+      await queryClient.invalidateQueries();
+    });
     expect(await screen.findByText("업데이트 준비 중")).toBeInTheDocument();
-    expect(screen.queryByRole("heading", { name: expectedRecording.title })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "재생" })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", { name: expectedRecording.title }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "재생" }),
+    ).not.toBeInTheDocument();
     for (const status of [500, 0]) {
-      mockServer.use(http.get(RECORDING_DOCUMENT_REQUEST, () => status === 0 ? HttpResponse.error() : new HttpResponse(null, { status })));
-      await act(async () => { await queryClient.invalidateQueries(); });
+      mockServer.use(
+        http.get(RECORDING_DOCUMENT_REQUEST, () =>
+          status === 0
+            ? HttpResponse.error()
+            : new HttpResponse(null, { status }),
+        ),
+      );
+      await act(async () => {
+        await queryClient.invalidateQueries();
+      });
       expect(await screen.findByRole("alert")).toBeInTheDocument();
-      expect(screen.queryByRole("heading", { name: expectedRecording.title })).not.toBeInTheDocument();
-      expect(screen.queryByRole("button", { name: "재생" })).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole("heading", { name: expectedRecording.title }),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole("button", { name: "재생" }),
+      ).not.toBeInTheDocument();
       expect(screen.queryByText("업데이트 준비 중")).not.toBeInTheDocument();
     }
     mockServer.resetHandlers();
@@ -1514,47 +1595,128 @@ describe("녹음 문서·음성 배포 호환성 (ERR-QA-004 · ERR-QA-005 · ER
     renderViewer();
     expect(await screen.findByText("업데이트 준비 중")).toBeInTheDocument();
     expect(await findTitle()).toBeInTheDocument();
-    expect(await screen.findByRole("heading", { name: "한눈에 보기" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "재생" })).not.toBeInTheDocument();
-    mockServer.use(http.get(AUDIO_PLAYBACK_REQUEST, () => HttpResponse.json(recordingAudioPlaybackResponse)));
+    expect(
+      await screen.findByRole("heading", { name: "한눈에 보기" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "재생" }),
+    ).not.toBeInTheDocument();
+    mockServer.use(
+      http.get(AUDIO_PLAYBACK_REQUEST, () =>
+        HttpResponse.json(recordingAudioPlaybackResponse),
+      ),
+    );
     fireEvent.click(screen.getByRole("button", { name: "다시 확인" }));
-    expect(await screen.findByRole("button", { name: "재생" })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("button", { name: "재생" }),
+    ).toBeInTheDocument();
   });
 
   it("재생 정보 캐시 뒤 미지원이 확인되면 이전 재생 버튼을 제거한다", async () => {
     const { queryClient } = renderViewer();
     await screen.findByRole("button", { name: "재생" });
     mockServer.use(http.get(AUDIO_PLAYBACK_REQUEST, unsupported));
-    await act(async () => { await queryClient.invalidateQueries(); });
+    await act(async () => {
+      await queryClient.invalidateQueries();
+    });
     expect(await screen.findByText("업데이트 준비 중")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "재생" })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "재생" }),
+    ).not.toBeInTheDocument();
     expect(document.querySelector("audio")).toBeNull();
     expect(await findTitle()).toBeInTheDocument();
     for (const status of [500, 0]) {
-      mockServer.use(http.get(AUDIO_PLAYBACK_REQUEST, () => status === 0 ? HttpResponse.error() : new HttpResponse(null, { status })));
-      await act(async () => { await queryClient.invalidateQueries(); });
+      mockServer.use(
+        http.get(AUDIO_PLAYBACK_REQUEST, () =>
+          status === 0
+            ? HttpResponse.error()
+            : new HttpResponse(null, { status }),
+        ),
+      );
+      await act(async () => {
+        await queryClient.invalidateQueries();
+      });
       expect(await screen.findByRole("alert")).toBeInTheDocument();
-      expect(screen.queryByRole("button", { name: "재생" })).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole("button", { name: "재생" }),
+      ).not.toBeInTheDocument();
       expect(document.querySelector("audio")).toBeNull();
       expect(screen.queryByText("업데이트 준비 중")).not.toBeInTheDocument();
     }
     mockServer.resetHandlers();
     fireEvent.click(screen.getByRole("button", { name: "다시 시도" }));
-    expect(await screen.findByRole("button", { name: "재생" })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("button", { name: "재생" }),
+    ).toBeInTheDocument();
   });
 
   for (const endpoint of [RECORDING_DOCUMENT_REQUEST, AUDIO_PLAYBACK_REQUEST]) {
     it.each([
-      [401, "UNAUTHORIZED"], [403, "WORKSPACE_ACCESS_DENIED"],
-      [404, "RECORDING_NOT_FOUND"], [500, "INTERNAL_SERVER_ERROR"],
+      [401, "UNAUTHORIZED"],
+      [403, "WORKSPACE_ACCESS_DENIED"],
+      [404, "RECORDING_NOT_FOUND"],
+      [500, "INTERNAL_SERVER_ERROR"],
       [0, "NETWORK"],
-    ] as const)(`${endpoint}의 실제 오류 %s %s는 준비 안내로 바꾸지 않는다`, async (status, code) => {
-      mockServer.use(http.get(endpoint, () => status === 0
-        ? HttpResponse.error() : HttpResponse.json({ code }, { status })));
-      renderViewer();
-      if (status === 401) expect(await screen.findByText("로그인 화면")).toBeInTheDocument();
-      else expect(await screen.findByRole("alert")).toBeInTheDocument();
-      expect(screen.queryByText("업데이트 준비 중")).not.toBeInTheDocument();
-    });
+    ] as const)(
+      `${endpoint}의 실제 오류 %s %s는 준비 안내로 바꾸지 않는다`,
+      async (status, code) => {
+        mockServer.use(
+          http.get(endpoint, () =>
+            status === 0
+              ? HttpResponse.error()
+              : HttpResponse.json({ code }, { status }),
+          ),
+        );
+        renderViewer();
+        if (status === 401)
+          expect(await screen.findByText("로그인 화면")).toBeInTheDocument();
+        else expect(await screen.findByRole("alert")).toBeInTheDocument();
+        expect(screen.queryByText("업데이트 준비 중")).not.toBeInTheDocument();
+      },
+    );
   }
+});
+
+it("문서 생성 완료가 마지막 목록 조회 뒤에 도착해도 최종 문서 목록을 받는다", async () => {
+  respondWithRecordingDocument({
+    processingStatus: "PROCESSING",
+    transcriptStatus: "READY",
+    topicClassificationStatus: "SUCCEEDED",
+  });
+  let completed = false;
+  const listed = vi.fn();
+  mockServer.use(
+    http.get(DOCUMENTS_REQUEST, () => {
+      listed();
+      return HttpResponse.json({
+        ...documentsResponse,
+        items: completed ? documentsResponse.items : [],
+        hasNext: false,
+        nextCursor: null,
+      });
+    }),
+  );
+  const { queryClient } = renderViewer();
+  await waitFor(() => expect(listed).toHaveBeenCalledTimes(1));
+  completed = true;
+  act(() =>
+    queryClient.setQueryData(
+      recordingDocumentKeys.detail({
+        workspaceId: 1,
+        recordingId: expectedRecording.recordingId,
+      }),
+      new GetRecordingDocumentResponseDto({
+        ...recordingDocumentResponse,
+        processingStatus: "COMPLETED",
+        transcriptStatus: "READY",
+        topicClassificationStatus: "SUCCEEDED",
+      }),
+    ),
+  );
+  await waitFor(() => expect(listed).toHaveBeenCalledTimes(2));
+  expect(
+    await screen.findByRole("link", {
+      name: new RegExp(recordingDocuments[0].title),
+    }),
+  ).toBeInTheDocument();
 });

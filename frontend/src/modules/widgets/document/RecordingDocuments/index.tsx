@@ -29,6 +29,7 @@ export default function RecordingDocuments() {
   const workspaceId = Number(params.workspaceId);
   const recordingId = Number(params.recordingId);
   const {
+    isTranscriptReady,
     viewStatus,
     isTranscriptionFailed,
     isAudioSaveCheckFailed,
@@ -37,7 +38,12 @@ export default function RecordingDocuments() {
     retryGeneration,
     isRetrying,
   } = useRecordingDocuments({ workspaceId, recordingId });
-  useRecordingDocumentsRedirect({ workspaceId, recordingId, viewStatus });
+  useRecordingDocumentsRedirect({
+    workspaceId,
+    recordingId,
+    viewStatus,
+    isTranscriptReady,
+  });
   useRecordingDocumentsAnalytics({ workspaceId, recordingId, viewStatus });
   const { navigateToWorkspaceHome } = useNavigateToWorkspaceHome();
 

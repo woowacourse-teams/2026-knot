@@ -46,7 +46,7 @@ const figma = (nodeId: string) => ({
  * - 녹음의 처리 상태마다 보이는 것이 달라요.
  *   - 문서 정리 중: 정리 중 안내만 있어요. 정리가 끝나면 3초 안에 저절로 바뀌어요.
  *   - 전사 실패: 「녹음을 글로 옮기지 못했어요」. 다시 시도하면 전사부터 다시 해요.
- *   - 주제 분류 실패: 「문서를 만들지 못했어요」. 정리할 내용이 있는지 아직 몰라 제목 말고는 보여 주지 않아요. 다시 시도하면 주제 분류부터 다시 해요.
+ *   - 주제 분류 실패: 「문서를 만들지 못했어요」. 전사와 녹음 음성, 준비된 전체 요약을 유지해요. 다시 시도하면 주제 분류부터 다시 해요.
  *   - 정리할 내용 없음: 녹음 음성과 「변환된 음성 기록이 없어요.」가 있어요. 오류가 아니라 결과라서 경고색과 다시 시도가 없어요.
  *   - 완료 · 문서 생성 실패: 녹음 음성, 회의 전체 요약, 이 회의에서 나온 문서가 있어요. 문서 생성 실패는 이 회의에서 나온 문서의 마지막 카드로 알려요.
  * - 「다시 시도」는 서버가 다시 시도할 수 있다고 할 때만, 워크스페이스 멤버 누구에게나 보여요. 누르면 응답을 기다리는 동안 다시 누를 수 없고, 접수되면 정리 중으로 바뀌어요.
@@ -99,9 +99,16 @@ export const Default: Story = {};
 export const UnsupportedApi: Story = {
   parameters: {
     docs: { story: { inline: false, iframeHeight: 300 } },
-    msw: { handlers: { recordingDocument: http.get(RECORDING_DOCUMENT_REQUEST, () =>
-      HttpResponse.json({ code: "REQUEST_PATH_NOT_FOUND" }, { status: 404 }),
-    ) } },
+    msw: {
+      handlers: {
+        recordingDocument: http.get(RECORDING_DOCUMENT_REQUEST, () =>
+          HttpResponse.json(
+            { code: "REQUEST_PATH_NOT_FOUND" },
+            { status: 404 },
+          ),
+        ),
+      },
+    },
   },
 };
 
@@ -208,6 +215,8 @@ export const Organizing: Story = {
       handlers: [
         respondWithRecordingDocument({
           processingStatus: "PROCESSING",
+          transcriptStatus: "NOT_READY",
+          topicClassificationStatus: "NOT_STARTED",
           meetingSummary: null,
         }),
       ],
@@ -224,6 +233,8 @@ export const TranscriptionFailed: Story = {
       handlers: [
         respondWithRecordingDocument({
           processingStatus: "TRANSCRIPTION_FAILED",
+          transcriptStatus: "FAILED",
+          topicClassificationStatus: "NOT_STARTED",
           retryable: true,
           meetingSummary: null,
         }),
@@ -241,6 +252,7 @@ export const TopicFailed: Story = {
       handlers: [
         respondWithRecordingDocument({
           processingStatus: "DOCUMENT_FAILED",
+          topicClassificationStatus: "FAILED",
           retryable: true,
           retryableJobIds: [documentGenerationJobRetryResponse.jobId],
           meetingSummary: null,
@@ -285,10 +297,44 @@ export const NoContent: Story = {
       handlers: [
         respondWithRecordingDocument({
           processingStatus: "NO_CONTENT",
+          transcriptStatus: "EMPTY",
+          topicClassificationStatus: "NOT_STARTED",
           meetingSummary: null,
         }),
       ],
     },
     docs: ISOLATED_DOCS,
+  },
+};
+
+/** 전사는 먼저 준비됐고 요약과 주제 문서는 계속 만드는 중이에요. 먼저 만들어진 주제 문서를 열 수 있어요. */
+export const TranscriptReadyWhileProcessing: Story = {
+  parameters: {
+    docs: ISOLATED_DOCS,
+    msw: {
+      handlers: {
+        recordingDocument: respondWithRecordingDocument({
+          processingStatus: "PROCESSING",
+          transcriptStatus: "READY",
+          topicClassificationStatus: "SUCCEEDED",
+          meetingSummary: { status: "QUEUED", content: null, retryable: false },
+        }),
+      },
+    },
+  },
+};
+/** 인사말처럼 주제가 없는 녹음도 전체 요약은 보여줘요. */
+export const SummaryWithoutTopics: Story = {
+  parameters: {
+    docs: ISOLATED_DOCS,
+    msw: {
+      handlers: {
+        recordingDocument: respondWithRecordingDocument({
+          processingStatus: "NO_CONTENT",
+          transcriptStatus: "READY",
+          topicClassificationStatus: "NO_CONTENT",
+        }),
+      },
+    },
   },
 };
