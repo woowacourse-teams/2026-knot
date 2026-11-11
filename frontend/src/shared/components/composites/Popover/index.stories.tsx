@@ -45,7 +45,7 @@ const Stage = styled.div<{ isAtBottom?: boolean }>`
  *
  * **어떻게 뜨나**
  * - 트리거 8px 아래에 `placement`에 맞춰 왼쪽 끝(`bottom-start`)이나 오른쪽 끝(`bottom-end`)을 맞춰 떠요.
- * - 아래 공간이 모자라고 위쪽이 더 넓으면 위로 뒤집혀 떠요.
+ * - 아래 공간이 모자라고 위쪽이 더 넓으면 위로 뒤집혀 떠요. 긴 내용은 위아래 16px 여백 안으로 옮겨요.
  * - 열릴 때는 위쪽 끝에서 세로로 펼쳐지며(0.2초) 나타나고, 닫힐 때는 다시 접히며(0.25초) 사라져요.
  *   움직임 줄이기 설정을 켠 사용자에게는 모션 없이 바로 나타나요.
  *
@@ -106,4 +106,24 @@ export const Flipped: Story = {
       <Popover {...args} />
     </Stage>
   ),
+};
+
+/** 양쪽 공간이 부족한 긴 내용도 화면 안에 유지해요. */
+export const TallContent: Story = {
+  args: {
+    openOn: "click",
+    isInitiallyOpen: true,
+    content: (
+      <PeopleCard
+        style={{
+          height: 600,
+          maxHeight: "calc(100dvh - 32px)",
+          overflowY: "auto",
+        }}
+      >
+        <li>참가자 이름</li>
+        <li style={{ marginTop: "auto" }}>바꾸기</li>
+      </PeopleCard>
+    ),
+  },
 };
