@@ -280,6 +280,12 @@ class RecordingDemoIntegrationTest {
                         now,
                         1
                 )
+        ).isZero();
+        assertThat(
+                summaries.registerEligible(
+                        now,
+                        1
+                )
         ).isEqualTo(1);
         assertThat(summaries.findByRecordingId(empty)).isEmpty();
         assertThat(summaries.findByRecordingId(greeting)).isPresent();

@@ -20,6 +20,7 @@ public class RecordingMeetingSummaryRepositoryAdapter implements RecordingMeetin
 
     private final RecordingMeetingSummaryJpaRepository repository;
     private final JdbcClient jdbc;
+    private long candidateCursor;
 
     @Override
     public void recordActivation(Instant now) {
@@ -34,38 +35,37 @@ public class RecordingMeetingSummaryRepositoryAdapter implements RecordingMeetin
     }
 
     @Override
-    public int registerEligible(
+    public synchronized int registerEligible(
             Instant now,
             int limit
     ) {
-        int inserted = 0;
-        long after = 0;
-        while (inserted < limit) {
-            List<SummaryInput> candidates = candidates(
-                    after,
+        List<SummaryInput> inputs = candidates(
+                candidateCursor,
+                limit
+        );
+        if (inputs.isEmpty() && candidateCursor != 0) {
+            candidateCursor = 0;
+            inputs = candidates(
+                    0,
                     limit
             );
-            if (candidates.isEmpty()) {
-                return inserted;
-            }
-            for (SummaryInput input : candidates) {
-                after = input.batchId();
-                if (hasText(input.content())) {
-                    inserted += register(
-                            input,
-                            now
-                    );
-                }
-                if (inserted == limit) {
-                    return inserted;
-                }
-            }
         }
+        int inserted = 0;
+        for (SummaryInput input : inputs) {
+            if (hasText(input.content()))
+                inserted += register(
+                        input,
+                        now
+                );
+            candidateCursor = input.batchId();
+        }
+        if (inputs.size() < limit)
+            candidateCursor = 0;
         return inserted;
     }
 
-    // Keyset paging skips empty inputs without letting an early empty batch starve
-    // later recordings.
+    // One bounded page per pass. Wraparound reaches older batches that become
+    // eligible later.
     private List<SummaryInput> candidates(
             long after,
             int limit
