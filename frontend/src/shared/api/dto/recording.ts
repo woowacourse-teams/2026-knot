@@ -249,6 +249,60 @@ export class GetCurrentRecordingResponseDto {
   }
 }
 
+// GET /api/v1/workspaces/{workspaceId}/recordings/teammates-in-progress
+
+/** 팀원 진행 중 녹음의 상태. 녹음 중과 일시정지만 와요(STT-R55) */
+export type TeammateRecordingStatus = "RECORDING" | "PAUSED";
+
+/** 팀원 진행 중 녹음 한 건의 서버 응답 모양 */
+export interface TeammateRecordingRaw {
+  recordingId: number;
+  status: TeammateRecordingStatus;
+  title: string;
+  startedAt: string;
+  elapsedMillis: number;
+}
+
+/** 팀원 진행 중 녹음 조회의 서버 응답 모양. 없으면 `items`가 빈 배열이에요 */
+export interface GetTeammateRecordingsResponseRaw {
+  items: TeammateRecordingRaw[];
+}
+
+/** 팀원 진행 중 녹음 한 건 */
+export class TeammateRecordingDto {
+  /** 녹음 세션 ID */
+  recordingId: number;
+  /** 녹음 중 · 일시정지 */
+  status: TeammateRecordingStatus;
+  /** 녹음 이름. 서버가 만든 「OO 님의 녹음」이에요 */
+  title: string;
+  /** 녹음 시작 시각(ISO 8601) */
+  startedAt: string;
+  /** 응답 시각까지 누적 녹음 시간(ms). 일시정지 구간은 빠져요 */
+  elapsedMillis: number;
+
+  constructor(raw: TeammateRecordingRaw) {
+    this.recordingId = raw.recordingId;
+    this.status = raw.status;
+    this.title = raw.title;
+    this.startedAt = raw.startedAt;
+    this.elapsedMillis = raw.elapsedMillis;
+  }
+}
+
+/**
+ * 같은 워크스페이스에서 나를 뺀 팀원의 녹음 중 · 일시정지 녹음 목록(STT-R55).
+ * 녹음 시작 시각 최신순이고, 같으면 녹음 ID가 큰 것이 앞이에요. 내 녹음은 현재 녹음 조회가 맡아 여기엔 없어요
+ */
+export class GetTeammateRecordingsResponseDto {
+  /** 팀원 진행 중 녹음. 없으면 빈 배열 */
+  items: TeammateRecordingDto[];
+
+  constructor(raw: GetTeammateRecordingsResponseRaw) {
+    this.items = raw.items.map((item) => new TeammateRecordingDto(item));
+  }
+}
+
 // GET /api/v1/workspaces/{workspaceId}/recordings
 
 /**
