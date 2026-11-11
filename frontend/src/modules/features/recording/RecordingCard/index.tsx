@@ -1,3 +1,4 @@
+import SpeakerCount from "./ui/SpeakerCount";
 import useMeQuery from "@api/queries/useMeQuery";
 import { MEDIA_QUERY } from "@constants/breakpoint";
 import styled from "@emotion/styled";
@@ -21,6 +22,8 @@ export default function RecordingCard() {
         <Title>{formatRecordingTitle(me?.nickname)}</Title>
         <Help>문서 제목은 녹음이 끝나면 주제별로 자동으로 붙어요.</Help>
       </Header>
+
+      <SpeakerCount />
 
       <Divider />
 
