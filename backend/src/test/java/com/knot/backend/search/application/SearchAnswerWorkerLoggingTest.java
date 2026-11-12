@@ -98,6 +98,23 @@ class SearchAnswerWorkerLoggingTest {
                         eq("private-question")
                 )
         ).thenThrow(new IllegalStateException("private-provider"));
+        when(
+                executions.recordRetrieval(
+                        eq(5L),
+                        eq(TOKEN),
+                        eq(0),
+                        any()
+                )
+        ).thenReturn(true);
+        when(generators.getObject()).thenReturn(generator);
+        when(
+                generator.generate(
+                        any(),
+                        any(),
+                        any(),
+                        any()
+                )
+        ).thenThrow(new IllegalStateException("private-provider"));
         IllegalStateException persistence = new IllegalStateException("private-sql");
         doThrow(persistence).when(executions)
                 .fail(

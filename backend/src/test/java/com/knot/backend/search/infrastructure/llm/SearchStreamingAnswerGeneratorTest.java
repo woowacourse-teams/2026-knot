@@ -31,6 +31,188 @@ import tools.jackson.databind.JsonNode;
 
 class SearchStreamingAnswerGeneratorTest {
 
+    @Test
+    @DisplayName("잘못된 형식은 한 번 복구하고 검증 전 글자는 화면에 전달하지 않는다")
+    void generate_success_repairsBeforePublishing() {
+        List<String> deltas = new ArrayList<>();
+        java.util.concurrent.atomic.AtomicInteger attempts = new java.util.concurrent.atomic.AtomicInteger();
+        doAnswer(call -> {
+            assertThat(deltas).isEmpty();
+            Consumer<String> consumer = call.getArgument(2);
+            if (attempts.incrementAndGet() == 1) {
+                consumer.accept("{\"answer\":\"검증되지 않은 내용\"}");
+                return null;
+            }
+            consumer.accept(response(List.of("E1")));
+            return null;
+        }).when(llm)
+                .stream(
+                        eq(scope),
+                        any(),
+                        any()
+                );
+        assertThat(
+                generator.generate(
+                        scope,
+                        "질문",
+                        documents(),
+                        deltas::add
+                )
+        ).containsExactly(1L);
+        assertThat(
+                String.join(
+                        "",
+                        deltas
+                )
+        ).isEqualTo("세 회의의 변화");
+        assertThat(attempts.get()).isEqualTo(2);
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"SEARCH_REQUEST_REJECTED", "SEARCH_RATE_LIMITED",
+            "SEARCH_TRANSPORT_TIMEOUT"})
+    @DisplayName("요청 거절과 제한·기한 오류는 반복하지 않고 관련 기록을 안내한다")
+    void generate_success_rejectedRequestGuidance(String code) {
+        org.mockito.Mockito.doThrow(new SearchToolException(code))
+                .when(llm)
+                .stream(
+                        eq(scope),
+                        any(),
+                        any()
+                );
+        List<String> deltas = new ArrayList<>();
+        assertThat(
+                generator.generate(
+                        scope,
+                        "질문",
+                        documents(),
+                        deltas::add
+                )
+        ).containsExactly(
+                1L,
+                2L,
+                3L
+        );
+        assertThat(
+                String.join(
+                        "",
+                        deltas
+                )
+        ).isNotBlank()
+                .doesNotContain("실패");
+        verify(llm).stream(
+                eq(scope),
+                any(),
+                any()
+        );
+    }
+
+    @Test
+    @DisplayName("일시적인 공급자 오류는 한 번만 복구한다")
+    void generate_success_retriesTransientOnce() {
+        java.util.concurrent.atomic.AtomicInteger attempts = new java.util.concurrent.atomic.AtomicInteger();
+        doAnswer(call -> {
+            if (attempts.incrementAndGet() == 1)
+                throw new SearchToolException("SEARCH_UPSTREAM_UNAVAILABLE");
+            Consumer<String> consumer = call.getArgument(2);
+            consumer.accept(response(List.of("E1")));
+            return null;
+        }).when(llm)
+                .stream(
+                        eq(scope),
+                        any(),
+                        any()
+                );
+        assertThat(
+                generator.generate(
+                        scope,
+                        "질문",
+                        documents(),
+                        text -> {
+                        }
+                )
+        ).containsExactly(1L);
+        assertThat(attempts.get()).isEqualTo(2);
+    }
+
+    @Test
+    @DisplayName("생성 장애의 문서 안내는 본문에서 실제 선택한 문서만 이름으로 제시한다")
+    void generate_success_guidanceNamesUsedDocuments() {
+        org.mockito.Mockito.doThrow(new SearchToolException("SEARCH_REQUEST_REJECTED"))
+                .when(llm)
+                .stream(
+                        eq(scope),
+                        any(),
+                        any()
+                );
+        List<String> deltas = new ArrayList<>();
+        List<SearchDocumentResult> docs = List.of(
+                new SearchDocumentResult(
+                        1L,
+                        "발표 일정",
+                        "데모",
+                        "루덴스가 3분 발표한다."
+                ),
+                new SearchDocumentResult(
+                        2L,
+                        "질의응답",
+                        "데모",
+                        "2분 질문을 받는다."
+                )
+        );
+        assertThat(
+                generator.generate(
+                        scope,
+                        "데모",
+                        docs,
+                        deltas::add
+                )
+        ).containsExactly(
+                1L,
+                2L
+        );
+        assertThat(
+                String.join(
+                        "",
+                        deltas
+                )
+        ).contains(
+                "발표 일정",
+                "질의응답"
+        )
+                .doesNotContain(
+                        "루덴스가 3분",
+                        "2분 질문"
+                );
+    }
+
+    @Test
+    @DisplayName("권한 오류는 복구 안내나 일반 답변으로 우회하지 않는다")
+    void generate_failure_accessDenied() {
+        org.mockito.Mockito.doThrow(new SearchToolException("SEARCH_ACCESS_DENIED"))
+                .when(llm)
+                .stream(
+                        eq(scope),
+                        any(),
+                        any()
+                );
+        List<String> deltas = new ArrayList<>();
+        assertThatThrownBy(
+                () -> generator.generate(
+                        scope,
+                        "질문",
+                        documents(),
+                        deltas::add
+                )
+        ).hasMessage("SEARCH_ACCESS_DENIED");
+        assertThat(deltas).isEmpty();
+        verify(llm).stream(
+                eq(scope),
+                any(),
+                any()
+        );
+    }
+
     private final SearchLlmClient llm = mock(SearchLlmClient.class);
     private final SearchHistoryQuery history = mock(SearchHistoryQuery.class);
     private final SearchToolAccess access = mock(SearchToolAccess.class);
@@ -125,15 +307,33 @@ class SearchStreamingAnswerGeneratorTest {
                         any(),
                         any()
                 );
-        assertThatThrownBy(
-                () -> generator.generate(
+        List<String> deltas = new ArrayList<>();
+        assertThat(
+                generator.generate(
                         scope,
                         "변화",
                         documents(),
-                        text -> {
-                        }
+                        deltas::add
                 )
-        ).hasMessage("INVALID_MODEL_ANSWER");
+        ).containsExactly(
+                1L,
+                2L,
+                3L
+        );
+        assertThat(
+                String.join(
+                        "",
+                        deltas
+                )
+        ).startsWith(com.knot.backend.search.application.SearchAnswerGuidance.RELATED_DOCUMENTS);
+        verify(
+                llm,
+                org.mockito.Mockito.times(2)
+        ).stream(
+                eq(scope),
+                any(),
+                any()
+        );
     }
 
     @Test
@@ -163,7 +363,7 @@ class SearchStreamingAnswerGeneratorTest {
             String system = (String) messages.getFirst()
                     .get("content");
             assertThat(system).contains(
-                    "핵심 원칙: 근거에 없는 내용은 답변하지 않습니다.",
+                    "핵심 원칙: 회의 기록에 관한 사실은 제공된 근거에서만 답변합니다.",
                     "제안을 결정으로 바꾸지 않습니다.",
                     "서로 다른 출처 문서는 최대 3개로 제한합니다."
             );
@@ -220,7 +420,7 @@ class SearchStreamingAnswerGeneratorTest {
     }
 
     @Test
-    @DisplayName("모델 스트림이 끊기면 JSON 외피 없이 이미 받은 답변만 보존한다")
+    @DisplayName("모델 스트림이 끊기면 미검증 부분 답변 없이 실제 기록만 안내한다")
     void generate_failure_interruptedStreamPreservesPartialAnswer() {
         List<String> deltas = new ArrayList<>();
         doAnswer(call -> {
@@ -233,24 +433,37 @@ class SearchStreamingAnswerGeneratorTest {
                         any(),
                         any()
                 );
-        assertThatThrownBy(
-                () -> generator.generate(
+        assertThat(
+                generator.generate(
                         scope,
                         "변화",
                         documents(),
                         deltas::add
                 )
-        ).hasMessage("MODEL_GENERATION_FAILED");
+        ).containsExactly(
+                1L,
+                2L,
+                3L
+        );
         assertThat(
                 String.join(
                         "",
                         deltas
                 )
-        ).isEqualTo("부분 답변");
+        ).startsWith(com.knot.backend.search.application.SearchAnswerGuidance.RELATED_DOCUMENTS)
+                .doesNotContain("부분 답변");
+        verify(
+                llm,
+                org.mockito.Mockito.times(2)
+        ).stream(
+                eq(scope),
+                any(),
+                any()
+        );
     }
 
     @Test
-    @DisplayName("입력 한도로 제외된 문서를 모델이 인용하면 실패한다")
+    @DisplayName("입력 한도로 제외된 문서는 복구 안내에서도 인용하지 않는다")
     void generate_failure_rejectsEvidenceExcludedByBudget() {
         // given
         SearchAgentProperties properties = new SearchAgentProperties();
@@ -298,15 +511,25 @@ class SearchStreamingAnswerGeneratorTest {
                         any()
                 );
         // when & then
-        assertThatThrownBy(
-                () -> generator.generate(
+        List<String> deltas = new ArrayList<>();
+        assertThat(
+                generator.generate(
                         scope,
                         "어제 회의",
                         large,
-                        text -> {
-                        }
+                        deltas::add
                 )
-        ).hasMessage("INVALID_MODEL_ANSWER");
+        ).containsExactly(1L);
+        assertThat(
+                String.join(
+                        "",
+                        deltas
+                )
+        ).contains("첫 문서")
+                .doesNotContain(
+                        "둘째 문서",
+                        "세 회의의 변화"
+                );
     }
 
     private String response(List<String> ids) {

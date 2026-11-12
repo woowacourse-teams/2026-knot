@@ -56,6 +56,8 @@ class SearchAnswerExecutionIntegrationTest {
     @Autowired
     private SearchAnswerWorker worker;
     @Autowired
+    private SearchToolAccess toolAccess;
+    @Autowired
     private SearchAnswerSnapshotService snapshots;
     @Autowired
     private com.knot.backend.search.domain.repository.SearchRepository repository;
@@ -134,7 +136,7 @@ class SearchAnswerExecutionIntegrationTest {
     }
 
     @Test
-    @DisplayName("부분 본문 저장은 현재 token만 허용하고 실패는 본문을 보존하며 최초 대화를 숨긴다")
+    @DisplayName("기술 오류는 미검증 본문 대신 안내 응답을 저장하고 최초 대화를 보존한다")
     void fail_success_partialAndHidden() {
         SearchAnswerWorkResult work = service.claim(accepted.answerMessageId())
                 .orElseThrow();
@@ -167,9 +169,9 @@ class SearchAnswerExecutionIntegrationTest {
                         "늦은 본문"
                 )
         ).isFalse();
-        assertThat(content()).isEqualTo("한글 😀");
-        assertThat(status()).isEqualTo("FAILED");
-        assertThat(visible()).isFalse();
+        assertThat(content()).isEqualTo(SearchAnswerGuidance.UNAVAILABLE);
+        assertThat(status()).isEqualTo("COMPLETED");
+        assertThat(visible()).isTrue();
     }
 
     @Test
@@ -226,6 +228,76 @@ class SearchAnswerExecutionIntegrationTest {
                 )
         ).isFalse();
         assertThat(content()).isEqualTo("답변");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"DENIED", "EXPIRED_SCOPE", "DENIED_AFTER_DEADLINE"})
+    @DisplayName("기한 뒤에도 실제 권한 거절은 보존하고 실행 범위 만료만 안내로 완료한다")
+    void execute_failure_distinguishesAccessFromTimeout(String scenario) {
+        doAnswer(call -> {
+            if (!"DENIED".equals(scenario)) {
+                when(clock.instant()).thenReturn(NOW.plusSeconds(120));
+            }
+            if ("EXPIRED_SCOPE".equals(scenario)) {
+                toolAccess.validate(call.getArgument(0));
+            }
+            throw new com.knot.backend.search.domain.SearchToolException("SEARCH_ACCESS_DENIED");
+        }).when(classifier)
+                .classify(
+                        any(),
+                        any()
+                );
+        worker.execute(accepted.answerMessageId());
+        verifyNoInteractions(
+                retriever,
+                generator
+        );
+        if ("EXPIRED_SCOPE".equals(scenario)) {
+            assertThat(status()).isEqualTo("COMPLETED");
+            assertThat(content()).isEqualTo(SearchAnswerGuidance.UNAVAILABLE);
+            assertThat(visible()).isTrue();
+            return;
+        }
+        assertThat(status()).isEqualTo("FAILED");
+        assertThat(content()).isEmpty();
+        assertThat(visible()).isFalse();
+        assertThat(
+                jdbc.sql("SELECT failure_code FROM search_messages WHERE id=:id")
+                        .param(
+                                "id",
+                                accepted.answerMessageId()
+                        )
+                        .query(String.class)
+                        .single()
+        ).isEqualTo("SEARCH_ACCESS_DENIED");
+    }
+
+    @Test
+    @DisplayName("생성 본문과 출처를 완료할 때 출처 검증이 거절되면 본문도 롤백한다")
+    void completeGenerated_failure_rollsBackText() {
+        SearchAnswerWorkResult work = service.claim(accepted.answerMessageId())
+                .orElseThrow();
+        assertThatThrownBy(
+                () -> service.completeGenerated(
+                        work.answerId(),
+                        work.token(),
+                        "미검증 본문",
+                        List.of(99999L),
+                        Set.of()
+                )
+        ).isInstanceOf(SearchException.class);
+        assertThat(content()).isEmpty();
+        assertThat(status()).isEqualTo("STREAMING");
+        assertThat(evidenceCount()).isZero();
+        assertThat(
+                service.fail(
+                        work.answerId(),
+                        work.token(),
+                        "ANSWER_GENERATION_FAILED"
+                )
+        ).isTrue();
+        assertThat(content()).isEqualTo(SearchAnswerGuidance.UNAVAILABLE);
+        assertThat(status()).isEqualTo("COMPLETED");
     }
 
     @ParameterizedTest
@@ -315,7 +387,7 @@ class SearchAnswerExecutionIntegrationTest {
     }
 
     @Test
-    @DisplayName("기한에 도달하면 부분 답변은 FAILED로 복구하고 자동 재생성하지 않는다")
+    @DisplayName("기한에 도달하면 안내로 완료하고 자동 재생성이나 늦은 결과를 허용하지 않는다")
     void expire_success_preservesPartialAndFencesLateResults() {
         SearchAnswerWorkResult work = service.claim(accepted.answerMessageId())
                 .orElseThrow();
@@ -343,18 +415,18 @@ class SearchAnswerExecutionIntegrationTest {
                 )
         ).isFalse();
         assertThat(service.claim(work.answerId())).isEmpty();
-        assertThat(status()).isEqualTo("FAILED");
-        assertThat(content()).isEqualTo("부분");
+        assertThat(status()).isEqualTo("COMPLETED");
+        assertThat(content()).isEqualTo(SearchAnswerGuidance.UNAVAILABLE);
         assertThat(
-                jdbc.sql("SELECT failure_code FROM search_messages WHERE id = :id")
+                jdbc.sql("SELECT count(*) FROM search_messages WHERE id = :id AND failure_code IS NOT NULL")
                         .param(
                                 "id",
                                 work.answerId()
                         )
-                        .query(String.class)
+                        .query(Integer.class)
                         .single()
-        ).isEqualTo("ANSWER_GENERATION_TIMEOUT");
-        assertThat(visible()).isFalse();
+        ).isZero();
+        assertThat(visible()).isTrue();
     }
 
     @Test
@@ -368,8 +440,20 @@ class SearchAnswerExecutionIntegrationTest {
     }
 
     @Test
-    @DisplayName("근거가 없으면 LLM 없이 녹음 안내를 정상 완료한다")
+    @DisplayName("근거가 없어도 생성 모델의 일반 답변을 저장한다")
     void execute_success_noDocuments() {
+        doAnswer(call -> {
+            Consumer<String> delta = call.getArgument(3);
+            delta.accept("일반적인 설명이에요.");
+            return List.of();
+        }).when(generator)
+                .generate(
+                        any(),
+                        any(),
+                        any(),
+                        any()
+                );
+
         when(
                 retriever.retrieve(
                         org.mockito.ArgumentMatchers.any(com.knot.backend.search.application.SearchToolScope.class),
@@ -384,15 +468,13 @@ class SearchAnswerExecutionIntegrationTest {
         });
         worker.execute(accepted.answerMessageId());
         assertThat(status()).isEqualTo("COMPLETED");
-        assertThat(content()).startsWith("현재 검색 가능한 회의 문서에서는 해당 내용을 확인하지 못했습니다.")
-                .contains("녹음");
+        assertThat(content()).isEqualTo("일반적인 설명이에요.");
         assertThat(evidenceCount()).isZero();
         assertThat(
                 jdbc.sql("SELECT excluded_count FROM search_answer_executions")
                         .query(Integer.class)
                         .single()
         ).isEqualTo(2);
-        verifyNoInteractions(generator);
     }
 
     @Test
@@ -441,8 +523,20 @@ class SearchAnswerExecutionIntegrationTest {
     }
 
     @Test
-    @DisplayName("검색 실패를 근거 없음으로 오인하지 않고 안전한 FAILED로 종료한다")
+    @DisplayName("검색 오류는 조회 불가를 밝히고 일반 답변을 이어 저장한다")
     void execute_failure_retrievalError() {
+        doAnswer(call -> {
+            Consumer<String> delta = call.getArgument(3);
+            delta.accept("일반적인 설명이에요.");
+            return List.of();
+        }).when(generator)
+                .generate(
+                        any(),
+                        any(),
+                        any(),
+                        any()
+                );
+
         when(
                 retriever.retrieve(
                         org.mockito.ArgumentMatchers.any(com.knot.backend.search.application.SearchToolScope.class),
@@ -450,10 +544,9 @@ class SearchAnswerExecutionIntegrationTest {
                 )
         ).thenThrow(new IllegalStateException("비공개 공급자 오류"));
         worker.execute(accepted.answerMessageId());
-        assertThat(status()).isEqualTo("FAILED");
-        assertThat(content()).isEmpty();
-        assertThat(visible()).isFalse();
-        verifyNoInteractions(generator);
+        assertThat(status()).isEqualTo("COMPLETED");
+        assertThat(content()).isEqualTo(SearchAnswerGuidance.RETRIEVAL_UNAVAILABLE + "일반적인 설명이에요.");
+        assertThat(visible()).isTrue();
     }
 
     @Test
@@ -494,13 +587,17 @@ class SearchAnswerExecutionIntegrationTest {
                     true,
                     false
             );
-            assertThat(status().equals("COMPLETED")).isEqualTo(completed.get());
+            assertThat(status()).isEqualTo("COMPLETED");
+            String expected = SearchAnswerGuidance.UNAVAILABLE;
+            if (completed.get()) {
+                expected = "부분 답변";
+            }
+            assertThat(content()).isEqualTo(expected);
         }
-        assertThat(content()).isEqualTo("부분 답변");
     }
 
     @Test
-    @DisplayName("생성 중 오류가 발생하면 이미 저장한 본문은 남기고 근거를 만들지 않는다")
+    @DisplayName("생성 중 오류는 미검증 본문을 안내로 교체하고 근거를 만들지 않는다")
     void execute_failure_preservesGeneratedPartial() {
         long document = archivedDocument(
                 workspaceId,
@@ -537,8 +634,8 @@ class SearchAnswerExecutionIntegrationTest {
                         org.mockito.ArgumentMatchers.any()
                 );
         worker.execute(accepted.answerMessageId());
-        assertThat(status()).isEqualTo("FAILED");
-        assertThat(content()).isEqualTo("이미 생성한 부분 😀");
+        assertThat(status()).isEqualTo("COMPLETED");
+        assertThat(content()).isEqualTo(SearchAnswerGuidance.UNAVAILABLE);
         assertThat(evidenceCount()).isZero();
     }
 

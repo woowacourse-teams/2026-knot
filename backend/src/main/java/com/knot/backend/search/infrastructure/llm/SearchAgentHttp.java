@@ -222,7 +222,15 @@ public class SearchAgentHttp implements AutoCloseable {
             );
             try (InputStream input = new java.io.BufferedInputStream(response.body())) {
                 if (response.statusCode() != expectedStatus) {
-                    throw new SearchToolException("SEARCH_TRANSPORT_FAILED");
+                    int status = response.statusCode();
+                    log.warn(
+                            "Search provider response status={} answerId={}",
+                            status,
+                            scope.answerId()
+                    );
+                    // Rate limits may include long Retry-After values. Do not immediately repeat
+                    // them.
+                    throw statusFailure(status);
                 }
                 ScheduledFuture<?> timeout = deadlines.schedule(
                         () -> closeInput(input),
@@ -260,6 +268,16 @@ public class SearchAgentHttp implements AutoCloseable {
                     exception
             );
         }
+    }
+
+    private SearchToolException statusFailure(int status) {
+        if (status == 429) {
+            return new SearchToolException("SEARCH_RATE_LIMITED");
+        }
+        if (status >= 500) {
+            return new SearchToolException("SEARCH_UPSTREAM_UNAVAILABLE");
+        }
+        return new SearchToolException("SEARCH_REQUEST_REJECTED");
     }
 
     private Duration remaining(SearchToolScope scope) {

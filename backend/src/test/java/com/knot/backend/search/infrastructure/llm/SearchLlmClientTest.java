@@ -80,6 +80,12 @@ class SearchLlmClientTest {
                     .build()
                     .readTree(server.requestBody());
             assertThat(body.has("temperature")).isFalse();
+            if ("stream".equals(operation)) {
+                assertThat(
+                        body.at("/response_format/json_schema/schema/properties/evidenceIds")
+                                .has("maxItems")
+                ).isFalse();
+            }
             assertThat(
                     body.path("model")
                             .asString()
@@ -156,7 +162,7 @@ class SearchLlmClientTest {
             assertThat(
                     body.path("max_tokens")
                             .asInt()
-            ).isEqualTo(128);
+            ).isEqualTo(512);
             assertThat(
                     body.path("temperature")
                             .asInt(-1)
@@ -604,6 +610,34 @@ class SearchLlmClientTest {
                     body.path("stream")
                             .asBoolean(true)
             ).isFalse();
+        }
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.CsvSource({"400,SEARCH_REQUEST_REJECTED", "401,SEARCH_REQUEST_REJECTED",
+            "403,SEARCH_REQUEST_REJECTED", "429,SEARCH_RATE_LIMITED", "500,SEARCH_UPSTREAM_UNAVAILABLE",
+            "503,SEARCH_UPSTREAM_UNAVAILABLE"})
+    void stream_failure_statusClassification(
+            int status,
+            String code
+    ) throws Exception {
+        try (LlmHttpServer server = new LlmHttpServer(); SearchAgentHttp http = transport()) {
+            server.respond(
+                    status,
+                    "private-provider-body"
+            );
+            assertThatThrownBy(
+                    () -> client(
+                            server,
+                            http
+                    ).stream(
+                            scope(),
+                            List.of(),
+                            text -> {
+                            }
+                    )
+            ).isInstanceOf(SearchToolException.class)
+                    .hasMessage(code);
         }
     }
 
