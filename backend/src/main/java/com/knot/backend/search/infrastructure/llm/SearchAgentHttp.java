@@ -230,10 +230,7 @@ public class SearchAgentHttp implements AutoCloseable {
                     );
                     // Rate limits may include long Retry-After values. Do not immediately repeat
                     // them.
-                    String code = status == 429
-                            ? "SEARCH_RATE_LIMITED"
-                            : status >= 500 ? "SEARCH_UPSTREAM_UNAVAILABLE" : "SEARCH_REQUEST_REJECTED";
-                    throw new SearchToolException(code);
+                    throw statusFailure(status);
                 }
                 ScheduledFuture<?> timeout = deadlines.schedule(
                         () -> closeInput(input),
@@ -271,6 +268,16 @@ public class SearchAgentHttp implements AutoCloseable {
                     exception
             );
         }
+    }
+
+    private SearchToolException statusFailure(int status) {
+        if (status == 429) {
+            return new SearchToolException("SEARCH_RATE_LIMITED");
+        }
+        if (status >= 500) {
+            return new SearchToolException("SEARCH_UPSTREAM_UNAVAILABLE");
+        }
+        return new SearchToolException("SEARCH_REQUEST_REJECTED");
     }
 
     private Duration remaining(SearchToolScope scope) {
