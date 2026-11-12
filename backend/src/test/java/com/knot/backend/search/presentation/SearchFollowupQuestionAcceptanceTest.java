@@ -4,9 +4,12 @@ import com.knot.backend.search.domain.model.SearchIntent;
 import com.knot.backend.search.application.SearchIntentClassifier;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.verify;
+import com.knot.backend.search.application.SearchAnswerGuidance;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.doNothing;
 
@@ -107,6 +110,19 @@ class SearchFollowupQuestionAcceptanceTest {
 
     @BeforeEach
     void setUp() throws Exception {
+        org.mockito.Mockito.doAnswer(call -> {
+            java.util.function.Consumer<String> delta = call.getArgument(3);
+            delta.accept("일반 대화 답변");
+            return List.of();
+        })
+                .when(generator)
+                .generate(
+                        any(),
+                        any(),
+                        any(),
+                        any()
+                );
+
         when(
                 classifier.classify(
                         any(),
@@ -238,7 +254,7 @@ class SearchFollowupQuestionAcceptanceTest {
     }
 
     @Test
-    @DisplayName("후속 질문의 범위 밖 판정은 문서 조회 없이 고정 안내로 완료한다")
+    @DisplayName("후속 질문의 범위 밖 판정은 문서 조회 없이 일반 답변으로 완료한다")
     void ask_success_outOfScopeGuidance() throws Exception {
         when(
                 classifier.classify(
@@ -262,7 +278,7 @@ class SearchFollowupQuestionAcceptanceTest {
                             .collect(Collectors.joining("\n"))
             ).contains(
                     "event:completed",
-                    "Knot은 회의 기록의 조회·요약·비교",
+                    "일반 대화 답변",
                     "\"items\":[]"
             )
                     .doesNotContain(
@@ -271,9 +287,12 @@ class SearchFollowupQuestionAcceptanceTest {
                             "OUT_OF_SCOPE"
                     );
         }
-        verifyNoInteractions(
-                retriever,
-                generator
+        verifyNoInteractions(retriever);
+        verify(generator).generate(
+                any(),
+                any(),
+                eq(List.of()),
+                any()
         );
         assertThat(countMessages()).isEqualTo(4);
     }
@@ -439,7 +458,7 @@ class SearchFollowupQuestionAcceptanceTest {
     }
 
     @Test
-    @DisplayName("연결을 닫아도 후속 답변은 생성되고 실패 시 부분 본문과 목록 노출을 보존한다")
+    @DisplayName("연결을 닫아도 후속 답변은 생성되고 오류 시 안내 응답과 목록 노출을 보존한다")
     void ask_success_disconnectAndFailedPersistence() throws Exception {
         // given
         long document = new SearchMessageFixtures(jdbc).saveDocument(
@@ -503,7 +522,7 @@ class SearchFollowupQuestionAcceptanceTest {
                         )
                         .query(String.class)
                         .single()
-        ).isEqualTo("FAILED");
+        ).isEqualTo("COMPLETED");
         assertThat(
                 jdbc.sql("SELECT content FROM search_messages WHERE id = :id")
                         .param(
@@ -512,7 +531,7 @@ class SearchFollowupQuestionAcceptanceTest {
                         )
                         .query(String.class)
                         .single()
-        ).isEqualTo("실패 전 부분");
+        ).isEqualTo(SearchAnswerGuidance.UNAVAILABLE);
         assertThat(
                 jdbc.sql("SELECT visible_in_list FROM search_conversations WHERE id = :id")
                         .param(
@@ -536,8 +555,8 @@ class SearchFollowupQuestionAcceptanceTest {
                     reader.lines()
                             .collect(Collectors.joining("\n"))
             ).contains(
-                    "실패 전 부분",
-                    "event:failed"
+                    SearchAnswerGuidance.UNAVAILABLE,
+                    "event:completed"
             );
         }
         assertThat(countMessages()).isEqualTo(4);
