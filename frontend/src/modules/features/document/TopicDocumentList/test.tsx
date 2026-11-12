@@ -167,7 +167,7 @@ const mockLayout = () => {
   return layout;
 };
 
-// jsdom의 ResizeObserver는 크기 변화를 알리지 않는 빈 구현이에요.
+// jsdom에는 ResizeObserver가 없어서 vitest.setup.ts가 크기 변화를 알리지 않는 빈 구현을 둬요.
 // 테스트가 정한 때에 지켜보는 중인 ResizeObserver에 크기 변화를 알릴 수 있게 바꿔요
 const stubResizeObserver = () => {
   const observers = new Set<{ notify: () => void }>();
