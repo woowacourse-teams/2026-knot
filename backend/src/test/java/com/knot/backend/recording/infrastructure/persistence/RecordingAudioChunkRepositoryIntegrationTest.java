@@ -12,7 +12,7 @@ import com.knot.backend.recording.domain.model.RecordingSession;
 import com.knot.backend.recording.domain.model.StoredAudioChunk;
 import com.knot.backend.recording.domain.repository.RecordingAudioChunkRepository;
 import com.knot.backend.recording.domain.repository.RecordingAudioStreamRepository;
-import com.knot.backend.testsupport.TestcontainersConfiguration;
+import com.knot.backend.testsupport.IsolatedPostgresTest;
 import jakarta.persistence.EntityManager;
 import java.time.Instant;
 import java.util.Base64;
@@ -36,8 +36,8 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.simple.JdbcClient;
 
 @Tag("integration")
-@Import({TestcontainersConfiguration.class, RecordingAudioChunkRepositoryAdapter.class,
-        RecordingAudioStreamRepositoryAdapter.class})
+@IsolatedPostgresTest
+@Import({RecordingAudioChunkRepositoryAdapter.class, RecordingAudioStreamRepositoryAdapter.class})
 @DataJpaTest
 class RecordingAudioChunkRepositoryIntegrationTest {
     private static final String HASH = Base64.getEncoder()

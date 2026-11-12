@@ -3,7 +3,7 @@ package com.knot.backend.workspace.application;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowable;
 import com.knot.backend.testsupport.TestApplicationProperties;
-import com.knot.backend.testsupport.TestcontainersConfiguration;
+import com.knot.backend.testsupport.IsolatedPostgresTest;
 import com.knot.backend.workspace.application.dto.result.WorkspaceInvitationResult;
 import com.knot.backend.workspace.domain.model.Workspace;
 import com.knot.backend.workspace.domain.WorkspaceErrorCode;
@@ -28,7 +28,6 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.context.annotation.Import;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.test.context.TestConstructor;
@@ -36,7 +35,7 @@ import org.springframework.test.context.TestConstructor.AutowireMode;
 import org.springframework.transaction.support.TransactionTemplate;
 
 @Tag("integration")
-@Import(TestcontainersConfiguration.class)
+@IsolatedPostgresTest
 @TestApplicationProperties
 @SpringBootTest
 @TestConstructor(autowireMode = AutowireMode.ALL)

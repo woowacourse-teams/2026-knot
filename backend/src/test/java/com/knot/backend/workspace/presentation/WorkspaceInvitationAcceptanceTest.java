@@ -12,7 +12,7 @@ import com.knot.backend.auth.domain.AuthTokenProvider;
 import com.knot.backend.member.domain.Member;
 import com.knot.backend.member.domain.MemberRepository;
 import com.knot.backend.testsupport.TestApplicationProperties;
-import com.knot.backend.testsupport.TestcontainersConfiguration;
+import com.knot.backend.testsupport.IsolatedPostgresTest;
 import com.knot.backend.workspace.application.WorkspaceInvitationSecretHasher;
 import com.knot.backend.workspace.application.WorkspaceInvitationService;
 import com.knot.backend.workspace.domain.model.Workspace;
@@ -35,7 +35,6 @@ import org.springframework.boot.test.system.CapturedOutput;
 import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
-import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpHeaders;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.test.context.TestConstructor;
@@ -46,7 +45,7 @@ import tools.jackson.databind.ObjectMapper;
 
 @Tag("acceptance")
 @ExtendWith(OutputCaptureExtension.class)
-@Import(TestcontainersConfiguration.class)
+@IsolatedPostgresTest
 @TestApplicationProperties
 @SpringBootTest
 @AutoConfigureMockMvc

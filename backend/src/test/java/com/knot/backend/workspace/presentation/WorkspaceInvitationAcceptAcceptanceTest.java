@@ -14,7 +14,7 @@ import com.knot.backend.auth.domain.AuthTokenProvider;
 import com.knot.backend.member.domain.Member;
 import com.knot.backend.member.domain.MemberRepository;
 import com.knot.backend.testsupport.TestApplicationProperties;
-import com.knot.backend.testsupport.TestcontainersConfiguration;
+import com.knot.backend.testsupport.IsolatedPostgresTest;
 import com.knot.backend.workspace.application.WorkspaceInvitationService;
 import com.knot.backend.workspace.application.dto.result.WorkspaceInvitationResult;
 import com.knot.backend.workspace.domain.model.Workspace;
@@ -57,7 +57,8 @@ import tools.jackson.databind.ObjectMapper;
 
 @Tag("acceptance")
 @ExtendWith(OutputCaptureExtension.class)
-@Import({TestcontainersConfiguration.class, WorkspaceInvitationAcceptAcceptanceTest.ClockConfiguration.class})
+@IsolatedPostgresTest
+@Import({WorkspaceInvitationAcceptAcceptanceTest.ClockConfiguration.class})
 @TestApplicationProperties
 @SpringBootTest
 @AutoConfigureMockMvc

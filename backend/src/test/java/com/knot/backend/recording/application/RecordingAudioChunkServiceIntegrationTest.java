@@ -22,7 +22,7 @@ import com.knot.backend.recording.domain.RecordingException;
 import com.knot.backend.recording.domain.model.AudioChunkDescriptor;
 import com.knot.backend.recording.domain.model.StoredAudioChunk;
 import com.knot.backend.testsupport.TestApplicationProperties;
-import com.knot.backend.testsupport.TestcontainersConfiguration;
+import com.knot.backend.testsupport.IsolatedPostgresTest;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.Base64;
@@ -44,13 +44,12 @@ import org.junit.jupiter.params.provider.ValueSource;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 @Tag("integration")
-@Import(TestcontainersConfiguration.class)
+@IsolatedPostgresTest
 @TestApplicationProperties
 @SpringBootTest(properties = "recording.audio-chunks.enabled=true")
 class RecordingAudioChunkServiceIntegrationTest {

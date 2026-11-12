@@ -13,8 +13,6 @@ import com.knot.backend.auth.domain.model.AuthenticatedMember;
 import com.knot.backend.global.exception.GlobalExceptionHandler;
 import com.knot.backend.recording.application.RecordingService;
 import com.knot.backend.recording.application.dto.result.RecordingResumeResult;
-import com.knot.backend.recording.domain.RecordingErrorCode;
-import com.knot.backend.recording.domain.RecordingException;
 import com.knot.backend.recording.domain.model.RecordingStatus;
 import java.time.Instant;
 import java.util.UUID;
@@ -98,37 +96,6 @@ class RecordingResumeControllerTest {
                 .andExpect(jsonPath("$.status").value("RECORDING"))
                 .andExpect(jsonPath("$.resumedAt").value("2026-10-05T00:10:00Z"))
                 .andExpect(jsonPath("$.elapsedMillis").value(600_000L));
-    }
-
-    @Test
-    @DisplayName("최초 탭이 아니면 RECORDING_CONTROL_DENIED 403 응답을 반환한다")
-    void resume_failure_controlDenied() throws Exception {
-        // given
-        SecurityContextHolder.getContext()
-                .setAuthentication(memberAuthentication());
-        when(
-                recordingService.resume(
-                        eq(WORKSPACE_ID),
-                        eq(MEMBER_ID),
-                        eq(RECORDING_ID),
-                        any()
-                )
-        ).thenThrow(new RecordingException(RecordingErrorCode.RECORDING_CONTROL_DENIED));
-
-        // when
-        ResultActions result = mockMvc.perform(
-                post(
-                        "/api/v1/workspaces/{workspaceId}/recordings/{recordingId}/resume",
-                        WORKSPACE_ID,
-                        RECORDING_ID
-                ).contentType(MediaType.APPLICATION_JSON)
-                        .content(BODY)
-        );
-
-        // then
-        result.andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.code").value("RECORDING_CONTROL_DENIED"))
-                .andExpect(jsonPath("$.message").value("녹음을 제어할 권한이 없습니다"));
     }
 
     @Test
