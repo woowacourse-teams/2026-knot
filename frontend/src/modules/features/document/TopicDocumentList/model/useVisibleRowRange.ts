@@ -1,9 +1,17 @@
-import { type RefObject, useLayoutEffect, useMemo, useState } from "react";
+import {
+  type RefObject,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { flushSync } from "react-dom";
 
 import { OVERSCAN_PX } from "../constants/overscan";
 import { getDrawnRows } from "../utils/getDrawnRows";
 import { getRowOffsets } from "../utils/getRowOffsets";
 import { getVisibleRange } from "../utils/getVisibleRange";
+import { isViewCovered } from "../utils/isViewCovered";
 
 interface RowDocument {
   /** 한 줄 요약. 없으면 null이에요 */
@@ -47,6 +55,12 @@ export const useVisibleRowRange = ({
   );
   // 카드 위치를 재기 전에는 행을 그리지 않아요. 첫 렌더링에서 행을 모두 만들면 가상화로 줄이려던 일을 그대로 하게 돼요
   const [range, setRange] = useState<RowRange>({ start: 0, end: 0 });
+  // scroll 이벤트에서 지금 그린 행이 화면을 덮는지 보려고, 마지막으로 그린 범위를 함께 둬요
+  const drawnRangeRef = useRef(range);
+
+  useLayoutEffect(() => {
+    drawnRangeRef.current = range;
+  }, [range]);
 
   // 화면을 그리기 전에 범위를 구해서, 행이 없는 카드가 한 번 보이지 않게 해요
   useLayoutEffect(() => {
@@ -69,29 +83,37 @@ export const useVisibleRowRange = ({
       return;
     }
 
-    const updateRange = () => {
+    const measureView = () => {
       const viewStart =
         main.getBoundingClientRect().top - card.getBoundingClientRect().top;
 
-      applyRange(
-        getVisibleRange({
-          offsets,
-          viewStart,
-          viewEnd: viewStart + main.clientHeight,
-          overscanPx: OVERSCAN_PX,
-        }),
-      );
+      return { viewStart, viewEnd: viewStart + main.clientHeight };
+    };
+    const getRange = (view: { viewStart: number; viewEnd: number }) =>
+      getVisibleRange({ offsets, ...view, overscanPx: OVERSCAN_PX });
+
+    // scroll 이벤트와 크기 변화 알림은 화면을 그리기 직전에 와요. 지금 그린 행이 화면을 덮으면 렌더링을 미뤄도 되지만,
+    // 뒤로 가기로 스크롤 위치를 한 번에 되돌릴 때처럼 덮지 못하면 행 없는 화면이 한 프레임 보여서 이벤트 안에서 다시 렌더링해요
+    const handleViewChange = () => {
+      const view = measureView();
+      const { start, end } = drawnRangeRef.current;
+
+      if (isViewCovered({ offsets, start, end, ...view })) {
+        applyRange(getRange(view));
+        return;
+      }
+      flushSync(() => applyRange(getRange(view)));
     };
 
-    updateRange();
-    main.addEventListener("scroll", updateRange, { passive: true });
+    applyRange(getRange(measureView()));
+    main.addEventListener("scroll", handleViewChange, { passive: true });
     // 창 크기가 바뀌어 `main`이 높아지면 scroll 이벤트 없이 화면이 넓어져서, 크기가 바뀔 때도 범위를 다시 구해요
-    const resizeObserver = new ResizeObserver(updateRange);
+    const resizeObserver = new ResizeObserver(handleViewChange);
 
     resizeObserver.observe(main);
 
     return () => {
-      main.removeEventListener("scroll", updateRange);
+      main.removeEventListener("scroll", handleViewChange);
       resizeObserver.disconnect();
     };
   }, [cardRef, offsets]);
