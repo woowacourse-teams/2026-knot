@@ -124,7 +124,11 @@ const usePopover = ({
       setPosition(
         getPopoverPosition({
           triggerRect: trigger.getBoundingClientRect(),
-          popoverSize: content.getBoundingClientRect(),
+          // 펼침 애니메이션의 scaleY가 적용되기 전 실제 레이아웃 크기예요.
+          popoverSize: {
+            width: content.offsetWidth,
+            height: content.offsetHeight,
+          },
           // 스크롤바를 뺀, 실제로 보이는 영역 기준으로 가장자리를 재요
           viewport: { width: clientWidth, height: clientHeight },
           placement,

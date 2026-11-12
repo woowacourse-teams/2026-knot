@@ -97,6 +97,7 @@ export interface DocumentTranscriptSegment {
   endMillis: number | null;
   /** 화자를 알 수 없으면 null */
   speakerNumber: number | null;
+  speakerDisplayName?: string | null;
   text: string;
 }
 

@@ -39,9 +39,13 @@ export const getPopoverPosition = ({
     spaceBelow < TRIGGER_GAP + popoverSize.height + VIEWPORT_MARGIN &&
     spaceAbove > spaceBelow;
 
-  const top = shouldFlip
+  const alignedTop = shouldFlip
     ? triggerRect.top - TRIGGER_GAP - popoverSize.height
     : triggerRect.bottom + TRIGGER_GAP;
+
+  // 긴 이름 편집 폼도 버튼이 화면 밖으로 밀리지 않게 세로 위치를 제한해요.
+  const maxTop = viewport.height - VIEWPORT_MARGIN - popoverSize.height;
+  const top = Math.max(VIEWPORT_MARGIN, Math.min(alignedTop, maxTop));
 
   const alignedLeft =
     placement === "bottom-start"

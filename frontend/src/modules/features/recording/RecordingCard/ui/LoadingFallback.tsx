@@ -16,6 +16,10 @@ export default function LoadingFallback() {
         </Line>
       </Lines>
 
+      <Line $height={3.25}>
+        <Skeleton width={4.5} height={1} />
+        <Skeleton width={15} height={3.25} />
+      </Line>
       <Divider />
 
       <Lines>

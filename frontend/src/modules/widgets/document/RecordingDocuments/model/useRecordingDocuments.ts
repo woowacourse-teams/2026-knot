@@ -241,6 +241,10 @@ export const useRecordingDocuments = ({
     : undefined;
 
   return {
+    isTranscriptReady:
+      !isLoadFailed &&
+      recording?.sessionStatus === "ENDED" &&
+      recording.transcriptionStatus === "SUCCEEDED",
     viewStatus,
     isTranscriptionFailed,
     isAudioSaveCheckFailed,

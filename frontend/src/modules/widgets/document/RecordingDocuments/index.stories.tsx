@@ -1,8 +1,11 @@
 import {
   recordingAudioSaveResponse,
-  recordingDetailsResponse,
+  recordingDetailsResponse as currentRecordingDetailsResponse,
 } from "@api/mock/responses/recording";
-import { resetRecordingMockState } from "@api/mock/state/recording";
+import {
+  findRecordingDetail,
+  resetRecordingMockState,
+} from "@api/mock/state/recording";
 import { ToastProvider } from "@provider/context/toastContext";
 import { getRouterPath, PATH_ROUTE } from "@routes/PATH_ROUTE";
 import type { Meta, StoryObj } from "@storybook/react-webpack5";
@@ -11,6 +14,19 @@ import { MemoryRouter, Route, Routes } from "react-router";
 
 import RecordingDocuments from ".";
 
+// 전사 상태가 없는 이전 서버의 문서 상태 fallback을 보여 주는 스토리도 유지해요.
+const recordingDetailsResponse = currentRecordingDetailsResponse.map(
+  (recording) => ({
+    ...recording,
+    detail: {
+      ...recording.detail,
+      transcriptionStatus:
+        recording.detail.transcriptionStatus === "SUCCEEDED"
+          ? null
+          : recording.detail.transcriptionStatus,
+    },
+  }),
+);
 const WORKSPACE_ID = 1;
 // 상태가 서로 다른 mock 녹음: 정리 중 · 내용 없음 · 문서 만들기 실패 · 전사 실패 · 다시 시도 횟수를 다 쓴 실패.
 // 건너뛴 두 자리는 정리 완료와 일부만 만들어진 실패예요. 정리 완료는 문서로 이동만 하고, 일부만 만들어진 실패는 문서 만들기 실패와 화면이 같아요
@@ -64,7 +80,8 @@ const failAudioSave = (failureCode: string) => ({
 });
 
 /**
- * 녹음을 끝낸 뒤 문서가 만들어질 때까지 머무는 정리 화면의 가운데 섹션이에요.
+ * 녹음을 끝낸 뒤 전사가 준비될 때까지 머무는 처리 화면이에요. 전사 성공 시 녹음 상세로 이동해요.
+ * 전사 상태를 주지 않는 이전 응답은 기존 문서 상태로 안내해요. 아래 문서 실패·내용 없음 스토리는 이 호환 경로예요.
  * 주소의 녹음 상태에 따라 정리 중 · 문서로 만들 내용 없음 · 문서를 만들지 못함 · 불러오지 못함 가운데 하나를 보여 줘요.
  *
  * **동작 규칙**
@@ -102,6 +119,21 @@ const meta = {
   component: RecordingDocuments,
   parameters: {
     recordingId: organizingRecording.recordingId,
+    msw: {
+      handlers: {
+        recording: http.get(RECORDING_REQUEST, ({ params }) => {
+          const detail = findRecordingDetail(Number(params.recordingId));
+          if (!detail) return;
+          return HttpResponse.json({
+            ...detail,
+            transcriptionStatus:
+              detail.transcriptionStatus === "SUCCEEDED"
+                ? null
+                : detail.transcriptionStatus,
+          });
+        }),
+      },
+    },
     design: {
       type: "figma",
       url: "https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=2017-35460",
@@ -145,11 +177,27 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 /** 녹음을 끝내고 문서를 정리하는 동안의 모습이에요. 버튼 없이 기다리게 하고, 3초마다 상태를 다시 확인해요. */
-export const Default: Story = {};
+export const Default: Story = {
+  parameters: {
+    docs: ISOLATED_DOCS,
+    msw: {
+      handlers: {
+        recording: http.get(RECORDING_REQUEST, () =>
+          HttpResponse.json({
+            ...organizingRecording.detail,
+            transcriptionStatus: "PROCESSING",
+            documentGeneration: null,
+          }),
+        ),
+      },
+    },
+  },
+};
 
 /** 대화가 너무 짧거나 정리할 논의가 없어 문서를 만들지 않았을 때예요. 오류가 아니라 결과라서 「다시 시도」 없이 「홈으로」만 있어요. */
 export const NothingToOrganize: Story = {
   parameters: {
+    docs: ISOLATED_DOCS,
     recordingId: noContentRecording.recordingId,
     design: {
       type: "figma",
@@ -161,6 +209,7 @@ export const NothingToOrganize: Story = {
 /** 문서 만들기가 실패로 끝났을 때예요. 녹음은 보관돼 있어 「다시 시도」를 둬요. 누르면 정리 중 모습으로 돌아가요. */
 export const DocumentFailed: Story = {
   parameters: {
+    docs: ISOLATED_DOCS,
     recordingId: failedRecording.recordingId,
     design: {
       type: "figma",
@@ -172,6 +221,7 @@ export const DocumentFailed: Story = {
 /** 전사가 실패했을 때예요. 제목만 「녹음을 글로 옮기지 못했어요」로 다르고 나머지는 문서 만들기 실패와 같아요. 「다시 시도」를 누르면 전사부터 다시 접수해 정리 중 모습으로 돌아가요. */
 export const TranscriptionFailed: Story = {
   parameters: {
+    docs: ISOLATED_DOCS,
     recordingId: transcriptionFailedRecording.recordingId,
     design: {
       type: "figma",
@@ -183,6 +233,7 @@ export const TranscriptionFailed: Story = {
 /** 다시 시도할 작업이 없는 실패일 때예요. 예: 실패한 작업의 보존 기한이 지나 서버가 작업 ID를 비운 경우. 설명 없이 「홈으로」만 있어요. 붙인 피그마 프레임은 「다시 시도」가 있는 모습이에요. */
 export const DocumentFailedWithoutRetry: Story = {
   parameters: {
+    docs: ISOLATED_DOCS,
     recordingId: failedRecording.recordingId,
     msw: {
       handlers: {
@@ -191,7 +242,6 @@ export const DocumentFailedWithoutRetry: Story = {
         ),
       },
     },
-    docs: ISOLATED_DOCS,
     design: {
       type: "figma",
       url: "https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=2017-35662",
@@ -202,6 +252,7 @@ export const DocumentFailedWithoutRetry: Story = {
 /** 남은 실패 작업의 다시 시도를 서버가 거절했을 때예요. 예: 다시 시도할 수 있는 횟수를 다 쓴 작업. 「다시 시도」를 누르면 설명과 버튼이 사라지고 「홈으로」만 남아요. */
 export const RetryRejected: Story = {
   parameters: {
+    docs: ISOLATED_DOCS,
     recordingId: retryExhaustedRecording.recordingId,
     design: {
       type: "figma",
@@ -213,6 +264,7 @@ export const RetryRejected: Story = {
 /** 「다시 시도」가 서버 오류로 접수되지 않았을 때예요. 「다시 시도」를 누르면 버튼은 그대로 남고 오류 토스트가 떠요. 이 스토리에서는 다시 눌러도 계속 실패해요. */
 export const RetryRequestFailed: Story = {
   parameters: {
+    docs: ISOLATED_DOCS,
     recordingId: failedRecording.recordingId,
     msw: {
       handlers: {
@@ -222,7 +274,6 @@ export const RetryRequestFailed: Story = {
         ),
       },
     },
-    docs: ISOLATED_DOCS,
     design: {
       type: "figma",
       url: "https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=4826-33517",
@@ -233,6 +284,7 @@ export const RetryRequestFailed: Story = {
 /** 전사 다시 시도를 서버가 거절했을 때예요. 예: 삭제됐거나 사용할 수 없는 녹음(409 AUDIO_UPLOAD_NOT_COMPLETED). 「다시 시도」를 누르면 설명과 버튼이 사라지고 「홈으로」만 남아요. 붙인 피그마 프레임은 「다시 시도」가 있는 모습이에요. */
 export const TranscriptionRetryRejected: Story = {
   parameters: {
+    docs: ISOLATED_DOCS,
     recordingId: transcriptionFailedRecording.recordingId,
     msw: {
       handlers: {
@@ -247,7 +299,6 @@ export const TranscriptionRetryRejected: Story = {
         ),
       },
     },
-    docs: ISOLATED_DOCS,
     design: {
       type: "figma",
       url: "https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=4524-43475",
@@ -258,6 +309,7 @@ export const TranscriptionRetryRejected: Story = {
 /** PCM 조각 녹음을 끝냈는데 저장된 음성이 없어 저장이 실패했을 때예요(AUDIO_NO_CONTENT). 문서로 만들 내용이 없을 때와 같은 화면이에요. */
 export const AudioSaveNoContent: Story = {
   parameters: {
+    docs: ISOLATED_DOCS,
     msw: { handlers: failAudioSave("AUDIO_NO_CONTENT") },
     design: {
       type: "figma",
@@ -269,6 +321,7 @@ export const AudioSaveNoContent: Story = {
 /** PCM 조각 녹음의 저장이 그 밖의 이유로 끝내 실패했을 때예요. 업로드 실패와 같이 안내 없이 실패 이유를 콘솔에 남기고 워크스페이스 홈으로 보내요. */
 export const AudioSaveFailed: Story = {
   parameters: {
+    docs: ISOLATED_DOCS,
     msw: { handlers: failAudioSave("AUDIO_STORAGE_UNAVAILABLE") },
   },
 };
@@ -297,6 +350,7 @@ export const AudioSaveCheckFailed: Story = {
 /** 녹음 상태를 불러오지 못했을 때예요. 없는 녹음, 볼 수 없는 녹음, 서버 오류, 네트워크 문제가 모두 이 모습이에요. 이 스토리에서는 「다시 시도」를 눌러도 계속 실패해요. */
 export const LoadFailed: Story = {
   parameters: {
+    docs: ISOLATED_DOCS,
     recordingId: MISSING_RECORDING_ID,
     design: {
       type: "figma",

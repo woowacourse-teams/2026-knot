@@ -1,3 +1,4 @@
+import RenameSpeaker from "@features/recording/RenameSpeaker";
 import {
   HTTP_ERROR_TYPE,
   type HttpErrorType,
@@ -55,6 +56,7 @@ const isUnavailableError = (error: unknown) =>
 export default function TranscriptPanel() {
   const { titleId } = useTitleId();
   const {
+    editableRecording,
     segments,
     date,
     durationSeconds,
@@ -120,16 +122,31 @@ export default function TranscriptPanel() {
         )}
       </Meta>
       <Divider />
+      {segments.length === 0 && <p>변환된 음성 기록이 없어요.</p>}
       <LineList>
-        {segments.map(({ startMillis, speakerNumber, text }, index) => (
-          <TranscriptLine
-            // 구간에는 id가 없고 같은 시각에 시작하는 구간이 있을 수 있어, 서버가 준 순서를 함께 써요
-            key={`${startMillis}-${index}`}
-            startMillis={startMillis}
-            speakerNumber={speakerNumber}
-            text={text}
-          />
-        ))}
+        {segments.map(
+          ({ startMillis, speakerNumber, speakerDisplayName, text }, index) => (
+            <TranscriptLine
+              // 구간에는 id가 없고 같은 시각에 시작하는 구간이 있을 수 있어, 서버가 준 순서를 함께 써요
+              key={`${startMillis}-${index}`}
+              startMillis={startMillis}
+              speakerNumber={speakerNumber}
+              speakerDisplayName={speakerDisplayName}
+              speakerControl={
+                editableRecording && speakerNumber !== null ? (
+                  <RenameSpeaker
+                    {...editableRecording}
+                    speakerNumber={speakerNumber}
+                    displayName={
+                      speakerDisplayName ?? `참여자 ${speakerNumber}`
+                    }
+                  />
+                ) : undefined
+              }
+              text={text}
+            />
+          ),
+        )}
       </LineList>
       <FooterNotice>{footerNotice}</FooterNotice>
     </Container>

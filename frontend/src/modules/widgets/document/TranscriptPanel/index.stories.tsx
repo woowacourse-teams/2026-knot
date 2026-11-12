@@ -1,3 +1,4 @@
+import { resetRecordingSpeakerMockState } from "@api/mock/state/recordingSpeaker";
 import { DOCUMENT_API_PATH } from "@api/fetch/api/v1/workspaces/[workspaceId]/documents/[documentId]";
 import { DOCUMENT_TRANSCRIPT_API_PATH } from "@api/fetch/api/v1/workspaces/[workspaceId]/documents/[documentId]/transcript";
 import {
@@ -74,7 +75,7 @@ const ISOLATED_DOCS = { story: { inline: false, iframeHeight: 1000 } };
  *   같은 기준을 화면에도 두면 기준이 두 곳에 생기기 때문이에요.
  * - 발화는 서버가 준 순서 그대로 놓여요. 줄마다 왼쪽에 말하기 시작한 시각을 `02:40`처럼, 오른쪽에 「참여자 N: 문장」을 보여 줘요.
  *   녹음이 한 시간을 넘은 뒤의 발화는 시각이 `1:02:03`처럼 바뀌고, 시각 칸이 글자만큼 넓어져요.
- * - 말한 사람은 이름 대신 서버가 준 번호로 「참여자 N」이라고 적어요. 화자를 알 수 없는 구간은 「참여자 N:」 없이 문장만 보여 줘요.
+ * - 말한 사람은 이름 대신 서버가 준 번호로 「참여자 N」이라고 적어요. 화자를 알 수 없는 구간은 「미상」으로 보여 줘요. 녹음 원문에서는 이름을 눌러 바꿀 수 있어요.
  * - 만든 날짜는 원문 응답에 없어 문서 상세에서 가져와요. 문서 상세를 받는 중이거나 받지 못했으면 날짜만 빼고 원문은 그대로 보여 줘요.
  * - 녹음 문서에서는 날짜 자리에 녹음을 시작한 날을, 맨 아래에 「이 녹음의 전사 전체예요.」를 둬요. 녹음 문서를 열면 패널이 열려 있어요.
  * - 패널의 폭과 높이의 한계는 패널을 놓는 자리가 정해요. 시안의 폭은 400px이에요.
@@ -103,6 +104,7 @@ const meta = {
   loaders: [
     () => {
       resetDocumentMockState();
+      resetRecordingSpeakerMockState();
     },
   ],
   decorators: [
@@ -137,10 +139,18 @@ export const UnsupportedRecordingTranscript: Story = {
   parameters: {
     path: RECORDING_DOCUMENT_PATH,
     docs: { story: { inline: false, iframeHeight: 300 } },
-    msw: { handlers: { recordingTranscript: http.get(
-      "*/api/v1/workspaces/:workspaceId/recordings/:recordingId/transcript",
-      () => HttpResponse.json({ code: "REQUEST_PATH_NOT_FOUND" }, { status: 404 }),
-    ) } },
+    msw: {
+      handlers: {
+        recordingTranscript: http.get(
+          "*/api/v1/workspaces/:workspaceId/recordings/:recordingId/transcript",
+          () =>
+            HttpResponse.json(
+              { code: "REQUEST_PATH_NOT_FOUND" },
+              { status: 404 },
+            ),
+        ),
+      },
+    },
   },
 };
 

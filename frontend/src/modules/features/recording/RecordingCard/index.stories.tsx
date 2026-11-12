@@ -1,3 +1,15 @@
+import { MemoryRouter } from "react-router";
+import { useRecordingStore } from "@store/recordingStore";
+import {
+  saveRecordingResumeProof,
+  clearRecordingStartProof,
+} from "@utils/recordingControlProof";
+import { recordingDetailsResponse } from "@api/mock/responses/recording";
+import {
+  resetRecordingSpeakerMockState,
+  getSpeakerCount,
+  setSpeakerCount,
+} from "@api/mock/state/recordingSpeaker";
 import { AUTH_ME_API_PATH } from "@api/fetch/api/v1/auth/me";
 import { meResponse } from "@api/mock/responses/auth";
 import type { Meta, StoryObj } from "@storybook/react-webpack5";
@@ -22,15 +34,35 @@ const meta = {
   parameters: {
     design: {
       type: "figma",
-      url: "https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=2241-530",
+      url: "https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=2024-11053",
     },
   },
+  loaders: [
+    () => {
+      resetRecordingSpeakerMockState();
+      clearRecordingStartProof();
+      const session = {
+        workspaceId: 1,
+        recordingId: 101,
+        audioMode: "FINAL_WEBM_V1" as const,
+      };
+      saveRecordingResumeProof(session);
+      useRecordingStore.setState({
+        status: "recording",
+        session,
+        isEnding: false,
+      });
+      return {};
+    },
+  ],
   decorators: [
     // 녹음 화면의 가운데 열 너비(최대 960px)에 맞춰요
     (Story) => (
-      <div style={{ width: "60rem" }}>
-        <Story />
-      </div>
+      <MemoryRouter>
+        <div style={{ width: "60rem", maxWidth: "100%" }}>
+          <Story />
+        </div>
+      </MemoryRouter>
     ),
   ],
 } satisfies Meta<typeof RecordingCard>;
@@ -40,11 +72,29 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 /** 녹음이 진행 중일 때 녹음 화면에서 보이는 모습이에요. 회원 정보를 받아 닉네임까지 채워요. */
-export const Default: Story = {};
+export const Default: Story = {
+  parameters: {
+    docs: { story: { inline: false, iframeHeight: 420 } },
+    msw: {
+      handlers: [
+        http.get(
+          "*/api/v1/workspaces/:workspaceId/recordings/:recordingId",
+          () =>
+            HttpResponse.json({
+              ...recordingDetailsResponse[0].detail,
+              status: "RECORDING",
+              speakerCount: getSpeakerCount(1, 101),
+            }),
+        ),
+      ],
+    },
+  },
+};
 
 /** 회원 정보를 받아 오는 중이에요. 닉네임 없이 `녹음`만 보여요. */
 export const Loading: Story = {
   parameters: {
+    docs: { story: { inline: false, iframeHeight: 420 } },
     msw: {
       handlers: {
         me: http.get(`*${AUTH_ME_API_PATH}`, async () => {
@@ -52,6 +102,59 @@ export const Loading: Story = {
           return HttpResponse.json(meResponse);
         }),
       },
+    },
+  },
+};
+
+/** 일시정지 중에도 값을 바꿀 수 있고, 최대 10명에서는 늘리기를 막아요. */
+export const MaximumParticipants: Story = {
+  loaders: [
+    () => {
+      setSpeakerCount(1, 101, 10);
+      useRecordingStore.setState({ status: "paused" });
+    },
+  ],
+  parameters: {
+    docs: { story: { inline: false, iframeHeight: 420 } },
+    msw: {
+      handlers: [
+        http.get(
+          "*/api/v1/workspaces/:workspaceId/recordings/:recordingId",
+          () =>
+            HttpResponse.json({
+              ...recordingDetailsResponse[0].detail,
+              status: "PAUSED",
+              speakerCount: getSpeakerCount(1, 101),
+            }),
+        ),
+      ],
+    },
+  },
+};
+/** 제어권이 없어 저장이 거절되면 마지막 저장값을 유지하고 확인 안내를 보여줘요. */
+export const ParticipantSaveFailure: Story = {
+  parameters: {
+    docs: { story: { inline: false, iframeHeight: 460 } },
+    msw: {
+      handlers: [
+        http.get(
+          "*/api/v1/workspaces/:workspaceId/recordings/:recordingId",
+          () =>
+            HttpResponse.json({
+              ...recordingDetailsResponse[0].detail,
+              status: "RECORDING",
+              speakerCount: 2,
+            }),
+        ),
+        http.patch(
+          "*/api/v1/workspaces/:workspaceId/recordings/:recordingId/speaker-count",
+          () =>
+            HttpResponse.json(
+              { code: "RECORDING_CONTROL_DENIED" },
+              { status: 403 },
+            ),
+        ),
+      ],
     },
   },
 };
