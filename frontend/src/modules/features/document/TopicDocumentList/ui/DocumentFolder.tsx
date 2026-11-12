@@ -75,7 +75,8 @@ export default function DocumentFolder({
               summary={summary}
               createdAt={createdAt}
               recordingDurationSeconds={recordingDurationSeconds}
-              isFirstRow={start + index === 0}
+              index={start + index}
+              rowCount={documents.length}
             />
           ),
         )}

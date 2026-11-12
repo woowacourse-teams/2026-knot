@@ -17,10 +17,12 @@ interface DocumentRowProps {
   /** 녹음 길이(초) */
   recordingDurationSeconds: number;
   /**
-   * 폴더의 첫 행인지. 첫 행이 아니면 위쪽에 구분선을 그어요.
+   * 폴더 안에서 이 행의 순서(0부터). 첫 행이 아니면 위쪽에 구분선을 그어요.
    * 카드에는 화면 근처의 행만 그려서, 카드의 첫 행이 폴더의 첫 행이 아닐 수 있어요
    */
-  isFirstRow: boolean;
+  index: number;
+  /** 폴더의 행 수. 화면 근처의 행만 그려도 스크린 리더가 전체 행 수를 읽게 알려요 */
+  rowCount: number;
 }
 
 /**
@@ -34,10 +36,15 @@ export default function DocumentRow({
   summary,
   createdAt,
   recordingDurationSeconds,
-  isFirstRow,
+  index,
+  rowCount,
 }: DocumentRowProps) {
   return (
-    <Item $isFirstRow={isFirstRow}>
+    <Item
+      $isFirstRow={index === 0}
+      aria-posinset={index + 1}
+      aria-setsize={rowCount}
+    >
       <RowLink href={href}>
         <TextBlock>
           <Title>{title}</Title>

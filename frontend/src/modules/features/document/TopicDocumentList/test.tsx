@@ -648,6 +648,31 @@ describe("TopicDocumentList", () => {
     expect(secondDrawnRow).toHaveStyle({ borderTopWidth: "1px" });
   });
 
+  it("화면 근처의 행만 그려도 행마다 폴더 안 순서와 폴더의 행 수를 알린다", async () => {
+    const layout = mockLayout();
+    respondWith(manyDocumentsResponse);
+    const [firstDocument] = manyDocuments;
+
+    renderDocumentList({ isInMain: true });
+    const folder = await findFolder(firstDocument.topic);
+
+    layout.cardTop = -3000;
+    fireEvent.scroll(screen.getByRole("main"));
+    // 카드 위쪽 끝을 3,000px 올리면 42번째부터 62번째 행까지 그려요
+    await findRow(manyDocuments[41].title);
+
+    const drawnRows = within(folder).getAllByRole("listitem");
+
+    expect(drawnRows[0]).toHaveAttribute("aria-posinset", "42");
+    expect(drawnRows[drawnRows.length - 1]).toHaveAttribute(
+      "aria-posinset",
+      "62",
+    );
+    drawnRows.forEach((row) => {
+      expect(row).toHaveAttribute("aria-setsize", String(MANY_DOCUMENT_COUNT));
+    });
+  });
+
   it("스크롤 영역의 높이가 바뀌면 스크롤하지 않아도 넓어진 화면 근처의 행을 그린다", async () => {
     const { notifyResize } = stubResizeObserver();
     const layout = mockLayout();
