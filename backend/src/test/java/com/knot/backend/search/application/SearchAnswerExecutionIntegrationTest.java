@@ -56,6 +56,8 @@ class SearchAnswerExecutionIntegrationTest {
     @Autowired
     private SearchAnswerWorker worker;
     @Autowired
+    private SearchToolAccess toolAccess;
+    @Autowired
     private SearchAnswerSnapshotService snapshots;
     @Autowired
     private com.knot.backend.search.domain.repository.SearchRepository repository;
@@ -229,18 +231,28 @@ class SearchAnswerExecutionIntegrationTest {
     }
 
     @ParameterizedTest
-    @ValueSource(booleans = {false, true})
-    @DisplayName("기한 전 권한 거절은 FAILED로 보존하고 전체 시간 소진은 안내로 완료한다")
-    void execute_failure_distinguishesAccessFromTimeout(boolean expired) {
+    @ValueSource(strings = {"DENIED", "EXPIRED_SCOPE", "DENIED_AFTER_DEADLINE"})
+    @DisplayName("기한 뒤에도 실제 권한 거절은 보존하고 실행 범위 만료만 안내로 완료한다")
+    void execute_failure_distinguishesAccessFromTimeout(String scenario) {
         doAnswer(call -> {
-            if (expired) {
+            if (!"DENIED".equals(scenario)) {
                 when(clock.instant()).thenReturn(NOW.plusSeconds(120));
             }
+            if ("EXPIRED_SCOPE".equals(scenario)) {
+                toolAccess.validate(call.getArgument(0));
+            }
             throw new com.knot.backend.search.domain.SearchToolException("SEARCH_ACCESS_DENIED");
-        }).when(classifier).classify(any(), any());
+        }).when(classifier)
+                .classify(
+                        any(),
+                        any()
+                );
         worker.execute(accepted.answerMessageId());
-        verifyNoInteractions(retriever, generator);
-        if (expired) {
+        verifyNoInteractions(
+                retriever,
+                generator
+        );
+        if ("EXPIRED_SCOPE".equals(scenario)) {
             assertThat(status()).isEqualTo("COMPLETED");
             assertThat(content()).isEqualTo(SearchAnswerGuidance.UNAVAILABLE);
             assertThat(visible()).isTrue();
@@ -249,8 +261,15 @@ class SearchAnswerExecutionIntegrationTest {
         assertThat(status()).isEqualTo("FAILED");
         assertThat(content()).isEmpty();
         assertThat(visible()).isFalse();
-        assertThat(jdbc.sql("SELECT failure_code FROM search_messages WHERE id=:id")
-                .param("id", accepted.answerMessageId()).query(String.class).single()).isEqualTo("SEARCH_ACCESS_DENIED");
+        assertThat(
+                jdbc.sql("SELECT failure_code FROM search_messages WHERE id=:id")
+                        .param(
+                                "id",
+                                accepted.answerMessageId()
+                        )
+                        .query(String.class)
+                        .single()
+        ).isEqualTo("SEARCH_ACCESS_DENIED");
     }
 
     @Test
@@ -569,7 +588,11 @@ class SearchAnswerExecutionIntegrationTest {
                     false
             );
             assertThat(status()).isEqualTo("COMPLETED");
-            assertThat(content()).isEqualTo(completed.get() ? "부분 답변" : SearchAnswerGuidance.UNAVAILABLE);
+            String expected = SearchAnswerGuidance.UNAVAILABLE;
+            if (completed.get()) {
+                expected = "부분 답변";
+            }
+            assertThat(content()).isEqualTo(expected);
         }
     }
 
