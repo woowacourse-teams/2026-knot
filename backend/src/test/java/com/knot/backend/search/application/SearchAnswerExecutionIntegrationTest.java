@@ -228,6 +228,31 @@ class SearchAnswerExecutionIntegrationTest {
         assertThat(content()).isEqualTo("답변");
     }
 
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    @DisplayName("기한 전 권한 거절은 FAILED로 보존하고 전체 시간 소진은 안내로 완료한다")
+    void execute_failure_distinguishesAccessFromTimeout(boolean expired) {
+        doAnswer(call -> {
+            if (expired) {
+                when(clock.instant()).thenReturn(NOW.plusSeconds(120));
+            }
+            throw new com.knot.backend.search.domain.SearchToolException("SEARCH_ACCESS_DENIED");
+        }).when(classifier).classify(any(), any());
+        worker.execute(accepted.answerMessageId());
+        verifyNoInteractions(retriever, generator);
+        if (expired) {
+            assertThat(status()).isEqualTo("COMPLETED");
+            assertThat(content()).isEqualTo(SearchAnswerGuidance.UNAVAILABLE);
+            assertThat(visible()).isTrue();
+            return;
+        }
+        assertThat(status()).isEqualTo("FAILED");
+        assertThat(content()).isEmpty();
+        assertThat(visible()).isFalse();
+        assertThat(jdbc.sql("SELECT failure_code FROM search_messages WHERE id=:id")
+                .param("id", accepted.answerMessageId()).query(String.class).single()).isEqualTo("SEARCH_ACCESS_DENIED");
+    }
+
     @Test
     @DisplayName("생성 본문과 출처를 완료할 때 출처 검증이 거절되면 본문도 롤백한다")
     void completeGenerated_failure_rollsBackText() {
