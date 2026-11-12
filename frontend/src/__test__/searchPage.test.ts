@@ -1,5 +1,5 @@
 import { SearchStreamDeltaDto, SearchStreamEvidenceDto } from "@api/dto/search";
-import { searchQuestionAnswerStreamResponse } from "@api/mock/responses/search";
+import { searchQuestionAnswerStreamResponse, searchGeneralAnswerStreamResponse } from "@api/mock/responses/search";
 import { expect, test, type Page } from "@playwright/test";
 
 const GUIDANCE = "지금은 답변을 정리하기 어려워요. 질문을 조금 더 구체적으로 이어서 해주시면 도와드릴게요.";
@@ -58,7 +58,10 @@ test("일반 대화는 출처 버튼 없이 정상 답변을 보여준다", asyn
   await setScenario({ page, scenario: "general" });
   await page.goto("/workspace/1/chat");
   await send({ page, question: "안녕하세요" });
-  await expect(page.getByRole("article").last().getByRole("paragraph")).toContainText(/\S/);
+  const expected = searchGeneralAnswerStreamResponse.deltas.map((text) =>
+    new SearchStreamDeltaDto({ answerMessageId: searchGeneralAnswerStreamResponse.answerMessageId, text }).text,
+  ).join("");
+  await expect(page.getByRole("article").last().getByRole("paragraph")).toHaveText(expected);
   await expect(page.getByText("답변을 준비하고 있어요…")).toHaveCount(0);
   await expect(page.getByRole("button", { name: /기록 .*개에서 찾았어요/ })).toHaveCount(0);
   await expect(page.getByText(GUIDANCE)).toHaveCount(0);

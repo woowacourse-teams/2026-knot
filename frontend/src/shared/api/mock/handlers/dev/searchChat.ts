@@ -1,4 +1,4 @@
-import { searchAnswerStreamResponse, searchMessagesResponse } from "@api/mock/responses/search";
+import { searchAnswerStreamResponse, searchGeneralAnswerStreamResponse, searchMessagesResponse } from "@api/mock/responses/search";
 import { toSearchAnswerStreamResponse } from "@api/mock/handlers/api/v1/workspaces/[workspaceId]/search/conversations";
 import { http, HttpResponse } from "msw";
 
@@ -22,11 +22,7 @@ export const searchChatHandlers = [
   http.post("*/api/v1/workspaces/:workspaceId/search/conversations", () => {
     const scenario = readScenario();
     if (scenario === "preaccept") return new HttpResponse(null, { status: 503 });
-    if (scenario === "general") return toSearchAnswerStreamResponse({
-      ...searchAnswerStreamResponse,
-      deltas: ["안녕하세요! 무엇을 도와드릴까요?"],
-      evidences: [],
-    });
+    if (scenario === "general") return toSearchAnswerStreamResponse(searchGeneralAnswerStreamResponse);
     if (scenario !== "failed" && scenario !== "disconnected" && scenario !== "resume500") return;
     const { conversationId, questionMessageId, answerMessageId } = searchAnswerStreamResponse;
     return stream(
