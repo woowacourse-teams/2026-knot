@@ -1,7 +1,7 @@
 import { useCallback } from "react";
+import { SseRequestError } from "@api/sse/requestSseStream";
 import {
   SearchAnswerDisconnectedError,
-  SearchAnswerFailedError,
 } from "@api/fetch/api/v1/workspaces/[workspaceId]/search/conversations";
 import useCreateSearchConversationMutation from "@api/mutations/useCreateSearchConversationMutation";
 import useCreateSearchQuestionMutation from "@api/mutations/useCreateSearchQuestionMutation";
@@ -83,6 +83,15 @@ const MAX_RESUME_ATTEMPTS = 3;
 /** 다시 연결한 스트림이 또 끊겼을 때 다음 연결 전에 쉬는 시간(ms). 처음 끊겼을 때는 바로 다시 연결해요 */
 const RESUME_RETRY_DELAY_MS = 1000;
 
+/** 접수된 질문은 다시 보내지 않고 조회 스트림만 제한 재연결해요. */
+const canReconnectAnswer = (error: unknown) =>
+  error instanceof SearchAnswerDisconnectedError ||
+  error instanceof TypeError ||
+  (error instanceof SseRequestError && error.status >= 500);
+
+const isUnavailableAnswer = (error: unknown) =>
+  error instanceof SseRequestError && [400, 401, 403, 404, 409].includes(error.status);
+
 const wait = (ms: number) =>
   new Promise((resolve) => {
     setTimeout(resolve, ms);
@@ -110,7 +119,7 @@ const wait = (ms: number) =>
  *   접수 전에 실패하면 저장된 실패 답변이 그대로 보여 다시 누를 수 있어요.
  * - 끊김: 접수된 답변이 끝 이벤트 없이 끊기면 실패로 그리지 않고 재연결 API로 이어 받아요(SEARCH-R8).
  *   서버는 연결이 끊겨도 답변을 계속 만들기 때문이에요. 다시 끊기면 잠시 쉬고 `MAX_RESUME_ATTEMPTS`번까지 다시 연결하고,
- *   그래도 끝을 받지 못하면 저장소를 비우고 메시지를 다시 조회해 저장된 상태로 그려요.
+ *   그래도 끝을 받지 못하면 안내 문단으로 대화를 이어가게 하고 메시지를 다시 조회해요.
  * - 이어 받기: 화면이 받고 있지 않은, 서버에서 만들고 있는 답변을 재연결 API로 끝까지 받아요(SEARCH-R8).
  *   다른 대화에 다녀오거나 새로고침한 뒤 대화 화면이 `useResumeSearchAnswer`로 불러요. 끊김과 같은 방식으로 다시 연결해요.
  * - 중단: 받기만 끊고 처음 상태로 돌아가요. 서버는 답변을 계속 만들어요(SEARCH-R8).
@@ -153,8 +162,7 @@ const useSearchAnswerControl = () => {
           settle(controller, result.status);
         } catch (error) {
           const canReconnect =
-            error instanceof SearchAnswerDisconnectedError &&
-            attempt < MAX_RESUME_ATTEMPTS;
+            canReconnectAnswer(error) && attempt < MAX_RESUME_ATTEMPTS;
 
           if (canReconnect) {
             await wait(RESUME_RETRY_DELAY_MS);
@@ -168,10 +176,10 @@ const useSearchAnswerControl = () => {
             error,
           });
 
-          if (error instanceof SearchAnswerFailedError) {
-            fail(controller, error);
-          } else {
+          if (isUnavailableAnswer(error)) {
             release(controller);
+          } else {
+            fail(controller, error);
           }
         }
 
@@ -251,7 +259,7 @@ const useSearchAnswerControl = () => {
         return { isAcceptFailed: false };
       } catch (error) {
         if (
-          error instanceof SearchAnswerDisconnectedError &&
+          canReconnectAnswer(error) &&
           acceptedConversationId !== undefined &&
           acceptedAnswerMessageId !== undefined
         ) {
