@@ -222,7 +222,18 @@ public class SearchAgentHttp implements AutoCloseable {
             );
             try (InputStream input = new java.io.BufferedInputStream(response.body())) {
                 if (response.statusCode() != expectedStatus) {
-                    throw new SearchToolException("SEARCH_TRANSPORT_FAILED");
+                    int status = response.statusCode();
+                    log.warn(
+                            "Search provider response status={} answerId={}",
+                            status,
+                            scope.answerId()
+                    );
+                    // Rate limits may include long Retry-After values. Do not immediately repeat
+                    // them.
+                    String code = status == 429
+                            ? "SEARCH_RATE_LIMITED"
+                            : status >= 500 ? "SEARCH_UPSTREAM_UNAVAILABLE" : "SEARCH_REQUEST_REJECTED";
+                    throw new SearchToolException(code);
                 }
                 ScheduledFuture<?> timeout = deadlines.schedule(
                         () -> closeInput(input),
