@@ -9,7 +9,7 @@ public class DocumentGenerationRetryPolicy {
 
     public boolean isAutomaticallyRetryable(DocumentGenerationFailureCause cause) {
         return switch (cause) {
-            case TIMEOUT, RATE_LIMITED, UNAVAILABLE, EXECUTION_EXPIRED, STORAGE -> true;
+            case TIMEOUT, RATE_LIMITED, UNAVAILABLE, INVALID_RESPONSE, EXECUTION_EXPIRED, STORAGE -> true;
             default -> false;
         };
     }

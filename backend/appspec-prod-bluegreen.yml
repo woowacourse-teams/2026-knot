@@ -1,0 +1,12 @@
+version: 0.0
+os: linux
+
+hooks:
+  BeforeInstall:
+    - location: scripts/prod_bluegreen_preserve_legacy.sh
+      timeout: 300
+      runas: root
+  ApplicationStart:
+    - location: scripts/prod_bluegreen_deploy.sh
+      timeout: 3600
+      runas: root

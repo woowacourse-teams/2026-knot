@@ -27,6 +27,21 @@ public class DocumentMarkdownValidator {
     );
     private static final Pattern PLACEHOLDER = Pattern.compile("^(?:없음|해당없음|내용없음)[.!。]?$");
 
+    public DocumentGenerationResult normalizeAndValidate(DocumentGenerationResult result) {
+        DocumentMarkdownSectionOrderNormalizer normalizer = new DocumentMarkdownSectionOrderNormalizer();
+        String content = normalizer.normalize(
+                result.content(),
+                FIXED_SECTIONS
+        );
+        DocumentGenerationResult normalized = new DocumentGenerationResult(
+                result.title(),
+                result.summary(),
+                content
+        );
+        validate(normalized);
+        return normalized;
+    }
+
     public void validate(DocumentGenerationResult result) {
         validateLinks(result.title());
         validateLinks(result.summary());

@@ -26,7 +26,7 @@ phases:
           *) printf 'Unknown CI_GROUP: %s\n' "$CI_GROUP" >&2; exit 2 ;;
         esac
         case "$DEPLOYMENT_MODE" in
-          legacy-in-place|dev-bluegreen) ;;
+          legacy-in-place|dev-bluegreen|prod-bluegreen) ;;
           *) printf 'Unknown DEPLOYMENT_MODE: %s\n' "$DEPLOYMENT_MODE" >&2; exit 2 ;;
         esac
 
