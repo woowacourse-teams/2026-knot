@@ -149,6 +149,12 @@ class SearchAnswerWorkerConversationTest {
                         any()
                 )
         ).thenThrow(new SearchToolException("INVALID_INTENT_RESPONSE"));
+        when(
+                executions.isCurrent(
+                        5,
+                        token
+                )
+        ).thenReturn(true);
         worker.execute(5);
         verify(retriever).retrieve(
                 any(),
@@ -167,7 +173,19 @@ class SearchAnswerWorkerConversationTest {
                 )
         ).thenThrow(new SearchToolException("SEARCH_TRANSPORT_FAILED"));
         worker.execute(5);
-        verifyGeneratedAnswer();
+        verify(generator).generate(
+                any(),
+                eq("질문"),
+                eq(List.of()),
+                any()
+        );
+        verify(executions).completeGenerated(
+                5,
+                token,
+                SearchAnswerGuidance.RETRIEVAL_UNAVAILABLE + "생성한 답변",
+                List.of(),
+                Set.of()
+        );
     }
 
     @Test
@@ -253,9 +271,10 @@ class SearchAnswerWorkerConversationTest {
                         any()
                 );
         worker.execute(5);
-        verify(executions).complete(
+        verify(executions).completeGenerated(
                 5,
                 token,
+                "",
                 List.of(7L),
                 Set.of(7L)
         );
@@ -268,14 +287,10 @@ class SearchAnswerWorkerConversationTest {
                 eq(List.of()),
                 any()
         );
-        verify(executions).append(
+        verify(executions).completeGenerated(
                 5,
                 token,
-                "생성한 답변"
-        );
-        verify(executions).complete(
-                5,
-                token,
+                "생성한 답변",
                 List.of(),
                 Set.of()
         );

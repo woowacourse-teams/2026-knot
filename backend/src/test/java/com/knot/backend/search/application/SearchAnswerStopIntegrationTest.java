@@ -631,11 +631,20 @@ class SearchAnswerStopIntegrationTest {
             return;
         }
         if (action.equals("FAILED")) {
-            executions.fail(
-                    work.answerId(),
-                    work.token(),
-                    "FAILURE"
-            );
+            // Legacy FAILED remains terminal even though new technical errors store
+            // guidance.
+            jdbc.sql("UPDATE search_messages SET status = 'FAILED', failure_code = 'FAILURE' WHERE id = :id")
+                    .param(
+                            "id",
+                            work.answerId()
+                    )
+                    .update();
+            jdbc.sql("UPDATE search_answer_executions SET state = 'FINISHED' WHERE answer_id = :id")
+                    .param(
+                            "id",
+                            work.answerId()
+                    )
+                    .update();
             return;
         }
         if (action.equals("APPEND")) {
