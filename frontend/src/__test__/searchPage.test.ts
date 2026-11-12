@@ -17,7 +17,7 @@ const send = async ({ page, question }: SendParams) => {
 };
 
 for (const scenario of ["legacy", "failed", "disconnected", "resume500"]) {
-  test(`[SEARCH-R5,R8] ${scenario} 상태는 안내 문단 뒤 후속 질문을 이어간다`, async ({ page }) => {
+  test(`[SEARCH-R5,SEARCH-R8] ${scenario} 상태는 안내 문단 뒤 후속 질문을 이어간다`, async ({ page }) => {
     await setScenario({ page, scenario });
     let posts = 0;
     let resumes = 0;
@@ -33,6 +33,12 @@ for (const scenario of ["legacy", "failed", "disconnected", "resume500"]) {
     await expect(page.getByRole("button", { name: "다시 시도", exact: true })).toHaveCount(0);
     expect(posts).toBe(scenario === "legacy" ? 0 : 1);
     if (scenario === "disconnected" || scenario === "resume500") expect(resumes).toBe(3);
+    if (scenario === "legacy" || scenario === "failed") {
+      await page.reload();
+      await expect(page.getByText(GUIDANCE)).toBeVisible();
+      await expect(page.getByText(PARTIAL)).toHaveCount(0);
+      expect(posts).toBe(scenario === "legacy" ? 0 : 1);
+    }
     await send({ page, question: "관련 기록을 알려줘" });
     await expect(page.getByText(searchQuestionAnswerStreamResponse.deltas.map((text) => new SearchStreamDeltaDto({ answerMessageId: searchQuestionAnswerStreamResponse.answerMessageId, text }).text).join(""))).toBeVisible();
     await expect(page.getByRole("button", { name: `기록 ${new SearchStreamEvidenceDto({ answerMessageId: searchQuestionAnswerStreamResponse.answerMessageId, items: searchQuestionAnswerStreamResponse.evidences }).items.length}개에서 찾았어요` })).toBeVisible();
@@ -54,7 +60,7 @@ test("[SEARCH-R4] 접수 전 오류는 입력을 복원하고 자동으로 재�
   expect(posts).toBe(1);
 });
 
-test("일반 대화는 출처 버튼 없이 정상 답변을 보여준다", async ({ page }) => {
+test("[SEARCH-R1,SEARCH-R2,SEARCH-R3] 일반 대화는 출처 버튼 없이 정상 답변을 보여준다", async ({ page }) => {
   await setScenario({ page, scenario: "general" });
   await page.goto("/workspace/1/chat");
   await send({ page, question: "안녕하세요" });
