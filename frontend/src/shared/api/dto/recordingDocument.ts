@@ -45,7 +45,7 @@ export interface RecordingMeetingSummaryRaw {
 export class RecordingMeetingSummaryDto {
   /** 요약 상태 */
   status: MeetingSummaryStatus;
-  /** 읽기 전용 요약 본문(마크다운). 첫 줄은 `## 한눈에 보기`, 마지막 줄은 `회의 핵심 결론:`으로 시작해요. `SUCCEEDED`일 때만 값이 있고 나머지는 null */
+  /** 읽기 전용 요약 본문(마크다운). 새 요약은 전체 정리·핵심 결론·결정/미결정 순서이며 저장된 이전 양식도 지원해요. `SUCCEEDED`일 때만 값이 있고 나머지는 null */
   content: string | null;
   /** 실패한 요약을 지금 다시 접수할 수 있으면 true. `FAILED`일 때만 뜻이 있어요. 서버 필드 `retryable`을 이름만 바꿨어요 */
   isRetryable: boolean;
