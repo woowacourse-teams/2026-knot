@@ -455,23 +455,42 @@ public class SearchAnswerExecutionService {
             SearchAnswerExecution execution,
             String code
     ) {
-        boolean denied = "SEARCH_ACCESS_DENIED".equals(code) || !hasAccess(conversation(execution));
-        if (denied) {
+        if ("SEARCH_ACCESS_DENIED".equals(code) || !hasAccess(conversation(execution))) {
             answer(execution).fail("SEARCH_ACCESS_DENIED");
-        } else {
-            answer(execution).completeGuidance(SearchAnswerGuidance.UNAVAILABLE);
+            finishTerminal(
+                    execution,
+                    code,
+                    "access_denied",
+                    SearchMessageStatus.FAILED
+            );
+            return;
         }
+        answer(execution).completeGuidance(SearchAnswerGuidance.UNAVAILABLE);
+        finishTerminal(
+                execution,
+                code,
+                "guidance",
+                SearchMessageStatus.COMPLETED
+        );
+    }
+
+    private void finishTerminal(
+            SearchAnswerExecution execution,
+            String code,
+            String outcome,
+            SearchMessageStatus status
+    ) {
         log.info(
                 "Search answer terminal answerId={} outcome={} failureCode={}",
                 execution.getAnswerId(),
-                denied ? "access_denied" : "guidance",
+                outcome,
                 code
         );
         execution.finish();
         recordTerminalActivity(
                 conversation(execution),
                 execution,
-                denied ? SearchMessageStatus.FAILED : SearchMessageStatus.COMPLETED
+                status
         );
     }
 
