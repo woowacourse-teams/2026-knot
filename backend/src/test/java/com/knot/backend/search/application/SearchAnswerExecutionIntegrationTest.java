@@ -134,7 +134,7 @@ class SearchAnswerExecutionIntegrationTest {
     }
 
     @Test
-    @DisplayName("부분 본문 저장은 현재 token만 허용하고 실패는 본문을 보존하며 최초 대화를 숨긴다")
+    @DisplayName("기술 오류는 미검증 본문 대신 안내 응답을 저장하고 최초 대화를 보존한다")
     void fail_success_partialAndHidden() {
         SearchAnswerWorkResult work = service.claim(accepted.answerMessageId())
                 .orElseThrow();
@@ -167,9 +167,9 @@ class SearchAnswerExecutionIntegrationTest {
                         "늦은 본문"
                 )
         ).isFalse();
-        assertThat(content()).isEqualTo("한글 😀");
-        assertThat(status()).isEqualTo("FAILED");
-        assertThat(visible()).isFalse();
+        assertThat(content()).isEqualTo(SearchAnswerGuidance.UNAVAILABLE);
+        assertThat(status()).isEqualTo("COMPLETED");
+        assertThat(visible()).isTrue();
     }
 
     @Test
@@ -315,7 +315,7 @@ class SearchAnswerExecutionIntegrationTest {
     }
 
     @Test
-    @DisplayName("기한에 도달하면 부분 답변은 FAILED로 복구하고 자동 재생성하지 않는다")
+    @DisplayName("기한에 도달하면 안내로 완료하고 자동 재생성이나 늦은 결과를 허용하지 않는다")
     void expire_success_preservesPartialAndFencesLateResults() {
         SearchAnswerWorkResult work = service.claim(accepted.answerMessageId())
                 .orElseThrow();
@@ -343,8 +343,8 @@ class SearchAnswerExecutionIntegrationTest {
                 )
         ).isFalse();
         assertThat(service.claim(work.answerId())).isEmpty();
-        assertThat(status()).isEqualTo("FAILED");
-        assertThat(content()).isEqualTo("부분");
+        assertThat(status()).isEqualTo("COMPLETED");
+        assertThat(content()).isEqualTo(SearchAnswerGuidance.UNAVAILABLE);
         assertThat(
                 jdbc.sql("SELECT failure_code FROM search_messages WHERE id = :id")
                         .param(
@@ -354,7 +354,7 @@ class SearchAnswerExecutionIntegrationTest {
                         .query(String.class)
                         .single()
         ).isEqualTo("ANSWER_GENERATION_TIMEOUT");
-        assertThat(visible()).isFalse();
+        assertThat(visible()).isTrue();
     }
 
     @Test
