@@ -27,6 +27,7 @@ public record SearchAnswerResponse(
             "clarificationQuestion"
     );
     private static final Set<String> STATUSES = Set.of(
+            "GENERAL",
             "ANSWERED",
             "PARTIAL",
             "CONFLICT",
@@ -183,6 +184,15 @@ public record SearchAnswerResponse(
             String status,
             List<Long> ids
     ) {
+        if ("GENERAL".equals(status)) {
+            if (!ids.isEmpty() || !"NOT_APPLICABLE".equals(
+                    response.path("decisionState")
+                            .asString()
+            )) {
+                throw invalid();
+            }
+            return;
+        }
         if ("NOT_FOUND".equals(status)) {
             validateNotFound(
                     response,

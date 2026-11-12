@@ -39,6 +39,7 @@ public final class SearchAnswerSchema {
                         "string",
                         "enum",
                         List.of(
+                                "GENERAL",
                                 "ANSWERED",
                                 "PARTIAL",
                                 "CONFLICT",
