@@ -1,6 +1,8 @@
 import { GetMeResponseDto } from "@api/dto/auth";
+import { GetRecordingDocumentResponseDto } from "@api/dto/recordingDocument";
 import { GetWorkspacesResponseDto } from "@api/dto/workspace";
 import { meResponse } from "@api/mock/responses/auth";
+import { recordingDocumentResponse } from "@api/mock/responses/recordingDocument";
 import { workspacesResponse } from "@api/mock/responses/workspace";
 import {
   SEARCH_TUTORIAL_MOCK_CONVERSATION,
@@ -20,6 +22,8 @@ const RECORD_KEY = `knot.searchTutorial.${memberId}`;
 const WORKSPACE_ID = new GetWorkspacesResponseDto(workspacesResponse).workspaces[0].id;
 const HOME_PATH = `/workspace/${WORKSPACE_ID}`;
 const CHAT_PATH = `/workspace/${WORKSPACE_ID}/chat`;
+const { recordingId } = new GetRecordingDocumentResponseDto(recordingDocumentResponse);
+const RECORDING_DOCUMENT_PATH = `/workspace/${WORKSPACE_ID}/recordings/${recordingId}/document`;
 
 const getCoach = (page: Page) => page.getByRole("dialog");
 
@@ -32,7 +36,7 @@ const startAsNewMember = (page: Page) =>
   }, RECORD_KEY);
 
 test.describe("탐색 튜토리얼", () => {
-  test("[SEARCH-R18, R24~R28] 처음 들어온 멤버는 홈에서 탐색을 밝힌 안내를 보고, 예시 질문과 답변을 거쳐 직접 질문을 보낸다", async ({ page }) => {
+  test("[SEARCH-R18, SEARCH-R24, SEARCH-R25, SEARCH-R26, SEARCH-R27, SEARCH-R28] 처음 들어온 멤버는 홈에서 탐색을 밝힌 안내를 보고, 예시 질문과 답변을 거쳐 직접 질문을 보낸다", async ({ page }) => {
     await startAsNewMember(page);
     await page.goto(HOME_PATH);
 
@@ -57,6 +61,15 @@ test.describe("탐색 튜토리얼", () => {
 
     await expect(page.getByTestId("search-tutorial")).toHaveCount(0);
     await expect(page.getByText(kind.question).first()).toBeVisible();
+  });
+
+  test("[SEARCH-R20] 녹음 문서 화면에서는 바로 띄우지 않고 문서를 살짝 확인한 뒤 문서 화면용 제목으로 띄운다", async ({ page }) => {
+    await startAsNewMember(page);
+    await page.goto(RECORDING_DOCUMENT_PATH);
+
+    await page.waitForTimeout(1500);
+    await expect(page.getByTestId("search-tutorial")).toHaveCount(0);
+    await expect(getCoach(page)).toContainText("궁금한 게 생기면 탐색에 물어보세요", { timeout: 10_000 });
   });
 
   test("[SEARCH-R21] 다음에 볼게요를 누르면 같은 날 다시 들어와도 띄우지 않는다", async ({ page }) => {
