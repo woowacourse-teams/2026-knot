@@ -92,20 +92,35 @@ class SecurityConfigTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {
-            "/api/v1/workspaces/1/recordings/1/speaker-count",
-            "/api/v1/workspaces/1/recordings/1/speakers/1"
-    })
+    @ValueSource(strings = {"/api/v1/workspaces/1/recordings/1/speaker-count",
+            "/api/v1/workspaces/1/recordings/1/speakers/1"})
     @DisplayName("개발 화면의 화자 설정 PATCH 사전 요청은 인증 쿠키와 CSRF 헤더를 허용한다")
     void corsConfigurationSource_success_allowsSpeakerSettingsPreflight(String path) throws Exception {
-        MockHttpServletRequest request = new MockHttpServletRequest(HttpMethod.OPTIONS.name(), path);
-        request.addHeader(HttpHeaders.ORIGIN, "https://dev.knoted.kr");
-        request.addHeader(HttpHeaders.ACCESS_CONTROL_REQUEST_METHOD, HttpMethod.PATCH.name());
-        request.addHeader(HttpHeaders.ACCESS_CONTROL_REQUEST_HEADERS, "content-type,x-xsrf-token");
+        MockHttpServletRequest request = new MockHttpServletRequest(
+                HttpMethod.OPTIONS.name(),
+                path
+        );
+        request.addHeader(
+                HttpHeaders.ORIGIN,
+                "https://dev.knoted.kr"
+        );
+        request.addHeader(
+                HttpHeaders.ACCESS_CONTROL_REQUEST_METHOD,
+                HttpMethod.PATCH.name()
+        );
+        request.addHeader(
+                HttpHeaders.ACCESS_CONTROL_REQUEST_HEADERS,
+                "content-type,x-xsrf-token"
+        );
         MockHttpServletResponse response = new MockHttpServletResponse();
-        CorsConfiguration configuration = securityConfig().corsConfigurationSource().getCorsConfiguration(request);
+        CorsConfiguration configuration = securityConfig().corsConfigurationSource()
+                .getCorsConfiguration(request);
 
-        boolean accepted = new DefaultCorsProcessor().processRequest(configuration, request, response);
+        boolean accepted = new DefaultCorsProcessor().processRequest(
+                configuration,
+                request,
+                response
+        );
 
         assertThat(accepted).isTrue();
         assertThat(response.getStatus()).isEqualTo(200);
