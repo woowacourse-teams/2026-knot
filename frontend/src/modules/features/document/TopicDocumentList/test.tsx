@@ -648,6 +648,30 @@ describe("TopicDocumentList", () => {
     expect(secondDrawnRow).toHaveStyle({ borderTopWidth: "1px" });
   });
 
+  it("포커스가 있는 행은 화면에서 멀어져도 지우지 않고, 포커스가 떠나면 지운다", async () => {
+    const layout = mockLayout();
+    respondWith(manyDocumentsResponse);
+    const [firstDocument] = manyDocuments;
+
+    renderDocumentList({ isInMain: true });
+    const firstRow = await findRow(firstDocument.title);
+
+    act(() => firstRow.focus());
+    layout.cardTop = -3000;
+    fireEvent.scroll(screen.getByRole("main"));
+    await findRow(manyDocuments[41].title);
+
+    expect(firstRow).toBeInTheDocument();
+    expect(firstRow).toHaveFocus();
+
+    act(() => firstRow.blur());
+    fireEvent.scroll(screen.getByRole("main"));
+
+    await waitFor(() =>
+      expect(queryRow(firstDocument.title)).not.toBeInTheDocument(),
+    );
+  });
+
   it("화면 근처의 행만 그려도 행마다 폴더 안 순서와 폴더의 행 수를 알린다", async () => {
     const layout = mockLayout();
     respondWith(manyDocumentsResponse);

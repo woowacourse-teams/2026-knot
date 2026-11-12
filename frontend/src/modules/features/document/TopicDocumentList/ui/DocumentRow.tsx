@@ -23,6 +23,8 @@ interface DocumentRowProps {
   index: number;
   /** 폴더의 행 수. 화면 근처의 행만 그려도 스크린 리더가 전체 행 수를 읽게 알려요 */
   rowCount: number;
+  /** 행에 포커스가 들어오면 불러요. 포커스가 있는 행은 화면에서 멀어져도 지우지 않으려고 받아요 */
+  onFocus: () => void;
 }
 
 /**
@@ -38,6 +40,7 @@ export default function DocumentRow({
   recordingDurationSeconds,
   index,
   rowCount,
+  onFocus,
 }: DocumentRowProps) {
   return (
     <Item
@@ -45,7 +48,7 @@ export default function DocumentRow({
       aria-posinset={index + 1}
       aria-setsize={rowCount}
     >
-      <RowLink href={href}>
+      <RowLink href={href} onFocus={onFocus}>
         <TextBlock>
           <Title>{title}</Title>
           {summary !== null && <Summary>{summary}</Summary>}

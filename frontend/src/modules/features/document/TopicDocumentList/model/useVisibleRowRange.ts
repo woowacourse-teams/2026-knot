@@ -1,6 +1,7 @@
 import { type RefObject, useLayoutEffect, useMemo, useState } from "react";
 
 import { OVERSCAN_PX } from "../constants/overscan";
+import { getDrawnRows } from "../utils/getDrawnRows";
 import { getRowOffsets } from "../utils/getRowOffsets";
 import { getVisibleRange } from "../utils/getVisibleRange";
 
@@ -14,6 +15,8 @@ interface UseVisibleRowRangeParams {
   cardRef: RefObject<HTMLUListElement | null>;
   /** 폴더의 문서. 화면에 그리는 순서 그대로예요 */
   documents: RowDocument[];
+  /** 화면 근처가 아니어도 지우지 않을 행. 포커스가 있는 행이에요. 없으면 null이에요 */
+  keptIndex: number | null;
 }
 
 interface RowRange {
@@ -30,11 +33,13 @@ const getRemPx = () =>
  *
  * 스크롤 영역은 카드를 감싼 `main`이에요. 카드가 그려진 뒤와 `main`을 스크롤하거나 `main`의 크기가 바뀔 때마다 카드 위치를 재서 범위를 다시 구해요.
  * `main`을 찾지 못하면 위치를 잴 기준이 없어 행을 모두 그려요.
+ * 지우지 않을 행이 범위 밖에 있으면 그 행도 그리고, 범위와의 사이는 빈 칸으로 채워요.
  * 카드 높이와 그린 첫 행의 위쪽 끝도 함께 돌려줘서, 행을 일부만 그려도 카드 높이와 행 위치가 행을 모두 그린 것과 같게 해요.
  */
 export const useVisibleRowRange = ({
   cardRef,
   documents,
+  keptIndex,
 }: UseVisibleRowRangeParams) => {
   const offsets = useMemo(
     () => getRowOffsets({ documents, remPx: getRemPx() }),
@@ -91,12 +96,19 @@ export const useVisibleRowRange = ({
     };
   }, [cardRef, offsets]);
 
-  return {
+  const { firstRowTop, items } = getDrawnRows({
+    offsets,
     start: range.start,
     end: range.end,
+    keptIndex,
+  });
+
+  return {
     /** 행을 모두 그린 카드의 높이(px) */
     cardHeight: offsets[offsets.length - 1],
     /** 그린 첫 행의 위쪽 끝이 카드 맨 위에서 몇 px 아래에 있는지 */
-    firstRowTop: offsets[range.start],
+    firstRowTop,
+    /** 카드에 차례대로 그릴 행(row)과 행 사이의 빈 칸(gap) */
+    drawnRows: items,
   };
 };

@@ -1,6 +1,6 @@
 import styled from "@emotion/styled";
 import { getRouterPath } from "@routes/PATH_ROUTE";
-import { useId, useRef } from "react";
+import { type FocusEvent, useId, useRef, useState } from "react";
 
 import { useVisibleRowRange } from "../model/useVisibleRowRange";
 import DocumentRow from "./DocumentRow";
@@ -31,6 +31,7 @@ interface DocumentFolderProps {
  * 문서 목록의 폴더 하나. 폴더 이름과 문서 수 아래에, 그 폴더의 문서 행을 카드 하나로 묶어 보여줘요.
  *
  * 문서가 많아도 카드 안에는 화면 근처의 행만 그려요. 카드는 행을 모두 그린 높이를 갖고, 그린 행은 위쪽 여백으로 제자리에 놓아요.
+ * 포커스가 있는 행은 화면에서 멀어져도 지우지 않아서, 키보드로 고른 행이 사라져 포커스를 잃지 않아요.
  */
 export default function DocumentFolder({
   workspaceId,
@@ -40,11 +41,19 @@ export default function DocumentFolder({
 }: DocumentFolderProps) {
   const topicId = useId();
   const cardRef = useRef<HTMLUListElement>(null);
-  const { start, end, cardHeight, firstRowTop } = useVisibleRowRange({
+  const [focusedIndex, setFocusedIndex] = useState<number | null>(null);
+  const { cardHeight, firstRowTop, drawnRows } = useVisibleRowRange({
     cardRef,
     documents,
+    keptIndex: focusedIndex,
   });
-  const visibleDocuments = documents.slice(start, end);
+
+  // 포커스가 카드 밖으로 나가면 포커스가 있던 행을 더 남기지 않아요. 카드 안의 다른 행으로 옮기면 그 행의 onFocus가 바꿔요
+  const handleCardBlur = (event: FocusEvent<HTMLUListElement>) => {
+    if (!event.currentTarget.contains(event.relatedTarget)) {
+      setFocusedIndex(null);
+    }
+  };
 
   return (
     <Container aria-labelledby={topicId}>
@@ -56,12 +65,19 @@ export default function DocumentFolder({
       <Card
         ref={cardRef}
         style={{ height: cardHeight, paddingTop: firstRowTop }}
+        onBlur={handleCardBlur}
       >
-        {visibleDocuments.map(
-          (
-            { id, title, summary, createdAt, recordingDurationSeconds },
-            index,
-          ) => (
+        {drawnRows.map((row) => {
+          if (row.type === "gap") {
+            return (
+              <RowGap key="gap" aria-hidden style={{ height: row.height }} />
+            );
+          }
+
+          const { id, title, summary, createdAt, recordingDurationSeconds } =
+            documents[row.index];
+
+          return (
             <DocumentRow
               key={id}
               href={getRouterPath({
@@ -75,15 +91,19 @@ export default function DocumentFolder({
               summary={summary}
               createdAt={createdAt}
               recordingDurationSeconds={recordingDurationSeconds}
-              index={start + index}
+              index={row.index}
               rowCount={documents.length}
+              onFocus={() => setFocusedIndex(row.index)}
             />
-          ),
-        )}
+          );
+        })}
       </Card>
     </Container>
   );
 }
+
+/** 화면 근처 밖에 남긴 행과 화면 근처의 행 사이를 그 사이 행들의 높이만큼 비우는 칸. 스크린 리더는 읽지 않아요 */
+const RowGap = styled.li``;
 
 /** 피그마 Folder: 폴더 이름 줄과 카드 사이 12px */
 const Container = styled.section`
