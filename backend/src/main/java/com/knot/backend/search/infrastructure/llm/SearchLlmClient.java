@@ -462,10 +462,12 @@ public class SearchLlmClient {
                 "stream",
                 stream
         );
-        result.put(
-                "temperature",
-                0
-        );
+        if (!"claude".equals(properties.getProvider())) {
+            result.put(
+                    "temperature",
+                    0
+            );
+        }
         result.put(
                 "chat_template_kwargs",
                 Map.of(

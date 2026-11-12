@@ -37,27 +37,53 @@ class SearchLlmClientTest {
     void request_success_omitsTemperatureForClaude(String operation) throws Exception {
         try (LlmHttpServer server = new LlmHttpServer(); SearchAgentHttp http = transport()) {
             String completion = "{\"choices\":[{\"finish_reason\":\"stop\",\"message\":{\"role\":\"assistant\",\"content\":\"{}\"}}]}";
-            server.respond(200, "stream".equals(operation)
-                    ? "data: {\"choices\":[{\"delta\":{\"content\":\"ok\"}}]}\n\ndata: [DONE]\n\n"
-                    : completion);
+            server.respond(
+                    200,
+                    "stream".equals(operation)
+                            ? "data: {\"choices\":[{\"delta\":{\"content\":\"ok\"}}]}\n\ndata: [DONE]\n\n"
+                            : completion
+            );
             LlmProperties properties = new LlmProperties();
             properties.setProvider("claude");
             properties.setBaseUrl(server.baseUrl());
             properties.setApiToken("test-token");
             properties.setModel("claude-sonnet-5-5");
-            SearchLlmClient client = new SearchLlmClient(http, properties);
+            SearchLlmClient client = new SearchLlmClient(
+                    http,
+                    properties
+            );
 
             switch (operation) {
-                case "intent" -> client.intent(scope(), List.of());
-                case "complete" -> client.complete(scope(), List.of(), List.of());
-                case "evidence" -> client.evidence(scope(), List.of());
-                case "stream" -> client.stream(scope(), List.of(), delta -> {});
+                case "intent" -> client.intent(
+                        scope(),
+                        List.of()
+                );
+                case "complete" -> client.complete(
+                        scope(),
+                        List.of(),
+                        List.of()
+                );
+                case "evidence" -> client.evidence(
+                        scope(),
+                        List.of()
+                );
+                case "stream" -> client.stream(
+                        scope(),
+                        List.of(),
+                        delta -> {
+                        }
+                );
                 default -> throw new IllegalArgumentException(operation);
             }
 
-            JsonNode body = JsonMapper.builder().build().readTree(server.requestBody());
+            JsonNode body = JsonMapper.builder()
+                    .build()
+                    .readTree(server.requestBody());
             assertThat(body.has("temperature")).isFalse();
-            assertThat(body.path("model").asString()).isEqualTo("claude-sonnet-5-5");
+            assertThat(
+                    body.path("model")
+                            .asString()
+            ).isEqualTo("claude-sonnet-5-5");
             assertThat(server.requestCount()).isEqualTo(1);
         }
     }
