@@ -39,7 +39,11 @@ class SearchStreamingAnswerGeneratorTest {
         doAnswer(call -> {
             assertThat(deltas).isEmpty();
             Consumer<String> consumer = call.getArgument(2);
-            consumer.accept(attempts.incrementAndGet() == 1 ? "{\"answer\":\"검증되지 않은 내용\"}" : response(List.of("E1")));
+            if (attempts.incrementAndGet() == 1) {
+                consumer.accept("{\"answer\":\"검증되지 않은 내용\"}");
+                return null;
+            }
+            consumer.accept(response(List.of("E1")));
             return null;
         }).when(llm)
                 .stream(
@@ -507,15 +511,25 @@ class SearchStreamingAnswerGeneratorTest {
                         any()
                 );
         // when & then
+        List<String> deltas = new ArrayList<>();
         assertThat(
                 generator.generate(
                         scope,
                         "어제 회의",
                         large,
-                        text -> {
-                        }
+                        deltas::add
                 )
         ).containsExactly(1L);
+        assertThat(
+                String.join(
+                        "",
+                        deltas
+                )
+        ).contains("첫 문서")
+                .doesNotContain(
+                        "둘째 문서",
+                        "세 회의의 변화"
+                );
     }
 
     private String response(List<String> ids) {
