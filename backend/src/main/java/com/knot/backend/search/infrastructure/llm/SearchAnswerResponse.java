@@ -185,12 +185,10 @@ public record SearchAnswerResponse(
             List<Long> ids
     ) {
         if ("GENERAL".equals(status)) {
-            if (!ids.isEmpty() || !"NOT_APPLICABLE".equals(
-                    response.path("decisionState")
-                            .asString()
-            )) {
-                throw invalid();
-            }
+            validateGeneral(
+                    response,
+                    ids
+            );
             return;
         }
         if ("NOT_FOUND".equals(status)) {
@@ -201,6 +199,18 @@ public record SearchAnswerResponse(
             return;
         }
         if (!"NEEDS_CLARIFICATION".equals(status) && ids.isEmpty()) {
+            throw invalid();
+        }
+    }
+
+    private static void validateGeneral(
+            JsonNode response,
+            List<Long> ids
+    ) {
+        if (!ids.isEmpty() || !"NOT_APPLICABLE".equals(
+                response.path("decisionState")
+                        .asString()
+        )) {
             throw invalid();
         }
     }
