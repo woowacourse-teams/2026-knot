@@ -162,7 +162,7 @@ class SearchLlmClientTest {
             assertThat(
                     body.path("max_tokens")
                             .asInt()
-            ).isEqualTo(128);
+            ).isEqualTo(512);
             assertThat(
                     body.path("temperature")
                             .asInt(-1)

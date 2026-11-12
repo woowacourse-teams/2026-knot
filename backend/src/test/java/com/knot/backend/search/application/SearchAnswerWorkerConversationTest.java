@@ -245,14 +245,13 @@ class SearchAnswerWorkerConversationTest {
                         0
                 )
         );
-        when(
-                generator.generate(
+        doReturn(List.of(7L)).when(generator)
+                .generate(
                         any(),
                         any(),
                         eq(documents),
                         any()
-                )
-        ).thenReturn(List.of(7L));
+                );
         worker.execute(5);
         verify(executions).complete(
                 5,

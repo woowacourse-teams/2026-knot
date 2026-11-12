@@ -26,8 +26,6 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 @Slf4j
 public class SearchAnswerWorker {
-    private static final String NO_DOCUMENT_GUIDANCE = "현재 검색 가능한 회의 문서에서는 해당 내용을 확인하지 못했습니다. 내용을 녹음하고 문서 준비가 끝난 뒤 다시 질문해 주세요.";
-
     private final SearchAnswerExecutionService executions;
     private final ObjectProvider<SearchDocumentRetriever> retrievers;
     private final ObjectProvider<SearchAnswerGenerator> generators;
@@ -131,25 +129,24 @@ public class SearchAnswerWorker {
                             .length(),
                     ServerErrorLogger.safeFailureCode(exception)
             );
-            throw exception;
+            if (ServerErrorLogger.isControlFlow(exception)) {
+                throw exception;
+            }
+            intent = SearchIntent.MEETING_SEARCH;
         }
-        if (!intent.requiresSearch()) {
-            completeGuidance(
-                    work,
-                    intent,
-                    persistenceCount,
-                    persistenceNanos
-            );
-            return;
-        }
-        SearchDocumentRetriever retriever = retrievers.getObject();
         long retrievalStarted = System.nanoTime();
         SearchRetrievalResult retrieval;
         try {
-            retrieval = retriever.retrieve(
-                    scope,
-                    work.question()
-            );
+            retrieval = intent.requiresSearch()
+                    ? retrievers.getObject()
+                            .retrieve(
+                                    scope,
+                                    work.question()
+                            )
+                    : new SearchRetrievalResult(
+                            List.of(),
+                            0
+                    );
             log.info(
                     "Search latency phase=document_retrieval workspaceId={} questionId={} answerId={} elapsedMs={} inputChars={} candidates={} excludedDocuments={} outcome=success",
                     work.workspaceId(),
@@ -173,7 +170,13 @@ public class SearchAnswerWorker {
                             .length(),
                     ServerErrorLogger.safeFailureCode(exception)
             );
-            throw exception;
+            if (ServerErrorLogger.isControlFlow(exception)) {
+                throw exception;
+            }
+            retrieval = new SearchRetrievalResult(
+                    List.of(),
+                    0
+            );
         }
         if (!executions.recordRetrieval(
                 work.answerId(),
@@ -184,21 +187,6 @@ public class SearchAnswerWorker {
             return;
         }
         List<SearchDocumentResult> documents = retrieval.documents();
-        if (documents.isEmpty()) {
-            append(
-                    work,
-                    NO_DOCUMENT_GUIDANCE,
-                    persistenceCount,
-                    persistenceNanos
-            );
-            executions.complete(
-                    work.answerId(),
-                    work.token(),
-                    List.of(),
-                    Set.of()
-            );
-            return;
-        }
         SearchAnswerGenerator generator = generators.getObject();
         List<Long> usedIds;
         try (SearchAnswerContentBuffer content = new SearchAnswerContentBuffer(
@@ -250,34 +238,6 @@ public class SearchAnswerWorker {
                 work.token(),
                 usedIds,
                 candidates
-        );
-    }
-
-    private void completeGuidance(
-            SearchAnswerWorkResult work,
-            SearchIntent intent,
-            AtomicLong persistenceCount,
-            AtomicLong persistenceNanos
-    ) {
-        if (!executions.recordRetrieval(
-                work.answerId(),
-                work.token(),
-                0,
-                List.of()
-        )) {
-            return;
-        }
-        append(
-                work,
-                SearchIntentGuidance.forIntent(intent),
-                persistenceCount,
-                persistenceNanos
-        );
-        executions.complete(
-                work.answerId(),
-                work.token(),
-                List.of(),
-                Set.of()
         );
     }
 

@@ -163,7 +163,7 @@ class SearchStreamingAnswerGeneratorTest {
             String system = (String) messages.getFirst()
                     .get("content");
             assertThat(system).contains(
-                    "핵심 원칙: 근거에 없는 내용은 답변하지 않습니다.",
+                    "핵심 원칙: 회의 기록에 관한 사실은 제공된 근거에서만 답변합니다.",
                     "제안을 결정으로 바꾸지 않습니다.",
                     "서로 다른 출처 문서는 최대 3개로 제한합니다."
             );

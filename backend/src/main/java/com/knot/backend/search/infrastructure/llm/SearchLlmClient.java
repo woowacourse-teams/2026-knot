@@ -32,7 +32,7 @@ public class SearchLlmClient {
         );
         request.put(
                 "max_tokens",
-                128
+                512
         );
         request.put(
                 "reasoning_effort",
