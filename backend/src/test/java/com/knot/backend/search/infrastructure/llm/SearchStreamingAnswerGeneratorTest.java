@@ -64,10 +64,12 @@ class SearchStreamingAnswerGeneratorTest {
         assertThat(attempts.get()).isEqualTo(2);
     }
 
-    @Test
-    @DisplayName("요청 거절은 반복하지 않고 관련 기록을 안내하는 응답으로 마친다")
-    void generate_success_rejectedRequestGuidance() {
-        org.mockito.Mockito.doThrow(new SearchToolException("SEARCH_REQUEST_REJECTED"))
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"SEARCH_REQUEST_REJECTED", "SEARCH_RATE_LIMITED",
+            "SEARCH_TRANSPORT_TIMEOUT"})
+    @DisplayName("요청 거절과 제한·기한 오류는 반복하지 않고 관련 기록을 안내한다")
+    void generate_success_rejectedRequestGuidance(String code) {
+        org.mockito.Mockito.doThrow(new SearchToolException(code))
                 .when(llm)
                 .stream(
                         eq(scope),
@@ -250,15 +252,33 @@ class SearchStreamingAnswerGeneratorTest {
                         any(),
                         any()
                 );
-        assertThatThrownBy(
-                () -> generator.generate(
+        List<String> deltas = new ArrayList<>();
+        assertThat(
+                generator.generate(
                         scope,
                         "변화",
                         documents(),
-                        text -> {
-                        }
+                        deltas::add
                 )
-        ).hasMessage("INVALID_MODEL_ANSWER");
+        ).containsExactly(
+                1L,
+                2L,
+                3L
+        );
+        assertThat(
+                String.join(
+                        "",
+                        deltas
+                )
+        ).isEqualTo(com.knot.backend.search.application.SearchAnswerGuidance.RELATED_DOCUMENTS);
+        verify(
+                llm,
+                org.mockito.Mockito.times(2)
+        ).stream(
+                eq(scope),
+                any(),
+                any()
+        );
     }
 
     @Test
@@ -345,7 +365,7 @@ class SearchStreamingAnswerGeneratorTest {
     }
 
     @Test
-    @DisplayName("모델 스트림이 끊기면 JSON 외피 없이 이미 받은 답변만 보존한다")
+    @DisplayName("모델 스트림이 끊기면 미검증 부분 답변 없이 실제 기록만 안내한다")
     void generate_failure_interruptedStreamPreservesPartialAnswer() {
         List<String> deltas = new ArrayList<>();
         doAnswer(call -> {
@@ -358,24 +378,37 @@ class SearchStreamingAnswerGeneratorTest {
                         any(),
                         any()
                 );
-        assertThatThrownBy(
-                () -> generator.generate(
+        assertThat(
+                generator.generate(
                         scope,
                         "변화",
                         documents(),
                         deltas::add
                 )
-        ).hasMessage("MODEL_GENERATION_FAILED");
+        ).containsExactly(
+                1L,
+                2L,
+                3L
+        );
         assertThat(
                 String.join(
                         "",
                         deltas
                 )
-        ).isEqualTo("부분 답변");
+        ).isEqualTo(com.knot.backend.search.application.SearchAnswerGuidance.RELATED_DOCUMENTS)
+                .doesNotContain("부분 답변");
+        verify(
+                llm,
+                org.mockito.Mockito.times(2)
+        ).stream(
+                eq(scope),
+                any(),
+                any()
+        );
     }
 
     @Test
-    @DisplayName("입력 한도로 제외된 문서를 모델이 인용하면 실패한다")
+    @DisplayName("입력 한도로 제외된 문서는 복구 안내에서도 인용하지 않는다")
     void generate_failure_rejectsEvidenceExcludedByBudget() {
         // given
         SearchAgentProperties properties = new SearchAgentProperties();
@@ -423,15 +456,15 @@ class SearchStreamingAnswerGeneratorTest {
                         any()
                 );
         // when & then
-        assertThatThrownBy(
-                () -> generator.generate(
+        assertThat(
+                generator.generate(
                         scope,
                         "어제 회의",
                         large,
                         text -> {
                         }
                 )
-        ).hasMessage("INVALID_MODEL_ANSWER");
+        ).containsExactly(1L);
     }
 
     private String response(List<String> ids) {

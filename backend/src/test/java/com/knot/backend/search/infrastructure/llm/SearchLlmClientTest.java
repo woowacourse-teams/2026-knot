@@ -613,6 +613,34 @@ class SearchLlmClientTest {
         }
     }
 
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.CsvSource({"400,SEARCH_REQUEST_REJECTED", "401,SEARCH_REQUEST_REJECTED",
+            "403,SEARCH_REQUEST_REJECTED", "429,SEARCH_RATE_LIMITED", "500,SEARCH_UPSTREAM_UNAVAILABLE",
+            "503,SEARCH_UPSTREAM_UNAVAILABLE"})
+    void stream_failure_statusClassification(
+            int status,
+            String code
+    ) throws Exception {
+        try (LlmHttpServer server = new LlmHttpServer(); SearchAgentHttp http = transport()) {
+            server.respond(
+                    status,
+                    "private-provider-body"
+            );
+            assertThatThrownBy(
+                    () -> client(
+                            server,
+                            http
+                    ).stream(
+                            scope(),
+                            List.of(),
+                            text -> {
+                            }
+                    )
+            ).isInstanceOf(SearchToolException.class)
+                    .hasMessage(code);
+        }
+    }
+
     private SearchAgentHttp transport() {
         return new SearchAgentHttp(
                 HttpClient.newBuilder()
