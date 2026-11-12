@@ -1,0 +1,23 @@
+[Unit]
+Description=Knot Backend Blue Slot (Prod)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/opt/knot-backend
+EnvironmentFile=/etc/knot-backend/knot-backend.env
+EnvironmentFile=/etc/knot-backend/recording-storage.env
+EnvironmentFile=/etc/knot-backend/recording-ai.env
+Environment=SPRING_PROFILES_INCLUDE=observability
+Environment=SPRING_CONFIG_ADDITIONAL_LOCATION=file:/etc/knot-backend/recording-streaming.properties
+ExecStart=/usr/bin/java -Xmx256m -XX:NativeMemoryTracking=summary -jar /opt/knot-backend/slots/blue/app.jar --server.port=8080
+Restart=always
+RestartSec=5
+SuccessExitStatus=143
+TimeoutStopSec=90s
+KillSignal=SIGTERM
+
+[Install]
+WantedBy=multi-user.target
