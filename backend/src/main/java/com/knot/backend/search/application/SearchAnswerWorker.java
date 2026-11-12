@@ -13,7 +13,6 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicLong;
-import java.util.concurrent.CancellationException;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -132,10 +131,17 @@ public class SearchAnswerWorker {
             if (ServerErrorLogger.isControlFlow(exception)) {
                 throw exception;
             }
+            if (!executions.isCurrent(
+                    work.answerId(),
+                    work.token()
+            )) {
+                return;
+            }
             intent = SearchIntent.MEETING_SEARCH;
         }
         long retrievalStarted = System.nanoTime();
         SearchRetrievalResult retrieval;
+        boolean retrievalUnavailable = false;
         try {
             retrieval = intent.requiresSearch()
                     ? retrievers.getObject()
@@ -173,6 +179,7 @@ public class SearchAnswerWorker {
             if (ServerErrorLogger.isControlFlow(exception)) {
                 throw exception;
             }
+            retrievalUnavailable = true;
             retrieval = new SearchRetrievalResult(
                     List.of(),
                     0
@@ -189,21 +196,18 @@ public class SearchAnswerWorker {
         List<SearchDocumentResult> documents = retrieval.documents();
         SearchAnswerGenerator generator = generators.getObject();
         List<Long> usedIds;
-        try (SearchAnswerContentBuffer content = new SearchAnswerContentBuffer(
-                text -> append(
-                        work,
-                        text,
-                        persistenceCount,
-                        persistenceNanos
-                )
-        )) {
+        StringBuilder content = new StringBuilder();
+        {
             long generationStarted = System.nanoTime();
             try {
+                if (retrievalUnavailable) {
+                    content.append(SearchAnswerGuidance.RETRIEVAL_UNAVAILABLE);
+                }
                 usedIds = generator.generate(
                         scope,
                         work.question(),
                         documents,
-                        content
+                        content::append
                 );
                 log.info(
                         "Search latency phase=answer_generation workspaceId={} questionId={} answerId={} elapsedMs={} inputChars={} documentCount={} outcome=success",
@@ -233,29 +237,15 @@ public class SearchAnswerWorker {
         Set<Long> candidates = documents.stream()
                 .map(SearchDocumentResult::documentId)
                 .collect(Collectors.toSet());
-        executions.complete(
-                work.answerId(),
-                work.token(),
-                usedIds,
-                candidates
-        );
-    }
-
-    private void append(
-            SearchAnswerWorkResult work,
-            String text,
-            AtomicLong persistenceCount,
-            AtomicLong persistenceNanos
-    ) {
         long persistenceStarted = System.nanoTime();
         try {
-            if (!executions.append(
+            executions.completeGenerated(
                     work.answerId(),
                     work.token(),
-                    text
-            )) {
-                throw new CancellationException("answer execution ended");
-            }
+                    content.toString(),
+                    usedIds,
+                    candidates
+            );
         } finally {
             persistenceCount.incrementAndGet();
             persistenceNanos.addAndGet(System.nanoTime() - persistenceStarted);
