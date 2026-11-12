@@ -16,7 +16,9 @@ public record RecordingDocumentResponse(
         @Schema(description = "응답용 처리 상태. 대기·실행 중인 음성 최종화·전사·주제별 문서 작업이 있으면 실패보다 PROCESSING이 먼저다. 회의 전체 요약의 진행은 넣지 않는다. 주제 분류 실패도 DOCUMENT_FAILED다", example = "DOCUMENT_FAILED", requiredMode = REQUIRED) RecordingDocumentProcessingStatus processingStatus,
         @Schema(description = "처리 실패를 지금 다시 접수할 수 있는지. TRANSCRIPTION_FAILED는 전사 재시도 접수 조건, DOCUMENT_FAILED는 retryableJobIds가 비어 있지 않은지. 나머지는 false", example = "true", requiredMode = REQUIRED) boolean retryable,
         @Schema(description = "DOCUMENT_FAILED에서 지금 접수할 수 있는 FAILED 문서 생성 Job ID. 홈 진행 카드의 7일 표시 기한과 무관하다. 나머지 상태는 빈 배열", example = "[88, 91]", requiredMode = REQUIRED) List<Long> retryableJobIds,
-        @Schema(description = "회의 전체 요약. 성공 Transcript가 저장되고 NO_CONTENT가 아님이 정해진 녹음에서 요약이 접수됐을 때만 객체이고, 그 밖(전사 전·전사 실패·주제 분류 전·주제 분류 실패·NO_CONTENT)과 요약 기능을 켜기 전에 끝난 녹음은 null", nullable = true, requiredMode = REQUIRED) RecordingMeetingSummaryResponse meetingSummary
+        @Schema(description = "전체 녹음 요약. 활성화 이후 비어 있지 않은 성공 전사에 생성하며 주제 분류·문서와 독립적이다. 접수 예정은 QUEUED, 정상 빈 전사·원문 유실·활성화 전 녹음은 null", nullable = true, requiredMode = REQUIRED) RecordingMeetingSummaryResponse meetingSummary,
+        @Schema(description = "전사 준비 상태. READY·EMPTY는 즉시 원문 조회 가능", requiredMode = REQUIRED) com.knot.backend.recording.application.dto.result.RecordingTranscriptStatus transcriptStatus,
+        @Schema(description = "주제 분류의 독립 상태", requiredMode = REQUIRED) com.knot.backend.recording.application.dto.result.TopicClassificationStatus topicClassificationStatus
 ) {
 
     public RecordingDocumentResponse {
@@ -32,7 +34,9 @@ public record RecordingDocumentResponse(
                 result.processingStatus(),
                 result.retryable(),
                 result.retryableJobIds(),
-                RecordingMeetingSummaryResponse.from(result.meetingSummary())
+                RecordingMeetingSummaryResponse.from(result.meetingSummary()),
+                result.transcriptStatus(),
+                result.topicClassificationStatus()
         );
     }
 }

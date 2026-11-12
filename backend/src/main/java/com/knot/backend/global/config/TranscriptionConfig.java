@@ -13,6 +13,7 @@ import tools.jackson.databind.ObjectMapper;
 @EnableConfigurationProperties(TranscriptionProperties.class)
 public class TranscriptionConfig {
     @Bean
+    @org.springframework.boot.autoconfigure.condition.ConditionalOnProperty(prefix = "knot.transcription", name = "provider", havingValue = "local", matchIfMissing = true)
     public TranscriptionClient transcriptionClient(
             TranscriptionProperties properties,
             ObjectMapper mapper

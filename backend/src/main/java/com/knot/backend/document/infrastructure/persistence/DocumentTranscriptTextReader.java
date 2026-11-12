@@ -7,10 +7,10 @@ import tools.jackson.core.JsonParser;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
-class DocumentTranscriptTextReader {
+public class DocumentTranscriptTextReader {
     private final ObjectMapper mapper = new ObjectMapper();
 
-    String read(String content) {
+    public String read(String content) {
         if (content == null || !content.stripLeading()
                 .startsWith("{")) {
             return content;

@@ -28,6 +28,19 @@ final class SpeakerReclusterer {
 
     /** 조각마다 0부터 등장 순서로 매긴 화자 번호를 돌려준다. */
     static int[] labels(List<float[]> embeddings) {
+        return labels(
+                embeddings,
+                null
+        );
+    }
+
+    static int[] labels(
+            List<float[]> embeddings,
+            Integer speakerCount
+    ) {
+        if (speakerCount != null && (speakerCount < 1 || speakerCount > 10)) {
+            throw new IllegalArgumentException("speakerCount must be between 1 and 10");
+        }
         if (embeddings.isEmpty()) {
             return new int[0];
         }
@@ -35,6 +48,14 @@ final class SpeakerReclusterer {
                 .map(SpeakerReclusterer::l2Normalize)
                 .map(SpeakerReclusterer::l2Normalize)
                 .toList();
+        if (speakerCount != null) {
+            return compact(
+                    kMeans(
+                            vectors,
+                            speakerCount
+                    )
+            );
+        }
         int clusters = Math.min(
                 vectors.size(),
                 Math.max(

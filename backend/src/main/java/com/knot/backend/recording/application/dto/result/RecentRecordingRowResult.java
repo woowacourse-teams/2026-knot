@@ -10,7 +10,8 @@ public record RecentRecordingRowResult(
         int recordingDurationSeconds,
         RecordingDocumentProcessingStatus processingStatus,
         boolean retryable,
-        List<Long> retryableJobIds
+        List<Long> retryableJobIds,
+        RecordingTranscriptStatus transcriptStatus
 ) {
 
     public RecentRecordingRowResult {
@@ -19,7 +20,8 @@ public record RecentRecordingRowResult(
 
     public static RecentRecordingRowResult of(
             RecentRecordingItemResult recording,
-            RecordingDocumentProcessingResult processing
+            RecordingDocumentProcessingResult processing,
+            RecordingTranscriptStatus transcriptStatus
     ) {
         return new RecentRecordingRowResult(
                 recording.recordingId(),
@@ -28,7 +30,8 @@ public record RecentRecordingRowResult(
                 recording.recordingDurationSeconds(),
                 processing.status(),
                 processing.retryable(),
-                processing.retryableJobIds()
+                processing.retryableJobIds(),
+                transcriptStatus
         );
     }
 }

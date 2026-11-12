@@ -23,7 +23,8 @@ import org.springframework.jdbc.core.simple.JdbcClient;
 @Tag("integration")
 @DataJpaTest
 @Import({SharedPostgresTestConfiguration.class, DocumentTranscriptQueryAdapter.class,
-        TranscriptSegmentRepositoryAdapter.class})
+        TranscriptSegmentRepositoryAdapter.class,
+        com.knot.backend.recording.infrastructure.persistence.RecordingSpeakerNamesAdapter.class})
 class DocumentTranscriptQueryIntegrationTest extends SharedPostgresDocumentTranscriptTestSupport {
 
     @Autowired

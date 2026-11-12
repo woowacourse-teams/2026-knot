@@ -19,6 +19,7 @@ public class RecordingDocumentService {
     private final RecentRecordingQuery recentRecordingQuery;
     private final RecordingDocumentProcessing documentProcessing;
     private final RecordingMeetingSummaryRepository meetingSummaries;
+    private final RecordingOutputQuery outputs;
 
     // 조회는 녹음·전사·제목·요약 상태와 문서 확인 기록을 바꾸지 않고 요약을 새로 접수하지 않는다.
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
@@ -35,13 +36,22 @@ public class RecordingDocumentService {
                 workspaceId,
                 recordingId
         );
+        var output = outputs.findAll(
+                workspaceId,
+                java.util.List.of(recordingId)
+        )
+                .get(recordingId);
         return RecordingDocumentResult.of(
                 recording,
                 documentProcessing.find(
                         workspaceId,
                         recordingId
                 ),
-                meetingSummary(recordingId)
+                meetingSummary(
+                        recordingId,
+                        output.summaryEligible()
+                ),
+                output
         );
     }
 
@@ -59,12 +69,23 @@ public class RecordingDocumentService {
                 .orElseThrow(() -> new RecordingException(RecordingErrorCode.RECORDING_NOT_FOUND));
     }
 
-    // 요약 행은 주제가 등록돼 NO_CONTENT가 아님이 정해진 녹음에만 접수된다(#992).
-    // 전사 전·전사 실패·NO_CONTENT와 요약 기능을 켜기 전에 끝난 녹음은 행이 없어 null이다.
-    private RecordingMeetingSummaryResult meetingSummary(long recordingId) {
-        return meetingSummaries.findByRecordingId(recordingId)
-                .map(this::meetingSummary)
-                .orElse(null);
+    private RecordingMeetingSummaryResult meetingSummary(
+            long recordingId,
+            boolean eligible
+    ) {
+        var saved = meetingSummaries.findByRecordingId(recordingId)
+                .map(this::meetingSummary);
+        if (saved.isPresent()) {
+            return saved.orElseThrow();
+        }
+        if (eligible) {
+            return new RecordingMeetingSummaryResult(
+                    com.knot.backend.recording.domain.model.MeetingSummaryStatus.QUEUED,
+                    null,
+                    false
+            );
+        }
+        return null;
     }
 
     private RecordingMeetingSummaryResult meetingSummary(RecordingMeetingSummary summary) {

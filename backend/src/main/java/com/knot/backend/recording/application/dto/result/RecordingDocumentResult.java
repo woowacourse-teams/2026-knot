@@ -11,7 +11,9 @@ public record RecordingDocumentResult(
         RecordingDocumentProcessingStatus processingStatus,
         boolean retryable,
         List<Long> retryableJobIds,
-        RecordingMeetingSummaryResult meetingSummary
+        RecordingMeetingSummaryResult meetingSummary,
+        RecordingTranscriptStatus transcriptStatus,
+        TopicClassificationStatus topicClassificationStatus
 ) {
 
     public RecordingDocumentResult {
@@ -21,7 +23,8 @@ public record RecordingDocumentResult(
     public static RecordingDocumentResult of(
             RecentRecordingItemResult recording,
             RecordingDocumentProcessingResult processing,
-            RecordingMeetingSummaryResult meetingSummary
+            RecordingMeetingSummaryResult meetingSummary,
+            RecordingOutputStatus output
     ) {
         return new RecordingDocumentResult(
                 recording.recordingId(),
@@ -31,7 +34,9 @@ public record RecordingDocumentResult(
                 processing.status(),
                 processing.retryable(),
                 processing.retryableJobIds(),
-                meetingSummary
+                meetingSummary,
+                output.transcriptStatus(),
+                output.topicClassificationStatus()
         );
     }
 }

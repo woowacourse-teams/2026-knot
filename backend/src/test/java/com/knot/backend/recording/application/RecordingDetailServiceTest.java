@@ -242,6 +242,7 @@ class RecordingDetailServiceTest {
                                 0L,
                                 null,
                                 null,
+                                null,
                                 null
                         )
                 )
@@ -408,7 +409,8 @@ class RecordingDetailServiceTest {
                 60_000L,
                 endedAt,
                 endedAt == null ? null : RecordingEndReason.USER_ENDED,
-                uploadStatus
+                uploadStatus,
+                null
         );
     }
 

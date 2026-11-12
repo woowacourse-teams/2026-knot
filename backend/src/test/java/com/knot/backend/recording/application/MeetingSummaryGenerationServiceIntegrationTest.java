@@ -298,11 +298,11 @@ class MeetingSummaryGenerationServiceIntegrationTest {
                 "TOPICS_REGISTERED",
                 NOW.minusSeconds(1000)
         );
-        recording(
+        long noTopics = recording(
                 "NO_CONTENT",
                 NOW
         );
-        recording(
+        long waiting = recording(
                 "WAITING_CLASSIFICATION",
                 NOW
         );
@@ -311,7 +311,11 @@ class MeetingSummaryGenerationServiceIntegrationTest {
         service.registerEligible();
         service.registerEligible();
         // then
-        assertThat(service.findRunnable()).containsExactly(eligible);
+        assertThat(service.findRunnable()).containsExactly(
+                eligible,
+                noTopics,
+                waiting
+        );
         assertThat(batch(eligible)).isEqualTo(before);
     }
 

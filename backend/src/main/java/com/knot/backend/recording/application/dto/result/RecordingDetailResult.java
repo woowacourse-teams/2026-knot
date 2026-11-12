@@ -20,7 +20,8 @@ public record RecordingDetailResult(
         TranscriptionStatus transcriptionStatus,
         String transcriptionFailureCode,
         DocumentGenerationSummaryResult documentGeneration,
-        com.knot.backend.recording.application.dto.result.RecordingSourceAudioQuality sourceAudio
+        com.knot.backend.recording.application.dto.result.RecordingSourceAudioQuality sourceAudio,
+        Integer speakerCount
 ) {
 
     public RecordingDetailResult withSourceAudio(
@@ -36,7 +37,8 @@ public record RecordingDetailResult(
                 transcriptionStatus,
                 transcriptionFailureCode,
                 documentGeneration,
-                source
+                source,
+                speakerCount
         );
     }
 
@@ -59,7 +61,8 @@ public record RecordingDetailResult(
                 transcription == null ? null : transcription.status(),
                 transcription == null ? null : transcription.failureCode(),
                 documentGeneration,
-                null
+                null,
+                snapshot.speakerCount()
         );
     }
 

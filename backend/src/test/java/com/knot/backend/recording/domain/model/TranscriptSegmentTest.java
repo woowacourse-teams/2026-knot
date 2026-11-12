@@ -246,16 +246,12 @@ class TranscriptSegmentTest {
         // given
         List<TranscriptUtterance> utterances = List.of();
 
-        // when
-        Throwable failure = catchThrowable(
-                () -> TranscriptSegment.createAll(
+        assertThat(
+                TranscriptSegment.createAll(
                         81,
                         utterances
                 )
-        );
-
-        // then
-        assertThat(failure).isInstanceOf(RecordingException.class);
+        ).isEmpty();
     }
 
     @Test

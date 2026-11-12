@@ -19,6 +19,7 @@ public class RecentRecordingListService {
     private final RecordingAccess recordingAccess;
     private final RecentRecordingQuery recentRecordingQuery;
     private final RecordingDocumentProcessing documentProcessing;
+    private final RecordingOutputQuery outputs;
 
     // 행과 처리 상태를 같은 읽기 시점에서 읽는다. 조회는 녹음·전사·문서 정리 상태를 바꾸지 않는다.
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
@@ -76,11 +77,19 @@ public class RecentRecordingListService {
                         .map(RecentRecordingItemResult::recordingId)
                         .toList()
         );
+        var output = outputs.findAll(
+                workspaceId,
+                items.stream()
+                        .map(RecentRecordingItemResult::recordingId)
+                        .toList()
+        );
         return items.stream()
                 .map(
                         item -> RecentRecordingRowResult.of(
                                 item,
-                                processing.get(item.recordingId())
+                                processing.get(item.recordingId()),
+                                output.get(item.recordingId())
+                                        .transcriptStatus()
                         )
                 )
                 .toList();
