@@ -55,6 +55,8 @@ export default function WorkspaceNavPill() {
         aria-current={isChatActive ? "page" : undefined}
         $isActive={isChatActive}
         onClick={navigateToExplore}
+        // 탐색 튜토리얼 1단계가 이 탭을 밝혀요
+        data-search-tutorial="search-tab"
       >
         탐색
       </NavItem>

@@ -264,6 +264,8 @@ def render_notion_changes(changed: list[dict[str, Any]], for_issue: bool = False
 
     PR 본문에서는 첫 번째 `##` 섹션으로, 이슈 본문에서는 세 섹션 규칙 때문에
     `##` 없이 굵은 글씨 제목으로 쓴다. 내용은 베끼지 않고 링크만 단다.
+    PR 본문의 링크 목록은 길어서 본문을 가리므로 `<details>` 토글로 접고, 요약 줄에
+    종류별 건수만 보여 준다. 이슈 본문은 그대로 펼쳐 둔다.
     """
     errors = validate_changed(changed)
     if errors:
@@ -275,7 +277,27 @@ def render_notion_changes(changed: list[dict[str, Any]], for_issue: bool = False
         f"- {KIND_LABELS[item['kind']]}: [{item['summary'].strip()}]({item['url'].strip()})"
         for item in changed
     ]
-    return f"{title}\n\n" + "\n".join(lines) + "\n"
+    if for_issue:
+        return f"{title}\n\n" + "\n".join(lines) + "\n"
+    return f"{title}\n\n" + _wrap_in_toggle(changed, lines)
+
+
+def _wrap_in_toggle(changed: list[dict[str, Any]], lines: list[str]) -> str:
+    """PR 본문의 링크 목록을 접은 토글로 감싼다. 요약 줄에는 종류별 건수를 쓴다.
+
+    GitHub는 `<details>` 안의 Markdown 목록을 앞뒤 빈 줄이 있어야 목록으로 그린다.
+    """
+    counts: dict[str, int] = {}
+    for item in changed:
+        label = KIND_LABELS[item["kind"]]
+        counts[label] = counts.get(label, 0) + 1
+    summary = ", ".join(f"{label} {count}건" for label, count in counts.items())
+    return (
+        "<details>\n"
+        f"<summary>{summary} (눌러서 펼치기)</summary>\n\n"
+        + "\n".join(lines)
+        + "\n\n</details>\n"
+    )
 
 
 def _plan_confirmers() -> list[str]:

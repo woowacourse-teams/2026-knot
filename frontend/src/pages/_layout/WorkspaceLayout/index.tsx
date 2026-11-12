@@ -28,6 +28,7 @@ import { PATH_ROUTE } from "@routes/PATH_ROUTE";
 import ChatListDrawer from "@widgets/chat/ChatListDrawer";
 import TranscriptPanel from "@widgets/document/TranscriptPanel";
 import SearchEvidenceList from "@widgets/search/SearchEvidenceList";
+import SearchTutorial from "@widgets/search/SearchTutorial";
 import WorkspaceDock from "@widgets/workspace/WorkspaceDock";
 import WorkspaceGnb from "@widgets/workspace/WorkspaceGnb";
 import WorkspaceSidebar from "@widgets/workspace/WorkspaceSidebar";
@@ -245,6 +246,9 @@ export default function WorkspaceLayout() {
           </TranscriptRail>
         )}
       </Body>
+
+      {/* 워크스페이스에 들어간 뒤에만 띄워요. 문서가 있는지와 멤버 기록을 보고 처음 한 번 떠요 */}
+      {isReady && <SearchTutorial />}
     </Container>
   );
 }

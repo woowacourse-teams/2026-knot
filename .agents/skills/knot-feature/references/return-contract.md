@@ -42,14 +42,21 @@ python3 harness/feature_pipeline.py render <state.json> --issue     # 이슈용 
 ## 「노션 변경 사항」 형식
 
 `changed` 배열을 아래 형식으로 옮긴다. 내용을 베끼지 않고 링크만 단다. 바뀐 문서가 없는 항목은
-「없음」과 이유를 적는다.
+「없음」과 이유를 적는다. PR 본문에서는 링크 목록이 길어 본문을 가리므로 `<details>` 토글로 접고,
+요약 줄에 종류별 건수만 보여 준다(2026-11-11 유월 요청). `<details>` 안의 목록은 앞뒤에 빈 줄이 있어야
+GitHub가 목록으로 그린다.
 
 ```markdown
 ## 노션 변경 사항
 
+<details>
+<summary>노션 2건, Figma 1건 (눌러서 펼치기)</summary>
+
 - 노션: [기능 요구사항 SEARCH-R12 추가. 복사 버튼을 누르면 알림이 뜬다](https://app.notion.com/p/...)
 - 노션: [QA 시트 SEARCH-QA-031 추가](https://app.notion.com/p/...)
 - Figma: [탐색 답변 복사 화면, 변경 없음, 참고 링크](https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=...)
+
+</details>
 ```
 
 `summary`는 어느 문서의 무엇이 바뀌었는지로 시작한다(기획서, 기능 요구사항, 도메인 규칙, API 명세, QA 시트,
@@ -57,7 +64,8 @@ python3 harness/feature_pipeline.py render <state.json> --issue     # 이슈용 
 
 - PR 본문에서는 첫 번째 `##` 섹션으로 둔다. 그 아래는 기존 PR 템플릿을 따른다.
 - 이슈 본문은 세 섹션(`구현 기능 설명`, `TODO`, `메모`)만 허용하므로 `##`를 쓰지 않고
-  `구현 기능 설명`의 첫 부분에 굵은 글씨 「노션 변경 사항」과 같은 목록을 둔다.
+  `구현 기능 설명`의 첫 부분에 굵은 글씨 「노션 변경 사항」과 같은 목록을 둔다. 이슈는 토글로 접지 않는다.
+- 바뀐 것이 없으면(`- 없음`) 토글 없이 그대로 쓴다.
 
 ## 상태 파일
 

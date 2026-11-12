@@ -40,7 +40,7 @@
 - 완료 조건 「개발까지」가 `knot-commit`과 `knot-pr`가 요구하는 commit, push, PR 생성의 명시
   요청이다. 두 스킬에 이 예외가 적혀 있다. 커밋에 co-author와 AI 생성 표시를 붙이지 않는다.
 - PR은 루트 `AGENTS.md` 「기능 구현 요청 파이프라인」의 PR 공통 규칙을 따른다. 첫 섹션
-  `## 노션 변경 사항`에 이슈의 링크를 끌어와 적고, 그 아래는 `knot-pr`의 본문 규칙과 PR
+  `## 노션 변경 사항`에 이슈의 링크를 끌어와 토글로 접어 적고(`feature_pipeline.py render` 결과 그대로), 그 아래는 `knot-pr`의 본문 규칙과 PR
   템플릿을 따른다. 백엔드 PR은 사람이 아니라 AI가 보는 PR이라 내용이 더 많아도 된다.
 - 담당자, 라벨, 리뷰어는 `python3 harness/team_roles.py review --area backend --author <implementer>`
   결과로 정한다. 1차 컨펌을 받은 작업(기획 변경)이면 `--plan-changed`를 붙인다.
