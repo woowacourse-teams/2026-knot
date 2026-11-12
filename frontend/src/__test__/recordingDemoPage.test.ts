@@ -113,3 +113,23 @@ test("[STT-R18] 다른 화면에서는 전사가 준비돼도 이동하지 않�
   await page.waitForTimeout(3500);
   await expect(page).toHaveURL("/workspace/1");
 });
+
+
+test("[STT-R18, STT-R20, STT-R54] 참가자 수 조회 후 종료해도 대기 화면을 거쳐 전사 준비 시 상세로 이동한다 @core", async ({ page }) => {
+  await scenario(page, "participants-ending");
+  await page.goto("/workspace/1");
+  await page.getByRole("button", { name: "회의 녹음 시작" }).click();
+  await expect(page).toHaveURL(/\/recording$/);
+  await expect(page.getByRole("button", { name: "참가자 수 늘리기" })).toBeEnabled();
+  await page.getByRole("region", { name: "녹음 조작" }).getByRole("button", { name: "녹음 끝내기" }).click();
+  await page.getByRole("dialog", { name: "녹음을 끝낼까요?" }).getByRole("button", { name: "녹음 끝내기", exact: true }).click();
+
+  await expect(page).toHaveURL(/\/recordings\/10$/);
+  await expect(page.getByRole("heading", { name: "회의 내용을 바탕으로 문서를 정리하고 있어요" })).toBeVisible();
+  await expect(page).toHaveURL(/\/recordings\/10\/document$/);
+  await expect(page.getByRole("region", { name: "원문", exact: true })).toBeVisible();
+
+  await page.getByRole("button", { name: "회의 녹음 시작" }).click();
+  await expect(page).toHaveURL(/\/recording$/);
+  await expect(page.getByRole("button", { name: "참가자 수 늘리기" })).toBeEnabled();
+});
