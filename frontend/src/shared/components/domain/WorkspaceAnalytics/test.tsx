@@ -459,7 +459,7 @@ describe("WorkspaceAnalytics의 탐색 사용 기록", () => {
       });
     });
 
-    it("접수 뒤에 답변이 실패하면 실패와 그때까지 받은 답변 글을 보낸다", async () => {
+    it("접수 뒤 기술 오류는 실패로 측정하고 미검증 답변 글을 보내지 않는다", async () => {
       const { stream } = await sendAndAcceptNewQuestion();
       stream.send("delta", {
         answerMessageId,
@@ -475,7 +475,7 @@ describe("WorkspaceAnalytics의 탐색 사용 기록", () => {
       await waitFor(() => expect(getResultEvents()).toHaveLength(1));
       expect(getResultEvents()[0].properties).toMatchObject({
         result: "failed",
-        answer: "끊기기 전까지 받은 답",
+        answer: "",
       });
     });
 
@@ -524,30 +524,13 @@ describe("WorkspaceAnalytics의 탐색 사용 기록", () => {
       expect(getResultEvents()).toHaveLength(0);
     });
 
-    it("실패한 답변을 다시 시도해 끝나면 다시 시도한 답변이라고 보낸다", async () => {
+    it("이전 실패 답변의 안내를 열어도 질문을 자동 재시도하거나 결과를 측정하지 않는다", async () => {
       const [question, answer] = searchMessagesResponse.items;
-      const [expectedQuestion] = new GetSearchMessagesResponseDto(
-        searchMessagesResponse,
-      ).items;
-      respondMessages([
-        question,
-        { ...answer, content: "", status: "FAILED", evidences: [] },
-      ]);
+      respondMessages([question, { ...answer, content: "", status: "FAILED", evidences: [] }]);
       renderWorkspaceAnalytics(CONVERSATION_PATH);
-
-      await act(async () => {
-        fireEvent.click(
-          await screen.findByRole("button", { name: "다시 시도" }),
-        );
-      });
-
-      await waitFor(() => expect(getResultEvents()).toHaveLength(1));
-      expect(getResultEvents()[0].properties).toMatchObject({
-        result: "completed",
-        is_retry: true,
-        is_first_question: false,
-        question: expectedQuestion.content,
-      });
+      await findInConversation("지금은 답변을 정리하기 어려워요. 질문을 조금 더 구체적으로 이어서 해주시면 도와드릴게요.");
+      expect(screen.queryByRole("button", { name: "다시 시도" })).not.toBeInTheDocument();
+      expect(getResultEvents()).toHaveLength(0);
     });
   });
 });

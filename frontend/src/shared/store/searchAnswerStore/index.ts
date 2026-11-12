@@ -80,7 +80,7 @@ interface SearchAnswerActions {
    * 요청 실패를 반영하고, accepted 전(접수 대기)에 실패했는지 돌려줘요.
    * accepted 전이면 서버에 질문이 저장되지 않았으므로 질문을 지워요(SEARCH-R4).
    * 입력창 복원과 안내는 질문을 보낸 쪽이 이 결과로 해요.
-   * accepted 뒤면 받은 답변을 두고 실패로 바꿔요(SEARCH-R5). 지금 요청이 아니면 아무것도 바꾸지 않고 `false`예요.
+   * accepted 뒤면 검증되지 않은 답변과 출처를 지우고 안내를 표시할 상태로 바꿔요(SEARCH-R5). 지금 요청이 아니면 아무것도 바꾸지 않고 `false`예요.
    */
   fail: (controller: AbortController, error: unknown) => boolean;
 
@@ -178,6 +178,8 @@ export const useSearchAnswerStore = create<
 
       set({
         status: "FAILED",
+        text: "",
+        evidences: [],
         failedCode:
           error instanceof SearchAnswerFailedError ? error.code : null,
         controller: null,
