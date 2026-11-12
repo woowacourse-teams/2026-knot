@@ -9,7 +9,7 @@ import com.knot.backend.recording.domain.model.RecordingTranscriptionInput;
 import com.knot.backend.recording.domain.model.StoredAudioChunk;
 import com.knot.backend.recording.domain.repository.IncrementalTranscriptionQueue;
 import com.knot.backend.recording.domain.repository.RecordingTranscriptionWindowRepository;
-import com.knot.backend.testsupport.TestcontainersConfiguration;
+import com.knot.backend.testsupport.IsolatedPostgresTest;
 import jakarta.persistence.EntityManager;
 import java.time.Duration;
 import java.time.Instant;
@@ -26,8 +26,8 @@ import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.simple.JdbcClient;
 
 @Tag("integration")
-@Import({TestcontainersConfiguration.class, RecordingTranscriptionWindowRepositoryAdapter.class,
-        IncrementalTranscriptionQueueAdapter.class})
+@IsolatedPostgresTest
+@Import({RecordingTranscriptionWindowRepositoryAdapter.class, IncrementalTranscriptionQueueAdapter.class})
 @DataJpaTest
 class IncrementalTranscriptionQueueAdapterIntegrationTest {
     private static final Instant NOW = Instant.parse("2026-10-18T00:00:00Z");

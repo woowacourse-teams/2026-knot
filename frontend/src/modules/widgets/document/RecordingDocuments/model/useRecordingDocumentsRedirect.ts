@@ -9,6 +9,7 @@ interface UseRecordingDocumentsRedirectParams {
   workspaceId: number;
   recordingId: number;
   viewStatus: RecordingDocumentsViewStatus;
+  isTranscriptReady?: boolean;
 }
 
 /**
@@ -25,6 +26,7 @@ export const useRecordingDocumentsRedirect = ({
   workspaceId,
   recordingId,
   viewStatus,
+  isTranscriptReady = false,
 }: UseRecordingDocumentsRedirectParams) => {
   const { navigateToRecording } = useNavigateToRecording();
   const { navigateToRecordingDocument } = useNavigateToRecordingDocument();
@@ -44,7 +46,7 @@ export const useRecordingDocumentsRedirect = ({
       return;
     }
 
-    if (viewStatus === "completed") {
+    if (viewStatus === "completed" || isTranscriptReady) {
       navigateToRecordingDocument({
         workspaceId: String(workspaceId),
         recordingId,
@@ -56,6 +58,7 @@ export const useRecordingDocumentsRedirect = ({
     navigateToRecordingDocument,
     navigateToWorkspaceHome,
     recordingId,
+    isTranscriptReady,
     viewStatus,
     workspaceId,
   ]);

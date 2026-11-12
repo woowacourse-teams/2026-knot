@@ -127,7 +127,7 @@ class RecordingDocumentAcceptanceTest {
 
         // then
         result.andExpect(status().isOk())
-                .andExpect(jsonPath("$.length()").value(8))
+                .andExpect(jsonPath("$.length()").value(10))
                 .andExpect(jsonPath("$.recordingId").value(recordingId))
                 .andExpect(jsonPath("$.title").value("회원 탈퇴 정책 논의"))
                 .andExpect(jsonPath("$.startedAt").value("2026-10-22T01:30:00Z"))
@@ -161,7 +161,7 @@ class RecordingDocumentAcceptanceTest {
 
         // then
         result.andExpect(status().isOk())
-                .andExpect(jsonPath("$.length()").value(8))
+                .andExpect(jsonPath("$.length()").value(10))
                 .andExpect(jsonPath("$.title").value("루덴스 님의 녹음"))
                 .andExpect(jsonPath("$.processingStatus").value("TRANSCRIPTION_FAILED"))
                 .andExpect(jsonPath("$.retryableJobIds").isEmpty())

@@ -1,4 +1,7 @@
 import { mockServer } from "@api/mock/server";
+import { recordingDetailsResponse, recordingEndResponse } from "@api/mock/responses/recording";
+import RecordingDocuments from "@widgets/document/RecordingDocuments";
+import RecordingGuard from "@routes/RecordingGuard";
 import { ThemeProvider } from "@emotion/react";
 import { DialogProvider } from "@provider/context/dialogContext";
 import { ToastProvider } from "@provider/context/toastContext";
@@ -18,7 +21,7 @@ import {
   clearRecordingStartProof,
   getRecordingStartProof,
 } from "@utils/recordingControlProof";
-import { http, HttpResponse } from "msw";
+import { delay, http, HttpResponse } from "msw";
 import { createMemoryRouter, Outlet, RouterProvider } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -39,7 +42,7 @@ const DOCUMENTS_PATH = getRouterPath({
   params: { workspaceId: WORKSPACE_ID, recordingId: String(RECORDING_ID) },
 });
 
-const renderRecordingPage = () => {
+const renderRecordingPage = (withRealDocuments = false) => {
   const router = createMemoryRouter(
     [
       {
@@ -50,8 +53,12 @@ const renderRecordingPage = () => {
         ),
         children: [
           { path: PATH_ROUTE.WORKSPACE_HOME, element: <p>홈 화면</p> },
-          { path: PATH_ROUTE.RECORDING, element: <RecordingPage /> },
-          { path: PATH_ROUTE.RECORDING_DOCUMENTS, element: <p>정리 화면</p> },
+          {
+            path: PATH_ROUTE.RECORDING,
+            element: withRealDocuments ? <RecordingGuard /> : <RecordingPage />,
+            children: withRealDocuments ? [{ index: true, element: <RecordingPage /> }] : undefined,
+          },
+          { path: PATH_ROUTE.RECORDING_DOCUMENTS, element: withRealDocuments ? <RecordingDocuments /> : <p>정리 화면</p> },
         ],
       },
     ],
@@ -125,6 +132,36 @@ describe("RecordingPage", () => {
       expect(router.state.location.pathname).toBe(DOCUMENTS_PATH),
     );
     expect(count).toEqual({ end: 1, complete: 1 });
+  });
+
+  it("참가자 수가 조회한 녹음 중 캐시가 남아 있어도 종료 뒤 홈 대신 대기 화면을 유지한다", async () => {
+    let isEnded = false;
+    mockServer.use(
+      http.get("*/api/v1/workspaces/:workspaceId/recordings/:recordingId", async () => {
+        if (isEnded) await delay(300);
+        return HttpResponse.json({
+          ...recordingDetailsResponse[0].detail,
+          status: isEnded ? "ENDED" : "RECORDING",
+          endedAt: isEnded ? recordingEndResponse.endedAt : null,
+          transcriptionStatus: null,
+          documentGeneration: null,
+          speakerCount: null,
+        });
+      }),
+      http.post("*/api/v1/workspaces/:workspaceId/recordings/:recordingId/end", () => {
+        isEnded = true;
+        return HttpResponse.json(recordingEndResponse);
+      }),
+    );
+    await startRecording();
+    const { router } = renderRecordingPage(true);
+    await waitFor(() => expect(screen.getByRole("button", { name: "참가자 수 늘리기" })).toBeEnabled());
+
+    await confirmEndRecording();
+
+    await waitFor(() => expect(router.state.location.pathname).toBe(DOCUMENTS_PATH));
+    expect(await screen.findByRole("heading", { name: "회의 내용을 바탕으로 문서를 정리하고 있어요" })).toBeInTheDocument();
+    expect(screen.queryByText("홈 화면")).not.toBeInTheDocument();
   });
 
   it.each(["RECORDING_ALREADY_ENDED", "RECORDING_ALREADY_DISCARDED"])(

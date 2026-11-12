@@ -21,7 +21,8 @@ public record RecordingDetailResponse(
 
         @Schema(description = "문서 생성 결과. 접수 전 null", types = {
                 "object", "null"}) RecordingDocumentGenerationResponse documentGeneration,
-        @Schema(description = "원본 오디오 품질·누락. 기존 녹음은 null", nullable = true) RecordingSourceAudioResponse sourceAudio
+        @Schema(description = "원본 오디오 품질·누락. 기존 녹음은 null", nullable = true) RecordingSourceAudioResponse sourceAudio,
+        @Schema(description = "저장한 참가자 수. null은 자동 감지", nullable = true) Integer speakerCount
 ) {
 
     public static RecordingDetailResponse from(RecordingDetailResult result) {
@@ -37,7 +38,8 @@ public record RecordingDetailResponse(
                 result.documentGeneration() == null
                         ? null
                         : RecordingDocumentGenerationResponse.from(result.documentGeneration()),
-                RecordingSourceAudioResponse.from(result.sourceAudio())
+                RecordingSourceAudioResponse.from(result.sourceAudio()),
+                result.speakerCount()
         );
     }
 }

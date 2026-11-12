@@ -103,7 +103,7 @@ class RecordingTranscriptControllerTest {
                 .andExpect(jsonPath("$.recordingId").value(RECORDING_ID))
                 .andExpect(jsonPath("$.transcriptId").value(81))
                 .andExpect(jsonPath("$.transcriptText").value("지난주에 이야기한 탈퇴 정책부터 정리할게요."))
-                .andExpect(jsonPath("$.segments[0].length()").value(4))
+                .andExpect(jsonPath("$.segments[0].length()").value(5))
                 .andExpect(jsonPath("$.segments[0].startMillis").value(160000))
                 .andExpect(jsonPath("$.segments[0].endMillis").value(164000))
                 .andExpect(jsonPath("$.segments[0].speakerNumber").value(1))

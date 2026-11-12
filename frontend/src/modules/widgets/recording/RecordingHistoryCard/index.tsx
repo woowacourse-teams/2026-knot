@@ -5,31 +5,36 @@ import LoadingIndicator from "@primitives/ui/LoadingIndicator";
 import { useCurrentRecording } from "./model/useCurrentRecording";
 import { useRecordingHistory } from "./model/useRecordingHistory";
 import { useRecordingTitle } from "./model/useRecordingTitle";
+import { useTeammateRecordings } from "./model/useTeammateRecordings";
 import { useTitleId } from "./model/useTitleId";
 import CurrentRecordingItem from "./ui/CurrentRecordingItem";
 import EmptyRecording from "./ui/EmptyRecording";
 import LoadingFallback from "./ui/LoadingFallback";
 import RecordingHistoryRow from "./ui/RecordingHistoryRow";
 import RecordingLoadFailed from "./ui/RecordingLoadFailed";
+import TeammateRecordingItem from "./ui/TeammateRecordingItem";
 
 /**
- * 홈의 「녹음 기록」 카드. 맨 위에 내 녹음 중 · 일시정지 녹음 한 줄을, 그 아래에 워크스페이스의 끝난 녹음을 최신순으로 보여 줘요(STT-R24 · R31~R35 · R51).
+ * 홈의 「녹음 기록」 카드. 맨 위에 내 녹음 중 · 일시정지 녹음 한 줄을, 그 아래에 팀원의 녹음 중 · 일시정지 녹음과 워크스페이스의 끝난 녹음을 최신순으로 보여 줘요(STT-R24 · R31~R35 · R51 · R55).
  *
  * 맨 위 줄은 이 탭의 녹음이면 「녹음 화면으로」로 녹음 화면에 갈 수 있고, 다른 탭의 녹음이면 그 버튼을 누를 수 없어요(STT-R28).
  * 맨 위 줄은 카드 머리 아래에 고정하고, 목록만 카드 안에서 세로로 스크롤하며 아래 40px을 흐리게 해요. 스크롤 끝에 닿으면 다음 묶음을 이어 받아요.
+ * 팀원 줄은 목록 맨 앞에 녹음마다 한 줄씩 두고 목록과 함께 스크롤해요. 팀원 녹음은 보기만 해서 버튼이 없어요(STT-R55).
  * 행마다 처리 상태를 보여 주고, 「녹음 보기」로 그 녹음의 녹음 문서에 가요. 다시 시도할 수 있는 실패 행에는 「다시 시도」가 있어요.
  * 문서 정리 중 행이 있는 동안에는 목록을 3초마다 다시 받아, 정리가 끝나면 결과 상태로 바뀌어요.
  *
  * 목록을 받지 못한 동안에는 목록 자리를 상태 화면이 대신해요.
  * - 불러오는 중: `LoadingFallback`. 내 닉네임과 현재 녹음도 기다려요.
  * - 불러오기 실패: `RecordingLoadFailed`(ERR-09). 「다시 시도」는 이 카드의 목록만 다시 받아요(HOME-R6).
- * - 맨 위 줄과 목록 모두 없음: `EmptyRecording`. 카드 크기는 그대로예요.
+ * - 맨 위 줄, 팀원 줄, 목록 모두 없음: `EmptyRecording`. 카드 크기는 그대로예요.
  */
 export default function RecordingHistoryCard() {
   const titleId = useTitleId();
   const { title, isLoading: isTitleLoading } = useRecordingTitle();
   const { currentRecording, isLoading: isCurrentRecordingLoading } =
     useCurrentRecording();
+  const { teammateRecordings, isLoading: isTeammateRecordingsLoading } =
+    useTeammateRecordings();
   const {
     workspaceId,
     recordings,
@@ -42,9 +47,15 @@ export default function RecordingHistoryCard() {
   } = useRecordingHistory();
 
   const isLoading =
-    isTitleLoading || isCurrentRecordingLoading || isListLoading;
+    isTitleLoading ||
+    isCurrentRecordingLoading ||
+    isTeammateRecordingsLoading ||
+    isListLoading;
   const isEmpty =
-    currentRecording === null && recordings.length === 0 && !hasNextPage;
+    currentRecording === null &&
+    teammateRecordings.length === 0 &&
+    recordings.length === 0 &&
+    !hasNextPage;
 
   return (
     <Container aria-labelledby={titleId} aria-busy={isLoading}>
@@ -75,6 +86,18 @@ export default function RecordingHistoryCard() {
       ) : (
         <ListArea>
           <ScrollArea>
+            {teammateRecordings.length > 0 && (
+              <ul aria-label="팀원의 진행 중인 녹음">
+                {teammateRecordings.map((recording) => (
+                  <TeammateRecordingItem
+                    key={recording.recordingId}
+                    recordingStatus={recording.status}
+                    title={recording.title}
+                    elapsedTime={recording.elapsedTime}
+                  />
+                ))}
+              </ul>
+            )}
             <ul aria-labelledby={titleId}>
               {recordings.map((recording) => (
                 <RecordingHistoryRow

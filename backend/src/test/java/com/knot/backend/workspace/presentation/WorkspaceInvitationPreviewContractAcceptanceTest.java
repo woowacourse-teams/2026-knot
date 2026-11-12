@@ -7,7 +7,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 import com.knot.backend.testsupport.TestApplicationProperties;
-import com.knot.backend.testsupport.TestcontainersConfiguration;
+import com.knot.backend.testsupport.IsolatedPostgresTest;
 import com.knot.backend.workspace.application.WorkspaceInvitationSecretGenerator;
 import com.knot.backend.workspace.application.WorkspaceInvitationSecretKind;
 import com.knot.backend.workspace.application.WorkspaceInvitationSecretHasher;
@@ -45,7 +45,8 @@ import tools.jackson.databind.ObjectMapper;
 
 @Tag("acceptance")
 @ExtendWith(OutputCaptureExtension.class)
-@Import({TestcontainersConfiguration.class, WorkspaceInvitationPreviewContractAcceptanceTest.ClockConfiguration.class})
+@IsolatedPostgresTest
+@Import({WorkspaceInvitationPreviewContractAcceptanceTest.ClockConfiguration.class})
 @TestApplicationProperties
 @SpringBootTest(properties = "knot.api-docs.enabled=true")
 @AutoConfigureMockMvc

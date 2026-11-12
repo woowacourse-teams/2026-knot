@@ -272,6 +272,12 @@ class DevBlueGreenDeployTest(unittest.TestCase):
         self.assertIn("knot-backend-green.service", self._read_lines(self.active_services))
         self.assertNotIn("knot-backend.service", self._read_lines(self.active_services))
 
+    def test_large_metrics_response_is_fully_consumed_before_validation_succeeds(self):
+        result = self._run_deploy(TEST_LARGE_METRICS="1")
+
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("succeeded", result.stdout)
+
     def test_metrics_validation_failure_restores_routes_before_stopping_candidate(self):
         result = self._run_deploy(TEST_FAIL_METRICS="1")
 
@@ -458,7 +464,7 @@ class DevBlueGreenDeployTest(unittest.TestCase):
                               capture_output=True, text=True, env=environment)
 
     def test_prod_large_metrics_response_preserves_safe_deployment(self):
-        result = self._run_prod_log_check(TEST_METRICS_LARGE="1")
+        result = self._run_prod_log_check(TEST_LARGE_METRICS="1")
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
     def test_prod_refuses_serial_mode_before_stopping_existing_service(self):
@@ -753,8 +759,12 @@ if "127.0.0.1:18080/actuator/prometheus" in url:
         if ":8081;" in route and "knot-backend-green.service" not in services:
             sys.exit(7)
     print("jvm_memory_used_bytes 123", flush=True)
-    if os.environ.get("TEST_METRICS_LARGE") == "1":
-        sys.stdout.write("other_metric 1\\n" * 100000)
+    if os.environ.get("TEST_LARGE_METRICS") == "1":
+        try:
+            for _ in range(256):
+                print("other_metric 123 " + "x" * 1024, flush=True)
+        except BrokenPipeError:
+            os._exit(23)
     sys.exit(0)
 if "127.0.0.1:8080" in url and os.environ.get("TEST_FAIL_PORT") == "8080":
     print('{"status":"DOWN"}')

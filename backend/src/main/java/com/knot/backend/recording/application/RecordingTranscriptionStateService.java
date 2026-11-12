@@ -88,7 +88,9 @@ public class RecordingTranscriptionStateService {
                     upload.getStorageVersionId(),
                     upload.getContentType(),
                     upload.getContentLength(),
-                    null
+                    recordingSessionRepository.findById(recordingId)
+                            .orElseThrow()
+                            .getSpeakerCount()
             );
             trace.attempt(transcription.getAttemptId())
                     .outcome("accepted");
@@ -320,16 +322,6 @@ public class RecordingTranscriptionStateService {
                     now(),
                     Duration.ofSeconds(60)
             );
-            if (result.utterances()
-                    .isEmpty()) {
-                transcription.fail(
-                        transcription.getAttemptId(),
-                        "NO_CONTENT"
-                );
-                trace.outcome("failed")
-                        .error("NO_CONTENT");
-                return null;
-            }
             persistTranscript(
                     session.getWorkspaceId(),
                     recordingId,

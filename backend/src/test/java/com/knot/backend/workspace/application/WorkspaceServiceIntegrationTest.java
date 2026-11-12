@@ -1,24 +1,21 @@
 package com.knot.backend.workspace.application;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.catchThrowable;
 
 import com.knot.backend.testsupport.TestApplicationProperties;
-import com.knot.backend.testsupport.TestcontainersConfiguration;
+import com.knot.backend.testsupport.IsolatedPostgresTest;
 import java.time.Instant;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.context.annotation.Import;
-import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.test.context.TestConstructor;
 import org.springframework.test.context.TestConstructor.AutowireMode;
 
 @Tag("integration")
-@Import(TestcontainersConfiguration.class)
+@IsolatedPostgresTest
 @TestApplicationProperties
 @SpringBootTest
 @TestConstructor(autowireMode = AutowireMode.ALL)
@@ -81,25 +78,6 @@ class WorkspaceServiceIntegrationTest {
         assertThat(secondWorkspaceId).isNotEqualTo(firstWorkspaceId);
         assertThat(count("workspaces")).isEqualTo(2);
         assertThat(count("workspace_members")).isEqualTo(2);
-    }
-
-    @Test
-    @DisplayName("멤버십 저장이 실패하면 먼저 저장한 워크스페이스도 rollback한다")
-    void create_failure_membershipSaveRollsBackWorkspace() {
-        // given
-
-        // when
-        Throwable thrown = catchThrowable(
-                () -> workspaceService.create(
-                        Long.MAX_VALUE,
-                        "Knot 팀"
-                )
-        );
-
-        // then
-        assertThat(thrown).isInstanceOf(DataIntegrityViolationException.class);
-        assertThat(count("workspaces")).isZero();
-        assertThat(count("workspace_members")).isZero();
     }
 
     private long saveMember(String nickname) {

@@ -10,6 +10,38 @@ import org.junit.jupiter.api.Test;
 class SpeakerReclustererTest {
 
     @Test
+    void explicitCountControlsFinalClusteringWithoutChangingAutomaticMode() {
+        java.util.List<float[]> vectors = java.util.List.of(
+                new float[]{1, 0},
+                new float[]{1, .01f},
+                new float[]{0, 1},
+                new float[]{.01f, 1}
+        );
+        assertThat(
+                SpeakerReclusterer.labels(
+                        vectors,
+                        1
+                )
+        ).containsOnly(0);
+        assertThat(
+                java.util.Arrays.stream(
+                        SpeakerReclusterer.labels(
+                                vectors,
+                                2
+                        )
+                )
+                        .distinct()
+                        .count()
+        ).isEqualTo(2);
+        assertThat(
+                SpeakerReclusterer.labels(
+                        vectors,
+                        null
+                )
+        ).containsExactly(SpeakerReclusterer.labels(vectors));
+    }
+
+    @Test
     @DisplayName("다른 목소리의 조각은 다른 화자로, 같은 목소리의 조각은 같은 화자로 묶는다")
     void labels_success_separatesVoices() {
         // given

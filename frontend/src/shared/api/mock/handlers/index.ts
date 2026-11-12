@@ -1,3 +1,6 @@
+import { workspaceMembersHandlers } from "./api/v1/workspaces/[workspaceId]/members";
+import { speakerCountHandlers } from "./api/v1/workspaces/[workspaceId]/recordings/[recordingId]/speakerCount";
+import { speakerNameHandlers } from "./api/v1/workspaces/[workspaceId]/recordings/[recordingId]/speakers/[speakerNumber]";
 import { authCsrfHandlers } from "./api/v1/auth/csrf";
 import { authLogoutHandlers } from "./api/v1/auth/logout";
 import { authMeHandlers } from "./api/v1/auth/me";
@@ -46,11 +49,15 @@ import { recordingTranscriptHandlers } from "./api/v1/workspaces/[workspaceId]/r
 import { recordingPauseHandlers } from "./api/v1/workspaces/[workspaceId]/recordings/[recordingId]/pause";
 import { recordingResumeHandlers } from "./api/v1/workspaces/[workspaceId]/recordings/[recordingId]/resume";
 import { currentRecordingHandlers } from "./api/v1/workspaces/[workspaceId]/recordings/current";
+import { teammateRecordingsHandlers } from "./api/v1/workspaces/[workspaceId]/recordings/teammatesInProgress";
 import { feedbackRelayHandlers } from "./relay/f";
 import { releaseNotesRelayHandlers } from "./relay/n";
 
 // 리다이렉트 엔드포인트(OAuth 시작)는 XHR 응답이 아니라 두지 않아요
 export const handlers = [
+  ...workspaceMembersHandlers,
+  ...speakerCountHandlers,
+  ...speakerNameHandlers,
   ...feedbackRelayHandlers,
   ...releaseNotesRelayHandlers,
   ...authMeHandlers,
@@ -69,6 +76,8 @@ export const handlers = [
   ...ownershipTransfersHandlers,
   ...workspaceRecordingsHandlers,
   ...currentRecordingHandlers,
+  // `recordings/:recordingId`보다 먼저 둬야 경로 이름이 녹음 ID로 잡히지 않아요
+  ...teammateRecordingsHandlers,
   ...recordingHandlers,
   ...recordingPauseHandlers,
   ...recordingResumeHandlers,

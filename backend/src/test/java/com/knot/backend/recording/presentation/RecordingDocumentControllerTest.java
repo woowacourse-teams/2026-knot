@@ -93,7 +93,9 @@ class RecordingDocumentControllerTest {
                                 MeetingSummaryStatus.SUCCEEDED,
                                 "탈퇴 시 데이터 보존 범위를 논의했다.",
                                 false
-                        )
+                        ),
+                        com.knot.backend.recording.application.dto.result.RecordingTranscriptStatus.READY,
+                        com.knot.backend.recording.application.dto.result.TopicClassificationStatus.SUCCEEDED
                 )
         );
 
@@ -102,7 +104,7 @@ class RecordingDocumentControllerTest {
 
         // then
         result.andExpect(status().isOk())
-                .andExpect(jsonPath("$.length()").value(8))
+                .andExpect(jsonPath("$.length()").value(10))
                 .andExpect(jsonPath("$.recordingId").value(RECORDING_ID))
                 .andExpect(jsonPath("$.title").value("회원 탈퇴 정책 논의"))
                 .andExpect(jsonPath("$.startedAt").value("2026-10-22T01:30:00Z"))
@@ -136,7 +138,9 @@ class RecordingDocumentControllerTest {
                         RecordingDocumentProcessingStatus.TRANSCRIPTION_FAILED,
                         true,
                         List.of(),
-                        null
+                        null,
+                        com.knot.backend.recording.application.dto.result.RecordingTranscriptStatus.READY,
+                        com.knot.backend.recording.application.dto.result.TopicClassificationStatus.SUCCEEDED
                 )
         );
 
@@ -145,7 +149,7 @@ class RecordingDocumentControllerTest {
 
         // then
         result.andExpect(status().isOk())
-                .andExpect(jsonPath("$.length()").value(8))
+                .andExpect(jsonPath("$.length()").value(10))
                 .andExpect(jsonPath("$.processingStatus").value("TRANSCRIPTION_FAILED"))
                 .andExpect(jsonPath("$.retryableJobIds").isEmpty())
                 .andExpect(jsonPath("$.meetingSummary").value(nullValue()));

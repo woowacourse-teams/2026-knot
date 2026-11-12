@@ -5,7 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.knot.backend.recording.application.RecordingService;
 import com.knot.backend.recording.application.dto.command.RecordingStartCommand;
 import com.knot.backend.testsupport.TestApplicationProperties;
-import com.knot.backend.testsupport.TestcontainersConfiguration;
+import com.knot.backend.testsupport.IsolatedPostgresTest;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.UUID;
@@ -14,7 +14,6 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.DynamicPropertyRegistry;
@@ -25,7 +24,7 @@ import org.springframework.test.context.TestConstructor.AutowireMode;
 // 주기 작업이 켜진 컨텍스트가 캐시에 남으면 같은 DB를 쓰는 다른 테스트의 녹음을 회수하므로 끝나면 닫는다
 @DirtiesContext
 @Tag("integration")
-@Import(TestcontainersConfiguration.class)
+@IsolatedPostgresTest
 @TestApplicationProperties
 @SpringBootTest
 @TestConstructor(autowireMode = AutowireMode.ALL)

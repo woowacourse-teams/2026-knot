@@ -27,7 +27,7 @@ interface RecordingHistoryRowProps {
  *
  * 아래 줄은 완료 행이면 녹음 날짜와 녹음 길이 칩, 그 밖의 행이면 처리 상태예요.
  * 오른쪽은 다시 시도할 수 있는 실패 행이면 「다시 시도」, 그 밖에는 그 녹음의 녹음 문서로 가는 「녹음 보기」예요.
- * 문서 정리 중 행의 「녹음 보기」는 누를 수 없어요(STT-R34).
+ * 전사가 준비되지 않은 문서 정리 중 행의 「녹음 보기」는 누를 수 없어요(STT-R34).
  * 제목은 한 줄로 자르고, 마우스를 올리면 브라우저 기본 툴팁으로 전체 제목을 보여 줘요.
  */
 export default function RecordingHistoryRow({
@@ -38,6 +38,7 @@ export default function RecordingHistoryRow({
     startedAt,
     recordingDurationSeconds,
     processingStatus,
+    transcriptStatus,
     isRetryable,
     retryableJobIds,
   },
@@ -47,7 +48,12 @@ export default function RecordingHistoryRow({
   const isKnownStatus =
     processingStatus === "COMPLETED" ||
     (typeof processingStatus === "string" &&
-      Object.prototype.hasOwnProperty.call(PROCESSING_STATUS_LABEL, processingStatus));
+      Object.prototype.hasOwnProperty.call(
+        PROCESSING_STATUS_LABEL,
+        processingStatus,
+      ));
+  const hasTranscript =
+    transcriptStatus === "READY" || transcriptStatus === "EMPTY";
   const isFailed =
     processingStatus === "TRANSCRIPTION_FAILED" ||
     processingStatus === "DOCUMENT_FAILED";
@@ -72,7 +78,11 @@ export default function RecordingHistoryRow({
         ) : processingStatus !== null ? (
           <Status $processingStatus={processingStatus}>
             <StatusDot aria-hidden $processingStatus={processingStatus} />
-            <StatusText>{PROCESSING_STATUS_LABEL[processingStatus]}</StatusText>
+            <StatusText>
+              {processingStatus === "NO_CONTENT" && transcriptStatus === "READY"
+                ? "주제별 문서 없음"
+                : PROCESSING_STATUS_LABEL[processingStatus]}
+            </StatusText>
           </Status>
         ) : null}
         {!isKnownStatus && (
@@ -80,7 +90,7 @@ export default function RecordingHistoryRow({
         )}
       </Info>
 
-      {isFailed && isRetryable === true ? (
+      {isFailed && isRetryable === true && !hasTranscript ? (
         <RetryRecordingButton
           workspaceId={workspaceId}
           recordingId={recordingId}
@@ -88,7 +98,8 @@ export default function RecordingHistoryRow({
           retryableJobIds={retryableJobIds}
           describedBy={titleId}
         />
-      ) : processingStatus === "PROCESSING" || !isKnownStatus ? (
+      ) : !hasTranscript &&
+        (processingStatus === "PROCESSING" || !isKnownStatus) ? (
         // 정리 중이거나 상태를 확인하지 못했으면 녹음 문서로 이동하지 않아요
         <ViewRecording
           as="span"

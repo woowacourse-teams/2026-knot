@@ -6,6 +6,16 @@ import lombok.Getter;
 
 @Getter
 public enum RecordingErrorCode implements ErrorCode {
+    INVALID_SPEAKER_DISPLAY_NAME(
+            ErrorCategory.INVALID_INPUT,
+            "INVALID_SPEAKER_DISPLAY_NAME",
+            "화자 표시 이름이 올바르지 않습니다"
+    ),
+    RECORDING_SPEAKER_NOT_FOUND(
+            ErrorCategory.NOT_FOUND,
+            "RECORDING_SPEAKER_NOT_FOUND",
+            "녹음의 화자를 찾을 수 없습니다"
+    ),
     MEETING_SUMMARY_RETRY_NOT_ALLOWED(
             ErrorCategory.CONFLICT,
             "MEETING_SUMMARY_RETRY_NOT_ALLOWED",

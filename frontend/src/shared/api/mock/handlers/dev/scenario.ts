@@ -3,6 +3,7 @@ import { http, HttpResponse } from "msw";
 import {
   currentRecordingResponse,
   recordingDetailsResponse,
+  teammateRecordingsResponse,
 } from "@api/mock/responses/recording";
 import { findRecordingDetail } from "@api/mock/state/recording";
 
@@ -20,9 +21,16 @@ export const CURRENT_RECORDING_SCENARIOS = [
 export type CurrentRecordingScenario =
   (typeof CURRENT_RECORDING_SCENARIOS)[number];
 
+/** 개발 브라우저에서 바꿔 볼 수 있는 팀원 진행 중 녹음 상황(STT-R55) */
+export const TEAMMATE_RECORDINGS_SCENARIOS = ["none", "some"] as const;
+export type TeammateRecordingsScenario =
+  (typeof TEAMMATE_RECORDINGS_SCENARIOS)[number];
+
 interface MockScenario {
   /** 현재 녹음 조회가 답할 상황. `none`이면 녹음이 없어요(204) */
   currentRecording: CurrentRecordingScenario;
+  /** 팀원 진행 중 녹음 조회가 답할 상황. `some`이면 팀원 두 명이 녹음 중 · 일시정지예요 */
+  teammateRecordings: TeammateRecordingsScenario;
 }
 
 /** 브라우저에 남겨 두는 자리. 새로고침해도 고른 상황이 이어져요 */
@@ -31,13 +39,22 @@ export const MOCK_SCENARIO_STORAGE_KEY = "knot.mock.scenario";
 /** 주소에 `?mock.currentRecording=paused`처럼 붙여도 골라져요 */
 const QUERY_PREFIX = "mock.";
 
-const DEFAULT_SCENARIO: MockScenario = { currentRecording: "none" };
+const DEFAULT_SCENARIO: MockScenario = {
+  currentRecording: "none",
+  teammateRecordings: "none",
+};
 
 const isCurrentRecordingScenario = (
   value: unknown,
 ): value is CurrentRecordingScenario =>
   typeof value === "string" &&
   (CURRENT_RECORDING_SCENARIOS as readonly string[]).includes(value);
+
+const isTeammateRecordingsScenario = (
+  value: unknown,
+): value is TeammateRecordingsScenario =>
+  typeof value === "string" &&
+  (TEAMMATE_RECORDINGS_SCENARIOS as readonly string[]).includes(value);
 
 /** 저장된 상황을 읽어요. 없거나 깨졌으면 기본값이에요 */
 export const readMockScenario = (): MockScenario => {
@@ -51,10 +68,19 @@ export const readMockScenario = (): MockScenario => {
       "currentRecording" in parsed
         ? parsed.currentRecording
         : undefined;
+    const teammateRecordings =
+      typeof parsed === "object" &&
+      parsed !== null &&
+      "teammateRecordings" in parsed
+        ? parsed.teammateRecordings
+        : undefined;
     return {
       currentRecording: isCurrentRecordingScenario(currentRecording)
         ? currentRecording
         : DEFAULT_SCENARIO.currentRecording,
+      teammateRecordings: isTeammateRecordingsScenario(teammateRecordings)
+        ? teammateRecordings
+        : DEFAULT_SCENARIO.teammateRecordings,
     };
   } catch {
     return DEFAULT_SCENARIO;
@@ -71,8 +97,15 @@ export const writeMockScenario = (scenario: Partial<MockScenario>) => {
 export const applyMockScenarioFromQuery = (search: string) => {
   const params = new URLSearchParams(search);
   const currentRecording = params.get(`${QUERY_PREFIX}currentRecording`);
-  if (!isCurrentRecordingScenario(currentRecording)) return false;
-  writeMockScenario({ currentRecording });
+  const teammateRecordings = params.get(`${QUERY_PREFIX}teammateRecordings`);
+  const scenario: Partial<MockScenario> = {
+    ...(isCurrentRecordingScenario(currentRecording) && { currentRecording }),
+    ...(isTeammateRecordingsScenario(teammateRecordings) && {
+      teammateRecordings,
+    }),
+  };
+  if (Object.keys(scenario).length === 0) return false;
+  writeMockScenario(scenario);
   return true;
 };
 
@@ -125,6 +158,17 @@ const failedResponse = (scenario: CurrentRecordingScenario) => {
  * `browser.ts`에서만 기본 핸들러 앞에 두고, vitest(server.ts)에는 넣지 않아요.
  */
 export const devScenarioHandlers = [
+  http.get(
+    "*/api/v1/workspaces/:workspaceId/recordings/teammates-in-progress",
+    () => {
+      const { teammateRecordings } = readMockScenario();
+      return HttpResponse.json(
+        teammateRecordings === "some"
+          ? teammateRecordingsResponse
+          : { items: [] },
+      );
+    },
+  ),
   http.get("*/api/v1/workspaces/:workspaceId/recordings/current", () => {
     const { currentRecording } = readMockScenario();
     if (currentRecording === "none")

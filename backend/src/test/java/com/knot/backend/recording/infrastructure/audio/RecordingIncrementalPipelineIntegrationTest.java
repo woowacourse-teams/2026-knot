@@ -20,7 +20,7 @@ import com.knot.backend.recording.application.dto.result.AudioFinalizationClaim;
 import com.knot.backend.recording.domain.model.StoredAudioChunk;
 import com.knot.backend.recording.domain.repository.RecordingAudioFinalizationRepository;
 import com.knot.backend.testsupport.TestApplicationProperties;
-import com.knot.backend.testsupport.TestcontainersConfiguration;
+import com.knot.backend.testsupport.IsolatedPostgresTest;
 import java.io.ByteArrayInputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -40,13 +40,12 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 @Tag("integration")
-@Import(TestcontainersConfiguration.class)
+@IsolatedPostgresTest
 @TestApplicationProperties
 @SpringBootTest(properties = {"knot.transcription.enabled=true", "knot.transcription.poll-interval=PT0.01S"})
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_EACH_TEST_METHOD)

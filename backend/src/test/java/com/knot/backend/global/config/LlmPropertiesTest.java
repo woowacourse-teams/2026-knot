@@ -90,6 +90,23 @@ class LlmPropertiesTest {
                 .hasMessage(LlmErrorCode.LLM_INVALID_CONFIGURATION.getMessage());
     }
 
+    @Test
+    void claudeRejectsIncompatibleThinkingBeforeRequests() {
+        LlmProperties properties = validProperties();
+        properties.setProvider("claude");
+        properties.setModel("claude-sonnet-5-5");
+        properties.setClaudeThinkingType("between_tools");
+        assertThatCode(properties::validateEnabledConfiguration).doesNotThrowAnyException();
+        properties.setClaudeThinkingType("disabled");
+        assertThatThrownBy(properties::validateEnabledConfiguration)
+                .hasMessage(LlmErrorCode.LLM_INVALID_CONFIGURATION.getMessage());
+        properties.setModel("claude-haiku-5-5");
+        assertThatCode(properties::validateEnabledConfiguration).doesNotThrowAnyException();
+        properties.setClaudeThinkingType("between_tools");
+        assertThatThrownBy(properties::validateEnabledConfiguration)
+                .hasMessage(LlmErrorCode.LLM_INVALID_CONFIGURATION.getMessage());
+    }
+
     private LlmProperties validProperties() {
         LlmProperties properties = new LlmProperties();
         properties.setEnabled(true);

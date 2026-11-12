@@ -1,5 +1,8 @@
+import type { RecordingTranscriptStatus } from "./recordingDocument";
 /**
  * 녹음 DTO
+ * - PATCH /api/v1/workspaces/{workspaceId}/recordings/{recordingId}/speaker-count
+ * - PATCH /api/v1/workspaces/{workspaceId}/recordings/{recordingId}/speakers/{speakerNumber}
  *
  * - GET  /api/v1/workspaces/{workspaceId}/recordings/current
  * - POST /api/v1/workspaces/{workspaceId}/recordings
@@ -20,7 +23,10 @@
 
 /** 녹음 세션 상태. 시작·일시정지·재개·종료 응답과 녹음 상세 조회가 공유하는 서버 값. `DISCARDED`는 서버가 버린 녹음이에요 */
 export type RecordingSessionStatus =
-  "RECORDING" | "PAUSED" | "ENDED" | "DISCARDED";
+  | "RECORDING"
+  | "PAUSED"
+  | "ENDED"
+  | "DISCARDED";
 
 /** 녹음 탭의 연결 상태. 마지막 생존 신호 뒤 30초가 지나면 `DISCONNECTED`예요. 진행 중인 녹음에만 값이 있어요 */
 export type RecordingConnectionStatus = "CONNECTED" | "DISCONNECTED";
@@ -36,7 +42,12 @@ export type RecordingAudioMode = "FINAL_WEBM_V1" | "PCM16_CHUNKS_V1";
  * 최종 WAV 채택 `READY`, 재시도 소진 `FAILED`, 폐기 `DISCARDED`예요
  */
 export type RecordingAudioSaveStatus =
-  "CAPTURING" | "DRAINING" | "FINALIZING" | "READY" | "FAILED" | "DISCARDED";
+  | "CAPTURING"
+  | "DRAINING"
+  | "FINALIZING"
+  | "READY"
+  | "FAILED"
+  | "DISCARDED";
 
 /** PCM 조각 하나의 위치와 내용 증명. 앱이 조각을 만들 때 정한 값 */
 export interface RecordingAudioChunkDescriptorInput {
@@ -249,6 +260,60 @@ export class GetCurrentRecordingResponseDto {
   }
 }
 
+// GET /api/v1/workspaces/{workspaceId}/recordings/teammates-in-progress
+
+/** 팀원 진행 중 녹음의 상태. 녹음 중과 일시정지만 와요(STT-R55) */
+export type TeammateRecordingStatus = "RECORDING" | "PAUSED";
+
+/** 팀원 진행 중 녹음 한 건의 서버 응답 모양 */
+export interface TeammateRecordingRaw {
+  recordingId: number;
+  status: TeammateRecordingStatus;
+  title: string;
+  startedAt: string;
+  elapsedMillis: number;
+}
+
+/** 팀원 진행 중 녹음 조회의 서버 응답 모양. 없으면 `items`가 빈 배열이에요 */
+export interface GetTeammateRecordingsResponseRaw {
+  items: TeammateRecordingRaw[];
+}
+
+/** 팀원 진행 중 녹음 한 건 */
+export class TeammateRecordingDto {
+  /** 녹음 세션 ID */
+  recordingId: number;
+  /** 녹음 중 · 일시정지 */
+  status: TeammateRecordingStatus;
+  /** 녹음 이름. 서버가 만든 「OO 님의 녹음」이에요 */
+  title: string;
+  /** 녹음 시작 시각(ISO 8601) */
+  startedAt: string;
+  /** 응답 시각까지 누적 녹음 시간(ms). 일시정지 구간은 빠져요 */
+  elapsedMillis: number;
+
+  constructor(raw: TeammateRecordingRaw) {
+    this.recordingId = raw.recordingId;
+    this.status = raw.status;
+    this.title = raw.title;
+    this.startedAt = raw.startedAt;
+    this.elapsedMillis = raw.elapsedMillis;
+  }
+}
+
+/**
+ * 같은 워크스페이스에서 나를 뺀 팀원의 녹음 중 · 일시정지 녹음 목록(STT-R55).
+ * 녹음 시작 시각 최신순이고, 같으면 녹음 ID가 큰 것이 앞이에요. 내 녹음은 현재 녹음 조회가 맡아 여기엔 없어요
+ */
+export class GetTeammateRecordingsResponseDto {
+  /** 팀원 진행 중 녹음. 없으면 빈 배열 */
+  items: TeammateRecordingDto[];
+
+  constructor(raw: GetTeammateRecordingsResponseRaw) {
+    this.items = raw.items.map((item) => new TeammateRecordingDto(item));
+  }
+}
+
 // GET /api/v1/workspaces/{workspaceId}/recordings
 
 /**
@@ -272,6 +337,8 @@ export interface RecordingHistoryItemRaw {
   startedAt: string;
   recordingDurationSeconds: number;
   processingStatus?: RecordingProcessingStatus | null;
+  /** 전사 준비 상태. 이전 서버에서 빠진 값은 null로 정규화해요. */
+  transcriptStatus?: RecordingTranscriptStatus | null;
   retryable?: boolean | null;
   retryableJobIds?: number[];
 }
@@ -288,6 +355,8 @@ export class RecordingHistoryItemDto {
   recordingDurationSeconds: number;
   /** 처리 상태. 이전 서버의 필드 누락은 null로 보존하며 정상 상태로 추정하지 않아요 */
   processingStatus: RecordingProcessingStatus | null;
+  /** 전사 공개 상태. EMPTY는 성공한 빈 전사, UNAVAILABLE은 사용할 수 없는 전사이며 이전 응답의 생략은 null로 정규화합니다. */
+  transcriptStatus: RecordingTranscriptStatus | null;
   /** 실패한 처리를 지금 다시 접수할 수 있으면 true. 서버 필드 `retryable`을 이름만 바꾸고 누락·null은 false로 둬요 */
   isRetryable: boolean;
   /** 문서 생성 실패 중 지금 접수할 수 있는 작업 ID. 다른 상태와 확장 전 응답은 빈 배열이에요 */
@@ -299,6 +368,7 @@ export class RecordingHistoryItemDto {
     this.startedAt = raw.startedAt;
     this.recordingDurationSeconds = raw.recordingDurationSeconds;
     this.processingStatus = raw.processingStatus ?? null;
+    this.transcriptStatus = raw.transcriptStatus ?? null;
     this.isRetryable = raw.retryable ?? false;
     this.retryableJobIds = raw.retryableJobIds ?? [];
   }
@@ -387,7 +457,9 @@ export class PostRecordingResponseDto {
 
 /** 전사 상태. 전사 시도가 접수된 뒤의 값이에요 */
 export type RecordingTranscriptionStatus =
-  "PROCESSING" | "SUCCEEDED" | "FAILED";
+  | "PROCESSING"
+  | "SUCCEEDED"
+  | "FAILED";
 
 /**
  * 주제 분류와 주제별 문서 생성을 합친 상태.
@@ -398,7 +470,11 @@ export type RecordingTranscriptionStatus =
  * - `FAILED`: 진행 중인 작업 없이 실패가 남음
  */
 export type RecordingDocumentGenerationStatus =
-  "QUEUED" | "RUNNING" | "SUCCEEDED" | "FAILED" | "NO_CONTENT";
+  | "QUEUED"
+  | "RUNNING"
+  | "SUCCEEDED"
+  | "FAILED"
+  | "NO_CONTENT";
 
 /** 녹음 상세 조회가 주는 문서 생성 결과의 서버 응답 모양 */
 export interface RecordingDocumentGenerationRaw {
@@ -434,6 +510,7 @@ export class RecordingDocumentGenerationDto {
  * 전사와 문서 생성 필드는 서버에 나중에 더해진 값이라, 그 전의 서버는 필드 자체를 주지 않아요.
  */
 export interface GetRecordingResponseRaw {
+  speakerCount?: number | null;
   /** 녹음 세션 상태. 전사·문서 생성 상태가 아니에요 */
   status: RecordingSessionStatus;
   elapsedMillis: number;
@@ -449,6 +526,8 @@ export interface GetRecordingResponseRaw {
 
 /** 녹음 상세 조회 응답. 녹음을 끝낸 뒤 이 응답을 다시 조회해 문서 정리가 어디까지 됐는지 확인해요 */
 export class GetRecordingResponseDto {
+  /** 저장된 참가자 수. null 또는 이전 서버의 누락은 자동 추정이에요. */
+  speakerCount: number | null;
   /** 녹음 세션 상태. 서버 필드 `status`를 전사·문서 생성 상태와 구별되게 이름을 바꿨어요. 전사·문서 생성이 실패해도 `ENDED`로 남아요 */
   sessionStatus: RecordingSessionStatus;
   /** 일시정지를 뺀 서버 기준 녹음 시간(ms). 진행 중이면 조회 시점까지 센 값이에요 */
@@ -471,6 +550,7 @@ export class GetRecordingResponseDto {
   sourceAudio: RecordingSourceAudioDto | null;
 
   constructor(raw: GetRecordingResponseRaw) {
+    this.speakerCount = raw.speakerCount ?? null;
     this.sessionStatus = raw.status;
     this.elapsedMillis = raw.elapsedMillis;
     this.endedAt = raw.endedAt;
@@ -713,7 +793,9 @@ export class PostRecordingEndResponseDto {
  * `MAX_DURATION`은 누적 녹음 시간이 2시간에 닿아 서버가 끝냄
  */
 export type RecordingEndReason =
-  "USER_ENDED" | "CONNECTION_EXPIRED" | "MAX_DURATION";
+  | "USER_ENDED"
+  | "CONNECTION_EXPIRED"
+  | "MAX_DURATION";
 
 /** 녹음 생존 신호를 보낼 때 앱이 넘기는 값. 시작 때 보낸 증명 그대로 */
 export interface PostRecordingHeartbeatRequestInput {
@@ -1076,5 +1158,71 @@ export class PostRecordingTranscriptionRetryResponseDto {
     this.recordingId = raw.recordingId;
     this.attemptId = raw.attemptId;
     this.transcriptionStatus = raw.transcriptionStatus;
+  }
+}
+
+/** 참가자 수 저장 요청 입력. null은 자동 추정이에요. */
+export interface PatchSpeakerCountRequestInput {
+  tabId: string;
+  controlToken: string;
+  speakerCount: number | null;
+}
+/** 녹음을 제어하는 탭에서 참가자 수를 저장하는 요청. */
+export class PatchSpeakerCountRequestDto {
+  /** 녹음 제어권을 가진 탭 UUID */
+  tabId: string;
+  /** 서버가 발급받아 확인하는 탭 제어 증명 */
+  controlToken: string;
+  /** null은 자동 추정, 직접 지정은 1~10명 */
+  speakerCount: number | null;
+  constructor(input: PatchSpeakerCountRequestInput) {
+    this.tabId = input.tabId;
+    this.controlToken = input.controlToken;
+    this.speakerCount = input.speakerCount;
+  }
+}
+export interface PatchSpeakerCountResponseRaw {
+  recordingId: number;
+  speakerCount: number | null;
+}
+/** 서버에 저장된 참가자 수. */
+export class PatchSpeakerCountResponseDto {
+  /** 설정을 변경한 녹음 식별자 */
+  recordingId: number;
+  /** null은 자동 추정, 직접 지정은 1~10명 */
+  speakerCount: number | null;
+  constructor(raw: PatchSpeakerCountResponseRaw) {
+    this.recordingId = raw.recordingId;
+    this.speakerCount = raw.speakerCount;
+  }
+}
+export interface PatchSpeakerNameRequestInput {
+  displayName: string;
+}
+/** 녹음 하나의 같은 화자 전체에 적용할 표시 이름 요청. */
+export class PatchSpeakerNameRequestDto {
+  /** 앞뒤 공백을 제거한 1~50 Unicode 문자. 줄바꿈·제어문자 불가 */
+  displayName: string;
+  constructor(input: PatchSpeakerNameRequestInput) {
+    this.displayName = input.displayName;
+  }
+}
+export interface PatchSpeakerNameResponseRaw {
+  recordingId: number;
+  speakerNumber: number;
+  displayName: string;
+}
+/** 저장한 화자 표시 이름. 계정과 연결하지 않아요. */
+export class PatchSpeakerNameResponseDto {
+  /** 이름을 변경한 녹음 식별자 */
+  recordingId: number;
+  /** 녹음 전사 안에서만 유효한 양의 화자 번호 */
+  speakerNumber: number;
+  /** 서버가 정규화해 저장한 표시 이름 */
+  displayName: string;
+  constructor(raw: PatchSpeakerNameResponseRaw) {
+    this.recordingId = raw.recordingId;
+    this.speakerNumber = raw.speakerNumber;
+    this.displayName = raw.displayName;
   }
 }

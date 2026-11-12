@@ -339,6 +339,8 @@ export interface DocumentTranscriptSegmentRaw {
   startMillis: number;
   endMillis: number | null;
   speakerNumber: number | null;
+  /** 해당 녹음에서 수정한 표시명. 미지정 또는 이전 응답의 생략은 DTO에서 null로 정규화합니다. */
+  speakerDisplayName?: string | null;
   text: string;
 }
 
@@ -350,6 +352,8 @@ export class DocumentTranscriptSegmentDto {
   endMillis: number | null;
   /** 같은 원문 안에서만 쓰는 익명 화자 번호(1부터). 화자를 알 수 없으면 null. 멤버와 연결되지 않아요 */
   speakerNumber: number | null;
+  /** 해당 녹음에서 수정한 표시명. 미지정 또는 이전 응답의 생략은 DTO에서 null로 정규화합니다. */
+  speakerDisplayName?: string | null;
   /** 읽기 전용 발화 문장 */
   text: string;
 
@@ -357,6 +361,7 @@ export class DocumentTranscriptSegmentDto {
     this.startMillis = raw.startMillis;
     this.endMillis = raw.endMillis;
     this.speakerNumber = raw.speakerNumber;
+    this.speakerDisplayName = raw.speakerDisplayName ?? null;
     this.text = raw.text;
   }
 }

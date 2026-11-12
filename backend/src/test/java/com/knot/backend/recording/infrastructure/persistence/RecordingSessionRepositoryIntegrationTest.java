@@ -10,7 +10,7 @@ import com.knot.backend.recording.domain.repository.RecordingSessionRepository;
 import com.knot.backend.recording.domain.model.RecordingStatus;
 import com.knot.backend.recording.domain.RecordingException;
 import com.knot.backend.recording.domain.RecordingErrorCode;
-import com.knot.backend.testsupport.TestcontainersConfiguration;
+import com.knot.backend.testsupport.IsolatedPostgresTest;
 import jakarta.persistence.EntityManager;
 import java.time.Instant;
 import java.util.List;
@@ -29,7 +29,8 @@ import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.support.TransactionTemplate;
 
 @Tag("integration")
-@Import({TestcontainersConfiguration.class, RecordingSessionRepositoryAdapter.class})
+@IsolatedPostgresTest
+@Import({RecordingSessionRepositoryAdapter.class})
 @DataJpaTest
 class RecordingSessionRepositoryIntegrationTest {
     private static final String CONTROL_TOKEN_HASH = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";

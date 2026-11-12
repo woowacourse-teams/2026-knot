@@ -4,7 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.tuple;
 
-import com.knot.backend.testsupport.TestcontainersConfiguration;
+import com.knot.backend.testsupport.IsolatedPostgresTest;
 import com.knot.backend.workspace.domain.model.Workspace;
 import com.knot.backend.workspace.domain.model.WorkspaceMember;
 import com.knot.backend.workspace.domain.repository.WorkspaceMemberRepository;
@@ -31,7 +31,8 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 @Tag("integration")
-@Import({TestcontainersConfiguration.class, WorkspaceRepositoryAdapter.class, WorkspaceMemberRepositoryAdapter.class})
+@IsolatedPostgresTest
+@Import({WorkspaceRepositoryAdapter.class, WorkspaceMemberRepositoryAdapter.class})
 @DataJpaTest
 class WorkspaceRepositoryIntegrationTest {
     private static final Instant CREATED_AT = Instant.parse("2026-08-24T00:00:00Z");

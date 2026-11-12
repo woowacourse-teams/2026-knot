@@ -60,7 +60,7 @@ describe("getPopoverPosition", () => {
     ).toEqual({ top: 609, left: 900 });
   });
 
-  it("아래 공간이 모자라도 위쪽이 더 좁으면 뒤집지 않는다", () => {
+  it("양쪽 공간이 모자라면 화면 안쪽으로 이동해 전체 내용을 보여 준다", () => {
     // 높이 500: 아래 공간 480은 기준 524보다 작지만, 위쪽 400은 그보다 더 좁음
     const tallPopoverSize = { width: 200, height: 500 };
     const triggerRect = { top: 400, right: 1100, bottom: 420, left: 1000 };
@@ -72,7 +72,7 @@ describe("getPopoverPosition", () => {
         viewport,
         placement: "bottom-end",
       }),
-    ).toEqual({ top: 428, left: 900 });
+    ).toEqual({ top: 384, left: 900 });
   });
 
   it("오른쪽 가장자리를 넘으면 정렬은 두고 16px 안쪽으로 민다", () => {
@@ -127,4 +127,15 @@ describe("getPopoverPosition", () => {
       }),
     ).toEqual({ top: 128, left: 16 });
   });
+});
+
+it("위로 뒤집은 긴 팝오버도 위쪽 여백 안에 유지한다", () => {
+  expect(
+    getPopoverPosition({
+      triggerRect: { top: 420, bottom: 440, left: 800, right: 900 },
+      popoverSize: { width: 360, height: 680 },
+      viewport: { width: 1280, height: 720 },
+      placement: "bottom-start",
+    }),
+  ).toEqual({ top: 16, left: 800 });
 });

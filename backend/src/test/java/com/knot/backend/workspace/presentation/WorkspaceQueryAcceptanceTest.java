@@ -9,7 +9,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.knot.backend.auth.domain.AuthTokenProvider;
 import com.knot.backend.auth.domain.model.AuthenticatedMember;
 import com.knot.backend.testsupport.TestApplicationProperties;
-import com.knot.backend.testsupport.TestcontainersConfiguration;
+import com.knot.backend.testsupport.IsolatedPostgresTest;
 import com.knot.backend.workspace.domain.model.WorkspaceMemberRole;
 import jakarta.servlet.http.Cookie;
 import java.time.Instant;
@@ -22,7 +22,6 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
-import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.test.context.TestConstructor;
 import org.springframework.test.context.TestConstructor.AutowireMode;
@@ -30,7 +29,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
 
 @Tag("acceptance")
-@Import(TestcontainersConfiguration.class)
+@IsolatedPostgresTest
 @TestApplicationProperties
 @SpringBootTest
 @AutoConfigureMockMvc

@@ -2,7 +2,7 @@ package com.knot.backend.recording.infrastructure.persistence;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.knot.backend.testsupport.TestcontainersConfiguration;
+import com.knot.backend.testsupport.IsolatedPostgresTest;
 import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.Statement;
@@ -15,11 +15,10 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
-import org.springframework.context.annotation.Import;
 
 @Tag("integration")
 @DataJpaTest
-@Import(TestcontainersConfiguration.class)
+@IsolatedPostgresTest
 class TranscriptSegmentCreationTimeMigrationIntegrationTest {
     @Autowired
     private DataSource dataSource;

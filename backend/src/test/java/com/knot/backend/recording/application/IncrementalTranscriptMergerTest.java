@@ -27,6 +27,42 @@ class IncrementalTranscriptMergerTest {
     private final IncrementalTranscriptMerger merger = new IncrementalTranscriptMerger(mapper);
 
     @Test
+    void fixedCountDoesNotSilentlyFallBackWithoutReclustering() {
+        var window = window(
+                0,
+                0,
+                100,
+                0,
+                100,
+                List.of(
+                        token(
+                                10,
+                                20,
+                                "발화",
+                                "a"
+                        )
+                ),
+                List.of(
+                        speaker(
+                                "a",
+                                0
+                        )
+                )
+        );
+        assertThat(
+                catchThrowable(
+                        () -> merger.merge(
+                                List.of(window),
+                                100,
+                                0.8,
+                                false,
+                                1
+                        )
+                )
+        ).isInstanceOf(RecordingException.class);
+    }
+
+    @Test
     @DisplayName("결과 도착 순서와 관계없이 core 순서로 화자와 발화를 결정한다")
     void merge_success_independentOfArrivalOrder() {
         // given

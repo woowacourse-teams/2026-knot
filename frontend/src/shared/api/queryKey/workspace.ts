@@ -1,4 +1,6 @@
 export const workspaceKeys = {
+  members: (workspaceId: number) =>
+    ["workspaces", "members", workspaceId] as const,
   all: ["workspaces"] as const,
   list: () => [...workspaceKeys.all, "list"] as const,
   detail: (workspaceId: number) =>
