@@ -1,3 +1,4 @@
+import { searchChatHandlers } from "./handlers/dev/searchChat";
 import { recordingDemoHandlers } from "./handlers/dev/recordingDemo";
 import { focusManager } from "@tanstack/react-query";
 import { setupWorker } from "msw/browser";
@@ -19,6 +20,7 @@ import {
 // 앞에 둬 기본 핸들러만 덮어요.
 // vitest(server.ts)에는 넣지 않아요
 export const mockWorker = setupWorker(
+  ...searchChatHandlers,
   ...recordingDemoHandlers,
   ...devAuthHandlers,
   ...deploymentCompatibilityHandlers,

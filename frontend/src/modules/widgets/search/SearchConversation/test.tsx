@@ -4,7 +4,6 @@ import {
   SearchStreamDeltaDto,
 } from "@api/dto/search";
 import {
-  searchAnswerRetryStreamResponse,
   searchMessagesResponse,
 } from "@api/mock/responses/search";
 import { mockServer } from "@api/mock/server";
@@ -50,8 +49,8 @@ const answersWithEvidence = answers.filter(
   ({ evidences }) => evidences.length > 0,
 );
 
-const SEARCHING_TEXT = "문서에서 찾고 있어요…";
-const FAILED_TEXT = "답변을 만들지 못했어요. 잠시 후 다시 시도해 주세요.";
+const SEARCHING_TEXT = "답변을 준비하고 있어요…";
+const FAILED_TEXT = "지금은 답변을 정리하기 어려워요. 질문을 조금 더 구체적으로 이어서 해주시면 도와드릴게요.";
 const PARTIAL_ANSWER = "끊기기 전까지 받은 답";
 
 /** 이번 테스트에서만 첫 턴의 답변을 일부 글자만 받고 실패한 답변으로 조회되게 바꿔요 */
@@ -458,60 +457,32 @@ describe("SearchConversation", () => {
     );
   });
 
-  it("실패한 답변 자리에는 받은 글자 대신 실패 안내와 '다시 시도'를 보여준다 (SEARCH-R5)", async () => {
+  it("이전 실패 답변은 미검증 글자와 재시도 버튼 없이 안내 문단으로 보여준다 (SEARCH-R5)", async () => {
     respondWithFailedFirstAnswer();
     renderConversation();
-
-    const alert = await screen.findByRole("alert");
+    expect(await screen.findByText(FAILED_TEXT)).toBeInTheDocument();
     const [firstTurn] = screen.getAllByRole("article");
-
-    expect(within(firstTurn).getByRole("alert")).toBe(alert);
-    expect(within(alert).getByText(FAILED_TEXT)).toBeInTheDocument();
-    expect(
-      within(alert).getByRole("button", { name: "다시 시도" }),
-    ).toBeInTheDocument();
+    expect(within(firstTurn).getByText(FAILED_TEXT).tagName).toBe("P");
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "다시 시도" })).not.toBeInTheDocument();
     expect(screen.queryByText(PARTIAL_ANSWER)).not.toBeInTheDocument();
   });
 
-  it("'다시 시도'를 누르면 같은 질문으로 다시 받은 답변을 실패했던 턴 자리에 보여준다 (SEARCH-R5)", async () => {
-    respondWithFailedFirstAnswer();
-    renderConversation();
-
-    await act(async () => {
-      fireEvent.click(await screen.findByRole("button", { name: "다시 시도" }));
+  it("새로 접수된 답변의 기술 오류도 안내로 표시하고 미검증 본문은 숨긴다", async () => {
+    const store = useSearchAnswerStore.getState();
+    const controller = store.start({ question: "일반 질문", conversationId: 10 });
+    if (!controller) throw new Error("질문을 시작하지 못했어요");
+    store.applyEvent(controller, {
+      event: "accepted",
+      data: new SearchStreamAcceptedDto({ conversationId: 10, questionMessageId: 1001, answerMessageId: 1002 }),
     });
-
-    const retriedAnswer = searchAnswerRetryStreamResponse.deltas.join("");
-    expect(await screen.findByText(retriedAnswer)).toBeInTheDocument();
-
-    const turns = screen.getAllByRole("article");
-    expect(turns).toHaveLength(questions.length);
-    expect(
-      within(turns[0]).getByText(questions[0].content),
-    ).toBeInTheDocument();
-    expect(within(turns[0]).getByText(retriedAnswer)).toBeInTheDocument();
+    store.applyEvent(controller, { event: "delta", data: new SearchStreamDeltaDto({ answerMessageId: 1002, text: PARTIAL_ANSWER }) });
+    store.fail(controller, new Error("private-provider-error"));
+    renderConversation();
+    expect(await screen.findByText(FAILED_TEXT)).toBeInTheDocument();
+    expect(screen.queryByText(PARTIAL_ANSWER)).not.toBeInTheDocument();
+    expect(screen.queryByText("private-provider-error")).not.toBeInTheDocument();
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
-  });
-
-  it("'다시 시도'로 받은 답변이 끝나면 그 대화의 메시지를 다시 조회한다 (SEARCH-R5)", async () => {
-    respondWithFailedFirstAnswer();
-    renderConversation();
-    const retryButton = await screen.findByRole("button", {
-      name: "다시 시도",
-    });
-
-    // 처음 조회는 이미 끝났으니, 여기서부터 세는 요청은 재시도가 일으킨 것뿐이에요
-    let messagesRequestCount = 0;
-    mockServer.events.on("request:start", ({ request }) => {
-      if (request.url.includes("/messages")) messagesRequestCount += 1;
-    });
-
-    await act(async () => {
-      fireEvent.click(retryButton);
-    });
-
-    await waitFor(() => expect(messagesRequestCount).toBe(1));
-    mockServer.events.removeAllListeners();
   });
 
   it("'기록 N개에서 찾았어요'를 누르면 그 답변의 찾은 기록을 연다 (SEARCH-R2)", async () => {
