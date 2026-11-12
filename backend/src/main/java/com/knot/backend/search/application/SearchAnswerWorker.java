@@ -13,7 +13,6 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicLong;
-import java.util.concurrent.CancellationException;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -26,8 +25,6 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 @Slf4j
 public class SearchAnswerWorker {
-    private static final String NO_DOCUMENT_GUIDANCE = "현재 검색 가능한 회의 문서에서는 해당 내용을 확인하지 못했습니다. 내용을 녹음하고 문서 준비가 끝난 뒤 다시 질문해 주세요.";
-
     private final SearchAnswerExecutionService executions;
     private final ObjectProvider<SearchDocumentRetriever> retrievers;
     private final ObjectProvider<SearchAnswerGenerator> generators;
@@ -58,11 +55,18 @@ public class SearchAnswerWorker {
                         queueWaitMs
                 )
         );
+        Instant startedAt = clock.instant();
+        SearchToolScope scope = SearchToolScope.from(
+                work,
+                startedAt,
+                startedAt.plus(agentProperties.getBudget())
+        );
         AtomicLong persistenceCount = new AtomicLong();
         AtomicLong persistenceNanos = new AtomicLong();
         try {
             generate(
                     work,
+                    scope,
                     persistenceCount,
                     persistenceNanos
             );
@@ -77,7 +81,7 @@ public class SearchAnswerWorker {
             executions.fail(
                     answerId,
                     work.token(),
-                    "ANSWER_GENERATION_FAILED"
+                    failureCode(exception)
             );
         } finally {
             log.info(
@@ -91,17 +95,40 @@ public class SearchAnswerWorker {
         }
     }
 
+    private String failureCode(RuntimeException exception) {
+        if (exception instanceof com.knot.backend.search.domain.SearchScopeExpiredException) {
+            return "ANSWER_GENERATION_TIMEOUT";
+        }
+        if ("SEARCH_ACCESS_DENIED".equals(ServerErrorLogger.safeFailureCode(exception))) {
+            return "SEARCH_ACCESS_DENIED";
+        }
+        return "ANSWER_GENERATION_FAILED";
+    }
+
+    private SearchRetrievalResult retrieve(
+            SearchIntent intent,
+            SearchToolScope scope,
+            String question
+    ) {
+        if (!intent.requiresSearch()) {
+            return new SearchRetrievalResult(
+                    List.of(),
+                    0
+            );
+        }
+        return retrievers.getObject()
+                .retrieve(
+                        scope,
+                        question
+                );
+    }
+
     private void generate(
             SearchAnswerWorkResult work,
+            SearchToolScope scope,
             AtomicLong persistenceCount,
             AtomicLong persistenceNanos
     ) {
-        Instant startedAt = clock.instant();
-        SearchToolScope scope = SearchToolScope.from(
-                work,
-                startedAt,
-                startedAt.plus(agentProperties.getBudget())
-        );
         long classificationStarted = System.nanoTime();
         SearchIntent intent;
         try {
@@ -131,22 +158,23 @@ public class SearchAnswerWorker {
                             .length(),
                     ServerErrorLogger.safeFailureCode(exception)
             );
-            throw exception;
+            if (ServerErrorLogger.isControlFlow(exception)) {
+                throw exception;
+            }
+            if (!executions.isCurrent(
+                    work.answerId(),
+                    work.token()
+            )) {
+                return;
+            }
+            intent = SearchIntent.MEETING_SEARCH;
         }
-        if (!intent.requiresSearch()) {
-            completeGuidance(
-                    work,
-                    intent,
-                    persistenceCount,
-                    persistenceNanos
-            );
-            return;
-        }
-        SearchDocumentRetriever retriever = retrievers.getObject();
         long retrievalStarted = System.nanoTime();
         SearchRetrievalResult retrieval;
+        boolean retrievalUnavailable = false;
         try {
-            retrieval = retriever.retrieve(
+            retrieval = retrieve(
+                    intent,
                     scope,
                     work.question()
             );
@@ -173,7 +201,14 @@ public class SearchAnswerWorker {
                             .length(),
                     ServerErrorLogger.safeFailureCode(exception)
             );
-            throw exception;
+            if (ServerErrorLogger.isControlFlow(exception)) {
+                throw exception;
+            }
+            retrievalUnavailable = true;
+            retrieval = new SearchRetrievalResult(
+                    List.of(),
+                    0
+            );
         }
         if (!executions.recordRetrieval(
                 work.answerId(),
@@ -184,118 +219,56 @@ public class SearchAnswerWorker {
             return;
         }
         List<SearchDocumentResult> documents = retrieval.documents();
-        if (documents.isEmpty()) {
-            append(
-                    work,
-                    NO_DOCUMENT_GUIDANCE,
-                    persistenceCount,
-                    persistenceNanos
-            );
-            executions.complete(
-                    work.answerId(),
-                    work.token(),
-                    List.of(),
-                    Set.of()
-            );
-            return;
-        }
         SearchAnswerGenerator generator = generators.getObject();
         List<Long> usedIds;
-        try (SearchAnswerContentBuffer content = new SearchAnswerContentBuffer(
-                text -> append(
-                        work,
-                        text,
-                        persistenceCount,
-                        persistenceNanos
-                )
-        )) {
-            long generationStarted = System.nanoTime();
-            try {
-                usedIds = generator.generate(
-                        scope,
-                        work.question(),
-                        documents,
-                        content
-                );
-                log.info(
-                        "Search latency phase=answer_generation workspaceId={} questionId={} answerId={} elapsedMs={} inputChars={} documentCount={} outcome=success",
-                        work.workspaceId(),
-                        work.questionId(),
-                        work.answerId(),
-                        (System.nanoTime() - generationStarted) / 1_000_000,
-                        work.question()
-                                .length(),
-                        documents.size()
-                );
-            } catch (RuntimeException exception) {
-                log.info(
-                        "Search latency phase=answer_generation workspaceId={} questionId={} answerId={} elapsedMs={} inputChars={} documentCount={} outcome=failure failureCode={}",
-                        work.workspaceId(),
-                        work.questionId(),
-                        work.answerId(),
-                        (System.nanoTime() - generationStarted) / 1_000_000,
-                        work.question()
-                                .length(),
-                        documents.size(),
-                        ServerErrorLogger.safeFailureCode(exception)
-                );
-                throw exception;
+        StringBuilder content = new StringBuilder();
+        long generationStarted = System.nanoTime();
+        try {
+            if (retrievalUnavailable) {
+                content.append(SearchAnswerGuidance.RETRIEVAL_UNAVAILABLE);
             }
+            usedIds = generator.generate(
+                    scope,
+                    work.question(),
+                    documents,
+                    content::append
+            );
+            log.info(
+                    "Search latency phase=answer_generation workspaceId={} questionId={} answerId={} elapsedMs={} inputChars={} documentCount={} outcome=success",
+                    work.workspaceId(),
+                    work.questionId(),
+                    work.answerId(),
+                    (System.nanoTime() - generationStarted) / 1_000_000,
+                    work.question()
+                            .length(),
+                    documents.size()
+            );
+        } catch (RuntimeException exception) {
+            log.info(
+                    "Search latency phase=answer_generation workspaceId={} questionId={} answerId={} elapsedMs={} inputChars={} documentCount={} outcome=failure failureCode={}",
+                    work.workspaceId(),
+                    work.questionId(),
+                    work.answerId(),
+                    (System.nanoTime() - generationStarted) / 1_000_000,
+                    work.question()
+                            .length(),
+                    documents.size(),
+                    ServerErrorLogger.safeFailureCode(exception)
+            );
+            throw exception;
         }
         Set<Long> candidates = documents.stream()
                 .map(SearchDocumentResult::documentId)
                 .collect(Collectors.toSet());
-        executions.complete(
-                work.answerId(),
-                work.token(),
-                usedIds,
-                candidates
-        );
-    }
-
-    private void completeGuidance(
-            SearchAnswerWorkResult work,
-            SearchIntent intent,
-            AtomicLong persistenceCount,
-            AtomicLong persistenceNanos
-    ) {
-        if (!executions.recordRetrieval(
-                work.answerId(),
-                work.token(),
-                0,
-                List.of()
-        )) {
-            return;
-        }
-        append(
-                work,
-                SearchIntentGuidance.forIntent(intent),
-                persistenceCount,
-                persistenceNanos
-        );
-        executions.complete(
-                work.answerId(),
-                work.token(),
-                List.of(),
-                Set.of()
-        );
-    }
-
-    private void append(
-            SearchAnswerWorkResult work,
-            String text,
-            AtomicLong persistenceCount,
-            AtomicLong persistenceNanos
-    ) {
         long persistenceStarted = System.nanoTime();
         try {
-            if (!executions.append(
+            executions.completeGenerated(
                     work.answerId(),
                     work.token(),
-                    text
-            )) {
-                throw new CancellationException("answer execution ended");
-            }
+                    content.toString(),
+                    usedIds,
+                    candidates
+            );
         } finally {
             persistenceCount.incrementAndGet();
             persistenceNanos.addAndGet(System.nanoTime() - persistenceStarted);

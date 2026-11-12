@@ -2,12 +2,36 @@ package com.knot.backend.search.infrastructure.llm;
 
 import java.util.List;
 import java.util.Map;
+import java.util.LinkedHashMap;
 
 public final class SearchAnswerSchema {
 
     private SearchAnswerSchema() {}
 
     public static Map<String, Object> responseFormat() {
+        return responseFormat(true);
+    }
+
+    public static Map<String, Object> responseFormat(boolean includeArrayLimit) {
+        Map<String, Object> evidenceIds = new LinkedHashMap<>(
+                Map.of(
+                        "type",
+                        "array",
+                        "items",
+                        Map.of(
+                                "type",
+                                "string",
+                                "pattern",
+                                "^E[0-9]+$"
+                        )
+                )
+        );
+        if (includeArrayLimit) {
+            evidenceIds.put(
+                    "maxItems",
+                    3
+            );
+        }
         Map<String, Object> properties = Map.of(
                 "status",
                 Map.of(
@@ -15,6 +39,7 @@ public final class SearchAnswerSchema {
                         "string",
                         "enum",
                         List.of(
+                                "GENERAL",
                                 "ANSWERED",
                                 "PARTIAL",
                                 "CONFLICT",
@@ -43,19 +68,7 @@ public final class SearchAnswerSchema {
                         "string"
                 ),
                 "evidenceIds",
-                Map.of(
-                        "type",
-                        "array",
-                        "maxItems",
-                        3,
-                        "items",
-                        Map.of(
-                                "type",
-                                "string",
-                                "pattern",
-                                "^E[0-9]+$"
-                        )
-                ),
+                evidenceIds,
                 "clarificationQuestion",
                 Map.of(
                         "anyOf",

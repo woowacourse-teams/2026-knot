@@ -1,3 +1,4 @@
+import { searchChatHandlers } from "./handlers/dev/searchChat";
 import { recordingDemoHandlers } from "./handlers/dev/recordingDemo";
 import { focusManager } from "@tanstack/react-query";
 import { setupWorker } from "msw/browser";
@@ -21,6 +22,7 @@ import {
 export const mockWorker = setupWorker(
   ...recordingDemoHandlers,
   ...devAuthHandlers,
+  ...searchChatHandlers,
   ...deploymentCompatibilityHandlers,
   ...devScenarioHandlers,
   ...handlers,

@@ -27,6 +27,7 @@ public record SearchAnswerResponse(
             "clarificationQuestion"
     );
     private static final Set<String> STATUSES = Set.of(
+            "GENERAL",
             "ANSWERED",
             "PARTIAL",
             "CONFLICT",
@@ -183,6 +184,13 @@ public record SearchAnswerResponse(
             String status,
             List<Long> ids
     ) {
+        if ("GENERAL".equals(status)) {
+            validateGeneral(
+                    response,
+                    ids
+            );
+            return;
+        }
         if ("NOT_FOUND".equals(status)) {
             validateNotFound(
                     response,
@@ -191,6 +199,18 @@ public record SearchAnswerResponse(
             return;
         }
         if (!"NEEDS_CLARIFICATION".equals(status) && ids.isEmpty()) {
+            throw invalid();
+        }
+    }
+
+    private static void validateGeneral(
+            JsonNode response,
+            List<Long> ids
+    ) {
+        if (!ids.isEmpty() || !"NOT_APPLICABLE".equals(
+                response.path("decisionState")
+                        .asString()
+        )) {
             throw invalid();
         }
     }

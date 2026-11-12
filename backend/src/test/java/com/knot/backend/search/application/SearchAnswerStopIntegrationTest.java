@@ -519,6 +519,14 @@ class SearchAnswerStopIntegrationTest {
             });
             Future<?> generate = executor.submit(() -> {
                 await(start);
+                if (action.equals("FAILED")) {
+                    executions.fail(
+                            work.answerId(),
+                            work.token(),
+                            "ANSWER_GENERATION_FAILED"
+                    );
+                    return;
+                }
                 finish(
                         work,
                         action
@@ -529,8 +537,7 @@ class SearchAnswerStopIntegrationTest {
         }
         assertThat(snapshotStatus()).isIn(
                 SearchMessageStatus.STOPPED,
-                SearchMessageStatus.COMPLETED,
-                SearchMessageStatus.FAILED
+                SearchMessageStatus.COMPLETED
         );
         String content = snapshots.read(
                 workspaceId,
@@ -631,11 +638,20 @@ class SearchAnswerStopIntegrationTest {
             return;
         }
         if (action.equals("FAILED")) {
-            executions.fail(
-                    work.answerId(),
-                    work.token(),
-                    "FAILURE"
-            );
+            // Legacy FAILED remains terminal even though new technical errors store
+            // guidance.
+            jdbc.sql("UPDATE search_messages SET status = 'FAILED', failure_code = 'FAILURE' WHERE id = :id")
+                    .param(
+                            "id",
+                            work.answerId()
+                    )
+                    .update();
+            jdbc.sql("UPDATE search_answer_executions SET state = 'FINISHED' WHERE answer_id = :id")
+                    .param(
+                            "id",
+                            work.answerId()
+                    )
+                    .update();
             return;
         }
         if (action.equals("APPEND")) {

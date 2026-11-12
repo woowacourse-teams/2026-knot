@@ -4,8 +4,11 @@ import com.knot.backend.search.domain.model.SearchIntent;
 import com.knot.backend.search.application.SearchIntentClassifier;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.verify;
+import com.knot.backend.search.application.SearchAnswerGuidance;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doAnswer;
@@ -112,6 +115,19 @@ class SearchAnswerRetryAcceptanceTest {
 
     @BeforeEach
     void setUp() throws Exception {
+        org.mockito.Mockito.doAnswer(call -> {
+            java.util.function.Consumer<String> delta = call.getArgument(3);
+            delta.accept("일반 대화 답변");
+            return List.of();
+        })
+                .when(generator)
+                .generate(
+                        any(),
+                        any(),
+                        any(),
+                        any()
+                );
+
         awaitStreamsIdle();
         when(
                 classifier.classify(
@@ -192,7 +208,7 @@ class SearchAnswerRetryAcceptanceTest {
                     "event:delta",
                     "event:completed",
                     "event:excluded_documents",
-                    "현재 검색 가능한 회의 문서"
+                    "일반 대화 답변"
             )
                     .doesNotContain(
                             "실패한 부분",
@@ -243,7 +259,7 @@ class SearchAnswerRetryAcceptanceTest {
     }
 
     @Test
-    @DisplayName("재시도도 의도를 다시 확인하고 고정 안내로 기존 답변을 완료한다")
+    @DisplayName("재시도도 의도를 다시 확인하고 일반 답변으로 기존 답변을 완료한다")
     void retry_success_outOfScopeGuidance() throws Exception {
         when(
                 classifier.classify(
@@ -259,7 +275,7 @@ class SearchAnswerRetryAcceptanceTest {
                             .collect(Collectors.joining("\n"))
             ).contains(
                     "event:completed",
-                    "Knot은 회의 기록의 조회·요약·비교",
+                    "일반 대화 답변",
                     "\"items\":[]"
             )
                     .doesNotContain(
@@ -268,9 +284,12 @@ class SearchAnswerRetryAcceptanceTest {
                             "OUT_OF_SCOPE"
                     );
         }
-        verifyNoInteractions(
-                retriever,
-                generator
+        verifyNoInteractions(retriever);
+        verify(generator).generate(
+                any(),
+                any(),
+                eq(List.of()),
+                any()
         );
         assertThat(count("search_messages")).isEqualTo(2);
         assertThat(
@@ -511,15 +530,30 @@ class SearchAnswerRetryAcceptanceTest {
                 work.token(),
                 "실패한 부분"
         );
-        executions.fail(
-                work.answerId(),
-                work.token(),
-                "ANSWER_GENERATION_FAILED"
-        );
+        // Historical FAILED fixture: new technical errors now store completed guidance
+        // instead.
+        jdbc.sql("UPDATE search_messages SET status='FAILED', failure_code='ANSWER_GENERATION_FAILED' WHERE id=:id")
+                .param(
+                        "id",
+                        work.answerId()
+                )
+                .update();
+        jdbc.sql("UPDATE search_answer_executions SET state='FINISHED' WHERE answer_id=:id")
+                .param(
+                        "id",
+                        work.answerId()
+                )
+                .update();
+        jdbc.sql("UPDATE search_conversations SET visible_in_list=false WHERE id=:id")
+                .param(
+                        "id",
+                        work.conversationId()
+                )
+                .update();
     }
 
     @Test
-    @DisplayName("접수 후 생성 실패는 부분 본문을 보존하고 같은 질문을 다시 재시도할 수 있다")
+    @DisplayName("이전 실패 재시도 중 기술 오류도 미검증 본문 대신 안내로 완료한다")
     void retry_success_generationFailurePreservesPartial() throws Exception {
         // given
         long recording = fixtures.saveRecording(
@@ -583,27 +617,35 @@ class SearchAnswerRetryAcceptanceTest {
                     reader.lines()
                             .collect(Collectors.joining("\n"))
             ).contains(
-                    "새 시도 부분 답변",
-                    "event:failed",
-                    "ANSWER_GENERATION_FAILED"
+                    SearchAnswerGuidance.UNAVAILABLE,
+                    "event:completed"
             )
-                    .doesNotContain("실패한 부분");
+                    .doesNotContain(
+                            "실패한 부분",
+                            "새 시도 부분 답변",
+                            "event:failed"
+                    );
         }
         assertThat(
                 jdbc.sql("SELECT visible_in_list FROM search_conversations")
                         .query(Boolean.class)
                         .single()
-        ).isFalse();
+        ).isTrue();
         assertThat(
                 jdbc.sql("SELECT content FROM search_messages WHERE role = 'ASSISTANT'")
                         .query(String.class)
                         .single()
-        ).isEqualTo("새 시도 부분 답변");
-        try (InputStream stream = connect(body(UUID.randomUUID())).body(); BufferedReader reader = reader(stream)) {
-            assertAccepted(accepted(reader));
-        }
+        ).isEqualTo(SearchAnswerGuidance.UNAVAILABLE);
+        HttpResponse<String> rejected = send(
+                path(first.questionMessageId()),
+                body(UUID.randomUUID()),
+                true,
+                true
+        );
+        assertThat(rejected.statusCode()).isEqualTo(409);
+        assertThat(rejected.body()).contains("ANSWER_NOT_FAILED");
         assertThat(count("search_messages")).isEqualTo(2);
-        assertThat(count("search_request_receipts")).isEqualTo(3);
+        assertThat(count("search_request_receipts")).isEqualTo(2);
     }
 
     @Test
@@ -636,7 +678,7 @@ class SearchAnswerRetryAcceptanceTest {
         assertThat(response.statusCode()).isEqualTo(200);
         assertThat(response.body()).contains(
                 "event:snapshot",
-                "현재 검색 가능한 회의 문서",
+                "일반 대화 답변",
                 "event:completed"
         )
                 .doesNotContain(

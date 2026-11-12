@@ -132,6 +132,16 @@ public class SearchMessage {
         status = SearchMessageStatus.FAILED;
     }
 
+    public void completeGuidance(String guidance) {
+        requireStreamingAnswer();
+        if (guidance == null || guidance.isBlank()) {
+            throw new SearchException(SearchErrorCode.INVALID_SEARCH_STATE);
+        }
+        content = guidance;
+        failureCode = null;
+        status = SearchMessageStatus.COMPLETED;
+    }
+
     public void retry() {
         if (role != SearchMessageRole.ASSISTANT || status != SearchMessageStatus.FAILED) {
             throw new SearchException(SearchErrorCode.INVALID_SEARCH_STATE);
