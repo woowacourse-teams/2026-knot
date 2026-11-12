@@ -1,24 +1,59 @@
 import styled from "@emotion/styled";
-import { type ReactNode, useId } from "react";
+import { getRouterPath } from "@routes/PATH_ROUTE";
+import { type FocusEvent, useId, useRef, useState } from "react";
+
+import { useVisibleRowRange } from "../model/useVisibleRowRange";
+import DocumentRow from "./DocumentRow";
+
+interface FolderDocument {
+  id: number;
+  title: string;
+  /** 한 줄 요약. 없으면 null이에요 */
+  summary: string | null;
+  /** 문서 생성 시각(ISO 8601) */
+  createdAt: string;
+  /** 녹음 길이(초) */
+  recordingDurationSeconds: number;
+}
 
 interface DocumentFolderProps {
+  /** 행을 누르면 갈 문서 보기 주소의 워크스페이스 id */
+  workspaceId: number;
   /** 폴더 이름. AI가 분류한 주제예요 */
   topic: string;
   /** 이 폴더의 전체 문서 수. 아래에 그린 행을 센 값이 아니라 서버가 준 값이에요 */
   documentCount: number;
-  /** 폴더에 담을 행(`DocumentRow`) */
-  children: ReactNode;
+  /** 폴더의 문서. 화면에 그리는 순서 그대로예요 */
+  documents: FolderDocument[];
 }
 
 /**
  * 문서 목록의 폴더 하나. 폴더 이름과 문서 수 아래에, 그 폴더의 문서 행을 카드 하나로 묶어 보여줘요.
+ *
+ * 문서가 많아도 카드 안에는 화면 근처의 행만 그려요. 카드는 행을 모두 그린 높이를 갖고, 그린 행은 위쪽 여백으로 제자리에 놓아요.
+ * 포커스가 있는 행은 화면에서 멀어져도 지우지 않아서, 키보드로 고른 행이 사라져 포커스를 잃지 않아요.
  */
 export default function DocumentFolder({
+  workspaceId,
   topic,
   documentCount,
-  children,
+  documents,
 }: DocumentFolderProps) {
   const topicId = useId();
+  const cardRef = useRef<HTMLUListElement>(null);
+  const [focusedIndex, setFocusedIndex] = useState<number | null>(null);
+  const { cardHeight, firstRowTop, drawnRows } = useVisibleRowRange({
+    cardRef,
+    documents,
+    keptIndex: focusedIndex,
+  });
+
+  // 포커스가 카드 밖으로 나가면 포커스가 있던 행을 더 남기지 않아요. 카드 안의 다른 행으로 옮기면 그 행의 onFocus가 바꿔요
+  const handleCardBlur = (event: FocusEvent<HTMLUListElement>) => {
+    if (!event.currentTarget.contains(event.relatedTarget)) {
+      setFocusedIndex(null);
+    }
+  };
 
   return (
     <Container aria-labelledby={topicId}>
@@ -26,10 +61,49 @@ export default function DocumentFolder({
         <Topic id={topicId}>{topic}</Topic>
         <DocumentCount>{documentCount}</DocumentCount>
       </TopicHeader>
-      <Card>{children}</Card>
+      {/* 스크롤할 때마다 바뀌는 값이라 Emotion 클래스를 새로 만들지 않게 인라인 스타일로 넣어요 */}
+      <Card
+        ref={cardRef}
+        style={{ height: cardHeight, paddingTop: firstRowTop }}
+        onBlur={handleCardBlur}
+      >
+        {drawnRows.map((row) => {
+          if (row.type === "gap") {
+            return (
+              <RowGap key="gap" aria-hidden style={{ height: row.height }} />
+            );
+          }
+
+          const { id, title, summary, createdAt, recordingDurationSeconds } =
+            documents[row.index];
+
+          return (
+            <DocumentRow
+              key={id}
+              href={getRouterPath({
+                routeKey: "DOCUMENT",
+                params: {
+                  workspaceId: String(workspaceId),
+                  documentId: String(id),
+                },
+              })}
+              title={title}
+              summary={summary}
+              createdAt={createdAt}
+              recordingDurationSeconds={recordingDurationSeconds}
+              index={row.index}
+              rowCount={documents.length}
+              onFocus={() => setFocusedIndex(row.index)}
+            />
+          );
+        })}
+      </Card>
     </Container>
   );
 }
+
+/** 화면 근처 밖에 남긴 행과 화면 근처의 행 사이를 그 사이 행들의 높이만큼 비우는 칸. 스크린 리더는 읽지 않아요 */
+const RowGap = styled.li``;
 
 /** 피그마 Folder: 폴더 이름 줄과 카드 사이 12px */
 const Container = styled.section`

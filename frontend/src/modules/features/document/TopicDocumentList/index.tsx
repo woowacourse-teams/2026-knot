@@ -1,7 +1,6 @@
 import useDocumentsQuery from "@api/queries/useDocumentsQuery";
 import styled from "@emotion/styled";
 import useWorkspaceAccessGuard from "@hooks/domain/workspace/useWorkspaceAccessGuard";
-import { getRouterPath } from "@routes/PATH_ROUTE";
 import { groupDocumentsByTopic } from "@utils/groupDocumentsByTopic";
 
 import { useWorkspaceId } from "./model/useWorkspaceId";
@@ -9,7 +8,6 @@ import DocumentFolder from "./ui/DocumentFolder";
 import DocumentListEmpty from "./ui/DocumentListEmpty";
 import DocumentListLoadFailed from "./ui/DocumentListLoadFailed";
 import DocumentListSkeleton from "./ui/DocumentListSkeleton";
-import DocumentRow from "./ui/DocumentRow";
 
 /**
  * 문서 탭 「주제별」 탭의 목록. 워크스페이스의 모든 문서를 폴더(주제)별로 모아 보여주고, 행을 누르면 그 문서 보기로 가요(DOC-R1).
@@ -67,26 +65,13 @@ export default function TopicDocumentList() {
   return (
     <Folders>
       {folders.map(({ topic, documentCount, documents }) => (
-        <DocumentFolder key={topic} topic={topic} documentCount={documentCount}>
-          {documents.map(
-            ({ id, title, summary, createdAt, recordingDurationSeconds }) => (
-              <DocumentRow
-                key={id}
-                href={getRouterPath({
-                  routeKey: "DOCUMENT",
-                  params: {
-                    workspaceId: String(workspaceId),
-                    documentId: String(id),
-                  },
-                })}
-                title={title}
-                summary={summary}
-                createdAt={createdAt}
-                recordingDurationSeconds={recordingDurationSeconds}
-              />
-            ),
-          )}
-        </DocumentFolder>
+        <DocumentFolder
+          key={topic}
+          workspaceId={workspaceId}
+          topic={topic}
+          documentCount={documentCount}
+          documents={documents}
+        />
       ))}
     </Folders>
   );

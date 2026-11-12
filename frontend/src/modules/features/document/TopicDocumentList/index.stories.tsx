@@ -17,6 +17,22 @@ const EMPTY_DOCUMENTS_RESPONSE = {
   items: [],
   nextCursor: null,
 } satisfies DocumentsResponse;
+// 문서가 많은 폴더 하나. 기본 응답의 첫 문서를 늘려 만들고, 녹음 ID를 거꾸로 매겨 만든 순서 그대로 놓이게 해요
+const MANY_DOCUMENT_COUNT = 1000;
+const [baseDocument] = documentsResponse.items;
+const MANY_DOCUMENTS_RESPONSE = {
+  topics: [{ topic: baseDocument.topic, documentCount: MANY_DOCUMENT_COUNT }],
+  items: Array.from({ length: MANY_DOCUMENT_COUNT }, (_, index) => ({
+    ...baseDocument,
+    id: index + 1,
+    title: `${index + 1}번째 문서`,
+    summary: null,
+    recordingSessionId: MANY_DOCUMENT_COUNT - index,
+  })),
+  nextCursor: null,
+} satisfies DocumentsResponse;
+// 앱의 문서 탭처럼 높이가 정해진 스크롤 영역(px)
+const MANY_DOCUMENTS_MAIN_HEIGHT = 600;
 
 /**
  * 문서 탭 「주제별」 탭의 목록이에요. 워크스페이스의 문서를 폴더(주제)별로 모아 보여 줘요.
@@ -32,6 +48,13 @@ const EMPTY_DOCUMENTS_RESPONSE = {
  * - 행에는 제목 · 한 줄 요약 · 만든 날짜 · 녹음 길이가 있어요. 요약이 없는 문서는 빈 줄을 남기지 않고 제목 한 줄만 보여 줘요. 글이 길면 한 줄에서 말줄임해요.
  *   확인 여부와 문서 상태는 행에 보여 주지 않아요.
  * - 행을 누르면 그 문서의 문서 보기 화면으로 가요.
+ * - 문서가 많아도 폴더 카드에는 화면 근처의 행만 그려요. 문서가 1,939개인 워크스페이스에서 탭을 누르면 행을 모두 만들던 일이 화면을 멈추게 해서예요.
+ *   카드는 행을 모두 그린 높이를 가져서, 스크롤바 길이와 행 위치는 행을 모두 그린 것과 같아요.
+ *   화면 위아래로 325px까지 미리 그려서, 휠 한 번에 325px보다 적게 스크롤하면 행이 비어 보이지 않아요.
+ *   스크롤 영역(`main`) 밖에서 그리면 화면 근처를 정할 수 없어 행을 모두 그려요. 이 문서의 다른 스토리가 이 경우예요.
+ * - 키보드 포커스가 있는 행은 화면에서 멀어져도 지우지 않아요. 지우면 포커스가 사라져 키보드로 행을 열 수 없어서예요.
+ * - 화면 근처의 행만 그려도 스크린 리더가 폴더 안 순서와 폴더의 행 수를 읽도록 행마다 알려요.
+ * - 화면 근처가 아닌 문서는 화면에 없어서 브라우저의 찾기(Cmd+F)로 찾을 수 없어요.
  * - 불러오는 중 · 문서 없음 · 불러오기 실패일 때는 목록 자리만 바꿔요.
  *   불러오는 중의 회색 덩어리는 실제 목록과 간격 · 높이가 같아서, 불러온 뒤 내용이 크게 움직이지 않아요.
  * - 서버 오류나 네트워크 문제로 못 불러오면 「목록을 불러오지 못했어요. 다시 시도해 주세요.」와 `다시 시도`를 보여 줘요.
@@ -150,6 +173,33 @@ export const LoadFailed: Story = {
         documents: http.get(
           DOCUMENTS_REQUEST,
           () => new HttpResponse(null, { status: 500 }),
+        ),
+      },
+    },
+  },
+};
+
+/**
+ * 폴더 하나에 문서가 많을 때예요. 예: 문서가 994개인 도그푸딩 워크스페이스의 가장 큰 폴더.
+ * 앱처럼 높이가 정해진 스크롤 영역(`main`) 안에 그려서, 카드에는 화면 근처의 행만 있어요.
+ * 스크롤하면 화면 근처로 온 행을 그리고 멀어진 행은 지워요. 개발자 도구의 Elements 탭에서 카드(`ul`) 안의 `li` 수가 30개를 넘지 않는 것을 볼 수 있어요.
+ */
+export const ManyDocuments: Story = {
+  decorators: [
+    (Story) => (
+      <main style={{ height: MANY_DOCUMENTS_MAIN_HEIGHT, overflowY: "auto" }}>
+        <Story />
+      </main>
+    ),
+  ],
+  parameters: {
+    docs: {
+      story: { inline: false, iframeHeight: MANY_DOCUMENTS_MAIN_HEIGHT + 40 },
+    },
+    msw: {
+      handlers: {
+        documents: http.get(DOCUMENTS_REQUEST, () =>
+          HttpResponse.json(MANY_DOCUMENTS_RESPONSE),
         ),
       },
     },
