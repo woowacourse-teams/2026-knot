@@ -80,6 +80,12 @@ class SearchLlmClientTest {
                     .build()
                     .readTree(server.requestBody());
             assertThat(body.has("temperature")).isFalse();
+            if ("stream".equals(operation)) {
+                assertThat(
+                        body.at("/response_format/json_schema/schema/properties/evidenceIds")
+                                .has("maxItems")
+                ).isFalse();
+            }
             assertThat(
                     body.path("model")
                             .asString()
