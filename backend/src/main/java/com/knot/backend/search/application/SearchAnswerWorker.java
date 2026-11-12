@@ -105,6 +105,24 @@ public class SearchAnswerWorker {
         return "ANSWER_GENERATION_FAILED";
     }
 
+    private SearchRetrievalResult retrieve(
+            SearchIntent intent,
+            SearchToolScope scope,
+            String question
+    ) {
+        if (!intent.requiresSearch()) {
+            return new SearchRetrievalResult(
+                    List.of(),
+                    0
+            );
+        }
+        return retrievers.getObject()
+                .retrieve(
+                        scope,
+                        question
+                );
+    }
+
     private void generate(
             SearchAnswerWorkResult work,
             SearchToolScope scope,
@@ -155,16 +173,11 @@ public class SearchAnswerWorker {
         SearchRetrievalResult retrieval;
         boolean retrievalUnavailable = false;
         try {
-            retrieval = intent.requiresSearch()
-                    ? retrievers.getObject()
-                            .retrieve(
-                                    scope,
-                                    work.question()
-                            )
-                    : new SearchRetrievalResult(
-                            List.of(),
-                            0
-                    );
+            retrieval = retrieve(
+                    intent,
+                    scope,
+                    work.question()
+            );
             log.info(
                     "Search latency phase=document_retrieval workspaceId={} questionId={} answerId={} elapsedMs={} inputChars={} candidates={} excludedDocuments={} outcome=success",
                     work.workspaceId(),
@@ -209,42 +222,40 @@ public class SearchAnswerWorker {
         SearchAnswerGenerator generator = generators.getObject();
         List<Long> usedIds;
         StringBuilder content = new StringBuilder();
-        {
-            long generationStarted = System.nanoTime();
-            try {
-                if (retrievalUnavailable) {
-                    content.append(SearchAnswerGuidance.RETRIEVAL_UNAVAILABLE);
-                }
-                usedIds = generator.generate(
-                        scope,
-                        work.question(),
-                        documents,
-                        content::append
-                );
-                log.info(
-                        "Search latency phase=answer_generation workspaceId={} questionId={} answerId={} elapsedMs={} inputChars={} documentCount={} outcome=success",
-                        work.workspaceId(),
-                        work.questionId(),
-                        work.answerId(),
-                        (System.nanoTime() - generationStarted) / 1_000_000,
-                        work.question()
-                                .length(),
-                        documents.size()
-                );
-            } catch (RuntimeException exception) {
-                log.info(
-                        "Search latency phase=answer_generation workspaceId={} questionId={} answerId={} elapsedMs={} inputChars={} documentCount={} outcome=failure failureCode={}",
-                        work.workspaceId(),
-                        work.questionId(),
-                        work.answerId(),
-                        (System.nanoTime() - generationStarted) / 1_000_000,
-                        work.question()
-                                .length(),
-                        documents.size(),
-                        ServerErrorLogger.safeFailureCode(exception)
-                );
-                throw exception;
+        long generationStarted = System.nanoTime();
+        try {
+            if (retrievalUnavailable) {
+                content.append(SearchAnswerGuidance.RETRIEVAL_UNAVAILABLE);
             }
+            usedIds = generator.generate(
+                    scope,
+                    work.question(),
+                    documents,
+                    content::append
+            );
+            log.info(
+                    "Search latency phase=answer_generation workspaceId={} questionId={} answerId={} elapsedMs={} inputChars={} documentCount={} outcome=success",
+                    work.workspaceId(),
+                    work.questionId(),
+                    work.answerId(),
+                    (System.nanoTime() - generationStarted) / 1_000_000,
+                    work.question()
+                            .length(),
+                    documents.size()
+            );
+        } catch (RuntimeException exception) {
+            log.info(
+                    "Search latency phase=answer_generation workspaceId={} questionId={} answerId={} elapsedMs={} inputChars={} documentCount={} outcome=failure failureCode={}",
+                    work.workspaceId(),
+                    work.questionId(),
+                    work.answerId(),
+                    (System.nanoTime() - generationStarted) / 1_000_000,
+                    work.question()
+                            .length(),
+                    documents.size(),
+                    ServerErrorLogger.safeFailureCode(exception)
+            );
+            throw exception;
         }
         Set<Long> candidates = documents.stream()
                 .map(SearchDocumentResult::documentId)
