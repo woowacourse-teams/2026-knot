@@ -55,11 +55,18 @@ public class SearchAnswerWorker {
                         queueWaitMs
                 )
         );
+        Instant startedAt = clock.instant();
+        SearchToolScope scope = SearchToolScope.from(
+                work,
+                startedAt,
+                startedAt.plus(agentProperties.getBudget())
+        );
         AtomicLong persistenceCount = new AtomicLong();
         AtomicLong persistenceNanos = new AtomicLong();
         try {
             generate(
                     work,
+                    scope,
                     persistenceCount,
                     persistenceNanos
             );
@@ -74,7 +81,10 @@ public class SearchAnswerWorker {
             executions.fail(
                     answerId,
                     work.token(),
-                    "ANSWER_GENERATION_FAILED"
+                    failureCode(
+                            exception,
+                            scope
+                    )
             );
         } finally {
             log.info(
@@ -88,17 +98,26 @@ public class SearchAnswerWorker {
         }
     }
 
+    private String failureCode(
+            RuntimeException exception,
+            SearchToolScope scope
+    ) {
+        if (!clock.instant()
+                .isBefore(scope.expiresAt())) {
+            return "ANSWER_GENERATION_TIMEOUT";
+        }
+        if ("SEARCH_ACCESS_DENIED".equals(ServerErrorLogger.safeFailureCode(exception))) {
+            return "SEARCH_ACCESS_DENIED";
+        }
+        return "ANSWER_GENERATION_FAILED";
+    }
+
     private void generate(
             SearchAnswerWorkResult work,
+            SearchToolScope scope,
             AtomicLong persistenceCount,
             AtomicLong persistenceNanos
     ) {
-        Instant startedAt = clock.instant();
-        SearchToolScope scope = SearchToolScope.from(
-                work,
-                startedAt,
-                startedAt.plus(agentProperties.getBudget())
-        );
         long classificationStarted = System.nanoTime();
         SearchIntent intent;
         try {

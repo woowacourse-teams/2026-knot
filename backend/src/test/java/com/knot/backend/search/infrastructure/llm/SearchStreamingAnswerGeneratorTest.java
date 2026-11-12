@@ -135,13 +135,51 @@ class SearchStreamingAnswerGeneratorTest {
     @DisplayName("생성 장애의 문서 안내는 본문에서 실제 선택한 문서만 이름으로 제시한다")
     void generate_success_guidanceNamesUsedDocuments() {
         org.mockito.Mockito.doThrow(new SearchToolException("SEARCH_REQUEST_REJECTED"))
-                .when(llm).stream(eq(scope), any(), any());
+                .when(llm)
+                .stream(
+                        eq(scope),
+                        any(),
+                        any()
+                );
         List<String> deltas = new ArrayList<>();
         List<SearchDocumentResult> docs = List.of(
-                new SearchDocumentResult(1L, "발표 일정", "데모", "루덴스가 3분 발표한다."),
-                new SearchDocumentResult(2L, "질의응답", "데모", "2분 질문을 받는다."));
-        assertThat(generator.generate(scope, "데모", docs, deltas::add)).containsExactly(1L, 2L);
-        assertThat(String.join("", deltas)).contains("발표 일정", "질의응답").doesNotContain("루덴스가 3분", "2분 질문");
+                new SearchDocumentResult(
+                        1L,
+                        "발표 일정",
+                        "데모",
+                        "루덴스가 3분 발표한다."
+                ),
+                new SearchDocumentResult(
+                        2L,
+                        "질의응답",
+                        "데모",
+                        "2분 질문을 받는다."
+                )
+        );
+        assertThat(
+                generator.generate(
+                        scope,
+                        "데모",
+                        docs,
+                        deltas::add
+                )
+        ).containsExactly(
+                1L,
+                2L
+        );
+        assertThat(
+                String.join(
+                        "",
+                        deltas
+                )
+        ).contains(
+                "발표 일정",
+                "질의응답"
+        )
+                .doesNotContain(
+                        "루덴스가 3분",
+                        "2분 질문"
+                );
     }
 
     @Test
@@ -283,7 +321,7 @@ class SearchStreamingAnswerGeneratorTest {
                         "",
                         deltas
                 )
-        ).isEqualTo(com.knot.backend.search.application.SearchAnswerGuidance.RELATED_DOCUMENTS);
+        ).startsWith(com.knot.backend.search.application.SearchAnswerGuidance.RELATED_DOCUMENTS);
         verify(
                 llm,
                 org.mockito.Mockito.times(2)
@@ -408,7 +446,7 @@ class SearchStreamingAnswerGeneratorTest {
                         "",
                         deltas
                 )
-        ).isEqualTo(com.knot.backend.search.application.SearchAnswerGuidance.RELATED_DOCUMENTS)
+        ).startsWith(com.knot.backend.search.application.SearchAnswerGuidance.RELATED_DOCUMENTS)
                 .doesNotContain("부분 답변");
         verify(
                 llm,

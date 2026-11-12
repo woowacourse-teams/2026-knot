@@ -205,7 +205,7 @@ class SearchAnswerWorkerConversationTest {
         verify(executions).fail(
                 5,
                 token,
-                "ANSWER_GENERATION_FAILED"
+                "SEARCH_ACCESS_DENIED"
         );
     }
 

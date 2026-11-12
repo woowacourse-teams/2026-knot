@@ -110,20 +110,22 @@ public class SearchStreamingAnswerGenerator implements SearchAnswerGenerator {
                     continue;
                 }
                 access.validate(scope);
-                List<Long> related = budget.documents()
+                List<SearchDocumentResult> related = budget.documents()
                         .stream()
                         .limit(3)
-                        .map(SearchDocumentResult::documentId)
                         .toList();
-                onDelta.accept(
-                        related.isEmpty() ? SearchAnswerGuidance.UNAVAILABLE : SearchAnswerGuidance.RELATED_DOCUMENTS
+                publishGuidance(
+                        related,
+                        onDelta
                 );
                 log.info(
                         "Search answer outcome=guidance workspaceId={} answerId={}",
                         scope.workspaceId(),
                         scope.answerId()
                 );
-                return related;
+                return related.stream()
+                        .map(SearchDocumentResult::documentId)
+                        .toList();
             }
             // Publish only once the entire response and every evidence ID have been
             // validated.
@@ -138,6 +140,22 @@ public class SearchStreamingAnswerGenerator implements SearchAnswerGenerator {
             return ids;
         }
         throw new IllegalStateException("Unreachable answer attempt");
+    }
+
+    private void publishGuidance(
+            List<SearchDocumentResult> documents,
+            Consumer<String> onDelta
+    ) {
+        if (documents.isEmpty()) {
+            onDelta.accept(SearchAnswerGuidance.UNAVAILABLE);
+            return;
+        }
+        // This is a document-list response: each persisted source is explicitly used by
+        // name.
+        String titles = documents.stream()
+                .map(document -> "- " + document.title())
+                .collect(java.util.stream.Collectors.joining("\n"));
+        onDelta.accept(SearchAnswerGuidance.RELATED_DOCUMENTS + "\n\n" + titles);
     }
 
     private boolean retryable(RuntimeException exception) {
