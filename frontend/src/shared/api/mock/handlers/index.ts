@@ -49,6 +49,7 @@ import { recordingTranscriptHandlers } from "./api/v1/workspaces/[workspaceId]/r
 import { recordingPauseHandlers } from "./api/v1/workspaces/[workspaceId]/recordings/[recordingId]/pause";
 import { recordingResumeHandlers } from "./api/v1/workspaces/[workspaceId]/recordings/[recordingId]/resume";
 import { currentRecordingHandlers } from "./api/v1/workspaces/[workspaceId]/recordings/current";
+import { teammateRecordingsHandlers } from "./api/v1/workspaces/[workspaceId]/recordings/teammatesInProgress";
 import { feedbackRelayHandlers } from "./relay/f";
 import { releaseNotesRelayHandlers } from "./relay/n";
 
@@ -75,6 +76,8 @@ export const handlers = [
   ...ownershipTransfersHandlers,
   ...workspaceRecordingsHandlers,
   ...currentRecordingHandlers,
+  // `recordings/:recordingId`보다 먼저 둬야 경로 이름이 녹음 ID로 잡히지 않아요
+  ...teammateRecordingsHandlers,
   ...recordingHandlers,
   ...recordingPauseHandlers,
   ...recordingResumeHandlers,

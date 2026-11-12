@@ -1,6 +1,7 @@
 import { searchMessagesResponse } from "@api/mock/responses/search";
 import { PATH_ROUTE, getRouterPath } from "@routes/PATH_ROUTE";
 import type { Meta, StoryObj } from "@storybook/react-webpack5";
+import { useSearchTutorialStore } from "@store/searchTutorialStore";
 import { delay, http, HttpResponse } from "msw";
 import { MemoryRouter, Route, Routes } from "react-router";
 
@@ -33,6 +34,8 @@ const MESSAGES_URL =
  * - 이전 실패 답변은 미검증 글자 대신 안내 문단으로 보여줘요. 새 질문으로 대화를 이어갈 수 있어요.
  * - 지난 대화의 메시지를 받는 동안에는 시작 전 안내를 띄우지 않아요. 보던 대화에서 옮겨 왔으면 응답이 올 때까지 보던 대화를 누를 수 없게 둔 채 보여주고, 보여 줄 대화가 없으면 스켈레톤을 그려요(SEARCH-15).
  * - 메시지를 받지 못하면 칸 안에 불러오기 실패 안내와 `다시 시도`를 둬요.
+ * - 빈 대화 아래 「탐색 사용법 보기」를 누르면 탐색 튜토리얼을 다시 볼 수 있어요. 튜토리얼이 떠 있는 동안은 숨겨요.
+ * - 탐색 튜토리얼 3단계에는 서버 대화 대신 예시 대화(목 데이터)를 그려요. 근거 문서 카드는 예시라 누를 수 없어요.
  * - 대화는 메시지 조회 mock 응답으로 그려요. 근거가 2개·3개·없는 답변이 한 턴씩 있어요.
  */
 const meta = {
@@ -52,6 +55,11 @@ const meta = {
         name: "Search/Answer",
         type: "figma",
         url: "https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=2017-36200",
+      },
+      {
+        name: "탐색/시작 전 (탐색 사용법 보기)",
+        type: "figma",
+        url: "https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=1917-18392",
       },
     ],
   },
@@ -178,4 +186,23 @@ export const LoadFailed: Story = {
       },
     },
   },
+};
+
+/** 탐색 튜토리얼 3단계예요. 서버 대신 예시 대화를 그리고, 답변을 한 글자씩 쓴 뒤 근거 문서 카드를 보여 줘요. */
+export const TutorialExample: Story = {
+  parameters: {
+    design: {
+      type: "figma",
+      url: "https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=6342-4909",
+    },
+  },
+  decorators: [
+    (Story) => {
+      if (useSearchTutorialStore.getState().step !== 3) {
+        useSearchTutorialStore.setState({ step: 3, variant: "default", source: "search", draft: null, isAnswerShown: false });
+      }
+
+      return <Story />;
+    },
+  ],
 };

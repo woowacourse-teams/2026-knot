@@ -1,5 +1,6 @@
 import { useHasToast } from "@provider/context/toastContext";
 import { PATH_ROUTE } from "@routes/PATH_ROUTE";
+import { useIsSearchTutorialActive } from "@store/searchTutorialStore";
 import { useEffect, useRef, useState } from "react";
 import { useMatch } from "react-router";
 
@@ -33,13 +34,15 @@ interface UseDockHintParams {
 export const useDockHint = ({ isDockExpanded, isRecordingBusy }: UseDockHintParams) => {
   const isHome = useMatch({ path: PATH_ROUTE.WORKSPACE_HOME, end: true }) !== null;
   const hasToast = useHasToast();
+  // 탐색 튜토리얼이 같은 독을 밝히는 동안에는 띄우지 않아요(SEARCH-R19)
+  const isTutorialActive = useIsSearchTutorialActive();
   const [isDecidedToShow, setIsDecidedToShow] = useState(false);
   const [isSettled, setIsSettled] = useState(false);
 
   // StrictMode에서 효과가 두 번 실행돼도 판단은 한 번만 해요
   const hasDecidedRef = useRef(false);
 
-  const isEligible = isHome && !isDockExpanded && !isRecordingBusy;
+  const isEligible = isHome && !isDockExpanded && !isRecordingBusy && !isTutorialActive;
 
   useEffect(() => {
     if (hasDecidedRef.current || !isEligible) return;
