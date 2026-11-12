@@ -173,7 +173,7 @@ metrics_is_available() {
   local url="http://127.0.0.1:18080/actuator/prometheus"
 
   curl --noproxy '*' --fail --silent --show-error --max-time "$CURL_TIMEOUT_SECONDS" "$url" 2>/dev/null \
-    | grep -q '^jvm_memory_used_bytes'
+    | grep '^jvm_memory_used_bytes' >/dev/null
 }
 
 wait_for_metrics_endpoint() {
