@@ -31,6 +31,131 @@ import tools.jackson.databind.JsonNode;
 
 class SearchStreamingAnswerGeneratorTest {
 
+    @Test
+    @DisplayName("잘못된 형식은 한 번 복구하고 검증 전 글자는 화면에 전달하지 않는다")
+    void generate_success_repairsBeforePublishing() {
+        List<String> deltas = new ArrayList<>();
+        java.util.concurrent.atomic.AtomicInteger attempts = new java.util.concurrent.atomic.AtomicInteger();
+        doAnswer(call -> {
+            assertThat(deltas).isEmpty();
+            Consumer<String> consumer = call.getArgument(2);
+            consumer.accept(attempts.incrementAndGet() == 1 ? "{\"answer\":\"검증되지 않은 내용\"}" : response(List.of("E1")));
+            return null;
+        }).when(llm)
+                .stream(
+                        eq(scope),
+                        any(),
+                        any()
+                );
+        assertThat(
+                generator.generate(
+                        scope,
+                        "질문",
+                        documents(),
+                        deltas::add
+                )
+        ).containsExactly(1L);
+        assertThat(
+                String.join(
+                        "",
+                        deltas
+                )
+        ).isEqualTo("세 회의의 변화");
+        assertThat(attempts.get()).isEqualTo(2);
+    }
+
+    @Test
+    @DisplayName("요청 거절은 반복하지 않고 관련 기록을 안내하는 응답으로 마친다")
+    void generate_success_rejectedRequestGuidance() {
+        org.mockito.Mockito.doThrow(new SearchToolException("SEARCH_REQUEST_REJECTED"))
+                .when(llm)
+                .stream(
+                        eq(scope),
+                        any(),
+                        any()
+                );
+        List<String> deltas = new ArrayList<>();
+        assertThat(
+                generator.generate(
+                        scope,
+                        "질문",
+                        documents(),
+                        deltas::add
+                )
+        ).containsExactly(
+                1L,
+                2L,
+                3L
+        );
+        assertThat(
+                String.join(
+                        "",
+                        deltas
+                )
+        ).isNotBlank()
+                .doesNotContain("실패");
+        verify(llm).stream(
+                eq(scope),
+                any(),
+                any()
+        );
+    }
+
+    @Test
+    @DisplayName("일시적인 공급자 오류는 한 번만 복구한다")
+    void generate_success_retriesTransientOnce() {
+        java.util.concurrent.atomic.AtomicInteger attempts = new java.util.concurrent.atomic.AtomicInteger();
+        doAnswer(call -> {
+            if (attempts.incrementAndGet() == 1)
+                throw new SearchToolException("SEARCH_UPSTREAM_UNAVAILABLE");
+            Consumer<String> consumer = call.getArgument(2);
+            consumer.accept(response(List.of("E1")));
+            return null;
+        }).when(llm)
+                .stream(
+                        eq(scope),
+                        any(),
+                        any()
+                );
+        assertThat(
+                generator.generate(
+                        scope,
+                        "질문",
+                        documents(),
+                        text -> {
+                        }
+                )
+        ).containsExactly(1L);
+        assertThat(attempts.get()).isEqualTo(2);
+    }
+
+    @Test
+    @DisplayName("권한 오류는 복구 안내나 일반 답변으로 우회하지 않는다")
+    void generate_failure_accessDenied() {
+        org.mockito.Mockito.doThrow(new SearchToolException("SEARCH_ACCESS_DENIED"))
+                .when(llm)
+                .stream(
+                        eq(scope),
+                        any(),
+                        any()
+                );
+        List<String> deltas = new ArrayList<>();
+        assertThatThrownBy(
+                () -> generator.generate(
+                        scope,
+                        "질문",
+                        documents(),
+                        deltas::add
+                )
+        ).hasMessage("SEARCH_ACCESS_DENIED");
+        assertThat(deltas).isEmpty();
+        verify(llm).stream(
+                eq(scope),
+                any(),
+                any()
+        );
+    }
+
     private final SearchLlmClient llm = mock(SearchLlmClient.class);
     private final SearchHistoryQuery history = mock(SearchHistoryQuery.class);
     private final SearchToolAccess access = mock(SearchToolAccess.class);
