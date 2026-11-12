@@ -81,10 +81,7 @@ public class SearchAnswerWorker {
             executions.fail(
                     answerId,
                     work.token(),
-                    failureCode(
-                            exception,
-                            scope
-                    )
+                    failureCode(exception)
             );
         } finally {
             log.info(
@@ -98,12 +95,8 @@ public class SearchAnswerWorker {
         }
     }
 
-    private String failureCode(
-            RuntimeException exception,
-            SearchToolScope scope
-    ) {
-        if (!clock.instant()
-                .isBefore(scope.expiresAt())) {
+    private String failureCode(RuntimeException exception) {
+        if (exception instanceof com.knot.backend.search.domain.SearchScopeExpiredException) {
             return "ANSWER_GENERATION_TIMEOUT";
         }
         if ("SEARCH_ACCESS_DENIED".equals(ServerErrorLogger.safeFailureCode(exception))) {

@@ -4,6 +4,7 @@ import com.knot.backend.search.domain.model.SearchAnswerExecution;
 import com.knot.backend.search.domain.model.SearchConversation;
 import com.knot.backend.search.domain.repository.SearchRepository;
 import com.knot.backend.search.domain.SearchToolException;
+import com.knot.backend.search.domain.SearchScopeExpiredException;
 import com.knot.backend.workspace.domain.repository.WorkspaceMemberRepository;
 import com.knot.backend.workspace.domain.repository.WorkspaceRepository;
 import java.time.Clock;
@@ -58,10 +59,12 @@ public class SearchToolAccess {
 
     private void validateTime(SearchToolScope scope) {
         if (scope.startedAt()
-                .isAfter(clock.instant())
-                || !clock.instant()
-                        .isBefore(scope.expiresAt())) {
+                .isAfter(clock.instant())) {
             throw denied();
+        }
+        if (!clock.instant()
+                .isBefore(scope.expiresAt())) {
+            throw new SearchScopeExpiredException();
         }
     }
 
