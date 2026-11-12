@@ -240,7 +240,7 @@ public class SearchLlmClient {
             );
             request.put(
                     "response_format",
-                    SearchAnswerSchema.responseFormat()
+                    SearchAnswerSchema.responseFormat(!"claude".equals(properties.getProvider()))
             );
             http.stream(
                     endpoint(),
