@@ -519,6 +519,14 @@ class SearchAnswerStopIntegrationTest {
             });
             Future<?> generate = executor.submit(() -> {
                 await(start);
+                if (action.equals("FAILED")) {
+                    executions.fail(
+                            work.answerId(),
+                            work.token(),
+                            "ANSWER_GENERATION_FAILED"
+                    );
+                    return;
+                }
                 finish(
                         work,
                         action
@@ -529,8 +537,7 @@ class SearchAnswerStopIntegrationTest {
         }
         assertThat(snapshotStatus()).isIn(
                 SearchMessageStatus.STOPPED,
-                SearchMessageStatus.COMPLETED,
-                SearchMessageStatus.FAILED
+                SearchMessageStatus.COMPLETED
         );
         String content = snapshots.read(
                 workspaceId,
