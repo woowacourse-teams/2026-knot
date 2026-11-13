@@ -2,6 +2,7 @@ import styled from "@emotion/styled";
 import Logo from "@primitives/ui/Logo";
 
 import { SCENE, SCENE_COUNT } from "./constants/landing";
+import useLandingSceneAnalytics from "./model/useLandingSceneAnalytics";
 import useLandingStage from "./model/useLandingStage";
 import ConfirmationScene from "./ui/ConfirmationScene";
 import DocumentsScene from "./ui/DocumentsScene";
@@ -21,6 +22,7 @@ import StartScene from "./ui/StartScene";
  * 소개 → 문제 → 녹음 → 정리 → 확인 → 탐색 → 녹음 기술 → 탐색 기술 → 시작 순서로 보여 줘요.
  * 입자 수천 개가 장면마다 워드마크, 말 조각, 파형, 문서 카드, 연결망, 새 심볼로 모양을 바꾸고,
  * 포인터를 가져가면 비켜나고 누르면 물결이 퍼져요. 소개와 시작 장면의 「시작하기」로 로그인 화면에 가요.
+ * 장면을 처음 볼 때마다 사용 기록으로 남겨요(`useLandingSceneAnalytics`).
  */
 export default function LandingStage() {
   const {
@@ -34,6 +36,7 @@ export default function LandingStage() {
     selectQuestion,
     goToScene,
   } = useLandingStage();
+  useLandingSceneAnalytics(scene);
 
   return (
     <Scroller ref={refs.scrollerRef}>

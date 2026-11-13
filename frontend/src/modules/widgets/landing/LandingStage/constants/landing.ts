@@ -15,6 +15,19 @@ export const SCENE = {
 
 export const SCENE_COUNT = SCENE_NAMES.length;
 
+/** 사용 기록(`landing_scene_viewed`)에 남기는 장면 이름. `SCENE_NAMES`처럼 순서가 곧 장면 번호예요. */
+export const SCENE_ANALYTICS_NAMES = [
+  "intro",
+  "problem",
+  "recording",
+  "documents",
+  "confirmation",
+  "search",
+  "recording_technology",
+  "search_technology",
+  "start",
+] as const;
+
 /** 탐색 장면에서 고를 수 있는 예시 질문과 답변. 답변의 `|`는 줄이 바뀌어도 끊기지 않는 덩어리의 경계예요. */
 export const SAMPLE_QUESTIONS = [
   {
