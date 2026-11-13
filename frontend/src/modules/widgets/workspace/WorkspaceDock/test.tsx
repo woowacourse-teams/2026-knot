@@ -105,6 +105,10 @@ const OTHER_TAB_ELAPSED_TIME = formatRecordingTime(
   new GetCurrentRecordingResponseDto(currentRecordingResponse).elapsedMillis /
     1000,
 );
+/** 현재 녹음 조회가 기본으로 답하는 다른 탭 녹음의 id */
+const OTHER_TAB_RECORDING_ID = new GetCurrentRecordingResponseDto(
+  currentRecordingResponse,
+).recordingId;
 
 /** 보낸 사용 기록 가운데 이 이벤트만 골라요 */
 const capturedEvents = (event: string) =>
@@ -1612,6 +1616,75 @@ describe("WorkspaceDock", () => {
         );
 
         await waitFor(() => expect(bodies).toEqual([""]));
+      });
+
+      describe("끝낸 결과를 사용 기록으로 남긴다", () => {
+        const END_PATH =
+          "*/api/v1/workspaces/:workspaceId/recordings/:recordingId/end";
+
+        it.each([
+          {
+            reason: "끝내면",
+            respond: () => HttpResponse.json(recordingEndResponse),
+            result: "ended",
+          },
+          {
+            reason: "이미 끝난 녹음이면",
+            respond: () =>
+              HttpResponse.json(
+                { code: "RECORDING_ALREADY_ENDED" },
+                { status: 409 },
+              ),
+            result: "already_ended",
+          },
+          {
+            reason: "종료 요청이 실패하면",
+            respond: () => new HttpResponse(null, { status: 500 }),
+            result: "failed",
+          },
+        ])(
+          "$reason $result와 그 녹음의 id를 한 번 남기고, 이 탭의 녹음을 끝낸 기록은 남기지 않는다",
+          async ({ respond, result }) => {
+            // 실패는 콘솔에도 남기므로, 테스트 출력에 섞이지 않게 막아요
+            vi.spyOn(console, "error").mockImplementation(() => {});
+            respondCurrentRecordingStatus("RECORDING");
+            mockServer.use(http.post(END_PATH, respond));
+            renderDock();
+            await screen.findByRole("img", { name: "녹음 중" });
+
+            await clickMic("녹음 끝내기");
+            await chooseInEndRecordingDialog("녹음 끝내기");
+
+            await waitFor(() =>
+              expect(
+                capturedEvents("recording_end_other_tab_result"),
+              ).toEqual([
+                [
+                  {
+                    event: "recording_end_other_tab_result",
+                    properties: {
+                      result,
+                      recording_id: OTHER_TAB_RECORDING_ID,
+                      workspace_id: Number(WORKSPACE_ID),
+                    },
+                  },
+                ],
+              ]),
+            );
+            expect(capturedEvents("recording_ended")).toEqual([]);
+          },
+        );
+
+        it("확인 창에서 계속 녹음을 고르면 남기지 않는다", async () => {
+          respondCurrentRecordingStatus("RECORDING");
+          renderDock();
+          await screen.findByRole("img", { name: "녹음 중" });
+
+          await clickMic("녹음 끝내기");
+          await chooseInEndRecordingDialog("계속 녹음");
+
+          expect(capturedEvents("recording_end_other_tab_result")).toEqual([]);
+        });
       });
 
       describe("녹음 탭의 연결이 끊기면 (STT-R28)", () => {
