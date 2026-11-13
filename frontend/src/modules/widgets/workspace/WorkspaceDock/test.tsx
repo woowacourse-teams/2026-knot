@@ -106,6 +106,12 @@ const OTHER_TAB_ELAPSED_TIME = formatRecordingTime(
     1000,
 );
 
+/** 보낸 사용 기록 가운데 이 이벤트만 골라요 */
+const capturedEvents = (event: string) =>
+  vi
+    .mocked(captureAnalyticsEvent)
+    .mock.calls.filter(([captured]) => captured.event === event);
+
 const respondNoCurrentRecording = () =>
   mockServer.use(
     http.get(
@@ -1480,6 +1486,29 @@ describe("WorkspaceDock", () => {
         expect(
           screen.getByRole("button", { name: "회의 녹음 시작" }),
         ).toBeInTheDocument();
+      });
+
+      it("확인 창에서 녹음 끝내기를 고르면 독의 녹음 칩에서 끝냈다고 사용 기록을 남긴다", async () => {
+        const { router } = renderDock();
+
+        await stopRecording();
+
+        await waitFor(() =>
+          expect(router.state.location.pathname).toBe(DOCUMENTS_PATH),
+        );
+        expect(capturedEvents("recording_ended")).toEqual([
+          [
+            {
+              event: "recording_ended",
+              properties: expect.objectContaining({
+                result: "uploaded",
+                surface: "dock",
+                recording_id: RECORDING_ID,
+                workspace_id: Number(WORKSPACE_ID),
+              }),
+            },
+          ],
+        ]);
       });
 
       it("녹음 화면에서는 녹음 칩도 숨긴다", () => {

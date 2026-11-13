@@ -158,6 +158,11 @@ interface UploadRecordedAudioParams {
 
 type ControlProof = NonNullable<ReturnType<typeof getRecordingControlProof>>;
 
+/** 녹음을 끝낸 곳. 끝낸 결과의 사용 기록에 남기려고 끝내기를 부른 화면이 넘겨요 */
+type RecordingEndSurface = Parameters<
+  ReturnType<typeof useRecordingEndedAnalytics>["endAndTrackRecording"]
+>[0];
+
 interface CreateChunkRequestsParams extends ControlProof {
   workspaceId: number;
   recordingId: number;
@@ -995,7 +1000,7 @@ const useRecordingControl = () => {
   const { endAndTrackRecording: endRecordingWithoutConfirm } =
     useRecordingEndedAnalytics(endAndCountRecording);
 
-  const endRecording = useCallback(() => {
+  const endRecording = useCallback((surface: RecordingEndSurface) => {
     // 끝내는 동안 다시 눌러도 이미 끝내는 중이라 확인 창을 또 띄우지 않아요
     if (useRecordingStore.getState().isEnding) return;
 
@@ -1012,7 +1017,7 @@ const useRecordingControl = () => {
         const { session } = useRecordingStore.getState();
         if (!session) return;
 
-        const result = await endRecordingWithoutConfirm();
+        const result = await endRecordingWithoutConfirm(surface);
         if (result === "notEnded") return;
 
         const workspaceId = String(session.workspaceId);

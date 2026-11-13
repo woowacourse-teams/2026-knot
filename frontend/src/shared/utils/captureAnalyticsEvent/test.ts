@@ -22,6 +22,8 @@ describe("captureAnalyticsEvent", () => {
         result: "uploaded",
         audio_mode: "PCM16_CHUNKS_V1",
         meeting_audio: "off",
+        duration_seconds: 754.2,
+        surface: "recorder_bar",
         recording_id: 7,
         workspace_id: 3,
       },
@@ -32,6 +34,8 @@ describe("captureAnalyticsEvent", () => {
       result: "uploaded",
       audio_mode: "PCM16_CHUNKS_V1",
       meeting_audio: "off",
+      duration_seconds: 754.2,
+      surface: "recorder_bar",
       recording_id: 7,
       workspace_id: 3,
     });

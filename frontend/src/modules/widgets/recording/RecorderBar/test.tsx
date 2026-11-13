@@ -182,6 +182,21 @@ const passSeconds = (seconds: number) => {
   });
 };
 
+/**
+ * 녹음한 시간을 정해 두려고 지금 시각(`Date.now`)만 멈춰 두고, 요청을 주고받는 타이머는 실제로 돌려요.
+ * 시각은 `pass`로만 흘러요.
+ */
+const freezeNow = () => {
+  let now = Date.now();
+  vi.spyOn(Date, "now").mockImplementation(() => now);
+
+  return {
+    pass: (ms: number) => {
+      now += ms;
+    },
+  };
+};
+
 describe("RecorderBar", () => {
   beforeEach(() => {
     vi.useFakeTimers({ shouldAdvanceTime: false });
@@ -368,10 +383,15 @@ describe("RecorderBar", () => {
         return { router };
       };
 
-      it("오디오를 올리면 올렸다고 녹음 방식 · 녹음 · 워크스페이스 id와 함께 한 번 보낸다", async () => {
+      it("오디오를 올리면 올렸다고 녹음 방식 · 녹음한 시간 · 녹음 바에서 끝냈다는 것 · 녹음 · 워크스페이스 id와 함께 한 번 보낸다", async () => {
         vi.useRealTimers();
+        const clock = freezeNow();
+        await startRecording();
+        const { router } = renderRecorderBar();
+        clock.pass(12_340);
 
-        const { router } = await endRecordingByDialog();
+        await clickEndRecording();
+        await chooseInEndRecordingDialog("녹음 끝내기");
 
         await waitFor(() =>
           expect(router.state.location.pathname).toBe(DOCUMENTS_PATH),
@@ -384,9 +404,34 @@ describe("RecorderBar", () => {
             audio_mode: "FINAL_WEBM_V1",
             // jsdom은 Chrome 계열이 아니라 회의 소리를 받을 수 없는 브라우저예요
             meeting_audio: "unsupported",
+            duration_seconds: 12.3,
+            surface: "recorder_bar",
             recording_id: RECORDING_ID,
             workspace_id: Number(WORKSPACE_ID),
           },
+        });
+      });
+
+      it("일시정지한 동안은 녹음한 시간에 넣지 않는다", async () => {
+        vi.useRealTimers();
+        const clock = freezeNow();
+        await startRecording();
+        const { router } = renderRecorderBar();
+        clock.pass(5_000);
+        await act(async () => {
+          fireEvent.click(screen.getByRole("button", { name: "일시정지" }));
+        });
+        clock.pass(10_000);
+
+        await clickEndRecording();
+        await chooseInEndRecordingDialog("녹음 끝내기");
+
+        await waitFor(() =>
+          expect(router.state.location.pathname).toBe(DOCUMENTS_PATH),
+        );
+        expect(captureAnalyticsEvent).toHaveBeenCalledWith({
+          event: "recording_ended",
+          properties: expect.objectContaining({ duration_seconds: 5 }),
         });
       });
 

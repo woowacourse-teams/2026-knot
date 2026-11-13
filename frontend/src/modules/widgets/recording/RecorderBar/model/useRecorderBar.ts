@@ -55,6 +55,6 @@ export const useRecorderBar = () => {
     isEnding,
     handlePause: () => void pauseRecording(),
     handleResume,
-    handleEnd: () => void endRecording(),
+    handleEnd: () => void endRecording("recorder_bar"),
   };
 };

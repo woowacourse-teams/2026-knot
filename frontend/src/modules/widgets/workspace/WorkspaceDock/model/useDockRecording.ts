@@ -160,7 +160,7 @@ export const useDockRecording = () => {
       return;
     }
 
-    void endRecording();
+    void endRecording("dock");
   };
 
   return {
