@@ -16,6 +16,15 @@ interface DocumentRowProps {
   createdAt: string;
   /** 녹음 길이(초) */
   recordingDurationSeconds: number;
+  /**
+   * 폴더 안에서 이 행의 순서(0부터). 첫 행이 아니면 위쪽에 구분선을 그어요.
+   * 카드에는 화면 근처의 행만 그려서, 카드의 첫 행이 폴더의 첫 행이 아닐 수 있어요
+   */
+  index: number;
+  /** 폴더의 행 수. 화면 근처의 행만 그려도 스크린 리더가 전체 행 수를 읽게 알려요 */
+  rowCount: number;
+  /** 행에 포커스가 들어오면 불러요. 포커스가 있는 행은 화면에서 멀어져도 지우지 않으려고 받아요 */
+  onFocus: () => void;
 }
 
 /**
@@ -29,10 +38,17 @@ export default function DocumentRow({
   summary,
   createdAt,
   recordingDurationSeconds,
+  index,
+  rowCount,
+  onFocus,
 }: DocumentRowProps) {
   return (
-    <Item>
-      <RowLink href={href}>
+    <Item
+      $isFirstRow={index === 0}
+      aria-posinset={index + 1}
+      aria-setsize={rowCount}
+    >
+      <RowLink href={href} onFocus={onFocus}>
         <TextBlock>
           <Title>{title}</Title>
           {summary !== null && <Summary>{summary}</Summary>}
@@ -49,11 +65,10 @@ export default function DocumentRow({
   );
 }
 
-/** 피그마 Divider: 행 사이에만 1px 선을 그어요 */
-const Item = styled.li`
-  & + & {
-    border-top: 1px solid ${({ theme }) => theme.neutral[200]};
-  }
+/** 피그마 Divider: 행 사이에 1px 선을 그어요. 폴더의 첫 행 위에는 긋지 않아요 */
+const Item = styled.li<{ $isFirstRow: boolean }>`
+  border-top: ${({ theme, $isFirstRow }) =>
+    $isFirstRow ? "none" : `1px solid ${theme.neutral[200]}`};
 `;
 
 /** 피그마 Doc 행: 안쪽 여백 20px 24px, 글 묶음 · 날짜 묶음 · 화살표 사이 16px */

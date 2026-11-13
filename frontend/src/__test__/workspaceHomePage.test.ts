@@ -8,7 +8,10 @@ import {
 import { PostWorkspaceInvitationResponseDto } from "@api/dto/workspaceInvitation";
 import { meResponse } from "@api/mock/responses/auth";
 import { documentsResponse } from "@api/mock/responses/document";
-import { recordingsResponse } from "@api/mock/responses/recording";
+import {
+  recordingsResponse,
+  teammateRecordingsResponse,
+} from "@api/mock/responses/recording";
 import {
   workspaceDetailResponse,
   workspacesResponse,
@@ -499,4 +502,51 @@ test.describe("홈 녹음 기록 카드", () => {
       ).toBeDisabled();
     });
   }
+
+  test("[STT-R55] 팀원이 녹음 중 · 일시정지면 목록 맨 앞에 팀원마다 한 줄을 보여 주고, 팀원 줄에는 버튼이 없다 @core", async ({
+    page,
+  }) => {
+    await page.goto(`${HOME_PATH}?mock.teammateRecordings=some`);
+    const teammateList = getRecordingHistoryCard(page).getByRole("list", {
+      name: "팀원의 진행 중인 녹음",
+    });
+    const rows = teammateList.getByRole("listitem");
+    const [recordingTeammate, pausedTeammate] =
+      teammateRecordingsResponse.items;
+
+    await expect(rows).toHaveCount(2);
+    await expect(rows.nth(0)).toContainText(recordingTeammate.title);
+    await expect(rows.nth(0).getByText(/^녹음 중 · /)).toBeVisible();
+    await expect(rows.nth(1)).toContainText(pausedTeammate.title);
+    await expect(rows.nth(1).getByText(/^일시정지 · /)).toBeVisible();
+    await expect(teammateList.getByRole("button")).toHaveCount(0);
+    await expect(teammateList.getByRole("link")).toHaveCount(0);
+  });
+
+  test("[STT-R55, STT-R24] 내 녹음과 팀원 녹음이 함께 있으면 맨 위 줄은 내 녹음, 그 아래 목록 맨 앞에 팀원 줄이 온다", async ({
+    page,
+  }) => {
+    await page.goto(
+      `${HOME_PATH}?mock.currentRecording=recording&mock.teammateRecordings=some`,
+    );
+    const card = getRecordingHistoryCard(page);
+
+    await expect(
+      card.getByRole("button", { name: "녹음 화면으로" }),
+    ).toBeVisible();
+    await expect(
+      card
+        .getByRole("list", { name: "팀원의 진행 중인 녹음" })
+        .getByRole("listitem"),
+    ).toHaveCount(teammateRecordingsResponse.items.length);
+  });
+
+  test("[STT-R55] 팀원 녹음이 없으면 팀원 줄이 없다", async ({ page }) => {
+    const card = getRecordingHistoryCard(page);
+    await expect(card.getByRole("listitem").first()).toBeVisible();
+
+    await expect(
+      card.getByRole("list", { name: "팀원의 진행 중인 녹음" }),
+    ).toHaveCount(0);
+  });
 });

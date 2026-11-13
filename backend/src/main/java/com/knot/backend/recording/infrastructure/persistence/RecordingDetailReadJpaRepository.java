@@ -10,7 +10,7 @@ interface RecordingDetailReadJpaRepository extends Repository<RecordingSession, 
     @Query("""
             select new com.knot.backend.recording.infrastructure.persistence.RecordingDetailRow(
                 rs.memberId, rs.status, rs.currentIntervalStartedAt,
-                rs.accumulatedRecordingMillis, rs.endedAt, rs.endReason, u.status
+                rs.accumulatedRecordingMillis, rs.endedAt, rs.endReason, u.status, rs.speakerCount
             )
             from RecordingSession rs
             left join RecordingAudioUpload u on u.recordingId = rs.id

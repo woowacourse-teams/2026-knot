@@ -1,3 +1,16 @@
+export type RecordingTranscriptStatus =
+  | "NOT_READY"
+  | "READY"
+  | "EMPTY"
+  | "FAILED"
+  | "UNAVAILABLE";
+export type TopicClassificationStatus =
+  | "NOT_STARTED"
+  | "PROCESSING"
+  | "SUCCEEDED"
+  | "NO_CONTENT"
+  | "FAILED";
+
 import {
   DocumentTranscriptSegmentDto,
   type DocumentTranscriptSegmentRaw,
@@ -16,7 +29,10 @@ import {
  * 회의 전체 요약 상태. `QUEUED` · `RUNNING`은 화면의 「만드는 중」, `SUCCEEDED`는 요약 완료, `FAILED`는 요약 실패예요
  */
 export type MeetingSummaryStatus =
-  "QUEUED" | "RUNNING" | "SUCCEEDED" | "FAILED";
+  | "QUEUED"
+  | "RUNNING"
+  | "SUCCEEDED"
+  | "FAILED";
 
 /** 회의 전체 요약의 서버 응답 모양 */
 export interface RecordingMeetingSummaryRaw {
@@ -29,7 +45,7 @@ export interface RecordingMeetingSummaryRaw {
 export class RecordingMeetingSummaryDto {
   /** 요약 상태 */
   status: MeetingSummaryStatus;
-  /** 읽기 전용 요약 본문(마크다운). 첫 줄은 `## 한눈에 보기`, 마지막 줄은 `회의 핵심 결론:`으로 시작해요. `SUCCEEDED`일 때만 값이 있고 나머지는 null */
+  /** 읽기 전용 요약 본문(마크다운). 새 요약은 전체 정리·핵심 결론·결정/미결정 순서이며 저장된 이전 양식도 지원해요. `SUCCEEDED`일 때만 값이 있고 나머지는 null */
   content: string | null;
   /** 실패한 요약을 지금 다시 접수할 수 있으면 true. `FAILED`일 때만 뜻이 있어요. 서버 필드 `retryable`을 이름만 바꿨어요 */
   isRetryable: boolean;
@@ -68,6 +84,10 @@ export interface GetRecordingDocumentResponseRaw {
   startedAt: string;
   recordingDurationSeconds: number;
   processingStatus: RecordingDocumentProcessingStatus;
+  /** EMPTY는 성공한 빈 전사, UNAVAILABLE은 사용할 수 없는 전사입니다. 이전 응답의 생략은 DTO에서 null로 정규화합니다. */
+  transcriptStatus?: RecordingTranscriptStatus | null;
+  /** 전사와 독립적인 주제 분류 상태이며 이전 응답의 생략은 DTO에서 null로 정규화합니다. */
+  topicClassificationStatus?: TopicClassificationStatus | null;
   retryable: boolean;
   retryableJobIds: number[];
   meetingSummary: RecordingMeetingSummaryRaw | null;
@@ -85,6 +105,10 @@ export class GetRecordingDocumentResponseDto {
   recordingDurationSeconds: number;
   /** 처리 상태 */
   processingStatus: RecordingDocumentProcessingStatus;
+  /** EMPTY는 성공한 빈 전사, UNAVAILABLE은 사용할 수 없는 전사입니다. 이전 응답의 생략은 DTO에서 null로 정규화합니다. */
+  transcriptStatus?: RecordingTranscriptStatus | null;
+  /** 전사와 독립적인 주제 분류 상태이며 이전 응답의 생략은 DTO에서 null로 정규화합니다. */
+  topicClassificationStatus?: TopicClassificationStatus | null;
   /**
    * 처리 실패를 지금 다시 접수할 수 있으면 true. `TRANSCRIPTION_FAILED`는 전사 다시 시도, `DOCUMENT_FAILED`는 `retryableJobIds`의 문서 생성 작업 다시 시도를 뜻해요.
    * 다른 상태는 false예요. 서버 필드 `retryable`을 이름만 바꿨어요
@@ -94,7 +118,7 @@ export class GetRecordingDocumentResponseDto {
   retryableJobIds: number[];
   /**
    * 회의 전체 요약. 전사가 성공하고 정리할 내용이 있는 녹음에서 요약이 접수됐을 때만 값이 있어요.
-   * 전사 전 · 전사 실패 · 주제 분류 전이나 실패 · 정리할 내용 없음, 그리고 요약 기능을 켜기 전에 끝난 녹음은 null이에요
+   * 전사 전·실패·정상 빈 전사·원문 유실과 기능 활성화 전 녹음은 null이에요. 주제 분류와 독립적으로 생성하며 접수 예정이면 QUEUED예요
    */
   meetingSummary: RecordingMeetingSummaryDto | null;
 
@@ -104,6 +128,8 @@ export class GetRecordingDocumentResponseDto {
     this.startedAt = raw.startedAt;
     this.recordingDurationSeconds = raw.recordingDurationSeconds;
     this.processingStatus = raw.processingStatus;
+    this.transcriptStatus = raw.transcriptStatus ?? null;
+    this.topicClassificationStatus = raw.topicClassificationStatus ?? null;
     this.isRetryable = raw.retryable;
     this.retryableJobIds = raw.retryableJobIds;
     this.meetingSummary =
@@ -125,7 +151,7 @@ export interface GetRecordingTranscriptResponseRaw {
 
 /**
  * 녹음 전사 조회 응답. 문서 원문 조회와 같은 데이터 · 구조 · 정렬이에요.
- * 전사 전 · 전사 실패 · 주제 분류 전이나 실패 · 정리할 내용 없음이면 404 `RECORDING_TRANSCRIPT_NOT_FOUND`로 답해요
+ * READY·EMPTY이면 분류/문서 상태와 관계없이 200이에요. 그 밖에는 404 RECORDING_TRANSCRIPT_NOT_FOUND예요
  */
 export class GetRecordingTranscriptResponseDto {
   /** 녹음 세션 ID */
@@ -152,7 +178,9 @@ export class GetRecordingTranscriptResponseDto {
  * `NO_AUDIO`는 지난 정리 정책으로 음성 파일이 지워졌거나 저장 기록이 없음이에요. 녹음 문서의 처리 상태와 따로 계산해요
  */
 export type RecordingAudioPlaybackStatus =
-  "AVAILABLE" | "PREPARING" | "NO_AUDIO";
+  | "AVAILABLE"
+  | "PREPARING"
+  | "NO_AUDIO";
 
 /** 녹음 음성 재생 정보 조회의 서버 응답 모양 */
 export interface GetRecordingAudioPlaybackResponseRaw {

@@ -22,6 +22,22 @@ export interface CurrentRecordingResponse {
   retryableJobIds?: number[];
 }
 
+/** 팀원 진행 중 녹음 한 건(STT-R55) */
+export interface TeammateRecordingItem {
+  recordingId: number;
+  status: "RECORDING" | "PAUSED";
+  /** 「OO 님의 녹음」 */
+  title: string;
+  /** ISO 8601 */
+  startedAt: string;
+  /** 응답 시각까지 누적 녹음 시간(ms) */
+  elapsedMillis: number;
+}
+
+export interface TeammateRecordingsResponse {
+  items: TeammateRecordingItem[];
+}
+
 /** 끝난 녹음의 처리 상태. 녹음 문서 조회와 같은 값이에요 */
 export type RecordingProcessingStatus =
   | "PROCESSING"
@@ -161,6 +177,7 @@ export interface RecordingHeartbeatResponse {
   /** 진행 중이면 null */
   endReason: "USER_ENDED" | "CONNECTION_EXPIRED" | "MAX_DURATION" | null;
   /** ISO 8601 */
+  connectionStatus: "CONNECTED" | "DISCONNECTED" | null;
   serverNow: string;
 }
 

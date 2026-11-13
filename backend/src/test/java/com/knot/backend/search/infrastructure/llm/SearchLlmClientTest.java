@@ -31,6 +31,69 @@ import tools.jackson.databind.json.JsonMapper;
 
 class SearchLlmClientTest {
 
+    @ParameterizedTest
+    @ValueSource(strings = {"intent", "complete", "evidence", "stream"})
+    @DisplayName("Claude 탐색 요청에는 지원하지 않는 temperature를 보내지 않는다")
+    void request_success_omitsTemperatureForClaude(String operation) throws Exception {
+        try (LlmHttpServer server = new LlmHttpServer(); SearchAgentHttp http = transport()) {
+            String completion = "{\"choices\":[{\"finish_reason\":\"stop\",\"message\":{\"role\":\"assistant\",\"content\":\"{}\"}}]}";
+            server.respond(
+                    200,
+                    "stream".equals(operation)
+                            ? "data: {\"choices\":[{\"delta\":{\"content\":\"ok\"}}]}\n\ndata: [DONE]\n\n"
+                            : completion
+            );
+            LlmProperties properties = new LlmProperties();
+            properties.setProvider("claude");
+            properties.setBaseUrl(server.baseUrl());
+            properties.setApiToken("test-token");
+            properties.setModel("claude-sonnet-5-5");
+            SearchLlmClient client = new SearchLlmClient(
+                    http,
+                    properties
+            );
+
+            switch (operation) {
+                case "intent" -> client.intent(
+                        scope(),
+                        List.of()
+                );
+                case "complete" -> client.complete(
+                        scope(),
+                        List.of(),
+                        List.of()
+                );
+                case "evidence" -> client.evidence(
+                        scope(),
+                        List.of()
+                );
+                case "stream" -> client.stream(
+                        scope(),
+                        List.of(),
+                        delta -> {
+                        }
+                );
+                default -> throw new IllegalArgumentException(operation);
+            }
+
+            JsonNode body = JsonMapper.builder()
+                    .build()
+                    .readTree(server.requestBody());
+            assertThat(body.has("temperature")).isFalse();
+            if ("stream".equals(operation)) {
+                assertThat(
+                        body.at("/response_format/json_schema/schema/properties/evidenceIds")
+                                .has("maxItems")
+                ).isFalse();
+            }
+            assertThat(
+                    body.path("model")
+                            .asString()
+            ).isEqualTo("claude-sonnet-5-5");
+            assertThat(server.requestCount()).isEqualTo(1);
+        }
+    }
+
     @Test
     @DisplayName("모델 호출은 안전한 입력 크기와 provider 토큰 사용량만 기록한다")
     void complete_success_logsCallTimingAndUsageWithoutPrompt() throws Exception {
@@ -99,7 +162,7 @@ class SearchLlmClientTest {
             assertThat(
                     body.path("max_tokens")
                             .asInt()
-            ).isEqualTo(128);
+            ).isEqualTo(512);
             assertThat(
                     body.path("temperature")
                             .asInt(-1)
@@ -547,6 +610,34 @@ class SearchLlmClientTest {
                     body.path("stream")
                             .asBoolean(true)
             ).isFalse();
+        }
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.CsvSource({"400,SEARCH_REQUEST_REJECTED", "401,SEARCH_REQUEST_REJECTED",
+            "403,SEARCH_REQUEST_REJECTED", "429,SEARCH_RATE_LIMITED", "500,SEARCH_UPSTREAM_UNAVAILABLE",
+            "503,SEARCH_UPSTREAM_UNAVAILABLE"})
+    void stream_failure_statusClassification(
+            int status,
+            String code
+    ) throws Exception {
+        try (LlmHttpServer server = new LlmHttpServer(); SearchAgentHttp http = transport()) {
+            server.respond(
+                    status,
+                    "private-provider-body"
+            );
+            assertThatThrownBy(
+                    () -> client(
+                            server,
+                            http
+                    ).stream(
+                            scope(),
+                            List.of(),
+                            text -> {
+                            }
+                    )
+            ).isInstanceOf(SearchToolException.class)
+                    .hasMessage(code);
         }
     }
 

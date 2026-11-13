@@ -6,6 +6,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.knot.backend.document.domain.DocumentErrorCode;
 import com.knot.backend.global.infrastructure.llm.LlmCompletionRequest;
+import com.knot.backend.global.infrastructure.llm.LlmMessage;
+import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -69,6 +71,31 @@ class DocumentGenerationPromptTest {
                         .asString()
         ).isEqualTo("검색 조건");
         assertThat(input.size()).isEqualTo(2);
+    }
+
+    @Test
+    @DisplayName("간결한 문서 지시에도 조건과 수치, 미확정 요청의 정보 보존을 함께 전달한다")
+    void createRequest_success_conciseWithoutDroppingContext() {
+        LlmCompletionRequest request = prompt.createRequest(
+                DocumentGenerationInput.of(
+                        "요청: 4시까지 하나 이상 작성해 주세요. 수락 여부는 확인되지 않았다.",
+                        "작성 요청"
+                )
+        );
+
+        List<LlmMessage> messages = request.messages();
+        LlmMessage systemMessage = messages.getFirst();
+        String system = systemMessage.content();
+        assertThat(system).contains(
+                "읽기 쉽게 간결하게 작성한다",
+                "조건·경계값·수량·단위·기간",
+                "수량과 기한을 제안으로 보존한다",
+                "수치가 가리키는 대상이나 의미가 불명확하면 추측해 붙이지 않는다"
+        );
+        assertThat(system).doesNotContain("긴 회의나 중요한 논의를 한두 문장으로 축약하지 않는다");
+        assertThat(system).doesNotContain("요청: 4시까지 하나 이상 작성해 주세요");
+        LlmMessage userMessage = messages.get(1);
+        assertThat(userMessage.content()).contains("4시까지 하나 이상 작성해 주세요");
     }
 
     @Test

@@ -1,6 +1,7 @@
 import { searchMessagesResponse } from "@api/mock/responses/search";
 import { PATH_ROUTE, getRouterPath } from "@routes/PATH_ROUTE";
 import type { Meta, StoryObj } from "@storybook/react-webpack5";
+import { useSearchTutorialStore } from "@store/searchTutorialStore";
 import { delay, http, HttpResponse } from "msw";
 import { MemoryRouter, Route, Routes } from "react-router";
 
@@ -30,9 +31,11 @@ const MESSAGES_URL =
  * - 근거가 있는 답변 아래에만 「기록 N개에서 찾았어요」 버튼이 있어요. 누르면 그 답변의 찾은 기록이 화면 오른쪽 패널에 열려요.
  * - 저장된 질문·답변 뒤에는 이 대화에서 독으로 보내 지금 받고 있는 질문과 답변을 이어 그려요. 서버가 질문을 받기 전에는 질문만 보이고, 답변은 도착하는 대로 늘어나요.
  * - 답변이 끝나 대화를 다시 불러와도 같은 답변이 두 번 보이지 않아요.
- * - 답변을 만들지 못했으면 받은 글자는 보여주지 않고, 그 자리에 실패 안내와 `다시 시도`를 둬요. `다시 시도`를 누르면 같은 질문으로 다시 받은 답변이 그 자리에 흘러들어요.
+ * - 이전 실패 답변은 미검증 글자 대신 안내 문단으로 보여줘요. 새 질문으로 대화를 이어갈 수 있어요.
  * - 지난 대화의 메시지를 받는 동안에는 시작 전 안내를 띄우지 않아요. 보던 대화에서 옮겨 왔으면 응답이 올 때까지 보던 대화를 누를 수 없게 둔 채 보여주고, 보여 줄 대화가 없으면 스켈레톤을 그려요(SEARCH-15).
  * - 메시지를 받지 못하면 칸 안에 불러오기 실패 안내와 `다시 시도`를 둬요.
+ * - 빈 대화 아래 「탐색 사용법 보기」를 누르면 탐색 튜토리얼을 다시 볼 수 있어요. 튜토리얼이 떠 있는 동안은 숨겨요.
+ * - 탐색 튜토리얼 3단계에는 서버 대화 대신 예시 대화(목 데이터)를 그려요. 근거 문서 카드는 예시라 누를 수 없어요.
  * - 대화는 메시지 조회 mock 응답으로 그려요. 근거가 2개·3개·없는 답변이 한 턴씩 있어요.
  */
 const meta = {
@@ -42,6 +45,7 @@ const meta = {
     layout: "fullscreen",
     initialPath: CHAT_PATH,
     design: [
+      { name: "기존 오류 표시 참고", type: "figma", url: "https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=2072-26749" },
       {
         name: "탐색/시작 전",
         type: "figma",
@@ -51,6 +55,11 @@ const meta = {
         name: "Search/Answer",
         type: "figma",
         url: "https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=2017-36200",
+      },
+      {
+        name: "탐색/시작 전 (탐색 사용법 보기)",
+        type: "figma",
+        url: "https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=1917-18392",
       },
     ],
   },
@@ -112,16 +121,12 @@ export const EvidenceOpen: Story = {
 };
 
 /**
- * 첫 질문의 답변을 만들지 못한 대화예요. 끊기기 전까지 받은 글자가 서버에 남아 있어도 보여주지 않아요.
- * `다시 시도`를 누르면 재시도 mock 응답이 그 자리에 흘러들어요.
+ * 이전에 실패한 답변을 안내 문단으로 보여줘요. 저장된 미검증 글자는 표시하지 않아요.
  */
-export const AnswerFailed: Story = {
+export const AnswerGuidance: Story = {
   parameters: {
     initialPath: CONVERSATION_PATH,
-    design: {
-      type: "figma",
-      url: "https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=2072-26749",
-    },
+    docs: { story: { inline: false, iframeHeight: 640 } },
     msw: {
       handlers: {
         messages: http.get(MESSAGES_URL, ({ params }) => {
@@ -181,4 +186,23 @@ export const LoadFailed: Story = {
       },
     },
   },
+};
+
+/** 탐색 튜토리얼 3단계예요. 서버 대신 예시 대화를 그리고, 답변을 한 글자씩 쓴 뒤 근거 문서 카드를 보여 줘요. */
+export const TutorialExample: Story = {
+  parameters: {
+    design: {
+      type: "figma",
+      url: "https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=6342-4909",
+    },
+  },
+  decorators: [
+    (Story) => {
+      if (useSearchTutorialStore.getState().step !== 3) {
+        useSearchTutorialStore.setState({ step: 3, variant: "default", source: "search", draft: null, isAnswerShown: false });
+      }
+
+      return <Story />;
+    },
+  ],
 };

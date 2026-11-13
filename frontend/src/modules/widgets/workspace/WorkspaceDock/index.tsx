@@ -4,6 +4,7 @@ import { keyframes } from "@emotion/react";
 import styled from "@emotion/styled";
 import { DOCK_HEIGHT } from "@primitives/layout/DockColumn";
 import Textarea from "@primitives/ui/Textarea";
+import { useSearchTutorialStore } from "@store/searchTutorialStore";
 import { useRef } from "react";
 
 import SendIcon from "@/assets/icons/send.svg";
@@ -111,6 +112,8 @@ export default function WorkspaceDock() {
   } = useDockRecording();
   // 첫 사용 안내는 홈에서 독이 접혀 쉬고 있을 때만, 버튼 안내는 첫 사용 안내가 없을 때 올리면 떠요
   const isRecordingBusy = isRecordingChipVisible || isRecordingStarting;
+  // 탐색 튜토리얼 2단계는 예시 질문을 이 입력창에 한 글자씩 넣어 보여 줘요. 그동안은 직접 적을 수 없어요
+  const tutorialDraft = useSearchTutorialStore((state) => state.draft);
   const { isHintVisible } = useDockHint({ isDockExpanded: isExpanded, isRecordingBusy });
   const stageRef = useRef<HTMLDivElement>(null);
   const { hoverGuide, bind: bindHoverGuide } = useDockHoverGuide({
@@ -171,6 +174,8 @@ export default function WorkspaceDock() {
 
       <Bar
         ref={formRef}
+        // 탐색 튜토리얼이 펼친 입력창을 밝혀요
+        data-search-tutorial={isExpanded ? "dock-input" : undefined}
         $isOpen={isOpen}
         $isInstant={isClosedByScreen}
         $isExpanded={isExpanded}
@@ -197,7 +202,8 @@ export default function WorkspaceDock() {
             placeholder="무엇이든 요청하세요"
             // 접힌 독에서는 보이지 않으므로 Tab으로 들르지 않아요
             tabIndex={isExpanded ? undefined : -1}
-            value={message}
+            value={tutorialDraft ?? message}
+            readOnly={tutorialDraft !== null}
             onChange={handleChange}
             onKeyDown={handleKeyDown}
           />
@@ -246,7 +252,7 @@ export default function WorkspaceDock() {
         ) : (
           /* 녹음 파형으로 접혀 있을 때는 자리만 차지하고 키보드·낭독기에서 닿지 않아요. 입력창은 밖에 있어 어디서든 타이핑은 그대로예요 */
           <CollapsedControls aria-hidden={!isOpen} inert={!isOpen}>
-              <GuideTarget {...bindHoverGuide("chat")}>
+              <GuideTarget data-search-tutorial="dock-chat" {...bindHoverGuide("chat")}>
                 <DockChatButton isOrbVisible={isOpen} onClick={handleExpand} />
               </GuideTarget>
 
@@ -273,7 +279,7 @@ export default function WorkspaceDock() {
                     isPaused={isRecordingPaused}
                     analyser={isOpen ? analyser : null}
                     onOpen={isOtherTabRecording ? undefined : handleOpenRecording}
-                    onStop={isOtherTabRecording ? undefined : handleStopRecording}
+                    onStop={handleStopRecording}
                   />
                 </RecordSlot>
               )}

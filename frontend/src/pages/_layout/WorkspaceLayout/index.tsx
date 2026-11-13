@@ -10,6 +10,7 @@ import useMediaQuery from "@hooks/common/useMediaQuery";
 import useTranscriptPanel from "@hooks/domain/document/useTranscriptPanel";
 import useRecordingDocumentStatus from "@hooks/domain/recording/useRecordingDocumentStatus";
 import useRecordingLeaveWarning from "@hooks/domain/recording/useRecordingLeaveWarning";
+import useUnfinishedRecordingCheck from "@hooks/domain/recording/useUnfinishedRecordingCheck";
 import useAbortSearchAnswerOnLeave from "@hooks/domain/search/useAbortSearchAnswerOnLeave";
 import useOpenedEvidenceMessage from "@hooks/domain/search/useOpenedEvidenceMessage";
 import useOpenEvidenceOnAnswerComplete from "@hooks/domain/search/useOpenEvidenceOnAnswerComplete";
@@ -27,6 +28,7 @@ import { PATH_ROUTE } from "@routes/PATH_ROUTE";
 import ChatListDrawer from "@widgets/chat/ChatListDrawer";
 import TranscriptPanel from "@widgets/document/TranscriptPanel";
 import SearchEvidenceList from "@widgets/search/SearchEvidenceList";
+import SearchTutorial from "@widgets/search/SearchTutorial";
 import WorkspaceDock from "@widgets/workspace/WorkspaceDock";
 import WorkspaceGnb from "@widgets/workspace/WorkspaceGnb";
 import WorkspaceSidebar from "@widgets/workspace/WorkspaceSidebar";
@@ -106,6 +108,7 @@ export default function WorkspaceLayout() {
   const [pickedPanel, setPickedPanel] = useState<DockedPanelName>(null);
 
   useRecordingLeaveWarning();
+  useUnfinishedRecordingCheck();
   useAbortSearchAnswerOnLeave();
   useOpenEvidenceOnAnswerComplete();
   // 화면은 창이 아니라 본문 안에서 스크롤돼서, 화면을 옮길 때 본문의 스크롤 위치를 맞춰요
@@ -243,6 +246,9 @@ export default function WorkspaceLayout() {
           </TranscriptRail>
         )}
       </Body>
+
+      {/* 워크스페이스에 들어간 뒤에만 띄워요. 문서가 있는지와 멤버 기록을 보고 처음 한 번 떠요 */}
+      {isReady && <SearchTutorial />}
     </Container>
   );
 }
@@ -410,7 +416,7 @@ const Main = styled.main`
 /**
  * 독과 그 위 토스트가 놓이는 자리. 본문 위에 떠 있지만 독 바깥은 본문 클릭을 가리지 않는다.
  *
- * 토스트에는 누를 것이 없어서 토스트 자리도 클릭을 받지 않는다.
+ * 토스트 자리도 클릭을 받지 않고, 고정 토스트의 X만 받는다.
  */
 const DockSlot = styled(DockColumn)`
   position: absolute;

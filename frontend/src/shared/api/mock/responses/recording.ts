@@ -19,6 +19,7 @@ import type {
   RecordingHeartbeatResponse,
   RecordingHistoryItem,
   RecordingPauseResponse,
+  TeammateRecordingsResponse,
   RecordingResumeResponse,
   RecordingsResponse,
   RecordingStartResponse,
@@ -42,6 +43,26 @@ export const currentRecordingResponse = {
   startedAt: fromNow(-12 * MINUTE),
   elapsedMillis: 12 * MINUTE,
 } satisfies CurrentRecordingResponse;
+
+/** 팀원 두 명이 각자 녹음 중 · 일시정지인 상황(STT-R55). 개발 브라우저는 상황 핸들러가 기본으로 팀원 녹음 없음이라 답해요 */
+export const teammateRecordingsResponse = {
+  items: [
+    {
+      recordingId: 31,
+      status: "RECORDING",
+      title: "루덴스 님의 녹음",
+      startedAt: fromNow(-5 * MINUTE),
+      elapsedMillis: 5 * MINUTE,
+    },
+    {
+      recordingId: 30,
+      status: "PAUSED",
+      title: "흑곰 님의 녹음",
+      startedAt: fromNow(-40 * MINUTE),
+      elapsedMillis: 27 * MINUTE,
+    },
+  ],
+} satisfies TeammateRecordingsResponse;
 
 export const recordingStartResponse = {
   recordingId: 10,
@@ -69,15 +90,16 @@ export const recordingEndResponse = {
   endedAt: fromNow(0),
 } satisfies RecordingEndResponse;
 
-// 서버는 마지막 신호부터 30초 동안 신호가 없으면 녹음을 끝내요
+// 서버는 마지막 신호부터 30분 동안 아무것도 오지 않으면 녹음을 끝내요
 export const recordingHeartbeatResponse = {
   recordingId: 10,
   status: "RECORDING",
   elapsedMillis: 10 * MINUTE,
   lastSeenAt: fromNow(0),
-  expiresAt: fromNow(MINUTE / 2),
+  expiresAt: fromNow(30 * MINUTE),
   endedAt: null,
   endReason: null,
+  connectionStatus: "CONNECTED",
   serverNow: fromNow(0),
 } satisfies RecordingHeartbeatResponse;
 

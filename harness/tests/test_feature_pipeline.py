@@ -280,6 +280,8 @@ class RenderTest(unittest.TestCase):
     def test_pr_section_uses_h2_and_links_only(self):
         text = fp.render_notion_changes(valid_result()["changed"])
         self.assertTrue(text.startswith("## 노션 변경 사항\n\n"))
+        self.assertIn("<details>\n<summary>노션 1건, Figma 1건 (눌러서 펼치기)</summary>\n\n- 노션:", text)
+        self.assertTrue(text.endswith("\n\n</details>\n"))
         self.assertIn("- 노션: [기능 요구사항 SEARCH-R12 추가](https://app.notion.com/p/abc)", text)
         self.assertIn("- Figma: [탐색 답변 화면, 변경 없음, 참고 링크](", text)
 
@@ -287,6 +289,7 @@ class RenderTest(unittest.TestCase):
         text = fp.render_notion_changes(valid_result()["changed"], for_issue=True)
         self.assertTrue(text.startswith("**노션 변경 사항**\n\n"))
         self.assertNotIn("## ", text)
+        self.assertNotIn("<details>", text)
 
     def test_empty_changed_renders_none(self):
         self.assertEqual(fp.render_notion_changes([]), "## 노션 변경 사항\n\n- 없음\n")

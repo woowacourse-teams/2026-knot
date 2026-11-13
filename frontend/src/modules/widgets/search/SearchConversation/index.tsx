@@ -9,8 +9,8 @@ import useNavigateToNewChat from "@hooks/domain/chat/useNavigateToNewChat";
 import useConversationId from "@hooks/domain/search/useConversationId";
 import useRememberLastConversation from "@hooks/domain/search/useRememberLastConversation";
 import useResumeSearchAnswer from "@hooks/domain/search/useResumeSearchAnswer";
-import useSearchAnswerControl from "@hooks/domain/search/useSearchAnswerControl";
 import useSearchAnswerState from "@hooks/domain/search/useSearchAnswerState";
+import { useSearchTutorialStore } from "@store/searchTutorialStore";
 import { useEffect } from "react";
 import { useParams } from "react-router";
 
@@ -18,7 +18,7 @@ import ConversationLoadFailed from "./ui/ConversationLoadFailed";
 import ConversationSkeleton from "./ui/ConversationSkeleton";
 import EmptyConversation from "./ui/EmptyConversation";
 import SearchTurn from "./ui/SearchTurn";
-import type { SearchTurn as SearchTurnData } from "./types/searchTurn";
+import TutorialTurn from "./ui/TutorialTurn";
 import { buildSearchTurns } from "./utils/buildSearchTurns";
 
 /** 대화가 없어졌거나 볼 수 없게 된 실패. 경로 형식 오류(400), 볼 권한 없음(403), 대화 없음(404) */
@@ -36,7 +36,7 @@ const isUnavailableError = (error: unknown) =>
  *
  * 질문이 없는 빈 대화에서는 안내 문구를, 대화가 있으면 질문·답변 턴을 위에서부터 차례로 그려요.
  * 저장된 턴 뒤에는 이 대화에서 보내 지금 받고 있는 질문·답변을 이어 그려요.
- * 실패한 답변의 `다시 시도`는 그 턴의 질문으로 답변을 다시 요청해요(SEARCH-R5).
+ * 이전 실패 답변도 안내 문단으로 보여주고 후속 질문을 이어갈 수 있어요(SEARCH-R5).
  *
  * 지난 대화의 메시지를 받는 동안에는 시작 전 안내를 띄우지 않아요(SEARCH-15).
  * - 보던 대화에서 옮겨 왔으면 응답이 올 때까지 보던 대화를 그대로 두고, 그 대화는 누를 수 없게 막아요.
@@ -46,6 +46,7 @@ const isUnavailableError = (error: unknown) =>
  *
  * 지금 보는 대화는 워크스페이스마다 기억해 두고, GNB 탐색을 누르면 그 대화로 돌아와요.
  * 서버가 아직 만들고 있는 답변이 있으면 이어 받아 끝까지 그려요(SEARCH-R8).
+ * 탐색 튜토리얼 3단계에는 서버 대화 대신 예시 대화를 그려요(SEARCH-R26).
  */
 export default function SearchConversation() {
   const { workspaceId } = useParams();
@@ -56,8 +57,8 @@ export default function SearchConversation() {
       conversationId,
     });
   const answer = useSearchAnswerState();
-  const { retryAnswer } = useSearchAnswerControl();
   const { navigateToNewChat } = useNavigateToNewChat();
+  const tutorialStep = useSearchTutorialStore((state) => state.step);
 
   useRememberLastConversation();
   useResumeSearchAnswer();
@@ -87,22 +88,14 @@ export default function SearchConversation() {
     refetch();
   };
 
-  const handleRetryAnswer = ({
-    questionId,
-    question,
-    answer: failedAnswer,
-  }: SearchTurnData) => {
-    // 실패한 답변은 접수된 질문에만 생기므로 대화·질문 ID가 늘 있어요. 타입을 좁히려고 확인해요
-    if (!workspaceId || !conversationId || !questionId || !failedAnswer) return;
-
-    retryAnswer({
-      workspaceId: Number(workspaceId),
-      conversationId,
-      question,
-      questionMessageId: questionId,
-      answerMessageId: failedAnswer.id,
-    });
-  };
+  // 탐색 튜토리얼 3단계는 서버 대화 대신 예시 대화를 그려요. 예시는 대화 목록에 남지 않아요
+  if (tutorialStep === 3) {
+    return (
+      <TurnList aria-label="대화">
+        <TutorialTurn />
+      </TurnList>
+    );
+  }
 
   // 생성 중인 답변이 있으면 받는 중이어도 그 턴을 그려요. 답변을 만드는 동안에는 스켈레톤을 쓰지 않아요(SEARCH-15)
   if (turns.length === 0) {
@@ -133,11 +126,7 @@ export default function SearchConversation() {
     // 옮기는 동안 남은 보던 대화를 누르면 옮겨 갈 대화 ID로 요청이 가요. 응답이 올 때까지 통째로 막아요
     <TurnList aria-label="대화" aria-busy={isSwitching} inert={isSwitching}>
       {turns.map((turn) => (
-        <SearchTurn
-          key={turn.key}
-          turn={turn}
-          onRetryAnswer={() => handleRetryAnswer(turn)}
-        />
+        <SearchTurn key={turn.key} turn={turn} />
       ))}
     </TurnList>
   );

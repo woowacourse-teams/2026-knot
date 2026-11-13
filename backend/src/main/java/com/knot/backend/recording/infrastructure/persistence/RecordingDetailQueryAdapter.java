@@ -28,7 +28,8 @@ public class RecordingDetailQueryAdapter implements RecordingDetailQuery {
                                 row.accumulatedRecordingMillis(),
                                 row.endedAt(),
                                 row.endReason(),
-                                row.audioUploadStatus()
+                                row.audioUploadStatus(),
+                                row.speakerCount()
                         )
                 );
     }

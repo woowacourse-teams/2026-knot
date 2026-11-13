@@ -45,6 +45,16 @@ describe("개발 브라우저 전용 상황 핸들러", () => {
   it("저장된 값이 깨졌으면 기본값이다", () => {
     localStorage.setItem(MOCK_SCENARIO_STORAGE_KEY, "{broken");
 
-    expect(readMockScenario()).toEqual({ currentRecording: "none" });
+    expect(readMockScenario()).toEqual({
+      currentRecording: "none",
+      teammateRecordings: "none",
+    });
+  });
+
+  it("주소의 mock.teammateRecordings로 팀원 진행 중 녹음 상황을 고른다", () => {
+    expect(applyMockScenarioFromQuery("?mock.teammateRecordings=some")).toBe(
+      true,
+    );
+    expect(readMockScenario().teammateRecordings).toBe("some");
   });
 });

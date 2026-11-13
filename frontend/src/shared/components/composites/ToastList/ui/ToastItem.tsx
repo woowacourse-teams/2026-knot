@@ -18,19 +18,23 @@ const TOAST_DURATION_MS = {
 
 interface ToastItemProps {
   toast: ShownToast;
-  /** 떠 있는 시간이 다 되면 불러요 */
+  /** 떠 있는 시간이 다 되거나 X를 누르면 불러요 */
   onExpire: (id: number) => void;
   /** 사라지는 애니메이션이 끝나면 불러요 */
   onLeaveEnd: (id: number) => void;
 }
 
-/** 토스트 하나가 나타나고, 떠 있는 시간을 세고, 사라지기까지를 맡는 컴포넌트 */
+/**
+ * 토스트 하나가 나타나고, 떠 있는 시간을 세고, 사라지기까지를 맡는 컴포넌트.
+ * 고정 토스트는 시간을 세지 않고 X를 둬요.
+ */
 export default function ToastItem({
   toast,
   onExpire,
   onLeaveEnd,
 }: ToastItemProps) {
-  const { id, variant, message, icon, shownAt, isLeaving } = toast;
+  const { id, variant, message, icon, shownAt, isLeaving, pinKey } = toast;
+  const isPinned = pinKey !== undefined;
 
   const { start: startShowing } = useTimeout({
     timeout: TOAST_DURATION_MS[variant],
@@ -43,8 +47,8 @@ export default function ToastItem({
   });
 
   useEffect(() => {
-    startShowing();
-  }, [startShowing, shownAt]);
+    if (!isPinned) startShowing();
+  }, [isPinned, startShowing, shownAt]);
 
   useEffect(() => {
     if (isLeaving) startLeaving();
@@ -52,10 +56,15 @@ export default function ToastItem({
 
   return (
     // 사라지는 중인 토스트는 이미 끝난 알림이라 낭독기가 다시 읽지 않게 숨겨요
-    <div aria-hidden={isLeaving}>
+    <div aria-hidden={isLeaving} role={isPinned ? "status" : undefined}>
       <FadeCollapse isLeaving={isLeaving}>
         <ToastGapWrapper>
-          <Toast variant={variant} message={message} icon={icon} />
+          <Toast
+            variant={variant}
+            message={message}
+            icon={icon}
+            onClose={isPinned ? () => onExpire(id) : undefined}
+          />
         </ToastGapWrapper>
       </FadeCollapse>
     </div>

@@ -64,6 +64,14 @@ public record TranscriptionProperties(
             throw new RecordingException(RecordingErrorCode.AI_INVALID_CONFIGURATION);
         }
     }
+    public void validateWorkerConfiguration() {
+        if (invalid(connectTimeout) || invalid(requestTimeout) || invalid(pollInterval) || invalid(jobTimeout)
+                || invalid(leaseDuration) || invalid(leaseRenewInterval) || invalid(readinessTimeout)
+                || leaseRenewInterval.toMillis() <= 0 || leaseRenewInterval.compareTo(leaseDuration) >= 0) {
+            throw new RecordingException(RecordingErrorCode.AI_INVALID_CONFIGURATION);
+        }
+    }
+
     private boolean invalid(Duration duration) {
         return duration == null || duration.isNegative() || duration.isZero();
     }

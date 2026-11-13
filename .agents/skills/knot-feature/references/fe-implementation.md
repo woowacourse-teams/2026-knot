@@ -52,7 +52,7 @@
 - 커밋은 프론트 컨벤션(`feat`, `fix`, `docs`, `refactor`, `chore`)과 이슈 번호 트레일러를 쓰고
   co-author와 AI 생성 표시를 붙이지 않는다.
 - PR은 루트 `AGENTS.md` 「기능 구현 요청 파이프라인」의 PR 공통 규칙을 따른다. 첫 섹션
-  `## 노션 변경 사항`에 이슈의 링크를 끌어와 적고, `관련 이슈`에 `Closes #<번호>`, `작업 내용`에
+  `## 노션 변경 사항`에 이슈의 링크를 끌어와 토글로 접어 적고(`feature_pipeline.py render` 결과 그대로), `관련 이슈`에 `Closes #<번호>`, `작업 내용`에
   스토리북과 E2E 통과 결과, E2E 시나리오 설명을 넣는다.
 - 담당자, 라벨, 리뷰어는 `python3 harness/team_roles.py review --area frontend --author <implementer>`
   결과로 정한다. 1차 컨펌을 받은 작업(기획 변경)이면 `--plan-changed`, 디자인이 새로

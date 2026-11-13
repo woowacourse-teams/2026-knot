@@ -35,6 +35,7 @@ public record AiTranscript(
         if (schemaVersion != SUPPORTED_SCHEMA_VERSION) {
             throw new RecordingException(RecordingErrorCode.INVALID_RECORDING_DATA);
         }
+        validateEmptySuccess();
         List<TranscriptUtterance> converted = new ArrayList<>();
         for (int ord = 0; ord < utterances.size(); ord++) {
             converted.add(
@@ -43,6 +44,35 @@ public record AiTranscript(
             );
         }
         return converted;
+    }
+
+    private void validateEmptySuccess() {
+        if (!utterances.isEmpty()) {
+            return;
+        }
+        try {
+            tools.jackson.databind.JsonNode root = new tools.jackson.databind.ObjectMapper().rebuild()
+                    .enable(tools.jackson.databind.DeserializationFeature.FAIL_ON_TRAILING_TOKENS)
+                    .build()
+                    .readTree(rawWhisperJson);
+            if (root == null || !root.path("transcription")
+                    .isArray()) {
+                throw new RecordingException(RecordingErrorCode.AI_INVALID_RESPONSE);
+            }
+            for (tools.jackson.databind.JsonNode segment : root.path("transcription")) {
+                tools.jackson.databind.JsonNode text = segment.path("text");
+                if (!text.isString() || text.asString()
+                        .codePoints()
+                        .anyMatch(c -> !Character.isWhitespace(c) && !Character.isSpaceChar(c))) {
+                    throw new RecordingException(RecordingErrorCode.AI_INVALID_RESPONSE);
+                }
+            }
+        } catch (tools.jackson.core.JacksonException | IllegalArgumentException exception) {
+            throw new RecordingException(
+                    RecordingErrorCode.AI_INVALID_RESPONSE,
+                    exception
+            );
+        }
     }
 
     public record Utterance(

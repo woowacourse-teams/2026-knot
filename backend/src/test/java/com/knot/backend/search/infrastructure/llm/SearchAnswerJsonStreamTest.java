@@ -25,6 +25,42 @@ class SearchAnswerJsonStreamTest {
     );
 
     @Test
+    @DisplayName("일반 대화는 회의 문서 근거 없이 생성한 답변을 완료한다")
+    void complete_success_generalConversationWithoutEvidence() {
+        List<String> deltas = new ArrayList<>();
+        SearchAnswerJsonStream stream = new SearchAnswerJsonStream(
+                mapper,
+                deltas::add
+        );
+        stream.accept(
+                "{\"status\":\"GENERAL\",\"decisionState\":\"NOT_APPLICABLE\",\"answer\":\"안녕하세요. 무엇을 도와드릴까요?\",\"evidenceIds\":[],\"clarificationQuestion\":null}"
+        );
+        assertThat(stream.complete(List.of())).isEmpty();
+        assertThat(
+                String.join(
+                        "",
+                        deltas
+                )
+        ).isEqualTo("안녕하세요. 무엇을 도와드릴까요?");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"DECIDED", "UNKNOWN"})
+    @DisplayName("일반 대화 결과로 회의 결정 상태를 확정하지 않는다")
+    void complete_failure_generalConversationCannotClaimDecision(String state) {
+        SearchAnswerJsonStream stream = new SearchAnswerJsonStream(
+                mapper,
+                text -> {
+                }
+        );
+        stream.accept(
+                "{\"status\":\"GENERAL\",\"decisionState\":\"" + state
+                        + "\",\"answer\":\"답변\",\"evidenceIds\":[],\"clarificationQuestion\":null}"
+        );
+        assertThatThrownBy(() -> stream.complete(List.of())).hasMessage("INVALID_MODEL_ANSWER");
+    }
+
+    @Test
     @DisplayName("JSON이 끝나기 전부터 답변만 전달하며 분할된 escape와 이모지를 복구한다")
     void accept_success_partialAnswerAndEscapes() {
         List<String> deltas = new ArrayList<>();

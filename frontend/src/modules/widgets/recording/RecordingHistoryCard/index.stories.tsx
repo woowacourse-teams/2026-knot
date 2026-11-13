@@ -1,14 +1,21 @@
 import { RECORDINGS_API_PATH } from "@api/fetch/api/v1/workspaces/[workspaceId]/recordings";
 import { CURRENT_RECORDING_API_PATH } from "@api/fetch/api/v1/workspaces/[workspaceId]/recordings/current";
+import { TEAMMATE_RECORDINGS_API_PATH } from "@api/fetch/api/v1/workspaces/[workspaceId]/recordings/teammatesInProgress";
 import {
   currentRecordingResponse,
   recordingsResponse,
+  teammateRecordingsResponse,
 } from "@api/mock/responses/recording";
 import { resetRecordingMockState } from "@api/mock/state/recording";
 import { ToastProvider } from "@provider/context/toastContext";
 import { getRouterPath, PATH_ROUTE } from "@routes/PATH_ROUTE";
 import { useRecordingStore } from "@store/recordingStore";
 import type { Meta, StoryObj } from "@storybook/react-webpack5";
+import {
+  clearRecordingStartProof,
+  getRecordingStartProof,
+  saveRecordingResumeProof,
+} from "@utils/recordingControlProof";
 import { delay, http, HttpResponse } from "msw";
 import { MemoryRouter, Route, Routes } from "react-router";
 
@@ -21,6 +28,7 @@ const HOME_PATH = getRouterPath({
 });
 const CURRENT_URL = `*${CURRENT_RECORDING_API_PATH(WORKSPACE_ID)}`;
 const RECORDINGS_URL = `*${RECORDINGS_API_PATH(WORKSPACE_ID)}`;
+const TEAMMATES_URL = `*${TEAMMATE_RECORDINGS_API_PATH(WORKSPACE_ID)}`;
 const figmaUrl = (nodeId: string) =>
   `https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=${nodeId}`;
 
@@ -28,6 +36,16 @@ const figmaUrl = (nodeId: string) =>
 const noCurrentRecording = http.get(
   CURRENT_URL,
   () => new HttpResponse(null, { status: 204 }),
+);
+
+/** 팀원 녹음이 없어요. 팀원 줄을 보는 스토리 말고는 이 응답으로 기존 모습을 그대로 보여 줘요 */
+const noTeammates = http.get(TEAMMATES_URL, () =>
+  HttpResponse.json({ items: [] }),
+);
+
+/** 팀원 두 명이 각자 녹음 중 · 일시정지예요 */
+const teammatesRecording = http.get(TEAMMATES_URL, () =>
+  HttpResponse.json(teammateRecordingsResponse),
 );
 
 // 응답이나 이 탭의 녹음을 바꾸는 스토리는 문서 페이지에서 따로 그려야 다른 스토리와 섞이지 않아요
@@ -57,14 +75,15 @@ const setRecordingInThisTab = (status: "recording" | "paused") => {
  *
  * **동작 규칙**
  * - 맨 위에는 내 녹음 중 · 일시정지 녹음 한 줄(녹음 이름, 상태 · 시간, 안내, 「녹음 화면으로」)을, 그 아래에는 워크스페이스의 끝난 녹음을 최신순으로 보여 줘요. 누가 녹음했는지는 보여 주지 않아요.
- * - 이 탭에서 시작한 녹음이면 「녹음 화면으로」로 녹음 화면에 가요. 다른 탭에서 시작한 녹음이면 버튼을 누를 수 없고, 그 탭에서 일시정지 · 끝내기를 할 수 있다고 안내해요.
+ * - 이 탭에서 시작한 녹음이면 「녹음 화면으로」로 녹음 화면에 가요. 다른 탭에서 시작한 녹음이면 버튼을 누를 수 없고, 일시정지 · 이어서 녹음은 그 탭에서 한다고 안내해요. 끝내기는 독의 ■로 해요.
+ * - 팀원이 녹음 중 · 일시정지면 목록 맨 앞에 팀원 녹음마다 한 줄(「OO 님의 녹음」, 상태 · 시간)이 있어요. 팀원 녹음은 보기만 해서 버튼이 없고 눌러도 이동하지 않아요. 30초마다, 창으로 돌아올 때 다시 받아요.
  * - 맨 위 줄은 카드 머리 아래에 고정되고, 목록만 카드 안에서 스크롤돼요. 목록 아래 40px은 흐리게 보여요. 스크롤 끝에 닿으면 다음 20개를 이어 받아요.
  * - 행은 제목을 한 줄로 자르고, 마우스를 올리면 전체 제목을 브라우저 툴팁으로 보여 줘요.
  * - 완료 행은 녹음 날짜와 녹음 길이 칩을, 그 밖의 행은 처리 상태(문서 정리 중 · 녹음을 글로 옮기지 못했어요 · 문서를 만들지 못했어요 · 변환된 음성 기록이 없어요.)를 보여 줘요.
- * - 「녹음 보기」로 그 녹음의 녹음 문서에 가요. 문서 정리 중 행의 「녹음 보기」는 흐리게 보이고 누를 수 없어요.
+ * - 「녹음 보기」로 그 녹음의 녹음 문서에 가요. 전사가 준비된 행은 문서 정리 중에도 「녹음 보기」를 누를 수 있어요.
  * - 서버가 다시 시도할 수 있다고 알려 준 실패 행에는 「녹음 보기」 대신 「다시 시도」가 있어요. 누르면 그 행이 문서 정리 중으로 바뀌어요.
  * - 문서 정리 중 행이 있는 동안 3초마다 목록을 다시 받아요.
- * - 맨 위 줄과 목록이 모두 없으면 카드 크기를 그대로 두고 빈 상태 문구를 보여 줘요. 불러오지 못하면 목록 자리에 안내와 「다시 시도」를 둬요.
+ * - 맨 위 줄, 팀원 줄, 목록이 모두 없으면 카드 크기를 그대로 두고 빈 상태 문구를 보여 줘요. 불러오지 못하면 목록 자리에 안내와 「다시 시도」를 둬요.
  */
 const meta = {
   title: "Recording/RecordingHistoryCard",
@@ -77,6 +96,7 @@ const meta = {
   ],
   parameters: {
     layout: "centered",
+    msw: { handlers: { teammateRecordings: noTeammates } },
     design: [
       {
         name: "Card/RecordingHistory",
@@ -109,15 +129,29 @@ type Story = StoryObj<typeof meta>;
 export const UnknownProcessingStatus: Story = {
   parameters: {
     docs: ISOLATED_DOCS,
-    msw: { handlers: {
-      currentRecording: noCurrentRecording,
-      recordings: http.get(RECORDINGS_URL, () => HttpResponse.json({
-        ...recordingsResponse,
-        items: recordingsResponse.items.map(({ recordingId, title, startedAt, recordingDurationSeconds }) => ({
-          recordingId, title, startedAt, recordingDurationSeconds,
-        })),
-      })),
-    } },
+    msw: {
+      handlers: {
+        currentRecording: noCurrentRecording,
+        recordings: http.get(RECORDINGS_URL, () =>
+          HttpResponse.json({
+            ...recordingsResponse,
+            items: recordingsResponse.items.map(
+              ({
+                recordingId,
+                title,
+                startedAt,
+                recordingDurationSeconds,
+              }) => ({
+                recordingId,
+                title,
+                startedAt,
+                recordingDurationSeconds,
+              }),
+            ),
+          }),
+        ),
+      },
+    },
   },
 };
 
@@ -130,6 +164,68 @@ export const Default: Story = {
     docs: ISOLATED_DOCS,
     msw: { handlers: { currentRecording: noCurrentRecording } },
     design: { type: "figma", url: figmaUrl("5423-4715") },
+  },
+};
+
+/** 나와 팀원 두 명이 각자 녹음하고 있을 때예요. 예: 같은 시간에 회의실 두 곳에서 회의를 녹음하는 경우. 팀원 줄은 목록 맨 앞에서 함께 스크롤돼요 */
+export const TeammatesRecording: Story = {
+  parameters: {
+    docs: ISOLATED_DOCS,
+    msw: { handlers: { teammateRecordings: teammatesRecording } },
+    design: { type: "figma", url: figmaUrl("6361-50655") },
+  },
+};
+
+/** 내 녹음 없이 팀원만 녹음하고 있을 때예요. 예: 팀원이 회의를 녹음하는 동안 홈을 연 경우 */
+export const TeammatesRecordingOnly: Story = {
+  parameters: {
+    docs: ISOLATED_DOCS,
+    msw: {
+      handlers: {
+        currentRecording: noCurrentRecording,
+        teammateRecordings: teammatesRecording,
+      },
+    },
+    design: { type: "figma", url: figmaUrl("6361-50756") },
+  },
+};
+
+/** 녹음 기록이 하나도 없는 워크스페이스에서 팀원이 처음 녹음을 시작했을 때예요. 빈 상태 문구 대신 팀원 줄이 보여요 */
+export const TeammatesRecordingWithoutHistory: Story = {
+  parameters: {
+    docs: ISOLATED_DOCS,
+    msw: {
+      handlers: {
+        currentRecording: noCurrentRecording,
+        recordings: http.get(RECORDINGS_URL, () =>
+          HttpResponse.json({ items: [], nextCursor: null }),
+        ),
+        teammateRecordings: teammatesRecording,
+      },
+    },
+  },
+};
+
+/** 팀원 닉네임이 길 때예요. 녹음 이름은 한 줄로 자르고 마우스를 올리면 전체를 보여 줘요 */
+export const LongTeammateNickname: Story = {
+  parameters: {
+    docs: ISOLATED_DOCS,
+    msw: {
+      handlers: {
+        teammateRecordings: http.get(TEAMMATES_URL, () =>
+          HttpResponse.json({
+            items: [
+              {
+                ...teammateRecordingsResponse.items[0],
+                title:
+                  "아주아주긴닉네임을가진팀원(QA)아주아주긴닉네임을가진팀원(QA) 님의 녹음",
+              },
+            ],
+          }),
+        ),
+      },
+    },
+    design: { type: "figma", url: figmaUrl("6361-54104") },
   },
 };
 
@@ -156,7 +252,43 @@ export const PausedInThisTab: Story = {
 export const RecordingInOtherTab: Story = {
   parameters: {
     docs: ISOLATED_DOCS,
-    design: { type: "figma", url: figmaUrl("5423-5002") },
+    design: { type: "figma", url: figmaUrl("6061-44336") },
+  },
+};
+
+/** 다른 탭에서 녹음하는데 그 탭의 연결이 끊겼을 때예요. 예: 회의실 노트북의 인터넷이 끊긴 채 다른 기기로 홈을 연 경우 */
+export const OtherTabConnectionLost: Story = {
+  parameters: {
+    docs: ISOLATED_DOCS,
+    msw: {
+      handlers: {
+        currentRecording: http.get(CURRENT_URL, () =>
+          HttpResponse.json({
+            ...currentRecordingResponse,
+            connectionStatus: "DISCONNECTED",
+          }),
+        ),
+      },
+    },
+    design: { type: "figma", url: figmaUrl("6061-44533") },
+  },
+};
+
+/** 녹음하던 이 탭을 새로고침했을 때예요. 소리는 멈춰 있고, 녹음 화면으로 가서 「이어서 녹음」으로 같은 녹음을 이어요 */
+export const ReloadedInThisTab: Story = {
+  beforeEach: () => {
+    getRecordingStartProof();
+    saveRecordingResumeProof({
+      workspaceId: 1,
+      recordingId: currentRecordingResponse.recordingId,
+      audioMode: "PCM16_CHUNKS_V1",
+    });
+
+    return clearRecordingStartProof;
+  },
+  parameters: {
+    docs: ISOLATED_DOCS,
+    design: { type: "figma", url: figmaUrl("6061-42635") },
   },
 };
 
@@ -229,5 +361,31 @@ export const Empty: Story = {
       },
     },
     design: { type: "figma", url: figmaUrl("5476-65117") },
+  },
+};
+
+/** 전사가 준비되면 문서 생성 중에도 녹음 보기를 사용할 수 있어요. */
+export const TranscriptReadyWhileProcessing: Story = {
+  parameters: {
+    docs: ISOLATED_DOCS,
+    msw: {
+      handlers: {
+        currentRecording: noCurrentRecording,
+        recordings: http.get(RECORDINGS_URL, () =>
+          HttpResponse.json({
+            ...recordingsResponse,
+            items: [
+              {
+                ...recordingsResponse.items[0],
+                processingStatus: "PROCESSING",
+                transcriptStatus: "READY",
+              },
+            ],
+            hasNext: false,
+            nextCursor: null,
+          }),
+        ),
+      },
+    },
   },
 };

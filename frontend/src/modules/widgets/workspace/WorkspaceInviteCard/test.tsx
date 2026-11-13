@@ -15,11 +15,16 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
+import { captureAnalyticsEvent } from "@utils/captureAnalyticsEvent";
 import { delay, http, HttpResponse } from "msw";
 import { createMemoryRouter, Outlet, RouterProvider } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import WorkspaceInviteCard from ".";
+
+vi.mock("@utils/captureAnalyticsEvent", () => ({
+  captureAnalyticsEvent: vi.fn(),
+}));
 
 const expected = new PostWorkspaceInvitationResponseDto(
   workspaceInvitationResponse,
@@ -95,12 +100,15 @@ const overrideInvitationStatus = (status: number) => {
 };
 
 const holdInvitationResponse = () => {
+  const started = vi.fn();
   mockServer.use(
     http.post(`*${WORKSPACE_INVITATIONS_API_PATH(WORKSPACE_ID)}`, async () => {
+      started();
       await delay("infinite");
       return HttpResponse.json(workspaceInvitationResponse);
     }),
   );
+  return started;
 };
 
 const click = async (element: HTMLElement) => {
@@ -137,8 +145,8 @@ describe("WorkspaceInviteCard", () => {
     Reflect.deleteProperty(navigator, "clipboard");
   });
 
-  it("초대를 불러오는 동안에는 코드와 링크 복사를 막는다", () => {
-    holdInvitationResponse();
+  it("초대를 불러오는 동안에는 코드와 링크 복사를 막는다", async () => {
+    const requestStarted = holdInvitationResponse();
     renderCard();
 
     expect(getCodeButton()).toBeDisabled();
@@ -146,6 +154,8 @@ describe("WorkspaceInviteCard", () => {
     expect(getCopyLinkButton()).toBeDisabled();
     expect(getCopyLinkButton()).toHaveAttribute("aria-busy", "true");
     expect(getLinkInput()).toHaveValue("");
+    // 이 테스트의 지연 요청이 다음 테스트의 요청 관찰에 섞이지 않게 시작까지 기다려요.
+    await waitFor(() => expect(requestStarted).toHaveBeenCalledOnce());
   });
 
   it("workspaceId가 정수가 아니면 초대를 요청하지 않고 복사를 막는다", async () => {
@@ -350,4 +360,47 @@ describe("WorkspaceInviteCard", () => {
       expect(isAlertShown).toBe(false);
     },
   );
+
+  describe("초대 복사 사용 기록", () => {
+    // 앞 테스트에서도 사용 기록이 남으므로, 테스트마다 기록을 비우고 시작해요
+    beforeEach(() => {
+      vi.mocked(captureAnalyticsEvent).mockClear();
+    });
+
+    it.each([
+      { name: "참여 코드", target: "code", getButton: getCodeButton },
+      { name: "초대 링크", target: "link", getButton: getCopyLinkButton },
+    ] as const)(
+      "$name 복사에 성공하면 워크스페이스를 만든 뒤의 초대 화면에서 복사했다고 한 번 보낸다",
+      async ({ target, getButton }) => {
+        renderCard();
+        await waitForInvitation();
+
+        await click(getButton());
+
+        expect(captureAnalyticsEvent).toHaveBeenCalledTimes(1);
+        expect(captureAnalyticsEvent).toHaveBeenCalledWith({
+          event: "invite_copied",
+          properties: {
+            target,
+            surface: "create_flow",
+            workspace_id: WORKSPACE_ID,
+          },
+        });
+      },
+    );
+
+    it("클립보드에 쓰지 못하면 보내지 않는다", async () => {
+      writeText.mockRejectedValue(new Error("클립보드 권한이 없어요"));
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      renderCard();
+      await waitForInvitation();
+
+      await click(getCodeButton());
+      await click(getCopyLinkButton());
+
+      expect(writeText).toHaveBeenCalledTimes(2);
+      expect(captureAnalyticsEvent).not.toHaveBeenCalled();
+    });
+  });
 });

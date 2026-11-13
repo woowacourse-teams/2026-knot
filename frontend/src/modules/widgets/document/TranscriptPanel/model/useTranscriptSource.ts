@@ -62,6 +62,7 @@ export const useTranscriptSource = () => {
 
   if (isRecordingDocument) {
     return {
+      editableRecording: { workspaceId, recordingId },
       segments: isUnavailable ? undefined : recordingTranscript?.segments,
       date: recordingDocument?.startedAt,
       durationSeconds: recordingDocument?.recordingDurationSeconds,
@@ -74,6 +75,7 @@ export const useTranscriptSource = () => {
   }
 
   return {
+    editableRecording: null,
     segments: documentTranscript?.segments,
     date: documentDetail?.createdAt,
     durationSeconds: documentTranscript?.recordingDurationSeconds,

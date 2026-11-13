@@ -1,6 +1,10 @@
+import { namedSegments } from "@api/mock/state/recordingSpeaker";
 import { http, HttpResponse } from "msw";
 
-import { findDocumentTranscript } from "@api/mock/state/document";
+import {
+  findDocumentDetail,
+  findDocumentTranscript,
+} from "@api/mock/state/document";
 
 // 경로 파라미터가 있어 fetch 상수 대신 패턴을 직접 적어요
 export const documentTranscriptHandlers = [
@@ -17,7 +21,19 @@ export const documentTranscriptHandlers = [
         );
       }
 
-      return HttpResponse.json(transcript);
+      const recordingId = findDocumentDetail(
+        Number(params.documentId),
+      )?.recordingSessionId;
+      return HttpResponse.json({
+        ...transcript,
+        segments: recordingId
+          ? namedSegments(
+              Number(params.workspaceId),
+              recordingId,
+              transcript.segments,
+            )
+          : transcript.segments,
+      });
     },
   ),
 ];

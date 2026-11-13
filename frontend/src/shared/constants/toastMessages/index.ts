@@ -33,11 +33,42 @@ export const TOAST_MESSAGES = {
   },
   /**
    * 연결 끊김으로 종료된 녹음의 업로드 완료·문서 처리 시작을 확인한 뒤 사용해요.
-   * 탭이 열려 있는 동안 생존 신호가 ENDED, CONNECTION_EXPIRED로 답한 경우만 알려요. Figma 1783:13225
+   * 생존 신호나 이어 받기가 ENDED, CONNECTION_EXPIRED로 답했거나, 다시 들어온 탭이 그렇게 끝난 녹음을 찾았을 때 알려요. Figma 1783:13225
    */
   RECORDING_CONNECTION_LOST: {
     variant: "caution",
     message: "연결이 끊겨 녹음이 끝났어요. 여기까지 문서로 정리하고 있어요",
+  },
+  /** 30분 넘게 끊겨 서버가 끝낸 뒤 돌아왔을 때 올리지 못한 조각이 남아 있으면 `RECORDING_CONNECTION_LOST`와 함께 알려요 */
+  RECORDING_CHUNKS_NOT_UPLOADED: {
+    variant: "caution",
+    message: "끊긴 동안의 소리 일부는 저장하지 못했어요",
+  },
+  /** 이 탭의 신호나 조각이 서버에 닿지 못하는 동안. X로 닫는 고정 토스트예요(STT-R53). Figma 6083:27373 */
+  RECORDING_DISCONNECTED: {
+    variant: "caution",
+    message: "연결이 끊겼어요. 녹음은 계속돼요",
+  },
+  /** 끊긴 동안 브라우저가 조각 보관을 거절했을 때. X로 닫는 고정 토스트예요. Figma 6083:27373 */
+  RECORDING_ARCHIVE_FAILED: {
+    variant: "caution",
+    message:
+      "저장 공간이 부족해요. 이 탭을 닫으면 끊긴 동안의 소리가 사라질 수 있어요",
+  },
+  /** 끊긴 채 녹음을 끝내는 동안. X로 닫는 고정 토스트예요. Figma 6083:27373 */
+  RECORDING_ENDING_DISCONNECTED: {
+    variant: "caution",
+    message: "연결이 돌아오면 녹음을 끝낼게요. 이 탭을 닫지 말아 주세요",
+  },
+  /** 다른 탭의 녹음에서 녹음 탭의 연결이 끊긴 동안. X로 닫는 고정 토스트예요(STT-R28). Figma 6083:27373 */
+  OTHER_TAB_RECORDING_DISCONNECTED: {
+    variant: "caution",
+    message: "녹음 중인 탭의 연결이 끊겼어요",
+  },
+  /** 새로고침 뒤 이어 받기가 거절돼(403 RECORDING_CONTROL_DENIED) 다른 탭이 먼저 이어 받은 것을 알 때 */
+  RECORDING_TAKEN_OVER: {
+    variant: "caution",
+    message: "다른 탭에서 이 녹음을 이어 가고 있어요",
   },
   /** 녹음한 시간이 최대 녹음 시간 15분 전에 닿았을 때 녹음마다 한 번. Figma 2072:26802 */
   RECORDING_TIME_LIMIT_APPROACHING: {
@@ -106,6 +137,11 @@ export const TOAST_MESSAGES = {
   RECORDING_RESUME_FAILED: {
     variant: "error",
     message: "이어서 녹음하지 못했어요. 다시 시도해 주세요.",
+  },
+  /** 프로필 메뉴의 로그아웃 요청이 실패했을 때. 메뉴는 열린 채 다시 누를 수 있어요(AUTH-R19). Figma 6063:52974 */
+  LOGOUT_FAILED: {
+    variant: "error",
+    message: "로그아웃하지 못했어요. 다시 시도해 주세요.",
   },
   COPY_FAILED: {
     variant: "error",

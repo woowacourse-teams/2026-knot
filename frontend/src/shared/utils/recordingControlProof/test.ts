@@ -1,9 +1,13 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   clearRecordingStartProof,
+  completeRecordingReconnect,
   getRecordingControlProof,
+  getRecordingResumeProof,
   getRecordingStartProof,
+  prepareRecordingReconnect,
+  saveRecordingResumeProof,
 } from ".";
 
 const UUID_PATTERN =
@@ -13,7 +17,7 @@ const UUID_PATTERN =
 const CONTROL_TOKEN_PATTERN = /^[A-Za-z0-9_-]{42}[AEIMQUYcgkosw048]$/;
 
 describe("recordingControlProof", () => {
-  afterEach(() => sessionStorage.clear());
+  afterEach(() => clearRecordingStartProof());
 
   it("시작 증명은 UUID 두 개와 서버 형식의 제어 증명으로 만든다", () => {
     const proof = getRecordingStartProof();
@@ -27,13 +31,18 @@ describe("recordingControlProof", () => {
     expect(getRecordingStartProof()).toEqual(getRecordingStartProof());
   });
 
-  it("시작 증명은 sessionStorage에 보관해 새로고침 뒤에도 같은 값을 읽는다", () => {
-    const proof = getRecordingStartProof();
-    const stored = JSON.stringify(sessionStorage);
+  it("녹음이 열리기 전의 시작 증명은 sessionStorage에 남기지 않는다", () => {
+    getRecordingStartProof();
 
-    expect(stored).toContain(proof.requestId);
-    expect(stored).toContain(proof.tabId);
-    expect(stored).toContain(proof.controlToken);
+    expect(sessionStorage.length).toBe(0);
+  });
+
+  it("탭 ID는 페이지를 열 때마다 새로 만든다", async () => {
+    const { tabId } = getRecordingStartProof();
+    vi.resetModules();
+    const reloaded = await import(".");
+
+    expect(reloaded.getRecordingStartProof().tabId).not.toBe(tabId);
   });
 
   it("제어 증명은 시작 때 만든 탭 ID와 제어 증명을 돌려준다", () => {
@@ -59,5 +68,73 @@ describe("recordingControlProof", () => {
     expect(after.tabId).toBe(before.tabId);
     expect(after.requestId).not.toBe(before.requestId);
     expect(after.controlToken).not.toBe(before.controlToken);
+  });
+
+  describe("이어 녹음 증명", () => {
+    const SESSION = {
+      workspaceId: 1,
+      recordingId: 10,
+      audioMode: "PCM16_CHUNKS_V1",
+    } as const;
+
+    it("녹음이 열리면 지금 증명을 sessionStorage에 남긴다", () => {
+      const { tabId, controlToken } = getRecordingStartProof();
+
+      saveRecordingResumeProof(SESSION);
+
+      expect(getRecordingResumeProof()).toEqual({
+        ...SESSION,
+        tabId,
+        controlToken,
+      });
+      expect(getRecordingControlProof()).toEqual({ tabId, controlToken });
+    });
+
+    it("녹음을 끝내면 이어 녹음 증명도 지운다", () => {
+      saveRecordingResumeProof(SESSION);
+
+      clearRecordingStartProof();
+
+      expect(getRecordingResumeProof()).toBeNull();
+    });
+
+    it("증명이 없으면 이어 받을 수 없다", () => {
+      expect(prepareRecordingReconnect()).toBeNull();
+    });
+
+    it("이어 받기는 이전 증명을 싣고, 이전 값과 다른 새 증명을 만든다", () => {
+      const before = getRecordingStartProof();
+      saveRecordingResumeProof(SESSION);
+
+      const proof = prepareRecordingReconnect();
+
+      expect(proof).toMatchObject({
+        previousTabId: before.tabId,
+        previousControlToken: before.controlToken,
+      });
+      expect(proof?.tabId).toMatch(UUID_PATTERN);
+      expect(proof?.tabId).not.toBe(before.tabId);
+      expect(proof?.controlToken).toMatch(CONTROL_TOKEN_PATTERN);
+      expect(proof?.controlToken).not.toBe(before.controlToken);
+    });
+
+    it("응답을 받기 전의 재시도에는 같은 새 증명을 보낸다", () => {
+      saveRecordingResumeProof(SESSION);
+
+      expect(prepareRecordingReconnect()).toEqual(prepareRecordingReconnect());
+    });
+
+    it("이어 받은 뒤에는 새 증명으로 제어한다", () => {
+      saveRecordingResumeProof(SESSION);
+      const proof = prepareRecordingReconnect();
+
+      completeRecordingReconnect();
+
+      expect(getRecordingControlProof()).toEqual({
+        tabId: proof?.tabId,
+        controlToken: proof?.controlToken,
+      });
+      expect(getRecordingResumeProof()?.next).toBeUndefined();
+    });
   });
 });

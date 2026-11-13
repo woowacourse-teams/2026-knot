@@ -5,6 +5,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.knot.backend.auth.domain.AuthTokenProvider;
@@ -131,7 +132,7 @@ class SearchQuestionAcceptanceTest {
                     .collect(Collectors.joining("\n"));
             assertThat(events).contains(
                     "event:delta",
-                    "Knot은 회의 기록",
+                    "일반 대화 답변",
                     "event:completed"
             )
                     .doesNotContain(
@@ -190,6 +191,19 @@ class SearchQuestionAcceptanceTest {
 
     @BeforeEach
     void setUp() throws Exception {
+        org.mockito.Mockito.doAnswer(call -> {
+            java.util.function.Consumer<String> delta = call.getArgument(3);
+            delta.accept("일반 대화 답변");
+            return List.of();
+        })
+                .when(generator)
+                .generate(
+                        any(),
+                        any(),
+                        any(),
+                        any()
+                );
+
         awaitStreamsIdle();
         when(
                 classifier.classify(
@@ -470,7 +484,7 @@ class SearchQuestionAcceptanceTest {
         assertThat(duplicate.body()).startsWith("event:accepted");
         assertThat(duplicate.body()).contains(
                 "event:delta",
-                "녹음",
+                "일반 대화 답변",
                 "event:completed"
         );
         assertThat(
@@ -525,7 +539,7 @@ class SearchQuestionAcceptanceTest {
             // then
             assertThat(events).contains(
                     "event:delta",
-                    "해당 내용을 확인하지 못했습니다",
+                    "일반 대화 답변",
                     "event:evidence",
                     "\"items\":[]",
                     "event:completed",
@@ -541,12 +555,17 @@ class SearchQuestionAcceptanceTest {
                             .query(String.class)
                             .single()
             ).isEqualTo("COMPLETED");
-            verifyNoInteractions(generator);
+            verify(generator).generate(
+                    any(),
+                    any(),
+                    eq(List.of()),
+                    any()
+            );
         }
     }
 
     @Test
-    @DisplayName("범위 밖 및 혼합 요청은 자유 답변 없이 서버 고정 안내로 완료한다")
+    @DisplayName("일반 요청은 일반 답변으로 완료한다")
     void create_success_outOfScopeFixedGuidance() throws Exception {
         when(
                 classifier.classify(
@@ -566,7 +585,7 @@ class SearchQuestionAcceptanceTest {
                     .collect(Collectors.joining("\n"));
             assertThat(events).contains(
                     "event:delta",
-                    "Knot은 회의 기록의 조회·요약·비교를 도와드려요.",
+                    "일반 대화 답변",
                     "event:completed",
                     "\"status\":\"COMPLETED\"",
                     "\"items\":[]"
@@ -577,15 +596,18 @@ class SearchQuestionAcceptanceTest {
                             "OUT_OF_SCOPE"
                     );
             assertThat(status()).isEqualTo("COMPLETED");
-            verifyNoInteractions(
-                    retriever,
-                    generator
+            verifyNoInteractions(retriever);
+            verify(generator).generate(
+                    any(),
+                    any(),
+                    eq(List.of()),
+                    any()
             );
         }
     }
 
     @Test
-    @DisplayName("인사는 모델 자유 답변 대신 서버 문구와 빈 근거로 완료한다")
+    @DisplayName("인사는 모델 답변과 빈 근거로 완료한다")
     void create_success_greetingWithoutDocumentSearch() throws Exception {
         when(
                 classifier.classify(
@@ -604,7 +626,7 @@ class SearchQuestionAcceptanceTest {
             String events = stream.lines()
                     .collect(Collectors.joining("\n"));
             assertThat(events).contains(
-                    "안녕하세요. 회의 기록에서 궁금한 내용을 질문해 주세요.",
+                    "일반 대화 답변",
                     "event:completed",
                     "\"items\":[]"
             )
@@ -612,16 +634,19 @@ class SearchQuestionAcceptanceTest {
                             "event:failed",
                             "answer_without_search"
                     );
-            verifyNoInteractions(
-                    retriever,
-                    generator
+            verifyNoInteractions(retriever);
+            verify(generator).generate(
+                    any(),
+                    any(),
+                    eq(List.of()),
+                    any()
             );
         }
     }
 
     @ParameterizedTest
     @ValueSource(booleans = {true, false})
-    @DisplayName("분류·검색 실패는 본문 유출 없이 안전한 failed 이벤트로 종료한다")
+    @DisplayName("분류·검색 오류에도 내부 오류 유출 없이 일반 답변으로 이어간다")
     void create_failure_afterAccepted(boolean duringClassification) throws Exception {
         if (duringClassification) {
             when(
@@ -648,22 +673,20 @@ class SearchQuestionAcceptanceTest {
             String events = reader.lines()
                     .collect(java.util.stream.Collectors.joining("\n"));
             assertThat(events).contains(
-                    "event:failed",
-                    "ANSWER_GENERATION_FAILED",
-                    "FAILED"
-            );
-            assertThat(events).doesNotContain(
-                    "private secret",
                     "event:completed",
-                    "event:delta"
+                    "일반 대화 답변"
+            )
+                    .doesNotContain(
+                            "private secret",
+                            "event:failed"
+                    );
+            assertThat(status()).isEqualTo("COMPLETED");
+            verify(generator).generate(
+                    any(),
+                    any(),
+                    eq(List.of()),
+                    any()
             );
-            assertThat(status()).isEqualTo("FAILED");
-            if (duringClassification) {
-                verifyNoInteractions(
-                        retriever,
-                        generator
-                );
-            }
         }
     }
 

@@ -32,7 +32,7 @@ public class SearchLlmClient {
         );
         request.put(
                 "max_tokens",
-                128
+                512
         );
         request.put(
                 "reasoning_effort",
@@ -240,7 +240,7 @@ public class SearchLlmClient {
             );
             request.put(
                     "response_format",
-                    SearchAnswerSchema.responseFormat()
+                    SearchAnswerSchema.responseFormat(!"claude".equals(properties.getProvider()))
             );
             http.stream(
                     endpoint(),
@@ -462,10 +462,12 @@ public class SearchLlmClient {
                 "stream",
                 stream
         );
-        result.put(
-                "temperature",
-                0
-        );
+        if (!"claude".equals(properties.getProvider())) {
+            result.put(
+                    "temperature",
+                    0
+            );
+        }
         result.put(
                 "chat_template_kwargs",
                 Map.of(

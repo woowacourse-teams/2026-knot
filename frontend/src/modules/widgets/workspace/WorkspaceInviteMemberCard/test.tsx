@@ -9,11 +9,16 @@ import { theme } from "@provider/themeProvider";
 import { getRouterPath, PATH_ROUTE } from "@routes/PATH_ROUTE";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, fireEvent, render, screen } from "@testing-library/react";
+import { captureAnalyticsEvent } from "@utils/captureAnalyticsEvent";
 import { delay, http, HttpResponse } from "msw";
 import { createMemoryRouter, Outlet, RouterProvider } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import WorkspaceInviteMemberCard from ".";
+
+vi.mock("@utils/captureAnalyticsEvent", () => ({
+  captureAnalyticsEvent: vi.fn(),
+}));
 
 const expected = new PostWorkspaceInvitationResponseDto(
   workspaceInvitationResponse,
@@ -228,5 +233,48 @@ describe("WorkspaceInviteMemberCard", () => {
     expect(await waitForInvitation()).toBeInTheDocument();
     expect(screen.queryByText(LOAD_FAILED_TEXT)).not.toBeInTheDocument();
     expect(attempts).toBe(2);
+  });
+
+  describe("초대 복사 사용 기록", () => {
+    // 앞 테스트에서도 사용 기록이 남으므로, 테스트마다 기록을 비우고 시작해요
+    beforeEach(() => {
+      vi.mocked(captureAnalyticsEvent).mockClear();
+    });
+
+    it.each([
+      { name: "초대 링크", target: "link", button: "copyLinkButton" },
+      { name: "초대 코드", target: "code", button: "copyCodeButton" },
+    ] as const)(
+      "$name 복사에 성공하면 홈 카드에서 복사했다고 한 번 보낸다",
+      async ({ target, button }) => {
+        const buttons = renderCard();
+        await waitForInvitation();
+
+        await click(buttons[button]);
+
+        expect(captureAnalyticsEvent).toHaveBeenCalledTimes(1);
+        expect(captureAnalyticsEvent).toHaveBeenCalledWith({
+          event: "invite_copied",
+          properties: {
+            target,
+            surface: "home_card",
+            workspace_id: WORKSPACE_ID,
+          },
+        });
+      },
+    );
+
+    it("클립보드에 쓰지 못하면 보내지 않는다", async () => {
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      writeText.mockRejectedValue(new Error("denied"));
+      const { copyLinkButton, copyCodeButton } = renderCard();
+      await waitForInvitation();
+
+      await click(copyLinkButton);
+      await click(copyCodeButton);
+
+      expect(writeText).toHaveBeenCalledTimes(2);
+      expect(captureAnalyticsEvent).not.toHaveBeenCalled();
+    });
   });
 });

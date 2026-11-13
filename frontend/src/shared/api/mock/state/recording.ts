@@ -1,3 +1,4 @@
+import { resetRecordingSpeakerMockState } from "./recordingSpeaker";
 import {
   documentGenerationJobRetryResponse,
   RETRY_EXHAUSTED_JOB_ID,
@@ -27,6 +28,7 @@ const transcriptionRetriedRecordingIds = new Set<number>();
 
 /** 다시 시도한 기록을 지워 기본 응답 상태로 되돌려요. 테스트와 스토리 사이에 불러요 */
 export const resetRecordingMockState = () => {
+  resetRecordingSpeakerMockState();
   retriedJobIds.clear();
   transcriptionRetriedRecordingIds.clear();
 };

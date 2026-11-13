@@ -401,7 +401,10 @@ class SearchAnswerEventsAcceptanceTest {
                                         accepted.answerMessageId()
                                 ).body()
                         )) {
-                    assertThat(readEvent(first)).contains("처음 😀");
+                    assertThat(
+                            payload(readEvent(first)).path("content")
+                                    .asString()
+                    ).isEmpty();
                     String initial = payload(readEvent(second)).get("content")
                             .asString();
                     first.close();

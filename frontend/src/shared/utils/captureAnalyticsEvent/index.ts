@@ -54,16 +54,84 @@ interface AnalyticsEventMap {
      * 마이크만(`off`) · 회의 소리를 받을 수 없는 브라우저(`unsupported`)예요
      */
     meeting_audio: "on" | "stopped" | "no_audio" | "off" | "unsupported";
+    /** 끝낼 때까지 녹음한 시간(초, 소수 첫째 자리까지). 일시정지한 동안은 세지 않아요 */
+    duration_seconds: number;
+    /** 끝낸 곳. 녹음 화면의 녹음 바(`recorder_bar`) · 독의 녹음 칩(`dock`) · 로그아웃 확인 창(`logout`) · 워크스페이스를 옮기기 전 확인 창(`workspace_move`)이에요 */
+    surface: "recorder_bar" | "dock" | "logout" | "workspace_move";
     recording_id: number;
     workspace_id: number;
   };
-  /** 정리 화면에서 「정리 중」을 본 뒤 결과가 정해졌어요. 이미 결과가 난 녹음을 다시 열면 보내지 않지만, 저장된 음성 없음 · 저장 실패는 다시 열 때마다 보내서 recording_id로 중복을 빼요 */
+  /**
+   * 서버가 녹음을 끝냈어요. 사용자가 끝내지 않은 녹음이 끝난 경우라 녹음 손실을 볼 때 써요. 사용자가 끝낸 녹음은 `recording_ended`로 보내요.
+   * 연결이 끊긴 채 30분이 지남(`connection_expired`) · 2시간에 닿음(`max_duration`) · 다른 곳에서 끝냈거나 사유를 모름(`ended_by_server`) ·
+   * 녹음이 버려짐(`discarded`) · 녹음에 더는 접근할 수 없음(`unreachable`) · 이 탭이 녹음 제어권을 잃음(`control_lost`)이에요.
+   * 새로고침한 사이 서버가 끝낸 녹음은 이 이벤트가 아니라 `recording_reconnect_result`의 `closed`로 남아요
+   */
+  recording_auto_ended: {
+    reason:
+      | "connection_expired"
+      | "max_duration"
+      | "ended_by_server"
+      | "discarded"
+      | "unreachable"
+      | "control_lost";
+    /** 음성을 서버로 넘겼는지. 넘기지 못했으면 그 녹음은 정리되지 않아요 */
+    is_uploaded: boolean;
+    audio_mode: RecordingAudioMode;
+    recording_id: number;
+    workspace_id: number;
+  };
+  /**
+   * 녹음 중 서버와의 연결이 끊겼다가 그 끊김이 끝났어요. 끊길 때가 아니라 끝날 때 한 번 보내서, 끊긴 시간과 결과를 함께 봐요.
+   * 끊김은 화면이 연결 끊김 안내를 띄우는 조건(생존 신호 실패 또는 조각 전송 밀림)과 같아요. 끊긴 채 탭을 닫으면 끊김이 끝나지 않아 보내지 않아요
+   */
+  recording_disconnected: {
+    /** 연결이 돌아와 녹음이 이어짐(`restored`) · 녹음이 끝남(`recording_closed`). 안내가 떠 있는 채 사용자가 끝낸 녹음도 `recording_closed`예요 */
+    outcome: "restored" | "recording_closed";
+    /** 끊긴 동안의 시간(초, 소수 첫째 자리까지) */
+    disconnected_seconds: number;
+    recording_id: number;
+    workspace_id: number;
+  };
+  /**
+   * 새로고침 전 녹음을 이어 받으려 한 결과가 정해졌어요.
+   * 이어 받음(`reconnected`) · 녹음이 이미 끝나 이어 갈 수 없음(`closed`) · 다른 탭이 이미 이어 받음(`taken_over`) · 요청이 실패해 다시 누를 수 있음(`failed`)이에요
+   */
+  recording_reconnect_result: {
+    result: "reconnected" | "closed" | "taken_over" | "failed";
+    /** 이어 받기를 시작한 곳. 녹음 바의 「이어서 녹음」(`resume_button`) 또는 끝내기 확인 창(`end_dialog`)이에요 */
+    trigger: "resume_button" | "end_dialog";
+    recording_id: number;
+    workspace_id: number;
+  };
+  /** 다른 탭이나 다른 기기에서 하는 녹음을 독의 녹음 칩으로 끝낸 결과가 정해졌어요. 이 탭의 녹음을 끝낸 것은 `recording_ended`로 보내요 */
+  recording_end_other_tab_result: {
+    /** 끝냄(`ended`) · 이미 끝나 있었음(`already_ended`) · 실패(`failed`) */
+    result: "ended" | "already_ended" | "failed";
+    recording_id: number;
+    workspace_id: number;
+  };
+  /** 녹음 중에 마이크가 끊겨 안내 창을 띄웠어요. 녹음을 시작하지 못한 것은 `recording_start_failed`로 보내요 */
+  recording_microphone_lost: {
+    /** 끊길 때까지 녹음한 시간(초, 소수 첫째 자리까지) */
+    elapsed_seconds: number;
+    recording_id: number;
+    workspace_id: number;
+  };
+  /**
+   * 「정리 중」을 본 뒤 결과가 정해졌어요. 정리 화면에서 결과를 보면 정리 화면이, 전사가 끝나 녹음 문서로 넘어간 뒤 결과를 보면 녹음 문서가 보내요.
+   * 이미 결과가 난 녹음을 다시 열면 보내지 않지만, 저장된 음성 없음 · 저장 실패는 다시 열 때마다 보내서 recording_id로 중복을 빼요
+   */
   recording_documents_result: {
     result: "completed" | "no_content" | "failed" | "audio_save_failed";
-    /** 실패했을 때만 있어요. 전사에서 실패했는지, 문서 만들기에서 실패했는지예요 */
-    failure_stage?: "transcription" | "document_generation";
-    /** 완료했을 때만 있어요. 그 녹음에서 만들어진 문서 수예요. 문서 보기의 스테퍼 전체 수와 같아요 */
+    /** 실패했을 때만 있어요. 전사 · 주제 분류 · 문서 만들기 중 어디에서 실패했는지예요 */
+    failure_stage?: "transcription" | "topic_classification" | "document_generation";
+    /** 완료했을 때만 있어요. 그 녹음에서 만들어진 문서 수예요 */
     document_count?: number;
+    /** 결과를 본 화면. 정리 화면(`organizing_screen`) 또는 녹음 문서(`recording_document`)예요 */
+    surface: "organizing_screen" | "recording_document";
+    /** 이 화면에서 「정리 중」을 본 뒤 결과가 날 때까지 기다린 시간(초, 소수 첫째 자리까지) */
+    waited_seconds: number;
     recording_id: number;
     workspace_id: number;
   };
@@ -74,10 +142,18 @@ interface AnalyticsEventMap {
     recording_id: number;
     workspace_id: number;
   };
-  /** 탐색 답변이 끝났어요. 사용자가 받기를 끊었으면 결과가 없어 보내지 않아요 */
+  /**
+   * 탐색 답변이 끝났어요. 사용자가 받기를 끊었으면 결과가 없어 보내지 않아요.
+   * 끊긴 답변을 이어 받다가 서버가 그 답변을 더는 주지 않으면(4xx) `unavailable`이에요. 서버에서는 이미 끝난 답변(409)도 여기에 들어가요
+   */
   search_answer_result: {
-    result: "completed" | "stopped" | "failed" | "accept_failed";
+    result: "completed" | "stopped" | "failed" | "accept_failed" | "unavailable";
+    /** 실패한 답변의 「다시 시도」로 보냈는지. #1141에서 그 버튼이 없어져 지금은 늘 `false`예요 */
     is_retry: boolean;
+    /** 질문을 보낸 곳. 독의 입력창(`dock`) 또는 탐색 튜토리얼의 질문 종류 카드(`tutorial`)예요 */
+    entry: "dock" | "tutorial";
+    /** `failed`일 때만 있어요. 서버가 알려 준 실패 원인 코드예요. 예: `LLM_STREAM_FAILED` */
+    failure_code?: string;
     is_first_question: boolean;
     /** 질문을 보낸 뒤 끝날 때까지 걸린 시간(초, 소수 첫째 자리까지) */
     answer_seconds: number;
@@ -90,6 +166,43 @@ interface AnalyticsEventMap {
   search_answer_left: {
     /** 질문을 보낸 뒤 떠날 때까지 기다린 시간(초, 소수 첫째 자리까지) */
     waited_seconds: number;
+  };
+  /** 탐색 튜토리얼 1단계를 띄웠어요. 처음 뜬 것과 미룬 뒤 두 번째로 뜬 것, 탐색 사용법 보기로 다시 연 것을 함께 세요 */
+  search_tutorial_shown: {
+    /** 띄운 화면. 탐색 사용법 보기로 다시 열었으면 `replay`예요 */
+    source:
+      | "home"
+      | "search"
+      | "documents"
+      | "document"
+      | "recording_document"
+      | "replay";
+    /** 「다음에 볼게요」를 누른 뒤 두 번째로 뜬 것인지 */
+    is_again: boolean;
+    workspace_id: number;
+  };
+  /** 탐색 튜토리얼의 한 단계를 보여 줬어요. 1단계는 `search_tutorial_shown`과 함께 와요 */
+  search_tutorial_step_viewed: {
+    step: 1 | 2 | 3 | 4;
+    workspace_id: number;
+  };
+  /**
+   * 탐색 튜토리얼이 끝났어요.
+   * - `completed`: 4단계에서 질문 종류 카드를 누르거나, 직접 보내거나, 끝내기를 눌렀어요
+   * - `skipped`: 2~4단계에서 건너뛰기를 눌렀어요
+   * - `snoozed`: 1단계에서 「다음에 볼게요」를 눌렀어요. 다음 날 이후 한 번 더 떠요
+   * - `closed`: 두 번째로 뜬 1단계에서 닫기를 눌렀어요
+   * - `left`: 끝내지 않고 새로고침하거나 탭을 닫거나 다른 화면으로 떠났어요
+   */
+  search_tutorial_ended: {
+    result: "completed" | "skipped" | "snoozed" | "closed" | "left";
+    /** 끝낸 단계 */
+    step: 1 | 2 | 3 | 4;
+    /** 끝낸 방법. `completed`일 때만 있어요. 질문 종류 카드(`question_kind`), 직접 보냄(`typed`), 끝내기 버튼(`finish_button`) */
+    via?: "question_kind" | "typed" | "finish_button";
+    /** 질문 종류 카드로 끝냈을 때 고른 종류 */
+    question_kind?: "past_decision" | "undecided" | "next_action";
+    workspace_id: number;
   };
   /**
    * 피드백 패널에서 보낸 피드백이 접수함에 저장됐어요. 저장에 실패하면 보내지 않아요(FEEDBACK-R7).
@@ -130,6 +243,8 @@ interface AnalyticsEventMap {
     meeting_summary_status: "drafting" | "completed" | "failed" | "none";
     /** 완료 · 문서 생성 실패일 때만 있어요. 「이 회의에서 나온 문서」의 문서 수예요. 목록을 받지 못했으면 없어요 */
     document_count?: number;
+    /** 원문(전사)이 이미 있어 정리가 끝나기 전에 원문을 먼저 볼 수 있었는지 */
+    is_transcript_ready: boolean;
     recording_id: number;
     workspace_id: number;
   };
@@ -189,6 +304,57 @@ interface AnalyticsEventMap {
   meeting_audio_stopped: {
     recording_id: number;
     workspace_id: number;
+  };
+  /** 문서 보기의 「문서를 확인했어요」에 서버가 응답했어요. 누른 것은 자동 클릭으로 세요. 로그인이 풀린 401은 보내지 않아요 */
+  document_confirmed: {
+    /** 확인됨(`confirmed`) 또는 실패(`failed`). 확인 대상이 아니라는 409도 `failed`예요 */
+    result: "confirmed" | "failed";
+    /** `confirmed`일 때만 있어요. 이 확인으로 같은 녹음의 문서를 모두 확인했는지. 내 미확인 문서 목록을 받지 못해 알 수 없으면 없어요 */
+    is_all_confirmed?: boolean;
+    document_id: number;
+    workspace_id: number;
+  };
+  /** 초대 링크나 참여 코드를 복사했어요. 복사에 실패하면 보내지 않아요. 복사한 링크 · 코드는 넣지 않아요 */
+  invite_copied: {
+    /** 무엇을 복사했는지. 초대 링크(`link`) 또는 참여 코드(`code`)예요 */
+    target: "link" | "code";
+    /** 복사한 곳. 홈의 팀원 초대 카드(`home_card`) 또는 워크스페이스를 만든 뒤의 초대 화면(`create_flow`)이에요 */
+    surface: "home_card" | "create_flow";
+    workspace_id: number;
+  };
+  /** 녹음 문서에서 화자 이름을 바꾼 결과가 정해졌어요. 바꾼 이름은 넣지 않아요 */
+  speaker_renamed: {
+    result: "saved" | "failed";
+    /** 이름을 정한 방법. 워크스페이스 멤버를 고름(`member`) 또는 직접 적음(`typed`)이에요 */
+    name_source: "member" | "typed";
+    recording_id: number;
+    workspace_id: number;
+  };
+  /** 녹음 화면에서 참가자 수를 저장한 결과가 정해졌어요 */
+  speaker_count_saved: {
+    result: "saved" | "failed";
+    /** 참가자 수를 정하지 않고 자동으로 둔 것인지 */
+    is_auto: boolean;
+    /** 정한 참가자 수. 자동이면 없어요 */
+    speaker_count?: number;
+    recording_id: number;
+    workspace_id: number;
+  };
+  /**
+   * 랜딩의 한 장면을 처음 봤어요. 페이지를 열 때마다 장면마다 한 번만 보내요.
+   * 오른쪽 장면 목록 · 로고 · Home/End로 여러 장면을 한 번에 건너뛰면 지나친 장면도 본 것으로 남아요
+   */
+  landing_scene_viewed: {
+    scene:
+      | "intro"
+      | "problem"
+      | "recording"
+      | "documents"
+      | "confirmation"
+      | "search"
+      | "recording_technology"
+      | "search_technology"
+      | "start";
   };
 }
 

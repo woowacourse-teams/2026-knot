@@ -27,7 +27,7 @@ import com.knot.backend.recording.domain.repository.RecordingTranscriptionReposi
 import com.knot.backend.recording.domain.model.StoredAudioObject;
 import com.knot.backend.recording.domain.model.TranscriptionStatus;
 import com.knot.backend.testsupport.TestApplicationProperties;
-import com.knot.backend.testsupport.TestcontainersConfiguration;
+import com.knot.backend.testsupport.IsolatedPostgresTest;
 import com.knot.backend.workspace.domain.WorkspaceException;
 import com.knot.backend.workspace.domain.repository.WorkspaceRepository;
 import java.sql.Timestamp;
@@ -50,7 +50,6 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.context.annotation.Import;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.test.context.ActiveProfiles;
@@ -64,7 +63,7 @@ import java.util.concurrent.atomic.AtomicReference;
 @Tag("integration")
 @ActiveProfiles("dev")
 @SpringBootTest
-@Import(TestcontainersConfiguration.class)
+@IsolatedPostgresTest
 @TestApplicationProperties
 class RecordingTranscriptionStateIntegrationTest {
     private static final Instant NOW = DocumentFixtures.CREATED_AT.plusSeconds(120);

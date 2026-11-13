@@ -38,10 +38,13 @@ interface UseRecordingDocumentsRetryAnalyticsParams {
 }
 
 /**
- * 「정리 중」을 본 뒤 결과로 바뀌면 정리 결과(`recording_documents_result`)를 보내요.
+ * 「정리 중」을 본 뒤 결과로 바뀌면 정리 결과(`recording_documents_result`)를 정리 화면(`organizing_screen`)에서 본 것으로 보내요.
  * 실패면 전사 · 문서 만들기 중 어디서 실패했는지, 완료면 만들어진 문서 수(녹음 조회 응답의 성공 수)를 함께 보내요.
+ * 녹음 조회 응답에는 주제 분류 상태가 없어, 주제 분류 실패도 문서 만들기 실패로 보내요.
+ * 기다린 시간은 이 화면에서 정리 중을 처음 본 때부터 결과가 보인 때까지예요. 다시 시도해 정리 중으로 돌아가면 그때부터 다시 세요.
  *
  * 이미 결과가 난 녹음을 다시 열면 정리 중을 거치지 않아 보내지 않아요.
+ * 전사가 끝나 결과를 기다리지 않고 녹음 문서로 넘어가면 이 화면에서는 결과를 보지 않아 보내지 않고, 녹음 문서가 보내요.
  * 단, 저장 상태로 결과가 정해지는 녹음(저장된 음성 없음 · 저장 실패)은 저장 상태의 첫 응답을 기다리는 동안 정리 중을 거쳐서
  * 다시 열 때마다 보내요. 분석할 때는 recording_id로 중복을 빼요.
  */
@@ -51,17 +54,19 @@ const useRecordingDocumentsResultAnalytics = ({
   viewStatus,
 }: UseRecordingDocumentsAnalyticsParams) => {
   const queryClient = useQueryClient();
-  // 정리 중에서 결과로 바뀌는 순간을 알려고 바로 앞 상태를 기억해요
-  const previousViewStatusRef = useRef(viewStatus);
+  // 지금 이어지는 정리 중을 처음 본 시각이에요. 정리 중이 아닌 상태가 되면 비워요
+  const organizingStartedAtRef = useRef<number | null>(null);
 
   useEffect(() => {
-    const previousViewStatus = previousViewStatusRef.current;
-    previousViewStatusRef.current = viewStatus;
+    if (viewStatus === "organizing") {
+      organizingStartedAtRef.current ??= Date.now();
+      return;
+    }
 
-    if (
-      previousViewStatus !== "organizing" ||
-      !isResultViewStatus(viewStatus)
-    ) {
+    const organizingStartedAt = organizingStartedAtRef.current;
+    organizingStartedAtRef.current = null;
+
+    if (organizingStartedAt === null || !isResultViewStatus(viewStatus)) {
       return;
     }
 
@@ -82,6 +87,9 @@ const useRecordingDocumentsResultAnalytics = ({
         ...(viewStatus === "completed" && {
           document_count: recording?.documentGeneration?.succeededCount,
         }),
+        surface: "organizing_screen",
+        waited_seconds:
+          Math.round((Date.now() - organizingStartedAt) / 100) / 10,
         recording_id: recordingId,
         workspace_id: workspaceId,
       },

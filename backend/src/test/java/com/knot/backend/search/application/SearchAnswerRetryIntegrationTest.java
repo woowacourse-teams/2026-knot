@@ -173,9 +173,8 @@ class SearchAnswerRetryIntegrationTest {
                 old.token(),
                 "실패한 부분 답변"
         );
-        executions.fail(
-                old.answerId(),
-                old.token(),
+        legacyFailure(
+                old,
                 "ANSWER_GENERATION_FAILED"
         );
     }
@@ -415,9 +414,8 @@ class SearchAnswerRetryIntegrationTest {
                 .requireAvailable();
         SearchAnswerWorkResult current = executions.claim(old.answerId())
                 .orElseThrow();
-        executions.fail(
-                current.answerId(),
-                current.token(),
+        legacyFailure(
+                current,
                 "NEW_FAILURE"
         );
         assertThat(visible()).isFalse();
@@ -657,6 +655,36 @@ class SearchAnswerRetryIntegrationTest {
                 )
         ).isEmpty();
         assertThat(count("search_messages")).isEqualTo(4);
+    }
+
+    // Seed messages stored before guidance completion was introduced; do not use
+    // the new failure policy to create them.
+    private void legacyFailure(
+            SearchAnswerWorkResult work,
+            String code
+    ) {
+        jdbc.sql("UPDATE search_messages SET status = 'FAILED', failure_code = :code WHERE id = :id")
+                .param(
+                        "code",
+                        code
+                )
+                .param(
+                        "id",
+                        work.answerId()
+                )
+                .update();
+        jdbc.sql("UPDATE search_answer_executions SET state = 'FINISHED' WHERE answer_id = :id")
+                .param(
+                        "id",
+                        work.answerId()
+                )
+                .update();
+        jdbc.sql("UPDATE search_conversations SET visible_in_list = false WHERE id = :id")
+                .param(
+                        "id",
+                        work.conversationId()
+                )
+                .update();
     }
 
     private SearchQuestionAcceptedResult retry(UUID request) {

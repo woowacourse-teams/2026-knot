@@ -7,13 +7,20 @@ import { DOCUMENT_GENERATION_JOB_RETRY_API_PATH } from "@api/fetch/api/v1/worksp
 import { RECORDINGS_API_PATH } from "@api/fetch/api/v1/workspaces/[workspaceId]/recordings";
 import { RECORDING_TRANSCRIPTION_RETRY_API_PATH } from "@api/fetch/api/v1/workspaces/[workspaceId]/recordings/[recordingId]/transcription/retry";
 import { CURRENT_RECORDING_API_PATH } from "@api/fetch/api/v1/workspaces/[workspaceId]/recordings/current";
+import { TEAMMATE_RECORDINGS_API_PATH } from "@api/fetch/api/v1/workspaces/[workspaceId]/recordings/teammatesInProgress";
 import { meResponse } from "@api/mock/responses/auth";
 import {
   currentRecordingResponse,
   recordingsResponse,
+  teammateRecordingsResponse,
 } from "@api/mock/responses/recording";
 import { mockServer } from "@api/mock/server";
 import { ThemeProvider } from "@emotion/react";
+import {
+  clearRecordingStartProof,
+  getRecordingStartProof,
+  saveRecordingResumeProof,
+} from "@utils/recordingControlProof";
 import { ToastProvider } from "@provider/context/toastContext";
 import { theme } from "@provider/themeProvider";
 import { getRouterPath, PATH_ROUTE } from "@routes/PATH_ROUTE";
@@ -57,6 +64,7 @@ const RECORDING_PATH = getRouterPath({
 });
 const RECORDINGS_URL = `*${RECORDINGS_API_PATH(WORKSPACE_ID)}`;
 const CURRENT_URL = `*${CURRENT_RECORDING_API_PATH(WORKSPACE_ID)}`;
+const TEAMMATES_URL = `*${TEAMMATE_RECORDINGS_API_PATH(WORKSPACE_ID)}`;
 const jobRetryUrl = (jobId: number) =>
   `*${DOCUMENT_GENERATION_JOB_RETRY_API_PATH(WORKSPACE_ID, jobId)}`;
 
@@ -65,7 +73,7 @@ const RECORDING_TITLE = `${new GetMeResponseDto(meResponse).nickname} 님의 녹
 const OPEN_RECORDING = "녹음 화면으로";
 const VIEW_RECORDING = "녹음 보기";
 const RETRY = "다시 시도";
-const OTHER_TAB_HINT = "녹음 중인 탭에서 일시정지·끝내기를 할 수 있어요";
+const OTHER_TAB_HINT = "녹음 중인 탭에서 일시정지·이어서 녹음을 할 수 있어요";
 const EMPTY_TEXT = "아직 녹음이 없어요";
 const LOAD_FAILED_TEXT = "녹음 기록을 불러오지 못했어요. 다시 시도해 주세요.";
 const RETRY_FAILED_TOAST =
@@ -191,9 +199,17 @@ const renderCard = () => {
 
 const getCard = () => screen.getByRole("region", { name: CARD_TITLE });
 
+/** 끝난 녹음 목록. 팀원 줄 목록(STT-R55)과 나눠 행을 찾아요 */
+const getHistoryList = () =>
+  within(getCard()).getByRole("list", { name: CARD_TITLE });
+
+/** 끝난 녹음 목록이 그려질 때까지 기다려요 */
+const findHistoryList = () =>
+  within(getCard()).findByRole("list", { name: CARD_TITLE });
+
 /** 목록에서 그 녹음의 행. 행은 서버가 준 순서 그대로예요 */
 const findRow = async (recordingId: number) => {
-  const rows = await within(getCard()).findAllByRole("listitem");
+  const rows = await within(await findHistoryList()).findAllByRole("listitem");
 
   return rows[
     firstPageItems.findIndex((item) => item.recordingId === recordingId)
@@ -207,6 +223,13 @@ const respondRecordings = (resolver: Parameters<typeof http.get>[1]) => {
 
 const respondItems = (items: MockItem[]) =>
   respondRecordings(() => HttpResponse.json({ items, nextCursor: null }));
+
+const respondTeammates = (resolver: Parameters<typeof http.get>[1]) => {
+  mockServer.use(http.get(TEAMMATES_URL, resolver));
+};
+
+const respondNoTeammates = () =>
+  respondTeammates(() => HttpResponse.json({ items: [] }));
 
 const respondNoCurrentRecording = () =>
   mockServer.use(
@@ -276,7 +299,9 @@ describe("RecordingHistoryCard", () => {
     it("녹음마다 한 행을 서버가 준 순서대로 두고, 제목에는 마우스를 올리면 볼 수 있는 전체 제목을 둔다", async () => {
       renderCard();
 
-      const rows = await within(getCard()).findAllByRole("listitem");
+      const rows = await within(await findHistoryList()).findAllByRole(
+        "listitem",
+      );
 
       expect(rows).toHaveLength(firstPageItems.length);
       rows.forEach((row, index) => {
@@ -498,19 +523,24 @@ describe("RecordingHistoryCard", () => {
       });
       renderCard();
 
-      expect(await within(getCard()).findAllByRole("listitem")).toHaveLength(2);
+      expect(
+        await within(await findHistoryList()).findAllByRole("listitem"),
+      ).toHaveLength(2);
 
       reachEnd();
 
       await waitFor(() =>
-        expect(within(getCard()).getAllByRole("listitem")).toHaveLength(3),
+        expect(within(getHistoryList()).getAllByRole("listitem")).toHaveLength(
+          3,
+        ),
       );
       expect(requestedCursors).toEqual([null, "next"]);
       expect(within(getCard()).getByTitle(last.title)).toBeInTheDocument();
     });
 
-    it("맨 위 줄과 녹음 목록이 모두 없으면 빈 상태 문구를 보여 준다", async () => {
+    it("맨 위 줄, 팀원 줄, 녹음 목록이 모두 없으면 빈 상태 문구를 보여 준다", async () => {
       respondNoCurrentRecording();
+      respondNoTeammates();
       respondItems([]);
 
       renderCard();
@@ -550,7 +580,7 @@ describe("RecordingHistoryCard", () => {
       });
       renderCard();
 
-      await within(getCard()).findAllByRole("listitem");
+      await within(await findHistoryList()).findAllByRole("listitem");
       reachEnd();
 
       expect(
@@ -561,7 +591,9 @@ describe("RecordingHistoryCard", () => {
       fireEvent.click(within(getCard()).getByRole("button", { name: RETRY }));
 
       await waitFor(() =>
-        expect(within(getCard()).getAllByRole("listitem")).toHaveLength(2),
+        expect(within(getHistoryList()).getAllByRole("listitem")).toHaveLength(
+          2,
+        ),
       );
     });
   });
@@ -681,7 +713,7 @@ describe("RecordingHistoryCard", () => {
 
       renderCard();
 
-      await within(getCard()).findAllByRole("listitem");
+      await within(await findHistoryList()).findAllByRole("listitem");
       expect(
         screen.queryByRole("button", { name: OPEN_RECORDING }),
       ).not.toBeInTheDocument();
@@ -697,64 +729,334 @@ describe("RecordingHistoryCard", () => {
     });
   });
 
+  describe("팀원 줄 (STT-R55)", () => {
+    const [RECORDING_TEAMMATE, PAUSED_TEAMMATE] =
+      teammateRecordingsResponse.items;
+    const getTeammateList = () =>
+      within(getCard()).getByRole("list", { name: "팀원의 진행 중인 녹음" });
+
+    it("팀원의 진행 중 녹음마다 한 줄을 서버가 준 순서대로 두고, 이름과 상태 · 시간만 보여 준다", async () => {
+      respondTeammates(() => HttpResponse.json(teammateRecordingsResponse));
+      vi.useFakeTimers();
+      renderCard();
+      await advanceTimers(0);
+
+      const rows = within(getTeammateList()).getAllByRole("listitem");
+      expect(rows).toHaveLength(2);
+      expect(rows[0]).toHaveTextContent(RECORDING_TEAMMATE.title);
+      expect(rows[0]).toHaveTextContent(
+        `녹음 중 · ${formatRecordingTime(RECORDING_TEAMMATE.elapsedMillis / MS_PER_SECOND)}`,
+      );
+      expect(rows[1]).toHaveTextContent(PAUSED_TEAMMATE.title);
+      expect(rows[1]).toHaveTextContent(
+        `일시정지 · ${formatRecordingTime(PAUSED_TEAMMATE.elapsedMillis / MS_PER_SECOND)}`,
+      );
+      // 팀원 녹음은 보기만 해서 녹음 화면으로 가거나 제어할 곳이 없어요
+      rows.forEach((row) => {
+        expect(within(row).queryByRole("button")).not.toBeInTheDocument();
+        expect(within(row).queryByRole("link")).not.toBeInTheDocument();
+      });
+    });
+
+    it("녹음 중인 팀원 줄은 시간이 늘고, 일시정지 줄은 그대로다", async () => {
+      respondTeammates(() => HttpResponse.json(teammateRecordingsResponse));
+      vi.useFakeTimers();
+      renderCard();
+      await advanceTimers(0);
+
+      await advanceTimers(3 * MS_PER_SECOND);
+
+      const rows = within(getTeammateList()).getAllByRole("listitem");
+      expect(rows[0]).toHaveTextContent(
+        `녹음 중 · ${formatRecordingTime(RECORDING_TEAMMATE.elapsedMillis / MS_PER_SECOND + 3)}`,
+      );
+      expect(rows[1]).toHaveTextContent(
+        `일시정지 · ${formatRecordingTime(PAUSED_TEAMMATE.elapsedMillis / MS_PER_SECOND)}`,
+      );
+    });
+
+    it("내 녹음과 끝난 녹음이 없어도 팀원 줄이 있으면 빈 상태 문구 대신 팀원 줄을 보여 준다", async () => {
+      respondNoCurrentRecording();
+      respondItems([]);
+      respondTeammates(() => HttpResponse.json(teammateRecordingsResponse));
+
+      renderCard();
+
+      expect(
+        await screen.findByText(RECORDING_TEAMMATE.title),
+      ).toBeInTheDocument();
+      expect(screen.queryByText(EMPTY_TEXT)).not.toBeInTheDocument();
+    });
+
+    it("팀원 녹음이 없으면 팀원 줄을 두지 않는다", async () => {
+      respondNoTeammates();
+      renderCard();
+
+      await within(await findHistoryList()).findAllByRole("listitem");
+      expect(
+        within(getCard()).queryByRole("list", {
+          name: "팀원의 진행 중인 녹음",
+        }),
+      ).not.toBeInTheDocument();
+    });
+
+    it("팀원 녹음을 불러오지 못해도 끝난 녹음 목록은 그대로 보여 준다 (HOME-R6)", async () => {
+      respondTeammates(() =>
+        HttpResponse.json({ code: "INTERNAL_SERVER_ERROR" }, { status: 500 }),
+      );
+
+      renderCard();
+
+      expect(
+        await within(await findHistoryList()).findAllByRole("listitem"),
+      ).toHaveLength(firstPageItems.length);
+      expect(screen.queryByText(LOAD_FAILED_TEXT)).not.toBeInTheDocument();
+    });
+
+    it("홈을 연 동안 30초마다 팀원 녹음을 다시 받아, 새로 녹음을 시작한 팀원 줄이 나타난다", async () => {
+      let response: typeof teammateRecordingsResponse | { items: [] } = {
+        items: [],
+      };
+      respondTeammates(() => HttpResponse.json(response));
+      vi.useFakeTimers();
+      renderCard();
+      await advanceTimers(0);
+      expect(
+        screen.queryByText(RECORDING_TEAMMATE.title),
+      ).not.toBeInTheDocument();
+
+      response = teammateRecordingsResponse;
+      await advanceTimers(30 * MS_PER_SECOND);
+
+      expect(screen.getByText(RECORDING_TEAMMATE.title)).toBeInTheDocument();
+    });
+  });
+
   describe("배포 호환성 (ERR-QA-002 · ERR-QA-003 · ERR-QA-006)", () => {
     it.each([undefined, null, "FUTURE_STATUS", "", "constructor", "__proto__"])(
-      "처리 상태 %s인 행의 메타정보와 정상 행을 유지하고 신규 동작을 제한한다", async (processingStatus) => {
+      "처리 상태 %s인 행의 메타정보와 정상 행을 유지하고 신규 동작을 제한한다",
+      async (processingStatus) => {
         respondNoCurrentRecording();
-        respondRecordings(() => HttpResponse.json({
-          items: [{ ...COMPLETED_ITEM, processingStatus, retryable: true }, NO_CONTENT_ITEM],
-          nextCursor: null,
-        }));
+        respondRecordings(() =>
+          HttpResponse.json({
+            items: [
+              { ...COMPLETED_ITEM, processingStatus, retryable: true },
+              NO_CONTENT_ITEM,
+            ],
+            nextCursor: null,
+          }),
+        );
         renderCard();
-        expect(await screen.findByText("처리 상태를 확인할 수 없어요")).toBeInTheDocument();
-        const expectedRow = new GetRecordingsResponseDto({ items: [COMPLETED_ITEM], nextCursor: null }).items[0];
+        expect(
+          await screen.findByText("처리 상태를 확인할 수 없어요"),
+        ).toBeInTheDocument();
+        const expectedRow = new GetRecordingsResponseDto({
+          items: [COMPLETED_ITEM],
+          nextCursor: null,
+        }).items[0];
         const row = screen.getByText(expectedRow.title).closest("li")!;
-        expect(within(row).getByText(formatDate(expectedRow.startedAt))).toBeInTheDocument();
-        expect(within(row).getByText(formatDurationFromSeconds(expectedRow.recordingDurationSeconds))).toBeInTheDocument();
+        expect(
+          within(row).getByText(formatDate(expectedRow.startedAt)),
+        ).toBeInTheDocument();
+        expect(
+          within(row).getByText(
+            formatDurationFromSeconds(expectedRow.recordingDurationSeconds),
+          ),
+        ).toBeInTheDocument();
         const link = within(row).getByRole("link", { name: VIEW_RECORDING });
         expect(link).toHaveAttribute("aria-disabled", "true");
         expect(link).not.toHaveAttribute("href");
-        expect(within(row).queryByRole("button", { name: RETRY })).not.toBeInTheDocument();
+        expect(
+          within(row).queryByRole("button", { name: RETRY }),
+        ).not.toBeInTheDocument();
         expect(screen.getByText(STATUS_TEXT.NO_CONTENT)).toBeInTheDocument();
       },
     );
 
-    it.each([undefined, null, false])("알려진 실패라도 retryable=%s이면 재시도하지 않는다", async (retryable) => {
-      respondNoCurrentRecording();
-      respondRecordings(() => HttpResponse.json({
-        items: [{ ...TRANSCRIPTION_FAILED_ITEM, retryable }], nextCursor: null,
-      }));
-      renderCard();
-      expect(await screen.findByText(STATUS_TEXT.TRANSCRIPTION_FAILED)).toBeInTheDocument();
-      expect(screen.queryByRole("button", { name: RETRY })).not.toBeInTheDocument();
-      expect(screen.getByRole("link", { name: VIEW_RECORDING })).toHaveAttribute("href");
-    });
+    it.each([undefined, null, false])(
+      "알려진 실패라도 retryable=%s이면 재시도하지 않는다",
+      async (retryable) => {
+        respondNoCurrentRecording();
+        respondRecordings(() =>
+          HttpResponse.json({
+            items: [{ ...TRANSCRIPTION_FAILED_ITEM, retryable }],
+            nextCursor: null,
+          }),
+        );
+        renderCard();
+        expect(
+          await screen.findByText(STATUS_TEXT.TRANSCRIPTION_FAILED),
+        ).toBeInTheDocument();
+        expect(
+          screen.queryByRole("button", { name: RETRY }),
+        ).not.toBeInTheDocument();
+        expect(
+          screen.getByRole("link", { name: VIEW_RECORDING }),
+        ).toHaveAttribute("href");
+      },
+    );
 
     it("열린 카드에서 정상→상태 누락→정상 재조회가 전체 새로고침 없이 반영된다", async () => {
-      respondNoCurrentRecording(); respondItems([COMPLETED_ITEM]);
-      const { queryClient } = renderCard();
-      expect(await screen.findByRole("link", { name: VIEW_RECORDING })).toHaveAttribute("href");
-      respondRecordings(() => HttpResponse.json({ items: [{ ...COMPLETED_ITEM, processingStatus: undefined }], nextCursor: null }));
-      await act(async () => { await queryClient.invalidateQueries(); });
-      expect(await screen.findByText("처리 상태를 확인할 수 없어요")).toBeInTheDocument();
-      expect(screen.getByRole("link", { name: VIEW_RECORDING })).not.toHaveAttribute("href");
+      respondNoCurrentRecording();
       respondItems([COMPLETED_ITEM]);
-      await act(async () => { await queryClient.invalidateQueries(); });
-      await waitFor(() => expect(screen.getByRole("link", { name: VIEW_RECORDING })).toHaveAttribute("href"));
-      expect(screen.queryByText("처리 상태를 확인할 수 없어요")).not.toBeInTheDocument();
+      const { queryClient } = renderCard();
+      expect(
+        await screen.findByRole("link", { name: VIEW_RECORDING }),
+      ).toHaveAttribute("href");
+      respondRecordings(() =>
+        HttpResponse.json({
+          items: [{ ...COMPLETED_ITEM, processingStatus: undefined }],
+          nextCursor: null,
+        }),
+      );
+      await act(async () => {
+        await queryClient.invalidateQueries();
+      });
+      expect(
+        await screen.findByText("처리 상태를 확인할 수 없어요"),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole("link", { name: VIEW_RECORDING }),
+      ).not.toHaveAttribute("href");
+      respondItems([COMPLETED_ITEM]);
+      await act(async () => {
+        await queryClient.invalidateQueries();
+      });
+      await waitFor(() =>
+        expect(
+          screen.getByRole("link", { name: VIEW_RECORDING }),
+        ).toHaveAttribute("href"),
+      );
+      expect(
+        screen.queryByText("처리 상태를 확인할 수 없어요"),
+      ).not.toBeInTheDocument();
     });
 
     it("이후 묶음의 미지 상태도 앞 묶음을 유지하며 안전하게 표시한다", async () => {
       respondNoCurrentRecording();
-      respondRecordings(({ request }) => HttpResponse.json(new URL(request.url).searchParams.has("cursor")
-        ? { items: [{ ...NO_CONTENT_ITEM, processingStatus: "FUTURE_STATUS" }], nextCursor: null }
-        : { items: [COMPLETED_ITEM], nextCursor: "next-page" }));
+      respondRecordings(({ request }) =>
+        HttpResponse.json(
+          new URL(request.url).searchParams.has("cursor")
+            ? {
+                items: [
+                  { ...NO_CONTENT_ITEM, processingStatus: "FUTURE_STATUS" },
+                ],
+                nextCursor: null,
+              }
+            : { items: [COMPLETED_ITEM], nextCursor: "next-page" },
+        ),
+      );
       renderCard();
-      const expectedRow = new GetRecordingsResponseDto({ items: [COMPLETED_ITEM], nextCursor: null }).items[0];
-      await screen.findByText(expectedRow.title); reachEnd();
-      expect(await screen.findByText("처리 상태를 확인할 수 없어요")).toBeInTheDocument();
+      const expectedRow = new GetRecordingsResponseDto({
+        items: [COMPLETED_ITEM],
+        nextCursor: null,
+      }).items[0];
+      await screen.findByText(expectedRow.title);
+      reachEnd();
+      expect(
+        await screen.findByText("처리 상태를 확인할 수 없어요"),
+      ).toBeInTheDocument();
       expect(screen.getByText(expectedRow.title)).toBeInTheDocument();
     });
   });
 
+  describe("다른 탭과 새로고침한 탭의 맨 위 줄 (STT-R26 · R28)", () => {
+    const END_RECORDING = "녹음 끝내기";
+
+    const respondCurrent = (
+      fields: Partial<typeof currentRecordingResponse> & {
+        connectionStatus?: string;
+      },
+    ) =>
+      mockServer.use(
+        http.get(CURRENT_URL, () =>
+          HttpResponse.json({ ...currentRecordingResponse, ...fields }),
+        ),
+      );
+
+    afterEach(() => clearRecordingStartProof());
+
+    it("다른 탭의 녹음에는 비활성 「녹음 화면으로」 하나만 있고 끝내기 버튼이 없다", async () => {
+      respondItems([]);
+      renderCard();
+
+      expect(await screen.findByText(OTHER_TAB_HINT)).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: OPEN_RECORDING }),
+      ).toBeDisabled();
+      expect(
+        screen.queryByRole("button", { name: END_RECORDING }),
+      ).not.toBeInTheDocument();
+    });
+
+    it("녹음 탭의 연결이 끊겼으면 안내 자리에 끊김을 보여 준다", async () => {
+      respondItems([]);
+      respondCurrent({ connectionStatus: "DISCONNECTED" });
+      renderCard();
+
+      expect(
+        await screen.findByText("녹음 중인 탭의 연결이 끊겼어요"),
+      ).toBeInTheDocument();
+      expect(screen.queryByText(OTHER_TAB_HINT)).not.toBeInTheDocument();
+    });
+
+    it("이 탭을 새로고침한 녹음은 「녹음 화면으로」로 갈 수 있고 끝내기 버튼이 없다", async () => {
+      respondItems([]);
+      getRecordingStartProof();
+      saveRecordingResumeProof({
+        workspaceId: WORKSPACE_ID,
+        recordingId: expectedCurrent.recordingId,
+        audioMode: "PCM16_CHUNKS_V1",
+      });
+      const { router } = renderCard();
+
+      expect(
+        await screen.findByText("녹음 화면에서 이어서 녹음할 수 있어요"),
+      ).toBeInTheDocument();
+      expect(screen.getByText(/^녹음 멈춤 · /)).toBeInTheDocument();
+      expect(
+        screen.queryByRole("button", { name: END_RECORDING }),
+      ).not.toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole("button", { name: OPEN_RECORDING }));
+
+      await waitFor(() =>
+        expect(router.state.location.pathname).toBe(
+          getRouterPath({
+            routeKey: "RECORDING",
+            params: { workspaceId: String(WORKSPACE_ID) },
+          }),
+        ),
+      );
+    });
+  });
+});
+
+it("전사가 준비된 처리 중 녹음은 목록에서 상세로 열 수 있다", async () => {
+  const response = {
+    ...recordingsResponse,
+    items: [
+      {
+        ...recordingsResponse.items[0],
+        processingStatus: "PROCESSING" as const,
+        transcriptStatus: "READY" as const,
+      },
+    ],
+    hasNext: false,
+    nextCursor: null,
+  };
+  const recording = new GetRecordingsResponseDto(response).items[0];
+  mockServer.use(
+    http.get(CURRENT_URL, () => new HttpResponse(null, { status: 204 })),
+    http.get(RECORDINGS_URL, () => HttpResponse.json(response)),
+  );
+  const { router } = renderCard();
+  const link = await screen.findByRole("link", { name: VIEW_RECORDING });
+  expect(link).not.toHaveAttribute("aria-disabled", "true");
+  fireEvent.click(link);
+  await waitFor(() =>
+    expect(router.state.location.pathname).toBe(
+      `/workspace/${WORKSPACE_ID}/recordings/${recording.recordingId}/document`,
+    ),
+  );
 });

@@ -12,6 +12,7 @@ public record RecordingDetailSnapshot(
         long accumulatedRecordingMillis,
         Instant endedAt,
         RecordingEndReason endReason,
-        RecordingAudioUploadStatus audioUploadStatus
+        RecordingAudioUploadStatus audioUploadStatus,
+        Integer speakerCount
 ) {
 }

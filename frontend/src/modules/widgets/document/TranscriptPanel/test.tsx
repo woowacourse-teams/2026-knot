@@ -1,3 +1,5 @@
+import { GetWorkspaceMembersResponseDto } from "@api/dto/workspace";
+import { workspaceMembersResponse } from "@api/mock/responses/recordingSpeaker";
 import {
   GetDocumentResponseDto,
   GetDocumentTranscriptResponseDto,
@@ -35,7 +37,7 @@ import { formatDurationFromSeconds } from "@utils/formatDurationFromSeconds";
 import { formatRecordingTime } from "@utils/formatRecordingTime";
 import { delay, http, HttpResponse } from "msw";
 import { createMemoryRouter, Outlet, RouterProvider } from "react-router";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import TranscriptPanel from ".";
 import { formatTranscriptText } from "./utils/formatTranscriptText";
@@ -180,7 +182,7 @@ describe("TranscriptPanel", () => {
     );
   });
 
-  it("화자 번호가 없는 구간은 화자 없이 문장만 보여 준다", async () => {
+  it("화자 번호가 없는 구간은 미상으로 표시하고 편집 버튼을 두지 않는다", async () => {
     const lineIndex = expectedTranscript.segments.findIndex(
       ({ speakerNumber }) => speakerNumber === null,
     );
@@ -190,7 +192,7 @@ describe("TranscriptPanel", () => {
 
     const line = (await findLines())[lineIndex];
 
-    expect(within(line).getByText(text)).toBeInTheDocument();
+    expect(line).toHaveTextContent(text);
     expect(line).not.toHaveTextContent("참여자");
   });
 
@@ -550,9 +552,317 @@ describe("TranscriptPanel · 녹음 문서 화면 (STT-R39)", () => {
     return { router, queryClient };
   };
 
+  it("멤버를 선택하면 같은 화자의 모든 발화와 복사 내용에 표시 이름을 반영한다", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+    renderRecordingTranscriptPanel();
+    const buttons = await screen.findAllByRole("button", {
+      name: "참여자 1 이름 바꾸기",
+    });
+    fireEvent.click(buttons[0]);
+    const dialog = within(
+      await screen.findByRole("dialog", { name: "이름 바꾸기" }),
+    );
+    fireEvent.click(await dialog.findByRole("button", { name: "흑곰" }));
+    expect(dialog.getByLabelText("새 이름")).toHaveValue("흑곰");
+    fireEvent.click(dialog.getByRole("button", { name: "바꾸기" }));
+    await waitFor(() =>
+      expect(
+        screen.getAllByRole("button", { name: "흑곰 이름 바꾸기" }),
+      ).toHaveLength(buttons.length),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "복사" }));
+    await waitFor(() => expect(writeText).toHaveBeenCalled());
+    expect(writeText.mock.calls[0][0]).toContain("흑곰: ");
+    expect(writeText.mock.calls[0][0]).not.toContain("참여자 1:");
+  });
+
+  it("멤버 다음 페이지를 받아 닉네임을 선택하고 취소할 수 있다", async () => {
+    const first = {
+      ...workspaceMembersResponse,
+      items: workspaceMembersResponse.items.slice(0, 2),
+      nextCursor: "next-members",
+    };
+    const second = {
+      ...workspaceMembersResponse,
+      items: workspaceMembersResponse.items.slice(2),
+      nextCursor: null,
+    };
+    const expectedMember = new GetWorkspaceMembersResponseDto(second).items[0];
+    const cursors: (string | null)[] = [];
+    const patch = vi.fn(() => HttpResponse.error());
+    mockServer.use(
+      http.get("*/api/v1/workspaces/:workspaceId/members", ({ request }) => {
+        const cursor = new URL(request.url).searchParams.get("cursor");
+        cursors.push(cursor);
+        return HttpResponse.json(cursor === first.nextCursor ? second : first);
+      }),
+      http.patch(
+        "*/api/v1/workspaces/:workspaceId/recordings/:recordingId/speakers/:speakerNumber",
+        patch,
+      ),
+    );
+    renderRecordingTranscriptPanel();
+    fireEvent.click(
+      (
+        await screen.findAllByRole("button", { name: "참여자 1 이름 바꾸기" })
+      )[0],
+    );
+    const dialog = within(
+      await screen.findByRole("dialog", { name: "이름 바꾸기" }),
+    );
+    fireEvent.click(
+      await dialog.findByRole("button", { name: "멤버 더 보기" }),
+    );
+    fireEvent.click(
+      await dialog.findByRole("button", { name: expectedMember.nickname }),
+    );
+    expect(dialog.getByLabelText("새 이름")).toHaveValue(
+      expectedMember.nickname,
+    );
+    expect(cursors).toEqual([null, first.nextCursor]);
+    expect(
+      dialog.queryByRole("button", { name: "멤버 더 보기" }),
+    ).not.toBeInTheDocument();
+    fireEvent.click(dialog.getByRole("button", { name: "취소" }));
+    expect(patch).not.toHaveBeenCalled();
+  });
+  it("멤버 목록이 비어 있어도 직접 입력할 수 있다", async () => {
+    mockServer.use(
+      http.get("*/api/v1/workspaces/:workspaceId/members", () =>
+        HttpResponse.json({ items: [], nextCursor: null }),
+      ),
+    );
+    renderRecordingTranscriptPanel();
+    fireEvent.click(
+      (
+        await screen.findAllByRole("button", { name: "참여자 1 이름 바꾸기" })
+      )[0],
+    );
+    const dialog = within(
+      await screen.findByRole("dialog", { name: "이름 바꾸기" }),
+    );
+    await waitFor(() =>
+      expect(
+        dialog.queryByText("멤버를 불러오고 있어요."),
+      ).not.toBeInTheDocument(),
+    );
+    fireEvent.change(dialog.getByLabelText("새 이름"), {
+      target: { value: "직접 지정" },
+    });
+    expect(dialog.getByRole("button", { name: "바꾸기" })).toBeEnabled();
+    expect(dialog.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("멤버 목록과 저장이 실패해도 직접 입력을 유지하고 취소는 PATCH를 보내지 않는다", async () => {
+    const patch = vi.fn(() =>
+      HttpResponse.json(
+        { code: "WORKSPACE_ACCESS_DENIED", message: "권한 없음" },
+        { status: 403 },
+      ),
+    );
+    mockServer.use(
+      http.get("*/api/v1/workspaces/:workspaceId/members", () =>
+        HttpResponse.error(),
+      ),
+      http.patch(
+        "*/api/v1/workspaces/:workspaceId/recordings/:recordingId/speakers/:speakerNumber",
+        patch,
+      ),
+    );
+    renderRecordingTranscriptPanel();
+    fireEvent.click(
+      (
+        await screen.findAllByRole("button", { name: "참여자 1 이름 바꾸기" })
+      )[0],
+    );
+    const dialog = within(
+      await screen.findByRole("dialog", { name: "이름 바꾸기" }),
+    );
+    await dialog.findByText(/멤버를 불러오지 못했어요/);
+    fireEvent.change(dialog.getByLabelText("새 이름"), {
+      target: { value: "직접 이름" },
+    });
+    fireEvent.click(dialog.getByRole("button", { name: "바꾸기" }));
+    await dialog.findByText(/이름 저장을 확인하지 못했어요/);
+    expect(dialog.getByLabelText("새 이름")).toHaveValue("직접 이름");
+    expect(
+      screen.getAllByRole("button", { name: "참여자 1 이름 바꾸기" }).length,
+    ).toBeGreaterThan(0);
+    fireEvent.click(dialog.getByRole("button", { name: "취소" }));
+    expect(patch).toHaveBeenCalledTimes(1);
+  });
+  it("저장 응답과 후속 조회가 모두 실패하면 입력을 유지하고 GET 확인 전 재저장을 막는다", async () => {
+    let isSaved = false;
+    let isUnavailable = true;
+    let patchCount = 0;
+    mockServer.use(
+      http.patch(
+        "*/api/v1/workspaces/:workspaceId/recordings/:recordingId/speakers/:speakerNumber",
+        () => {
+          isSaved = true;
+          patchCount++;
+          return HttpResponse.error();
+        },
+      ),
+      http.get(RECORDING_TRANSCRIPT_REQUEST, () => {
+        if (isSaved && isUnavailable)
+          return new HttpResponse(null, { status: 503 });
+        return HttpResponse.json({
+          ...recordingTranscriptResponse,
+          segments: recordingTranscriptResponse.segments.map((segment) => ({
+            ...segment,
+            speakerDisplayName:
+              isSaved && segment.speakerNumber === 1 ? "새 이름" : null,
+          })),
+        });
+      }),
+    );
+    renderRecordingTranscriptPanel();
+    fireEvent.click(
+      (
+        await screen.findAllByRole("button", { name: "참여자 1 이름 바꾸기" })
+      )[0],
+    );
+    const dialog = within(
+      await screen.findByRole("dialog", { name: "이름 바꾸기" }),
+    );
+    fireEvent.change(dialog.getByLabelText("새 이름"), {
+      target: { value: "새 이름" },
+    });
+    fireEvent.click(dialog.getByRole("button", { name: "바꾸기" }));
+    await dialog.findByText(/현재 전사를 확인하지 못했어요/);
+    expect(dialog.getByLabelText("새 이름")).toHaveValue("새 이름");
+    expect(dialog.getByRole("button", { name: "바꾸기" })).toBeDisabled();
+    expect(patchCount).toBe(1);
+    fireEvent.click(dialog.getByRole("button", { name: "취소" }));
+    fireEvent.click(
+      screen.getAllByRole("button", { name: "참여자 1 이름 바꾸기" })[0],
+    );
+    const reopened = within(
+      await screen.findByRole("dialog", { name: "이름 바꾸기" }),
+    );
+    fireEvent.change(reopened.getByLabelText("새 이름"), {
+      target: { value: "새 이름" },
+    });
+    expect(reopened.getByRole("button", { name: "바꾸기" })).toBeDisabled();
+    isUnavailable = false;
+    fireEvent.click(reopened.getByRole("button", { name: "다시 확인" }));
+    await waitFor(() =>
+      expect(reopened.getByRole("button", { name: "바꾸기" })).toBeEnabled(),
+    );
+    expect(
+      screen.getAllByRole("button", { name: "새 이름 이름 바꾸기" }).length,
+    ).toBeGreaterThan(0);
+    expect(patchCount).toBe(1);
+  });
   afterEach(() => {
     vi.useRealTimers();
     Reflect.deleteProperty(navigator, "clipboard");
+  });
+
+  describe("화자 이름 사용 기록", () => {
+    const SPEAKER_NAME_REQUEST =
+      "*/api/v1/workspaces/:workspaceId/recordings/:recordingId/speakers/:speakerNumber";
+    const recordingTarget = {
+      recording_id: expectedRecordingDocument.recordingId,
+      workspace_id: Number(WORKSPACE_ID),
+    };
+
+    // 앞 테스트에서도 사용 기록이 남으므로, 테스트마다 기록을 비우고 시작해요
+    beforeEach(() => {
+      vi.mocked(captureAnalyticsEvent).mockClear();
+    });
+
+    /** 화자 이름 결과만 골라 그 속성을 보낸 순서대로 모아요 */
+    const getRenamedProperties = () =>
+      vi
+        .mocked(captureAnalyticsEvent)
+        .mock.calls.map(([event]) => event)
+        .filter(({ event }) => event === "speaker_renamed")
+        .map(({ properties }) => properties);
+
+    /** 첫 화자의 이름 바꾸기 창을 열어요 */
+    const openRenameDialog = async () => {
+      renderRecordingTranscriptPanel();
+      fireEvent.click(
+        (
+          await screen.findAllByRole("button", { name: "참여자 1 이름 바꾸기" })
+        )[0],
+      );
+
+      return within(await screen.findByRole("dialog", { name: "이름 바꾸기" }));
+    };
+
+    it("멤버를 골라 저장하면 멤버로 정한 이름의 저장을 보낸다", async () => {
+      const dialog = await openRenameDialog();
+
+      fireEvent.click(await dialog.findByRole("button", { name: "흑곰" }));
+      fireEvent.click(dialog.getByRole("button", { name: "바꾸기" }));
+
+      await waitFor(() =>
+        expect(getRenamedProperties()).toEqual([
+          { result: "saved", name_source: "member", ...recordingTarget },
+        ]),
+      );
+    });
+
+    it("멤버를 고른 뒤 이름을 고쳐 적으면 직접 적은 이름의 저장을 보낸다", async () => {
+      const dialog = await openRenameDialog();
+
+      fireEvent.click(await dialog.findByRole("button", { name: "흑곰" }));
+      fireEvent.change(dialog.getByLabelText("새 이름"), {
+        target: { value: "흑곰 팀장" },
+      });
+      fireEvent.click(dialog.getByRole("button", { name: "바꾸기" }));
+
+      await waitFor(() =>
+        expect(getRenamedProperties()).toEqual([
+          { result: "saved", name_source: "typed", ...recordingTarget },
+        ]),
+      );
+    });
+
+    it("저장이 실패하면 실패를 보낸다", async () => {
+      mockServer.use(
+        http.patch(
+          SPEAKER_NAME_REQUEST,
+          () => new HttpResponse(null, { status: 500 }),
+        ),
+      );
+      const dialog = await openRenameDialog();
+
+      fireEvent.change(dialog.getByLabelText("새 이름"), {
+        target: { value: "직접 이름" },
+      });
+      fireEvent.click(dialog.getByRole("button", { name: "바꾸기" }));
+
+      await dialog.findByText(/이름 저장을 확인하지 못했어요/);
+      expect(getRenamedProperties()).toEqual([
+        { result: "failed", name_source: "typed", ...recordingTarget },
+      ]);
+    });
+
+    it("저장에서 로그인이 풀렸으면(401) 보내지 않는다", async () => {
+      mockServer.use(
+        http.patch(
+          SPEAKER_NAME_REQUEST,
+          () => new HttpResponse(null, { status: 401 }),
+        ),
+      );
+      const dialog = await openRenameDialog();
+
+      fireEvent.change(dialog.getByLabelText("새 이름"), {
+        target: { value: "직접 이름" },
+      });
+      fireEvent.click(dialog.getByRole("button", { name: "바꾸기" }));
+
+      expect(await screen.findByText("로그인 화면")).toBeInTheDocument();
+      expect(getRenamedProperties()).toEqual([]);
+    });
   });
 
   it("녹음의 전사를 발화 줄로 보여 주고, 녹음을 시작한 날과 녹음 길이를 둔다", async () => {
@@ -664,7 +974,8 @@ describe("TranscriptPanel · 녹음 문서 화면 (STT-R39)", () => {
   });
 
   describe("신규 원문 호환성 (ERR-QA-004 · ERR-QA-005 · ERR-QA-006)", () => {
-    const unsupported = () => HttpResponse.json({ code: "REQUEST_PATH_NOT_FOUND" }, { status: 404 });
+    const unsupported = () =>
+      HttpResponse.json({ code: "REQUEST_PATH_NOT_FOUND" }, { status: 404 });
     it("신규 원문 경로만 미지원이면 해당 패널에서 준비 안내한다", async () => {
       mockServer.use(http.get(RECORDING_TRANSCRIPT_REQUEST, unsupported));
       renderRecordingTranscriptPanel();
@@ -675,39 +986,77 @@ describe("TranscriptPanel · 녹음 문서 화면 (STT-R39)", () => {
       const { queryClient } = renderRecordingTranscriptPanel();
       await findLines();
       mockServer.use(http.get(RECORDING_TRANSCRIPT_REQUEST, unsupported));
-      await act(async () => { await queryClient.invalidateQueries(); });
+      await act(async () => {
+        await queryClient.invalidateQueries();
+      });
       expect(await screen.findByText("업데이트 준비 중")).toBeInTheDocument();
       expect(screen.queryByRole("listitem")).not.toBeInTheDocument();
-      expect(screen.queryByRole("button", { name: /복사/ })).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole("button", { name: /복사/ }),
+      ).not.toBeInTheDocument();
       for (const status of [500, 0]) {
-        mockServer.use(http.get(RECORDING_TRANSCRIPT_REQUEST, () => status === 0 ? HttpResponse.error() : new HttpResponse(null, { status })));
-        await act(async () => { await queryClient.invalidateQueries(); });
-        expect(await screen.findByRole("alert")).toHaveTextContent(LOAD_FAILED_NOTICE);
+        mockServer.use(
+          http.get(RECORDING_TRANSCRIPT_REQUEST, () =>
+            status === 0
+              ? HttpResponse.error()
+              : new HttpResponse(null, { status }),
+          ),
+        );
+        await act(async () => {
+          await queryClient.invalidateQueries();
+        });
+        expect(await screen.findByRole("alert")).toHaveTextContent(
+          LOAD_FAILED_NOTICE,
+        );
         expect(screen.queryByRole("listitem")).not.toBeInTheDocument();
-        expect(screen.queryByRole("button", { name: /복사/ })).not.toBeInTheDocument();
+        expect(
+          screen.queryByRole("button", { name: /복사/ }),
+        ).not.toBeInTheDocument();
         expect(screen.queryByText("업데이트 준비 중")).not.toBeInTheDocument();
       }
-      mockServer.use(http.get(RECORDING_TRANSCRIPT_REQUEST, () => HttpResponse.json(recordingTranscriptResponse)));
+      mockServer.use(
+        http.get(RECORDING_TRANSCRIPT_REQUEST, () =>
+          HttpResponse.json(recordingTranscriptResponse),
+        ),
+      );
       fireEvent.click(screen.getByRole("button", { name: "다시 시도" }));
-      expect(await findLines()).toHaveLength(expectedRecordingTranscript.segments.length);
+      expect(await findLines()).toHaveLength(
+        expectedRecordingTranscript.segments.length,
+      );
     });
     it("같은 경로 오류라도 기존 문서 원문에는 준비 안내를 적용하지 않는다", async () => {
       mockServer.use(http.get(TRANSCRIPT_REQUEST, unsupported));
       renderTranscriptPanel();
-      expect(await screen.findByRole("alert")).toHaveTextContent(LOAD_FAILED_NOTICE);
+      expect(await screen.findByRole("alert")).toHaveTextContent(
+        LOAD_FAILED_NOTICE,
+      );
       expect(screen.queryByText("업데이트 준비 중")).not.toBeInTheDocument();
     });
     it.each([
-      [401, "UNAUTHORIZED"], [403, "WORKSPACE_ACCESS_DENIED"],
-      [404, "RECORDING_TRANSCRIPT_NOT_FOUND"], [500, "INTERNAL_SERVER_ERROR"], [0, "NETWORK"],
-    ] as const)("신규 원문 실제 오류 %s %s는 준비 안내로 바꾸지 않는다", async (status, code) => {
-      mockServer.use(http.get(RECORDING_TRANSCRIPT_REQUEST, () => status === 0
-        ? HttpResponse.error() : HttpResponse.json({ code }, { status })));
-      renderRecordingTranscriptPanel();
-      if (status === 401) expect(await screen.findByText("로그인 화면")).toBeInTheDocument();
-      else expect(await screen.findByRole("alert")).toHaveTextContent(LOAD_FAILED_NOTICE);
-      expect(screen.queryByText("업데이트 준비 중")).not.toBeInTheDocument();
-    });
+      [401, "UNAUTHORIZED"],
+      [403, "WORKSPACE_ACCESS_DENIED"],
+      [404, "RECORDING_TRANSCRIPT_NOT_FOUND"],
+      [500, "INTERNAL_SERVER_ERROR"],
+      [0, "NETWORK"],
+    ] as const)(
+      "신규 원문 실제 오류 %s %s는 준비 안내로 바꾸지 않는다",
+      async (status, code) => {
+        mockServer.use(
+          http.get(RECORDING_TRANSCRIPT_REQUEST, () =>
+            status === 0
+              ? HttpResponse.error()
+              : HttpResponse.json({ code }, { status }),
+          ),
+        );
+        renderRecordingTranscriptPanel();
+        if (status === 401)
+          expect(await screen.findByText("로그인 화면")).toBeInTheDocument();
+        else
+          expect(await screen.findByRole("alert")).toHaveTextContent(
+            LOAD_FAILED_NOTICE,
+          );
+        expect(screen.queryByText("업데이트 준비 중")).not.toBeInTheDocument();
+      },
+    );
   });
-
 });

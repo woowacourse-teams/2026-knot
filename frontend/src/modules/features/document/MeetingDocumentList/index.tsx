@@ -45,6 +45,7 @@ export default function MeetingDocumentList() {
   } = useDocumentsByRecordingQuery({
     workspaceId,
     recordingSessionId: recordingId,
+    isPolling: recordingDocument?.processingStatus === "PROCESSING",
   });
   const { isUnauthorized } = useRedirectToLoginOnUnauthorized({ error });
   const isDocumentFailed =

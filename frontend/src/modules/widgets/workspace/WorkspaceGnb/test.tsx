@@ -16,6 +16,8 @@ import {
 import { mockServer } from "@api/mock/server";
 import DockablePanel from "@composites/DockablePanel";
 import { ThemeProvider } from "@emotion/react";
+import { DialogProvider } from "@provider/context/dialogContext";
+import { ToastProvider } from "@provider/context/toastContext";
 import { theme } from "@provider/themeProvider";
 import { getRouterPath, PATH_ROUTE } from "@routes/PATH_ROUTE";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -130,10 +132,10 @@ const renderGnb = (initialPath = HOME_PATH) => {
   const router = createBrowserRouter([
     {
       element: (
-        <>
+        <ToastProvider>
           {element}
           <Outlet />
-        </>
+        </ToastProvider>
       ),
       children: [
         PATH_ROUTE.WORKSPACE_HOME,
@@ -152,7 +154,9 @@ const renderGnb = (initialPath = HOME_PATH) => {
   render(
     <ThemeProvider theme={theme}>
       <QueryClientProvider client={queryClient}>
-        <RouterProvider router={router} />
+        <DialogProvider>
+          <RouterProvider router={router} />
+        </DialogProvider>
       </QueryClientProvider>
     </ThemeProvider>,
   );
@@ -381,7 +385,7 @@ describe("WorkspaceGnb", () => {
     renderGnb();
 
     const right = screen.getByRole("button", { name: RIGHT_TEXT });
-    const avatar = screen.getByRole("img", { name: "내 프로필" });
+    const avatar = screen.getByRole("button", { name: "내 프로필" });
 
     expect(right.parentElement).toBe(avatar.parentElement);
     expect(right.compareDocumentPosition(avatar)).toBe(

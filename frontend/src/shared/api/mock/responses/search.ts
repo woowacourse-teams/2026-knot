@@ -48,6 +48,13 @@ export const searchAnswerStreamResponse = {
   ],
 } satisfies SearchAnswerStream;
 
+/** 문서 근거 없이 인사에 응답하는 일반 대화의 정상 응답이에요. */
+export const searchGeneralAnswerStreamResponse = {
+  ...searchAnswerStreamResponse,
+  deltas: ["안녕하세요! 무엇을 도와드릴까요?"],
+  evidences: [],
+} satisfies SearchAnswerStream;
+
 /**
  * 첫 질문에 이어 보내는 후속 질문 응답이에요.
  * 같은 대화에 메시지가 쌓이므로 첫 질문 응답과 메시지 ID가 겹치지 않게 둬요.

@@ -8,7 +8,8 @@ import { useThisTabRecording } from "./useThisTabRecording";
  * 이 탭에서 시작한 녹음이 이어지고 있으면 이 탭의 상태와 시간을, 없으면 현재 녹음 조회가 답한 녹음 중 · 일시정지 녹음(다른 탭)을 돌려줘요.
  * 이 탭의 녹음은 조회를 기다리지 않아요.
  * 끝난 녹음(문서 정리 중 · 실패)은 아래 목록이 보여 주므로 여기서는 빼요. 둘 다 없거나 조회가 실패하면 `null`이에요.
- * 녹음 화면에 갈 수 있는 건 녹음을 시작한 탭뿐이라, 다른 탭의 녹음에는 `onOpenRecording`이 없어요(STT-R28).
+ * 녹음 화면에 갈 수 있는 건 녹음을 시작한 탭뿐이라, 다른 탭의 녹음에는 `onOpenRecording`이 없어요(STT-R28). 끝내기는 독의 ■로 해요.
+ * 새로고침해 아직 이어 받지 않은 이 탭의 녹음은 녹음 화면에 갈 수 있어요(`isReloaded`, STT-R26).
  */
 export const useCurrentRecording = () => {
   const {
@@ -19,6 +20,8 @@ export const useCurrentRecording = () => {
   const {
     status: serverStatus,
     elapsedTime: serverElapsedTime,
+    isResumable,
+    isConnectionLost,
     isLoading,
   } = useServerRecording();
 
@@ -35,10 +38,18 @@ export const useCurrentRecording = () => {
 
   if (serverStatus === "recording" || serverStatus === "paused") {
     return {
-      currentRecording: {
-        status: serverStatus,
-        elapsedTime: serverElapsedTime,
-      },
+      currentRecording: isResumable
+        ? {
+            status: serverStatus,
+            elapsedTime: serverElapsedTime,
+            isReloaded: true,
+            onOpenRecording: handleOpenRecording,
+          }
+        : {
+            status: serverStatus,
+            elapsedTime: serverElapsedTime,
+            isConnectionLost,
+          },
       isLoading: false,
     };
   }

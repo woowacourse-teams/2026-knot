@@ -24,7 +24,10 @@ export const useWorkspaceInvite = () => {
     retryInvitation,
     copyInviteCode,
     copyInviteLink,
-  } = useCopyWorkspaceInvite({ workspaceId: Number(workspaceId) });
+  } = useCopyWorkspaceInvite({
+    workspaceId: Number(workspaceId),
+    surface: "create_flow",
+  });
 
   const { isRedirecting } = useWorkspaceAccessGuard({ error });
 

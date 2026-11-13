@@ -21,7 +21,7 @@ import com.knot.backend.recording.domain.model.StoredAudioObject;
 import com.knot.backend.recording.domain.model.TranscriptionStatus;
 import com.knot.backend.testsupport.LogCapture;
 import com.knot.backend.testsupport.TestApplicationProperties;
-import com.knot.backend.testsupport.TestcontainersConfiguration;
+import com.knot.backend.testsupport.IsolatedPostgresTest;
 import jakarta.servlet.http.Cookie;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -44,7 +44,6 @@ import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
-import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.test.annotation.DirtiesContext;
@@ -70,7 +69,7 @@ import tools.jackson.databind.ObjectMapper;
 @ActiveProfiles("dev")
 @SpringBootTest(properties = "knot.document-generation.worker.enabled=false")
 @AutoConfigureMockMvc
-@Import(TestcontainersConfiguration.class)
+@IsolatedPostgresTest
 @TestApplicationProperties
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_EACH_TEST_METHOD)
 @EnabledIfEnvironmentVariable(named = "KNOT_REAL_AI_OBSERVABILITY", matches = "true")

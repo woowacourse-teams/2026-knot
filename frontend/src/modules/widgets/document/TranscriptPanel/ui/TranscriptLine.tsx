@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import styled from "@emotion/styled";
 import { formatRecordingTime } from "@utils/formatRecordingTime";
 
@@ -10,6 +11,8 @@ interface TranscriptLineProps {
   speakerNumber: number | null;
   /** 발화 문장 */
   text: string;
+  speakerDisplayName?: string | null;
+  speakerControl?: ReactNode;
 }
 
 /**
@@ -20,13 +23,18 @@ interface TranscriptLineProps {
 export default function TranscriptLine({
   startMillis,
   speakerNumber,
+  speakerDisplayName,
+  speakerControl,
   text,
 }: TranscriptLineProps) {
   return (
     <Container>
       <Time>{formatRecordingTime(startMillis / MILLIS_PER_SECOND)}</Time>
       <Text>
-        {speakerNumber !== null && `참여자 ${speakerNumber}: `}
+        {speakerControl ??
+          speakerDisplayName ??
+          (speakerNumber !== null ? `참여자 ${speakerNumber}` : "미상")}
+        {": "}
         {text}
       </Text>
     </Container>

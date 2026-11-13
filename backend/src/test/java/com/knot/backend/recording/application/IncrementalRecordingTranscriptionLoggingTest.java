@@ -138,12 +138,15 @@ class IncrementalRecordingTranscriptionLoggingTest {
     }
 
     @Test
-    @DisplayName("빈 구간 전사는 NO_CONTENT 실패를 기록하고 원문을 생성하지 않는다")
+    @DisplayName("정상적인 빈 구간 전사도 성공으로 저장하고 빈 내용 접수로 넘긴다")
     void completeIncremental_recordsNoContentWithoutPersistingTranscript() {
         // given
         available(true);
         RecordingTranscription parent = queuedParent();
         availableUpload();
+        when(session.getWorkspaceId()).thenReturn(1L);
+        when(transcripts.saveAndFlush(any())).thenReturn(transcript);
+        when(transcript.getId()).thenReturn(3L);
         AiTranscript empty = new AiTranscript(
                 1,
                 "{\"transcription\":[]}",
@@ -157,17 +160,17 @@ class IncrementalRecordingTranscriptionLoggingTest {
         );
 
         // then
-        assertThat(parent.getStatus()).isEqualTo(TranscriptionStatus.FAILED);
-        assertThat(parent.getFailureCode()).isEqualTo("NO_CONTENT");
+        assertThat(parent.getStatus()).isEqualTo(TranscriptionStatus.SUCCEEDED);
         assertTerminal(
-                "failed",
-                "NO_CONTENT",
+                "completed",
+                null,
                 ATTEMPT
         );
-        verify(
-                transcripts,
-                never()
-        ).saveAndFlush(any());
+        verify(documents).acceptCompletedTranscript(
+                1,
+                2,
+                3
+        );
     }
 
     @ParameterizedTest

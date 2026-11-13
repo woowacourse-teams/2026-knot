@@ -2,6 +2,7 @@ import styled from "@emotion/styled";
 import Logo from "@primitives/ui/Logo";
 
 import { LANDING_SCENES, type LandingScenes, SCENE } from "./constants/landing";
+import useLandingSceneAnalytics from "./model/useLandingSceneAnalytics";
 import useLandingStage from "./model/useLandingStage";
 import ConfirmationScene from "./ui/ConfirmationScene";
 import DocumentsScene from "./ui/DocumentsScene";
@@ -30,12 +31,28 @@ interface LandingStageProps {
  * 기술 소개 장면이 든 묶음을 받으면 탐색과 시작 사이에 녹음 기술, 탐색 기술 장면이 들어가고, 그 두 장면에서는 입자 캔버스를 숨겨요.
  * 입자 수천 개가 장면마다 워드마크, 말 조각, 파형, 문서 카드, 연결망, 새 심볼로 모양을 바꾸고,
  * 포인터를 가져가면 비켜나고 누르면 물결이 퍼져요. 소개와 시작 장면의 「시작하기」로 로그인 화면에 가요.
+ * 장면을 처음 볼 때마다 사용 기록으로 남겨요(`useLandingSceneAnalytics`).
  */
-export default function LandingStage({ scenes = LANDING_SCENES }: LandingStageProps) {
-  const { refs, scene, isSettled, recordingSeconds, search, questionIndex, labels, selectQuestion, goToScene } =
-    useLandingStage(scenes);
-  const hasTechnology = scenes.RECORDING_TECHNOLOGY !== undefined && scenes.SEARCH_TECHNOLOGY !== undefined;
-  const isTechnologyScene = scene === scenes.RECORDING_TECHNOLOGY || scene === scenes.SEARCH_TECHNOLOGY;
+export default function LandingStage({
+  scenes = LANDING_SCENES,
+}: LandingStageProps) {
+  const {
+    refs,
+    scene,
+    isSettled,
+    recordingSeconds,
+    search,
+    questionIndex,
+    labels,
+    selectQuestion,
+    goToScene,
+  } = useLandingStage(scenes);
+  const hasTechnology =
+    scenes.RECORDING_TECHNOLOGY !== undefined &&
+    scenes.SEARCH_TECHNOLOGY !== undefined;
+  const isTechnologyScene =
+    scene === scenes.RECORDING_TECHNOLOGY || scene === scenes.SEARCH_TECHNOLOGY;
+  useLandingSceneAnalytics(scene, scenes);
 
   return (
     <Scroller ref={refs.scrollerRef} $sceneCount={scenes.names.length}>
@@ -58,7 +75,11 @@ export default function LandingStage({ scenes = LANDING_SCENES }: LandingStagePr
           </HomeLink>
         </Header>
 
-        <SceneSteps names={scenes.names} scene={scene} onSceneSelect={goToScene} />
+        <SceneSteps
+          names={scenes.names}
+          scene={scene}
+          onSceneSelect={goToScene}
+        />
 
         <IntroScene
           isOn={scene === SCENE.INTRO}
@@ -66,7 +87,10 @@ export default function LandingStage({ scenes = LANDING_SCENES }: LandingStagePr
           onNext={() => goToScene(SCENE.PROBLEM)}
         />
         <ProblemScene isOn={scene === SCENE.PROBLEM} />
-        <RecordingScene isOn={scene === SCENE.RECORDING} recordingSeconds={recordingSeconds} />
+        <RecordingScene
+          isOn={scene === SCENE.RECORDING}
+          recordingSeconds={recordingSeconds}
+        />
         <DocumentsScene
           isOn={scene === SCENE.DOCUMENTS}
           isRevealed={isSettled}
@@ -95,7 +119,9 @@ export default function LandingStage({ scenes = LANDING_SCENES }: LandingStagePr
             />
             <SearchTechnologyScene
               isOn={scene === scenes.SEARCH_TECHNOLOGY}
-              onPrevious={() => goToScene(scenes.RECORDING_TECHNOLOGY ?? SCENE.SEARCH)}
+              onPrevious={() =>
+                goToScene(scenes.RECORDING_TECHNOLOGY ?? SCENE.SEARCH)
+              }
               onNext={() => goToScene(scenes.START)}
             />
           </>
@@ -123,7 +149,9 @@ const Stage = styled.div`
   position: sticky;
   top: env(safe-area-inset-top, 0px);
   width: 100%;
-  height: calc(100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+  height: calc(
+    100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)
+  );
   min-height: 32.5rem; /* 520px */
   overflow: hidden;
 `;

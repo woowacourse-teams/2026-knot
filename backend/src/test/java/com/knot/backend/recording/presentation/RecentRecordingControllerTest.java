@@ -95,7 +95,8 @@ class RecentRecordingControllerTest {
                                         List.of(
                                                 88L,
                                                 91L
-                                        )
+                                        ),
+                                        com.knot.backend.recording.application.dto.result.RecordingTranscriptStatus.READY
                                 )
                         ),
                         "next"
@@ -120,7 +121,7 @@ class RecentRecordingControllerTest {
                 .andExpect(jsonPath("$.items[0].retryable").value(true))
                 .andExpect(jsonPath("$.items[0].retryableJobIds[0]").value(88))
                 .andExpect(jsonPath("$.items[0].retryableJobIds[1]").value(91))
-                .andExpect(jsonPath("$.items[0].length()").value(7))
+                .andExpect(jsonPath("$.items[0].length()").value(8))
                 .andExpect(jsonPath("$.nextCursor").value("next"));
     }
 

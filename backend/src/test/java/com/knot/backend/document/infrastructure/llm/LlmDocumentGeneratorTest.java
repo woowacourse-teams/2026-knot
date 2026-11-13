@@ -19,11 +19,13 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.NullSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.node.ObjectNode;
 
 @ExtendWith(MockitoExtension.class)
 class LlmDocumentGeneratorTest {
@@ -137,6 +139,129 @@ class LlmDocumentGeneratorTest {
                         )
                 )
         ).hasMessage(DocumentErrorCode.INVALID_DOCUMENT_GENERATION_RESPONSE.getMessage());
+    }
+
+    @ParameterizedTest
+    @CsvSource({"결정|보류|미결정|할 일", "결정|보류|할 일|미결정", "결정|미결정|보류|할 일", "결정|미결정|할 일|보류", "결정|할 일|보류|미결정", "결정|할 일|미결정|보류",
+            "보류|결정|미결정|할 일", "보류|결정|할 일|미결정", "보류|미결정|결정|할 일", "보류|미결정|할 일|결정", "보류|할 일|결정|미결정", "보류|할 일|미결정|결정",
+            "미결정|결정|보류|할 일", "미결정|결정|할 일|보류", "미결정|보류|결정|할 일", "미결정|보류|할 일|결정", "미결정|할 일|결정|보류", "미결정|할 일|보류|결정",
+            "할 일|결정|보류|미결정", "할 일|결정|미결정|보류", "할 일|보류|결정|미결정", "할 일|보류|미결정|결정", "할 일|미결정|결정|보류", "할 일|미결정|보류|결정"})
+    @DisplayName("고정 섹션의 모든 순열을 한 번의 LLM 호출로 표시 순서에 맞춰 반환한다")
+    void generate_fixedSectionPermutations_success(String order) {
+        // given
+        StringBuilder content = new StringBuilder("## 핵심 요약\n요약\n\n");
+        for (String name : order.split("\\|")) {
+            content.append("## ");
+            content.append(name);
+            content.append("\n");
+            content.append(name);
+            content.append(" 본문\n\n");
+        }
+        stubContent(content.toString());
+
+        // when
+        DocumentGenerationResult result = generateDocument();
+
+        // then
+        assertThat(result.content()).isEqualTo("""
+                ## 핵심 요약
+                요약
+
+                ## 결정
+                결정 본문
+
+                ## 보류
+                보류 본문
+
+                ## 미결정
+                미결정 본문
+
+                ## 할 일
+                할 일 본문
+
+                """);
+        verify(client).complete(any());
+        verifyNoMoreInteractions(client);
+    }
+
+    @Test
+    @DisplayName("추가 섹션 사이의 고정 섹션만 앞으로 옮기고 원본 본문과 코드 블록을 보존한다")
+    void generate_interleavedSections_success() {
+        // given
+        String summary = "## 핵심 요약\r\n요약  \r\n\r\n";
+        String background = "## 배경\r\n배경 본문\r\n```markdown\r\n## 결정\r\n코드 안의 제목\r\n```\r\n\r\n";
+        String task = "## 할 일\r\n- 담당자: 수정안 작성  \r\n    들여쓰기 보존\r\n\r\n";
+        String concern = "## 우려\r\n| 항목 | 내용 |\r\n| --- | --- |\r\n| 비용 | 증가 |\r\n\r\n";
+        String deferred = "## 보류\r\n- 사용자 수가 1,000명을 넘으면 진행한다.\r\n\r\n";
+        String proposal = "## 제안\r\n채택 여부를 논의하지 않은 제안";
+        stubContent(summary + background + task + concern + deferred + proposal);
+
+        // when
+        DocumentGenerationResult result = generateDocument();
+
+        // then
+        assertThat(result.title()).isEqualTo("제목");
+        assertThat(result.summary()).isEqualTo("요약");
+        assertThat(result.content()).isEqualTo(summary + deferred + task + background + concern + proposal);
+        verify(client).complete(any());
+        verifyNoMoreInteractions(client);
+    }
+
+    @Test
+    @DisplayName("끝 개행 없는 고정 섹션을 옮겨도 다음 제목과 붙지 않고 재정규화 결과가 같다")
+    void generate_normalizedContent_success_idempotent() {
+        // given
+        stubContent("## 핵심 요약\n요약\n\n## 배경\n근거\n\n## 결정\n합의");
+
+        // when
+        DocumentGenerationResult first = generateDocument();
+        stubContent(first.content());
+        DocumentGenerationResult second = generateDocument();
+
+        // then
+        assertThat(first.content()).isEqualTo("## 핵심 요약\n요약\n\n## 결정\n합의\n\n## 배경\n근거\n\n");
+        assertThat(second.content()).isEqualTo(first.content());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"## 핵심 요약\n요약\n## 배경\n근거\n## 결정\n첫 합의\n## 결정\n중복 합의", "## 핵심 요약\n요약\n## 배경\n근거\n## 결정\n",
+            "## 핵심 요약\n요약\n## 배경\n근거\n## 할 일\n- 없음", "## 핵심 요약\n요약\n## 배경\nhttps://example.com\n## 결정\n합의",
+            "## 핵심 요약\n요약\n## 배경\n근거\n## 결정\n합의\n```text\n닫히지 않은 코드"})
+    @DisplayName("섹션 순서를 정리해도 중복·빈 본문·placeholder·링크·미완성 코드는 거절한다")
+    void generate_invalidReorderedContent_failure(String content) {
+        // given
+        stubContent(content);
+
+        // when & then
+        assertThatThrownBy(this::generateDocument)
+                .hasMessage(DocumentErrorCode.INVALID_DOCUMENT_GENERATION_RESPONSE.getMessage());
+        verify(client).complete(any());
+        verifyNoMoreInteractions(client);
+    }
+
+    private void stubContent(String content) {
+        ObjectNode response = mapper.createObjectNode();
+        response.put(
+                "title",
+                "제목"
+        );
+        response.put(
+                "summary",
+                "요약"
+        );
+        response.put(
+                "content",
+                content
+        );
+        when(client.complete(any())).thenReturn(mapper.writeValueAsString(response));
+    }
+
+    private DocumentGenerationResult generateDocument() {
+        DocumentGenerationInput input = DocumentGenerationInput.of(
+                "저장된 전사 원문",
+                "검색"
+        );
+        return generator.generate(input);
     }
 
     private String expectedSummary(String summary) {

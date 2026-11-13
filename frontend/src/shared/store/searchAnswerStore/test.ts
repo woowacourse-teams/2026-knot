@@ -68,7 +68,7 @@ describe("searchAnswerStore", () => {
     expect(state.question).toBe("");
   });
 
-  it("[SEARCH-R5] accepted 뒤에 실패하면 받은 답변을 두고 실패 코드를 남긴다", () => {
+  it("[SEARCH-R5] accepted 뒤에 실패하면 미검증 답변을 지우고 안내를 표시할 상태를 남긴다", () => {
     const controller = startQuestion();
     useSearchAnswerStore.getState().applyEvent(controller, accepted);
     useSearchAnswerStore.getState().applyEvent(controller, delta);
@@ -86,7 +86,8 @@ describe("searchAnswerStore", () => {
     expect(isAcceptFailed).toBe(false);
     expect(state.status).toBe("FAILED");
     expect(state.failedCode).toBe(failed.code);
-    expect(state.text).toBe(delta.data.text);
+    expect(state.text).toBe("");
+    expect(state.evidences).toEqual([]);
   });
 
   it("[SEARCH-R8] 끊은 뒤 새 질문을 보내면 이전 요청의 늦은 이벤트·결과는 새 답변을 바꾸지 않는다", () => {

@@ -59,6 +59,22 @@ public class IncrementalTranscriptMerger {
             double similarityThreshold,
             boolean seamAligned
     ) {
+        return merge(
+                windows,
+                totalFrames,
+                similarityThreshold,
+                seamAligned,
+                null
+        );
+    }
+
+    public AiTranscript merge(
+            List<RecordingTranscriptionWindow> windows,
+            long totalFrames,
+            double similarityThreshold,
+            boolean seamAligned,
+            Integer speakerCount
+    ) {
         if (windows == null || windows.isEmpty() || totalFrames <= 0 || totalFrames > MAX_RECORDING_FRAMES
                 || !Double.isFinite(similarityThreshold) || similarityThreshold < -1 || similarityThreshold > 1
                 || windows.stream()
@@ -78,8 +94,13 @@ public class IncrementalTranscriptMerger {
                 evidences,
                 totalFrames,
                 seamAligned,
-                reclustered
+                reclustered,
+                speakerCount
         );
+        if (speakerCount != null && !reclustered && owned.stream()
+                .anyMatch(tokens -> !tokens.isEmpty())) {
+            throw invalidData();
+        }
         List<AiTranscript.Utterance> utterances = new ArrayList<>();
         List<VoiceCentroid> centroids = new ArrayList<>();
         for (int index = 0; index < ordered.size(); index++) {
@@ -146,7 +167,8 @@ public class IncrementalTranscriptMerger {
             List<AiWindowEvidence> evidences,
             long totalFrames,
             boolean seamAligned,
-            boolean reclustered
+            boolean reclustered,
+            Integer speakerCount
     ) {
         if (reclustered) {
             return alignedTokens(
@@ -154,7 +176,8 @@ public class IncrementalTranscriptMerger {
                     evidences,
                     reclusteredSpeakers(
                             ordered,
-                            evidences
+                            evidences,
+                            speakerCount
                     )
             );
         }
@@ -264,7 +287,8 @@ public class IncrementalTranscriptMerger {
      */
     private List<List<String>> reclusteredSpeakers(
             List<RecordingTranscriptionWindow> ordered,
-            List<AiWindowEvidence> evidences
+            List<AiWindowEvidence> evidences,
+            Integer speakerCount
     ) {
         List<SpeakerAssigner.SpeakerSpan> owned = new ArrayList<>();
         List<float[]> vectors = new ArrayList<>();
@@ -295,7 +319,10 @@ public class IncrementalTranscriptMerger {
                 vectors.add(floats(observation.embedding()));
             }
         }
-        int[] labels = SpeakerReclusterer.labels(vectors);
+        int[] labels = SpeakerReclusterer.labels(
+                vectors,
+                speakerCount
+        );
         List<SpeakerAssigner.SpeakerSpan> spans = new ArrayList<>();
         for (int index = 0; index < owned.size(); index++) {
             spans.add(

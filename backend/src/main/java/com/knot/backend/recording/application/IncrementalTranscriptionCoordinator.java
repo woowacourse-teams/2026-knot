@@ -167,7 +167,8 @@ public class IncrementalTranscriptionCoordinator {
                         completed,
                         totalFrames,
                         SIMILARITY_THRESHOLD,
-                        shape.seamAligned()
+                        shape.seamAligned(),
+                        session.getSpeakerCount()
                 );
             } catch (RecordingException exception) {
                 state.failIncremental(

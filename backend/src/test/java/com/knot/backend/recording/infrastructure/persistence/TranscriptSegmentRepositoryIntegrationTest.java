@@ -6,7 +6,7 @@ import com.knot.backend.document.DocumentFixtures;
 import com.knot.backend.recording.domain.model.TranscriptSegment;
 import com.knot.backend.recording.domain.model.TranscriptUtterance;
 import com.knot.backend.recording.domain.repository.TranscriptSegmentRepository;
-import com.knot.backend.testsupport.TestcontainersConfiguration;
+import com.knot.backend.testsupport.IsolatedPostgresTest;
 import jakarta.persistence.EntityManager;
 import java.time.Instant;
 import java.time.OffsetDateTime;
@@ -25,7 +25,8 @@ import org.springframework.jdbc.core.simple.JdbcClient;
 
 @Tag("integration")
 @DataJpaTest
-@Import({TestcontainersConfiguration.class, TranscriptSegmentRepositoryAdapter.class})
+@IsolatedPostgresTest
+@Import({TranscriptSegmentRepositoryAdapter.class})
 class TranscriptSegmentRepositoryIntegrationTest {
     @Autowired
     private TranscriptSegmentRepository transcriptSegmentRepository;

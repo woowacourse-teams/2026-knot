@@ -31,6 +31,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+@lombok.extern.slf4j.Slf4j
 @Service
 @RequiredArgsConstructor
 @Transactional
@@ -191,6 +192,16 @@ public class SearchAnswerExecutionService {
         );
     }
 
+    public boolean isCurrent(
+            long answerId,
+            UUID token
+    ) {
+        return currentExecution(
+                answerId,
+                token
+        ).isPresent();
+    }
+
     public boolean recordRetrieval(
             long answerId,
             UUID token,
@@ -238,6 +249,29 @@ public class SearchAnswerExecutionService {
         return true;
     }
 
+    public boolean completeGenerated(
+            long answerId,
+            UUID token,
+            String content,
+            List<Long> usedDocumentIds,
+            Set<Long> candidateIds
+    ) {
+        // Publish validated text, evidence and terminal state in the same transaction.
+        Optional<SearchAnswerExecution> current = currentExecution(
+                answerId,
+                token
+        );
+        if (current.isEmpty()) {
+            return false;
+        }
+        answer(current.get()).appendContent(content);
+        return completeCurrent(
+                current.get(),
+                usedDocumentIds,
+                candidateIds
+        );
+    }
+
     public boolean complete(
             long answerId,
             UUID token,
@@ -251,11 +285,23 @@ public class SearchAnswerExecutionService {
         if (current.isEmpty()) {
             return false;
         }
+        return completeCurrent(
+                current.get(),
+                usedDocumentIds,
+                candidateIds
+        );
+    }
+
+    private boolean completeCurrent(
+            SearchAnswerExecution execution,
+            List<Long> usedDocumentIds,
+            Set<Long> candidateIds
+    ) {
         validateUsedDocuments(
                 usedDocumentIds,
                 candidateIds
         );
-        SearchAnswerExecution execution = current.get();
+        long answerId = execution.getAnswerId();
         SearchConversation conversation = conversation(execution);
         for (int index = 0; index < usedDocumentIds.size(); index++) {
             long documentId = usedDocumentIds.get(index);
@@ -409,12 +455,42 @@ public class SearchAnswerExecutionService {
             SearchAnswerExecution execution,
             String code
     ) {
-        answer(execution).fail(code);
+        if ("SEARCH_ACCESS_DENIED".equals(code) || !hasAccess(conversation(execution))) {
+            answer(execution).fail("SEARCH_ACCESS_DENIED");
+            finishTerminal(
+                    execution,
+                    code,
+                    "access_denied",
+                    SearchMessageStatus.FAILED
+            );
+            return;
+        }
+        answer(execution).completeGuidance(SearchAnswerGuidance.UNAVAILABLE);
+        finishTerminal(
+                execution,
+                code,
+                "guidance",
+                SearchMessageStatus.COMPLETED
+        );
+    }
+
+    private void finishTerminal(
+            SearchAnswerExecution execution,
+            String code,
+            String outcome,
+            SearchMessageStatus status
+    ) {
+        log.info(
+                "Search answer terminal answerId={} outcome={} failureCode={}",
+                execution.getAnswerId(),
+                outcome,
+                code
+        );
         execution.finish();
         recordTerminalActivity(
                 conversation(execution),
                 execution,
-                SearchMessageStatus.FAILED
+                status
         );
     }
 

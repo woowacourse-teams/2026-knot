@@ -1,3 +1,4 @@
+import { getSpeakerCount } from "@api/mock/state/recordingSpeaker";
 import { http, HttpResponse } from "msw";
 
 import { findRecordingDetail } from "@api/mock/state/recording";
@@ -20,7 +21,13 @@ export const recordingHandlers = [
         );
       }
 
-      return HttpResponse.json(recording);
+      return HttpResponse.json({
+        ...recording,
+        speakerCount: getSpeakerCount(
+          Number(params.workspaceId),
+          Number(params.recordingId),
+        ),
+      });
     },
   ),
 ];

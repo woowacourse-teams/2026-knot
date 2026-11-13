@@ -36,6 +36,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -400,6 +401,26 @@ class DocumentGenerationExecutionIntegrationTest {
             );
         // then
         assertThat(documentCount()).isEqualTo(2);
+        long failed = jobs.getLast();
+        assertThat(status(failed)).isEqualTo("QUEUED");
+        assertThat(
+                number(
+                        "automatic_retry_count",
+                        failed
+                )
+        ).isEqualTo(1);
+        assertThat(
+                number(
+                        "user_retry_count",
+                        failed
+                )
+        ).isZero();
+        when(clock.instant()).thenReturn(NOW.plusSeconds(5));
+        worker.execute(
+                workspaceId,
+                failed
+        );
+        assertThat(documentCount()).isEqualTo(2);
         assertThat(
                 progress.findProgress(
                         workspaceId,
@@ -416,7 +437,6 @@ class DocumentGenerationExecutionIntegrationTest {
                         .orElseThrow()
                         .status()
         ).isEqualTo(DocumentGenerationProcessingStatus.FAILED);
-        long failed = jobs.getLast();
         retries.retry(
                 workspaceId,
                 memberId,
@@ -444,7 +464,7 @@ class DocumentGenerationExecutionIntegrationTest {
                         "attempt_count",
                         failed
                 )
-        ).isEqualTo(2);
+        ).isEqualTo(3);
         assertThat(
                 progress.findProgress(
                         workspaceId,
@@ -455,9 +475,10 @@ class DocumentGenerationExecutionIntegrationTest {
         ).isEqualTo(DocumentGenerationProcessingStatus.SUCCEEDED);
     }
 
-    @Test
-    @DisplayName("429는 5초 뒤 한 번만 자동 재시도하며 중복 실패 통지는 횟수를 늘리지 않는다")
-    void failAttempt_success_boundedScheduledRetry() {
+    @ParameterizedTest
+    @EnumSource(value = DocumentGenerationFailureCause.class, names = {"RATE_LIMITED", "INVALID_RESPONSE"})
+    @DisplayName("429와 예외 응답은 5초 뒤 한 번만 자동 재시도하며 중복 실패 통지는 횟수를 늘리지 않는다")
+    void failAttempt_success_boundedScheduledRetry(DocumentGenerationFailureCause cause) {
         // given
         claims.claim(
                 workspaceId,
@@ -469,13 +490,13 @@ class DocumentGenerationExecutionIntegrationTest {
                 workspaceId,
                 classifierId,
                 1,
-                DocumentGenerationFailureCause.RATE_LIMITED
+                cause
         );
         failures.failAttempt(
                 workspaceId,
                 classifierId,
                 1,
-                DocumentGenerationFailureCause.RATE_LIMITED
+                cause
         );
         // then
         assertThat(
@@ -882,6 +903,14 @@ class DocumentGenerationExecutionIntegrationTest {
                     workspaceId,
                     job
             );
+        when(clock.instant()).thenReturn(NOW.plusSeconds(5));
+        for (long job : jobs)
+            worker.execute(
+                    workspaceId,
+                    job
+            );
+        assertThat(status(jobs.get(1))).isEqualTo("FAILED");
+        assertThat(status(jobs.getLast())).isEqualTo("FAILED");
         jdbc.sql("DELETE FROM document_generation_jobs WHERE id = :id")
                 .param(
                         "id",

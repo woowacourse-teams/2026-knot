@@ -2,7 +2,7 @@ import { GetRecordingResponseDto } from "@api/dto/recording";
 import { documentGenerationJobRetryResponse } from "@api/mock/responses/documentGenerationJob";
 import {
   recordingAudioSaveResponse,
-  recordingDetailsResponse,
+  recordingDetailsResponse as currentRecordingDetailsResponse,
 } from "@api/mock/responses/recording";
 import type {
   RecordingAudioSaveResponse,
@@ -39,6 +39,39 @@ vi.mock("@utils/captureAnalyticsEvent", () => ({
   captureAnalyticsEvent: vi.fn(),
 }));
 
+// 이전 응답에서 전사 결과가 빠진 경우의 문서 상태 fallback도 유지해요.
+// 현재 서버의 SUCCEEDED 즉시 이동 계약은 아래 별도 describe에서 검증해요.
+const recordingDetailsResponse = currentRecordingDetailsResponse.map(
+  (recording) => ({
+    ...recording,
+    detail: {
+      ...recording.detail,
+      transcriptionStatus:
+        recording.detail.transcriptionStatus === "SUCCEEDED"
+          ? null
+          : recording.detail.transcriptionStatus,
+    },
+  }),
+);
+import { findRecordingDetail } from "@api/mock/state/recording";
+beforeEach(() => {
+  mockServer.use(
+    http.get(
+      "*/api/v1/workspaces/:workspaceId/recordings/:recordingId",
+      ({ params }) => {
+        const detail = findRecordingDetail(Number(params.recordingId));
+        if (!detail) return new HttpResponse(null, { status: 404 });
+        return HttpResponse.json({
+          ...detail,
+          transcriptionStatus:
+            detail.transcriptionStatus === "SUCCEEDED"
+              ? null
+              : detail.transcriptionStatus,
+        });
+      },
+    ),
+  );
+});
 const WORKSPACE_ID = 1;
 // 상태가 서로 다른 mock 녹음: 정리 중 · 내용 없음 · 문서 만들기 실패 · 전사 실패 · 정리 완료.
 // 서버 응답에는 녹음 ID가 없어서, 녹음 ID(`recordingId`)와 응답(`detail`)이 한 쌍으로 있어요
@@ -1863,7 +1896,10 @@ describe("RecordingDocuments", () => {
       });
 
       expect(
-        await screen.findByRole("heading", { level: 2, name: ORGANIZING_TITLE }),
+        await screen.findByRole("heading", {
+          level: 2,
+          name: ORGANIZING_TITLE,
+        }),
       ).toBeInTheDocument();
       expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     });
@@ -1883,7 +1919,10 @@ describe("RecordingDocuments", () => {
       fireEvent.click(screen.getByRole("button", { name: "다시 시도" }));
 
       expect(
-        await screen.findByRole("heading", { level: 2, name: ORGANIZING_TITLE }),
+        await screen.findByRole("heading", {
+          level: 2,
+          name: ORGANIZING_TITLE,
+        }),
       ).toBeInTheDocument();
       expect(counts.audioSave).toBe(2);
       expect(counts.recording).toBe(recordingCountBeforeRetry);
@@ -2011,6 +2050,14 @@ describe("RecordingDocuments의 정리 결과 기록", () => {
     workspace_id: WORKSPACE_ID,
   };
 
+  // 정리 결과만 골라 그 속성을 보낸 순서대로 모아요
+  const getResultProperties = () =>
+    vi
+      .mocked(captureAnalyticsEvent)
+      .mock.calls.map(([event]) => event)
+      .filter(({ event }) => event === "recording_documents_result")
+      .map(({ properties }) => properties);
+
   it.each([
     {
       reason: "문서가 만들어지면 완료와 만들어진 문서 수를",
@@ -2053,10 +2100,54 @@ describe("RecordingDocuments의 정리 결과 기록", () => {
       );
       expect(captureAnalyticsEvent).toHaveBeenCalledWith({
         event: "recording_documents_result",
-        properties: { ...properties, ...recordingTarget },
+        properties: {
+          ...properties,
+          surface: "organizing_screen",
+          waited_seconds: expect.any(Number),
+          ...recordingTarget,
+        },
       });
     },
   );
+
+  it("정리 중을 처음 본 때부터 결과가 날 때까지 기다린 시간을 보낸다", async () => {
+    respondRecordingInOrder(
+      organizingRecording.detail,
+      organizingRecording.detail,
+      completedRecording.detail,
+    );
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    renderRecordingDocuments(organizingRecording.recordingId);
+
+    await screen.findByRole("heading", { level: 2, name: ORGANIZING_TITLE });
+    await waitNextPoll();
+    await waitNextPoll();
+
+    await waitFor(() => expect(getResultProperties()).toHaveLength(1));
+    const [properties] = getResultProperties();
+    const waitedSeconds =
+      "waited_seconds" in properties ? properties.waited_seconds : undefined;
+    // 3초마다 다시 묻는 조회를 두 번 기다렸어요. 테스트가 도는 동안 흐른 실제 시간도 조금 더해져요
+    expect(waitedSeconds).toBeGreaterThanOrEqual((POLL_INTERVAL_MS * 2) / 1000);
+    expect(waitedSeconds).toBeLessThan((POLL_INTERVAL_MS * 3) / 1000);
+  });
+
+  it("정리 중에 전사가 끝나 녹음 문서로 넘어가면, 결과는 녹음 문서가 보내도록 정리 화면은 보내지 않는다", async () => {
+    // 전사가 끝나고 문서를 만드는 중인 녹음이에요. 전사가 끝나면 결과를 기다리지 않고 녹음 문서로 넘어가요
+    const transcribedDetail: RecordingDetailResponse = {
+      ...organizingRecording.detail,
+      transcriptionStatus: "SUCCEEDED",
+    };
+    respondRecordingInOrder(organizingRecording.detail, transcribedDetail);
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    renderRecordingDocuments(organizingRecording.recordingId);
+
+    await screen.findByRole("heading", { level: 2, name: ORGANIZING_TITLE });
+    await waitNextPoll();
+
+    expect(await screen.findByText("녹음 문서 화면")).toBeInTheDocument();
+    expect(getResultProperties()).toEqual([]);
+  });
 
   it.each([
     {
@@ -2106,7 +2197,10 @@ describe("RecordingDocuments의 정리 결과 기록", () => {
     await waitFor(() => expect(getResultEvents()).toHaveLength(1));
     expect(getResultEvents()[0]).toEqual({
       event: "recording_documents_result",
-      properties: expect.objectContaining({ result: "completed" }),
+      properties: expect.objectContaining({
+        result: "completed",
+        surface: "organizing_screen",
+      }),
     });
   });
 
@@ -2136,7 +2230,12 @@ describe("RecordingDocuments의 정리 결과 기록", () => {
     expect(captureAnalyticsEvent).toHaveBeenCalledTimes(1);
     expect(captureAnalyticsEvent).toHaveBeenCalledWith({
       event: "recording_documents_result",
-      properties: { result: "audio_save_failed", ...recordingTarget },
+      properties: {
+        result: "audio_save_failed",
+        surface: "organizing_screen",
+        waited_seconds: expect.any(Number),
+        ...recordingTarget,
+      },
     });
   });
 });
@@ -2325,4 +2424,39 @@ describe("RecordingDocuments의 다시 시도 결과 기록", () => {
       expect(getRetryEvents()).toHaveLength(0);
     });
   });
+});
+
+describe("전사 완료 즉시 녹음 상세 이동", () => {
+  it.each([
+    null,
+    "QUEUED",
+    "RUNNING",
+    "SUCCEEDED",
+    "FAILED",
+    "NO_CONTENT",
+  ] as const)(
+    "문서 생성 상태가 %s여도 전사가 완료되면 이동한다",
+    async (status) => {
+      const recording = currentRecordingDetailsResponse[0];
+      mockServer.use(
+        http.get(RECORDING_REQUEST, () =>
+          HttpResponse.json({
+            ...recording.detail,
+            sessionStatus: "ENDED",
+            transcriptionStatus: "SUCCEEDED",
+            documentGeneration:
+              status === null
+                ? null
+                : { status, succeededCount: 0, failedJobIds: [] },
+          }),
+        ),
+      );
+      const { router } = renderRecordingDocuments(recording.recordingId);
+      await waitFor(() =>
+        expect(router.state.location.pathname).toBe(
+          getRecordingDocumentPath(recording.recordingId),
+        ),
+      );
+    },
+  );
 });

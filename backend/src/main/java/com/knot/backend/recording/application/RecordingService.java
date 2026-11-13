@@ -742,6 +742,29 @@ public class RecordingService {
         );
     }
 
+    @Transactional(noRollbackFor = RecordingException.class)
+    public Integer changeSpeakerCount(
+            long workspaceId,
+            long memberId,
+            long recordingId,
+            RecordingControlCommand command,
+            Integer count
+    ) {
+        RecordingSession session = recordingAccess.loadControlledForUpdate(
+                workspaceId,
+                memberId,
+                recordingId,
+                command
+        );
+        expireAndSeal(
+                session,
+                now()
+        );
+        session.changeSpeakerCount(count);
+        recordingSessionRepository.save(session);
+        return session.getSpeakerCount();
+    }
+
     private Instant now() {
         return clock.instant()
                 .truncatedTo(ChronoUnit.MICROS);

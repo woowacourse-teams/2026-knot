@@ -192,7 +192,7 @@ class RecordingTranscriptQueryIntegrationTest {
     }
 
     @Test
-    @DisplayName("전사 전·전사 실패·주제 분류 전 녹음은 보여 줄 전사가 없다")
+    @DisplayName("전사 전·실패에는 원문이 없고 주제 분류 전 성공 전사는 즉시 보여 준다")
     void find_fail_noTranscriptToShow() {
         // given
         long beforeTranscription = saved(0);
@@ -216,7 +216,13 @@ class RecordingTranscriptQueryIntegrationTest {
                 .toList();
 
         // then
-        assertThat(results).allMatch(Optional::isEmpty);
+        assertThat(
+                results.subList(
+                        0,
+                        2
+                )
+        ).allMatch(Optional::isEmpty);
+        assertThat(results.get(2)).isPresent();
     }
 
     private long saved(int secondsAfterStart) {

@@ -96,7 +96,7 @@ public class TranscriptSegment {
             long transcriptId,
             List<TranscriptUtterance> utterances
     ) {
-        if (utterances.isEmpty()) {
+        if (transcriptId <= 0 || utterances == null) {
             throw new RecordingException(RecordingErrorCode.INVALID_RECORDING_DATA);
         }
         List<TranscriptSegment> segments = new ArrayList<>();

@@ -4,6 +4,8 @@ import com.knot.backend.search.infrastructure.persistence.SearchHistoryQuery;
 
 import com.knot.backend.global.config.SearchAgentProperties;
 import com.knot.backend.search.application.SearchAnswerGenerator;
+import com.knot.backend.search.application.SearchAnswerGuidance;
+import com.knot.backend.global.logging.ServerErrorLogger;
 import com.knot.backend.search.application.SearchToolAccess;
 import com.knot.backend.search.application.SearchToolScope;
 import com.knot.backend.search.application.dto.result.SearchDocumentResult;
@@ -77,23 +79,97 @@ public class SearchStreamingAnswerGenerator implements SearchAnswerGenerator {
                 mapper
         );
         context.validate(messages);
-        SearchAnswerJsonStream answer = new SearchAnswerJsonStream(
-                mapper,
-                text -> {
-                    access.validate(scope);
-                    onDelta.accept(text);
+        for (int attempt = 0; attempt < 2; attempt++) {
+            StringBuilder validatedText = new StringBuilder();
+            SearchAnswerJsonStream answer = new SearchAnswerJsonStream(
+                    mapper,
+                    validatedText::append
+            );
+            List<Long> ids;
+            try {
+                llm.stream(
+                        scope,
+                        messages,
+                        text -> {
+                            access.validate(scope);
+                            answer.accept(text);
+                        }
+                );
+                access.validate(scope);
+                ids = answer.complete(budget.documents());
+            } catch (RuntimeException exception) {
+                if (ServerErrorLogger.isControlFlow(exception)) {
+                    throw exception;
                 }
-        );
-        llm.stream(
-                scope,
-                messages,
-                text -> {
-                    access.validate(scope);
-                    answer.accept(text);
+                ServerErrorLogger.recordTaskFailure(
+                        log,
+                        "Search answer phase=validation attempt=" + (attempt + 1),
+                        exception
+                );
+                if (attempt == 0 && retryable(exception)) {
+                    continue;
                 }
-        );
-        access.validate(scope);
-        return answer.complete(budget.documents());
+                access.validate(scope);
+                List<SearchDocumentResult> related = budget.documents()
+                        .stream()
+                        .limit(3)
+                        .toList();
+                publishGuidance(
+                        related,
+                        onDelta
+                );
+                log.info(
+                        "Search answer outcome=guidance workspaceId={} answerId={}",
+                        scope.workspaceId(),
+                        scope.answerId()
+                );
+                return related.stream()
+                        .map(SearchDocumentResult::documentId)
+                        .toList();
+            }
+            // Publish only once the entire response and every evidence ID have been
+            // validated.
+            // Consumer/persistence errors are handled by the worker, never retried as model
+            // errors.
+            onDelta.accept(validatedText.toString());
+            log.info(
+                    "Search answer outcome=generated workspaceId={} answerId={}",
+                    scope.workspaceId(),
+                    scope.answerId()
+            );
+            return ids;
+        }
+        throw new IllegalStateException("Unreachable answer attempt");
     }
 
+    private void publishGuidance(
+            List<SearchDocumentResult> documents,
+            Consumer<String> onDelta
+    ) {
+        if (documents.isEmpty()) {
+            onDelta.accept(SearchAnswerGuidance.UNAVAILABLE);
+            return;
+        }
+        // This is a document-list response: each persisted source is explicitly used by
+        // name.
+        String titles = documents.stream()
+                .map(document -> "- " + document.title())
+                .collect(java.util.stream.Collectors.joining("\n"));
+        onDelta.accept(SearchAnswerGuidance.RELATED_DOCUMENTS + "\n\n" + titles);
+    }
+
+    private boolean retryable(RuntimeException exception) {
+        if (!(exception instanceof SearchToolException tool)) {
+            return false;
+        }
+        return java.util.Set.of(
+                "SEARCH_UPSTREAM_UNAVAILABLE",
+                "SEARCH_TRANSPORT_FAILED",
+                "INCOMPLETE_MODEL_STREAM",
+                "INVALID_MODEL_ANSWER",
+                "INVALID_MODEL_RESPONSE",
+                "MODEL_GENERATION_FAILED"
+        )
+                .contains(tool.getCode());
+    }
 }

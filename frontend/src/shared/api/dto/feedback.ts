@@ -15,6 +15,7 @@ export interface PostFeedbackRequestInput {
   content: string;
   pageUrl: string;
   replayUrl?: string;
+  nickname?: string;
 }
 
 /** 피드백 요청 본문. 성공하면 Worker가 본문 없이 201을 돌려줘요 */
@@ -27,11 +28,20 @@ export class PostFeedbackRequestDto {
   pageUrl: string;
   /** 그 세션의 PostHog 리플레이 주소(`https://us.posthog.com/…`). 접수함의 「원문 링크」에 들어가고, PostHog가 꺼져 있으면 없어요 */
   replayUrl?: string;
+  /** 보낸 회원의 닉네임. 접수함의 「팀이나 제보자 별칭」에 들어가고, 불러오지 못했으면 없어요 */
+  nickname?: string;
 
-  constructor({ type, content, pageUrl, replayUrl }: PostFeedbackRequestInput) {
+  constructor({
+    type,
+    content,
+    pageUrl,
+    replayUrl,
+    nickname,
+  }: PostFeedbackRequestInput) {
     this.type = type;
     this.content = content;
     this.pageUrl = pageUrl;
     this.replayUrl = replayUrl;
+    this.nickname = nickname;
   }
 }

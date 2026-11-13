@@ -1221,13 +1221,29 @@ describe("WorkspaceLayout의 원문 패널", () => {
   });
 
   it.each([
-    { label: "문서 정리 중", processingStatus: "PROCESSING" },
-    { label: "전사 실패", processingStatus: "TRANSCRIPTION_FAILED" },
-    { label: "정리할 내용 없음", processingStatus: "NO_CONTENT" },
+    {
+      label: "전사 전",
+      processingStatus: "PROCESSING",
+      transcriptStatus: "NOT_READY",
+    },
+    {
+      label: "전사 실패",
+      processingStatus: "TRANSCRIPTION_FAILED",
+      transcriptStatus: "FAILED",
+    },
+    {
+      label: "전사 사용 불가",
+      processingStatus: "NO_CONTENT",
+      transcriptStatus: "UNAVAILABLE",
+    },
   ] as const)(
     "녹음 문서가 $label이면 원문 버튼과 패널을 두지 않는다 (STT-R39)",
-    async ({ processingStatus }) => {
-      respondWithRecordingDocument({ processingStatus, meetingSummary: null });
+    async ({ processingStatus, transcriptStatus }) => {
+      respondWithRecordingDocument({
+        processingStatus,
+        transcriptStatus,
+        meetingSummary: null,
+      });
       renderLayoutAsFirstVisit(RECORDING_DOCUMENT_PATH);
 
       expect(
@@ -1242,10 +1258,12 @@ describe("WorkspaceLayout의 원문 패널", () => {
     },
   );
 
-  it("녹음 문서가 주제 분류 실패면(전사 없음 · 요약 없음) 원문 버튼과 패널을 두지 않는다 (STT-R39)", async () => {
+  it("녹음 문서가 전사가 사용 불가하면 원문 버튼과 패널을 두지 않는다 (STT-R39)", async () => {
     let transcriptRequestCount = 0;
     respondWithRecordingDocument({
       processingStatus: "DOCUMENT_FAILED",
+      transcriptStatus: "UNAVAILABLE",
+      topicClassificationStatus: "FAILED",
       retryable: true,
       retryableJobIds: [88],
       meetingSummary: null,
@@ -1270,13 +1288,26 @@ describe("WorkspaceLayout의 원문 패널", () => {
     expect(
       await screen.findByText(RECORDING_DOCUMENT_TEXT),
     ).toBeInTheDocument();
-    await waitFor(() => expect(transcriptRequestCount).toBe(1));
+    expect(transcriptRequestCount).toBe(0);
     await waitForMember();
 
     expect(
       screen.queryByRole("button", { name: /^원문/ }),
     ).not.toBeInTheDocument();
     expect(queryTranscriptPanel()).not.toBeInTheDocument();
+  });
+
+  it("이전 서버가 새 전사 상태를 생략해도 완료 녹음의 원문을 보여 준다", async () => {
+    respondWithRecordingDocument({
+      processingStatus: "COMPLETED",
+      transcriptStatus: undefined,
+      topicClassificationStatus: undefined,
+    });
+    renderLayoutAsFirstVisit(RECORDING_DOCUMENT_PATH);
+    expect(await findToggle(CLOSE_LABEL)).toBeInTheDocument();
+    expect(
+      await screen.findByRole("region", { name: TRANSCRIPT_PANEL_TITLE }),
+    ).toBeInTheDocument();
   });
 
   describe("원문 패널 스크롤 기록", () => {
@@ -1366,7 +1397,7 @@ describe("WorkspaceLayout의 탐색 질문 흐름", () => {
     "*/api/v1/workspaces/:workspaceId/search/conversations/:conversationId/questions";
   const SEARCH_ANSWER_RETRY_PATH =
     "*/api/v1/workspaces/:workspaceId/search/conversations/:conversationId/questions/:questionId/retry";
-  const FAILED_TEXT = "답변을 만들지 못했어요. 잠시 후 다시 시도해 주세요.";
+  const FAILED_TEXT = "지금은 답변을 정리하기 어려워요. 질문을 조금 더 구체적으로 이어서 해주시면 도와드릴게요.";
   const QUESTION = "DB는 뭘로 정했어?";
   const FOLLOW_UP_QUESTION = "초기 스키마는 누가 정리했어?";
 
@@ -1567,7 +1598,7 @@ describe("WorkspaceLayout의 탐색 질문 흐름", () => {
     ).toBeInTheDocument();
   });
 
-  it("후속 질문의 답변이 실패하면 그 자리에 실패 안내를 두고, 다시 시도가 접수 전에 실패해도 실패 안내를 그대로 둔다 (SEARCH-R5)", async () => {
+  it("후속 질문의 기술 오류는 미검증 본문 없이 안내하고 다음 질문 입력을 허용한다 (SEARCH-R5)", async () => {
     const { questionMessageId, answerMessageId } =
       searchQuestionAnswerStreamResponse;
     const partialAnswer = "끊기기 전까지 받은 답";
@@ -1600,7 +1631,7 @@ describe("WorkspaceLayout의 탐색 질문 흐름", () => {
       ),
     );
     const stream = respondWithControlledSse(SEARCH_QUESTIONS_PATH);
-    const { queryClient } = renderLayout(
+    renderLayout(
       CONVERSATION_PATH,
       <SearchConversation />,
     );
@@ -1633,40 +1664,13 @@ describe("WorkspaceLayout의 탐색 질문 흐름", () => {
       within(getConversation()).queryByText(partialAnswer),
     ).not.toBeInTheDocument();
 
-    mockServer.use(
-      http.post(SEARCH_ANSWER_RETRY_PATH, () =>
-        HttpResponse.json(
-          {
-            code: "ANSWER_ALREADY_IN_PROGRESS",
-            message: "이미 답변을 만드는 중이에요",
-          },
-          { status: 409 },
-        ),
-      ),
-    );
-    await act(async () => {
-      fireEvent.click(
-        within(getLastTurn()).getByRole("button", { name: "다시 시도" }),
-      );
-    });
-    await waitFor(() => expect(queryClient.isFetching()).toBe(0));
-
-    const savedQuestionCount = savedItems.filter(
-      ({ role }) => role === "USER",
-    ).length;
-    expect(within(getConversation()).getAllByRole("article")).toHaveLength(
-      savedQuestionCount + 1,
-    );
-    expect(
-      within(getLastTurn()).getByText(FOLLOW_UP_QUESTION),
-    ).toBeInTheDocument();
-    expect(within(getLastTurn()).getByText(FAILED_TEXT)).toBeInTheDocument();
-    expect(
-      within(getLastTurn()).getByRole("button", { name: "다시 시도" }),
-    ).toBeInTheDocument();
+    expect(within(getLastTurn()).queryByRole("button", { name: "다시 시도" })).not.toBeInTheDocument();
+    const field = screen.getByRole("textbox", { name: "무엇이든 요청하세요" });
+    fireEvent.change(field, { target: { value: "이어갈 질문" } });
+    expect(screen.getByRole("button", { name: "보내기" })).toBeEnabled();
   });
 
-  it("첫 질문이 실패해 목록에 없던 대화는 다시 시도가 접수되면 답변이 끝나기 전에 대화 목록에 나타난다 (SEARCH-R5, COMMON-01)", async () => {
+  it("과거 첫 질문 실패로 숨긴 대화를 안내 표시만으로 목록에 자동 복원하지 않는다 (SEARCH-R5, COMMON-01)", async () => {
     const [question, answer] = searchMessagesResponse.items;
     respondMessages([
       question,
@@ -1690,29 +1694,12 @@ describe("WorkspaceLayout의 탐색 질문 흐름", () => {
         }),
       ),
     );
-    const stream = respondWithControlledSse(SEARCH_ANSWER_RETRY_PATH);
     renderLayout(CONVERSATION_PATH, <SearchConversation />);
+    await findInConversation(FAILED_TEXT);
     fireEvent.click(await screen.findByRole("button", { name: "대화 목록" }));
-    const getChatList = () =>
-      screen.getByRole("complementary", { name: "대화 목록" });
-    expect(
-      await within(getChatList()).findByText("아직 나눈 대화가 없어요"),
-    ).toBeInTheDocument();
-
-    await act(async () => {
-      fireEvent.click(await screen.findByRole("button", { name: "다시 시도" }));
-    });
-    await stream.waitForOpen();
-    list.isAccepted = true;
-    stream.send("accepted", {
-      conversationId: Number(CONVERSATION_ID),
-      questionMessageId: question.id,
-      answerMessageId: answer.id,
-    });
-
-    expect(
-      await waitFor(() => within(getChatList()).getByText(question.content)),
-    ).toBeInTheDocument();
+    const listPanel = screen.getByRole("complementary", { name: "대화 목록" });
+    expect(await within(listPanel).findByText("아직 나눈 대화가 없어요")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "다시 시도" })).not.toBeInTheDocument();
   });
 
   describe("찾은 기록 자동 열림 (SEARCH-R10)", () => {
@@ -2052,7 +2039,7 @@ describe("WorkspaceLayout의 탐색 질문 흐름", () => {
       );
     });
 
-    it("다시 연결한 답변이 실패로 끝나면 그 자리에 실패 안내와 다시 시도를 보여준다 (SEARCH-R5)", async () => {
+    it("다시 연결한 답변의 기술 오류는 안내 문단으로 보여준다 (SEARCH-R5)", async () => {
       respondMessages(streamingItems);
       respondAnswerEvents([
         snapshotFrame,
@@ -2073,11 +2060,11 @@ describe("WorkspaceLayout의 탐색 질문 흐름", () => {
         ).toBeInTheDocument(),
       );
       expect(
-        within(getLastTurn()).getByRole("button", { name: "다시 시도" }),
-      ).toBeInTheDocument();
+        within(getLastTurn()).queryByRole("button", { name: "다시 시도" }),
+      ).not.toBeInTheDocument();
     });
 
-    it("다시 연결해도 끝을 받지 못하면 세 번까지만 연결하고 저장된 답변으로 둔다", async () => {
+    it("다시 연결해도 끝을 받지 못하면 세 번까지만 연결하고 미검증 본문 대신 안내를 보여준다", async () => {
       respondMessages(streamingItems);
       const reconnects = respondAnswerEvents([snapshotFrame]);
       const { queryClient } = renderLayout(
@@ -2087,16 +2074,16 @@ describe("WorkspaceLayout의 탐색 질문 흐름", () => {
 
       await waitFor(() => expect(reconnects.count).toBe(3), { timeout: 4000 });
       await waitFor(() =>
-        expect(useSearchAnswerStore.getState().status).toBe("IDLE"),
+        expect(useSearchAnswerStore.getState().status).toBe("FAILED"),
       );
       await waitFor(() => expect(queryClient.isFetching()).toBe(0));
 
       expect(reconnects.count).toBe(3);
       expect(
-        within(getLastTurn()).getByText(savedText.trim()),
+        within(getLastTurn()).getByText(FAILED_TEXT),
       ).toBeInTheDocument();
       expect(
-        within(getConversation()).queryByText(FAILED_TEXT),
+        within(getConversation()).queryByText(savedText.trim()),
       ).not.toBeInTheDocument();
     });
   });
