@@ -1,9 +1,9 @@
 import {
+  type LandingScenes,
   MOBILE_BREAKPOINT,
   PARTICLE_COUNT,
   SAMPLE_QUESTIONS,
   SCENE,
-  SCENE_COUNT,
   SCENE_TWEEN_MS,
 } from "../constants/landing";
 import type { Graph, GraphLabel, Particle, ParticleTarget, StageSize } from "../types/particle";
@@ -62,6 +62,8 @@ interface CreateLandingEngineParams {
   listeners: LandingEngineListeners;
   /** 입자 색. 진한 글자·보통 글자·연한 글자·윤곽선·강조·가장 진한 강조 순서예요. */
   palette: string[];
+  /** 이 무대의 장면 묶음. 장면 수와 시작 장면 번호를 여기서 읽어요. */
+  scenes: LandingScenes;
 }
 
 type AssignMode = "morph" | "fall" | "instant";
@@ -73,14 +75,15 @@ type AssignMode = "morph" | "fall" | "instant";
  * 매 프레임 그려야 하는 일이라 React 상태로 다루지 않고, 장면 번호처럼 화면 글자가 바뀌어야 하는 값만
  * `listeners`로 알립니다. 반환한 `destroy`를 부르면 붙인 이벤트와 반복을 모두 걷어요.
  */
-export const createLandingEngine = ({ elements, listeners, palette }: CreateLandingEngineParams) => {
+export const createLandingEngine = ({ elements, listeners, palette, scenes }: CreateLandingEngineParams) => {
   const { scroller, stage, canvas, scrollCue, documents, confirmation, questionInput } = elements;
   const context = canvas.getContext("2d");
   if (!context) return null;
 
   const prefersReducedMotion = !!window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
   const pixelRatio = Math.min(window.devicePixelRatio || 1, 1.75);
-  const sceneStarts = Array.from({ length: SCENE_COUNT }, (_, i) => i / SCENE_COUNT);
+  const sceneCount = scenes.names.length;
+  const sceneStarts = Array.from({ length: sceneCount }, (_, i) => i / sceneCount);
 
   const size: StageSize = { width: 0, height: 0, isMobile: false, count: PARTICLE_COUNT.desktop };
   const particles: Particle[] = [];
@@ -130,7 +133,7 @@ export const createLandingEngine = ({ elements, listeners, palette }: CreateLand
   };
   const sceneFor = (value: number) => {
     let index = 0;
-    while (index < SCENE_COUNT - 1 && value >= sceneStarts[index + 1]) index++;
+    while (index < sceneCount - 1 && value >= sceneStarts[index + 1]) index++;
     return index;
   };
 
@@ -146,7 +149,7 @@ export const createLandingEngine = ({ elements, listeners, palette }: CreateLand
 
   const scrollTopFor = (index: number) => {
     const total = scroller.offsetHeight - size.height;
-    return index === 0 ? 0 : (sceneStarts[index] + 0.5 / SCENE_COUNT) * total;
+    return index === 0 ? 0 : (sceneStarts[index] + 0.5 / sceneCount) * total;
   };
   const runTween = () => {
     if (!tween) return;
@@ -159,7 +162,7 @@ export const createLandingEngine = ({ elements, listeners, palette }: CreateLand
   const currentScene = () => (goal >= 0 && isBusy() ? goal : scene);
 
   const stepTo = (index: number) => {
-    const next = clamp(index, 0, SCENE_COUNT - 1);
+    const next = clamp(index, 0, sceneCount - 1);
     if (next === currentScene()) return;
     goal = next;
     steppedAt = performance.now();
@@ -237,7 +240,7 @@ export const createLandingEngine = ({ elements, listeners, palette }: CreateLand
     const isPrevious = event.key === "ArrowUp" || event.key === "PageUp" || (isSpace && event.shiftKey);
     if (event.key === "Home" || event.key === "End") {
       event.preventDefault();
-      stepTo(event.key === "Home" ? 0 : SCENE_COUNT - 1);
+      stepTo(event.key === "Home" ? 0 : sceneCount - 1);
       return;
     }
     if (!isNext && !isPrevious) return;
@@ -675,7 +678,7 @@ export const createLandingEngine = ({ elements, listeners, palette }: CreateLand
 
     // 다른 장면의 모양은 첫 화면이 자리 잡은 뒤 한가할 때 미리 계산해 둬요
     const warmups = [
-      () => targetsFor(SCENE.START),
+      () => targetsFor(scenes.START),
       () => targetsFor(SCENE.PROBLEM),
       () => targetsFor(SCENE.RECORDING),
       () => graphTargets(questionIndex),
