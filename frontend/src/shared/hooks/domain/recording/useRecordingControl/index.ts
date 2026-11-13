@@ -45,6 +45,7 @@ import { isClosedRecordingError } from "@utils/isClosedRecordingError";
 import { isRetryableAudioUploadError } from "@utils/isRetryableAudioUploadError";
 import { isUnreachableRecordingError } from "@utils/isUnreachableRecordingError";
 import { logRequestError } from "@utils/logRequestError";
+import { trackRecordingAutoEnded } from "@utils/trackRecordingAutoEnded";
 import {
   clearRecordingStartProof,
   completeRecordingReconnect,
@@ -97,16 +98,21 @@ interface CountRecordingEndParams {
   isUploaded: boolean;
 }
 
-/** 녹음이 끝난 이유를 Sentry 지표로 세요. 녹음이 끝나는 경로마다 한 번만 불러요(ADR 915) */
+/**
+ * 녹음이 끝난 이유를 Sentry 지표로 세요. 녹음이 끝나는 경로마다 한 번만 불러요(ADR 915).
+ * 서버가 끝낸 녹음은 사용 기록(`recording_auto_ended`)으로도 보내요. 한 번만 부르니 같은 녹음을 두 번 보내지 않아요
+ */
 const countRecordingEnd = ({
   session,
   reason,
   isUploaded,
-}: CountRecordingEndParams) =>
+}: CountRecordingEndParams) => {
   countMetric({
     name: "recording.end",
     attributes: { reason, uploaded: isUploaded, audio_mode: session.audioMode },
   });
+  trackRecordingAutoEnded({ ...session, reason, isUploaded });
+};
 
 /** 생존 신호가 알려 준 서버의 종료 사유를 지표의 끝난 이유로 바꿔요. 다른 탭에서 끝냈거나 사유가 없으면 `endedByServer`예요 */
 const toServerEndCause = (endReason: string | null) => {

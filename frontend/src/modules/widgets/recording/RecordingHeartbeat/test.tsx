@@ -30,6 +30,7 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
+import { captureAnalyticsEvent } from "@utils/captureAnalyticsEvent";
 import {
   clearRecordingStartProof,
   getRecordingControlProof,
@@ -41,6 +42,10 @@ import { createMemoryRouter, Outlet, RouterProvider } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import RecordingHeartbeat from ".";
+
+vi.mock("@utils/captureAnalyticsEvent", () => ({
+  captureAnalyticsEvent: vi.fn(),
+}));
 
 const HEARTBEAT_INTERVAL_MS = 10 * 1000;
 
@@ -205,6 +210,15 @@ const collectRequests = () => {
 
 const UPLOAD_REQUESTS = ["audio-upload-url", "audio", "audio-upload-complete"];
 
+/** 보낸 사용 기록 중 그 이름의 것만 모아요. 이름을 이벤트 목록으로 좁혀 오타가 「보내지 않는다」를 늘 통과시키지 않게 해요 */
+const getEvents = (
+  name: Parameters<typeof captureAnalyticsEvent>[0]["event"],
+) =>
+  vi
+    .mocked(captureAnalyticsEvent)
+    .mock.calls.map(([params]) => params)
+    .filter(({ event }) => event === name);
+
 describe("RecordingHeartbeat", () => {
   beforeEach(() => {
     // 요청은 실제 시간으로 흘러야 해서 신호 주기만 가짜로 돌려요.
@@ -222,6 +236,7 @@ describe("RecordingHeartbeat", () => {
     mockServer.events.removeAllListeners();
     // 연결 상태는 TanStack Query 전역 값이라, 오프라인으로 끝난 테스트가 다음 테스트의 요청을 멈추지 않게 되돌려요
     onlineManager.setOnline(true);
+    vi.mocked(captureAnalyticsEvent).mockClear();
     vi.useRealTimers();
   });
 
@@ -1057,6 +1072,138 @@ describe("RecordingHeartbeat", () => {
       act(() => useRecordingStore.getState().discardRecording());
 
       await expectNoToast();
+    });
+  });
+
+  // 사용자가 끝내지 않은 녹음이 끝난 것이라 녹음 손실을 볼 때 써요. 사용자가 끝낸 녹음은 녹음 바의 recording_ended가 맡아요
+  describe("서버가 끝낸 녹음의 사용 기록 (recording_auto_ended)", () => {
+    const respondEnded = (endReason: string) => () =>
+      respondHeartbeat(() =>
+        HttpResponse.json({
+          ...recordingHeartbeatResponse,
+          status: "ENDED",
+          endReason,
+        }),
+      );
+
+    const settle = () =>
+      act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+
+    it.each([
+      {
+        name: "연결 끊김으로 끝낸(ENDED, CONNECTION_EXPIRED)",
+        respond: respondEnded("CONNECTION_EXPIRED"),
+        reason: "connection_expired",
+        isUploaded: true,
+      },
+      {
+        name: "2시간에 닿아 끝낸(ENDED, MAX_DURATION)",
+        respond: respondEnded("MAX_DURATION"),
+        reason: "max_duration",
+        isUploaded: true,
+      },
+      {
+        name: "다른 곳에서 끝낸(ENDED, USER_ENDED)",
+        respond: respondEnded("USER_ENDED"),
+        reason: "ended_by_server",
+        isUploaded: true,
+      },
+      {
+        name: "버린(DISCARDED)",
+        respond: () =>
+          respondHeartbeat(() =>
+            HttpResponse.json({
+              ...recordingHeartbeatResponse,
+              status: "DISCARDED",
+            }),
+          ),
+        reason: "discarded",
+        isUploaded: false,
+      },
+      {
+        name: "더는 볼 수 없는(404 RECORDING_NOT_FOUND)",
+        respond: () => respondHeartbeatWithError(404, "RECORDING_NOT_FOUND"),
+        reason: "unreachable",
+        isUploaded: false,
+      },
+      {
+        name: "이 탭의 제어를 거절한(403 RECORDING_CONTROL_DENIED)",
+        respond: () =>
+          respondHeartbeatWithError(403, "RECORDING_CONTROL_DENIED"),
+        reason: "control_lost",
+        isUploaded: false,
+      },
+    ])(
+      "생존 신호가 서버가 $name 녹음이라 알리면 $reason으로 한 번만 보낸다",
+      async ({ respond, reason, isUploaded }) => {
+        respond();
+        await startRecording();
+        const { router } = renderRecordingHeartbeat();
+
+        passHeartbeatInterval();
+        await waitFor(() =>
+          expect(router.state.location.pathname).toBe(HOME_PATH),
+        );
+        // 녹음을 닫아 다음 주기에는 신호를 보내지 않으니 다시 보내지 않아요
+        passHeartbeatInterval();
+        await settle();
+
+        expect(getEvents("recording_auto_ended")).toEqual([
+          {
+            event: "recording_auto_ended",
+            properties: {
+              reason,
+              is_uploaded: isUploaded,
+              audio_mode: "FINAL_WEBM_V1",
+              recording_id: expected.recordingId,
+              workspace_id: Number(WORKSPACE_ID),
+            },
+          },
+        ]);
+      },
+    );
+
+    it("서버가 끝낸 녹음의 오디오를 끝내 올리지 못하면 넘기지 못했다고 보낸다", async () => {
+      respondEnded("CONNECTION_EXPIRED")();
+      mockServer.use(
+        http.post(
+          "*/api/v1/workspaces/:workspaceId/recordings/:recordingId/audio-upload-url",
+          () =>
+            HttpResponse.json({ code: "INVALID_REQUEST" }, { status: 400 }),
+        ),
+      );
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      await startRecording();
+      const { router } = renderRecordingHeartbeat();
+
+      passHeartbeatInterval();
+
+      await waitFor(() =>
+        expect(router.state.location.pathname).toBe(HOME_PATH),
+      );
+      expect(getEvents("recording_auto_ended")).toEqual([
+        {
+          event: "recording_auto_ended",
+          properties: expect.objectContaining({
+            reason: "connection_expired",
+            is_uploaded: false,
+          }),
+        },
+      ]);
+    });
+
+    it("생존 신호가 녹음 중이라 답하면 보내지 않는다", async () => {
+      await startRecording();
+      renderRecordingHeartbeat();
+
+      passHeartbeatInterval();
+      await waitFor(() =>
+        expect(useRecordingStore.getState().accumulatedMs).toBe(
+          expected.elapsedMillis,
+        ),
+      );
+
+      expect(getEvents("recording_auto_ended")).toEqual([]);
     });
   });
 
