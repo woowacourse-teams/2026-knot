@@ -20,6 +20,7 @@ import { RECORDING_AUDIO_MODE } from "@constants/recording";
 import { TOAST_MESSAGES } from "@constants/toastMessages";
 import useNavigateToRecordingDocuments from "@hooks/domain/recording/useNavigateToRecordingDocuments";
 import useRecordingEndedAnalytics from "@hooks/domain/recording/useRecordingEndedAnalytics";
+import useRecordingReconnectAnalytics from "@hooks/domain/recording/useRecordingReconnectAnalytics";
 import useNavigateToWorkspaceHome from "@hooks/domain/workspace/useNavigateToWorkspaceHome";
 import { useToast } from "@provider/context/toastContext";
 import { countMetric } from "@provider/sentry";
@@ -213,6 +214,7 @@ interface LeaveReloadedRecordingParams {
  *
  * 녹음 탭 증명은 sessionStorage에 두고, 실패는 콘솔에 남겨요. 위에 적은 경우만 토스트나 모달로 안내해요.
  * 시작을 시도한 결과와 녹음이 끝난 이유는 오류가 아니어도 Sentry 지표(`recording.start`, `recording.end`)로 세요.
+ * 사용자가 끝낸 녹음 · 서버가 끝낸 녹음 · 새로고침 뒤 이어 받은 결과는 사용 기록(PostHog)으로도 보내요.
  * 안내하는 이동은 모두 독이 있는 화면끼리라 `show`로 띄운 토스트가 이동 뒤에도 남아요.
  * 독의 마이크 끊김 알림처럼 효과 안에서 부르는 곳이 있어 동작의 참조를 고정해요.
  */
@@ -749,7 +751,8 @@ const useRecordingControl = () => {
 
   /**
    * 새로고침 전 녹음을 이어 받아 마이크 없이 일시정지로 되살리고, 보관한 조각을 먼저 올려요.
-   * 결과는 `reconnected`(이어 받음)·`closed`(이어 갈 수 없어 홈으로 감)·`failed`(증명을 그대로 둬 다시 누를 수 있음)예요
+   * 결과는 `reconnected`(이어 받음)·`closed`(녹음이 끝났거나 볼 수 없어 홈으로 감)·`takenOver`(다른 탭이 먼저 이어 받아 홈으로 감)·
+   * `failed`(증명을 그대로 둬 다시 누를 수 있음)예요
    */
   const reconnectRecording = useCallback(async () => {
     const resumeProof = getRecordingResumeProof();
@@ -809,7 +812,7 @@ const useRecordingControl = () => {
         leaveReloadedRecording({ ...sessionIds, isTakenOver: true });
         show(TOAST_MESSAGES.RECORDING_TAKEN_OVER);
 
-        return "closed";
+        return "takenOver";
       }
       if (isClosedRecordingError(error) || isUnreachableRecordingError(error)) {
         leaveReloadedRecording(sessionIds);
@@ -829,18 +832,24 @@ const useRecordingControl = () => {
     show,
   ]);
 
+  // 「이어서 녹음」과 끝내기 확인 창이 모두 이 함수로 이어 받아요. 이어 받은 결과는 사용 기록으로도 보내요
+  const { reconnectAndTrackRecording } =
+    useRecordingReconnectAnalytics(reconnectRecording);
+
   /**
    * 새로고침 뒤 「이어서 녹음」을 눌렀을 때 이어 받고 마이크를 받아 이어 가요.
    * 마이크를 받지 못했을 때만 `false`예요. 서버는 녹음 중일 수 있어 일시정지를 알려 화면과 맞춰요
    */
   const resumeReloadedRecording = useCallback(async () => {
-    if ((await reconnectRecording()) !== "reconnected") return true;
+    if ((await reconnectAndTrackRecording("resume_button")) !== "reconnected") {
+      return true;
+    }
 
     const isResumed = await resumeRecording();
     if (!isResumed) void syncPause();
 
     return isResumed;
-  }, [reconnectRecording, resumeRecording, syncPause]);
+  }, [reconnectAndTrackRecording, resumeRecording, syncPause]);
 
   /**
    * PCM 녹음을 봉인해 끝내요. 일시 실패는 같은 봉인으로 간격을 두고 다시 보내고, 봉인이 거절되면 봉인 없이 한 번 더 보내요.
@@ -995,7 +1004,7 @@ const useRecordingControl = () => {
         // 새로고침 뒤 이어 받기 전이면 보관한 소리를 올릴 수 있게 먼저 이어 받아요
         if (
           useRecordingStore.getState().status === "idle" &&
-          (await reconnectRecording()) !== "reconnected"
+          (await reconnectAndTrackRecording("end_dialog")) !== "reconnected"
         ) {
           return;
         }
@@ -1024,7 +1033,7 @@ const useRecordingControl = () => {
     navigateToRecordingDocuments,
     navigateToWorkspaceHome,
     openEndRecordingDialog,
-    reconnectRecording,
+    reconnectAndTrackRecording,
   ]);
 
   return {

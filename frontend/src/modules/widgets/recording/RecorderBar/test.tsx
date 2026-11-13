@@ -828,5 +828,141 @@ describe("RecorderBar", () => {
         requests.indexOf("end"),
       );
     });
+
+    describe("이어 받은 결과를 사용 기록으로 보낸다", () => {
+      const RECONNECT_PATH =
+        "*/api/v1/workspaces/:workspaceId/recordings/:recordingId/reconnect";
+
+      const getReconnectResults = () =>
+        vi
+          .mocked(captureAnalyticsEvent)
+          .mock.calls.map(([params]) => params)
+          .filter(({ event }) => event === "recording_reconnect_result");
+
+      const reconnectResult = (
+        result: "reconnected" | "closed" | "taken_over" | "failed",
+        trigger: "resume_button" | "end_dialog",
+      ) => ({
+        event: "recording_reconnect_result",
+        properties: {
+          result,
+          trigger,
+          recording_id: RECORDING_ID,
+          workspace_id: Number(WORKSPACE_ID),
+        },
+      });
+
+      const renderReloadedRecorderBar = async () => {
+        leaveResumeProof();
+        respondCurrent("RECORDING");
+        const requests = collectRequests();
+        renderRecorderBar();
+        await screen.findByText(/새로고침으로 녹음이 멈췄어요/);
+
+        return requests;
+      };
+
+      it("「이어서 녹음」으로 이어 받으면 resume_button으로 reconnected를 한 번 보낸다", async () => {
+        await renderReloadedRecorderBar();
+
+        await clickResume();
+
+        await waitFor(() =>
+          expect(useRecordingStore.getState().status).toBe("recording"),
+        );
+        expect(getReconnectResults()).toEqual([
+          reconnectResult("reconnected", "resume_button"),
+        ]);
+      });
+
+      it.each([
+        {
+          name: "녹음이 이미 끝났으면(ENDED)",
+          response: () =>
+            HttpResponse.json({
+              ...recordingHeartbeatResponse,
+              status: "ENDED",
+              endReason: "CONNECTION_EXPIRED",
+            }),
+          result: "closed",
+        },
+        {
+          name: "더는 볼 수 없는 녹음이면(404)",
+          response: () =>
+            HttpResponse.json(
+              { code: "RECORDING_NOT_FOUND" },
+              { status: 404 },
+            ),
+          result: "closed",
+        },
+        {
+          name: "다른 탭이 먼저 이어 받았으면(403 RECORDING_CONTROL_DENIED)",
+          response: () =>
+            HttpResponse.json(
+              { code: "RECORDING_CONTROL_DENIED" },
+              { status: 403 },
+            ),
+          result: "taken_over",
+        },
+        {
+          name: "요청이 실패하면(500)",
+          response: () =>
+            HttpResponse.json(
+              { code: "INTERNAL_SERVER_ERROR" },
+              { status: 500 },
+            ),
+          result: "failed",
+        },
+      ] as const)(
+        "「이어서 녹음」을 눌렀는데 $name $result를 보낸다",
+        async ({ response, result }) => {
+          vi.spyOn(console, "error").mockImplementation(() => {});
+          mockServer.use(http.post(RECONNECT_PATH, response));
+          await renderReloadedRecorderBar();
+
+          await clickResume();
+
+          await waitFor(() =>
+            expect(getReconnectResults()).toEqual([
+              reconnectResult(result, "resume_button"),
+            ]),
+          );
+        },
+      );
+
+      it("이어 받기 전에 끝내면 끝내기 확인 창에서 이어 받았다고 end_dialog로 보낸다", async () => {
+        const requests = await renderReloadedRecorderBar();
+
+        await clickEndRecording();
+        await chooseInEndRecordingDialog("녹음 끝내기");
+
+        await waitFor(() => expect(requests).toContain("end"));
+        expect(getReconnectResults()).toEqual([
+          reconnectResult("reconnected", "end_dialog"),
+        ]);
+      });
+
+      it("끝내기 확인 창에서 이어 받다 다른 탭이 먼저 이어 받았으면 taken_over를 end_dialog로 보내고 끝내지 않는다", async () => {
+        mockServer.use(
+          http.post(RECONNECT_PATH, () =>
+            HttpResponse.json(
+              { code: "RECORDING_CONTROL_DENIED" },
+              { status: 403 },
+            ),
+          ),
+        );
+        const requests = await renderReloadedRecorderBar();
+
+        await clickEndRecording();
+        await chooseInEndRecordingDialog("녹음 끝내기");
+
+        await waitFor(() =>
+          expect(getReconnectResults()).toEqual([
+            reconnectResult("taken_over", "end_dialog"),
+          ]),
+        );
+        expect(requests).not.toContain("end");
+      });
+    });
   });
 });
