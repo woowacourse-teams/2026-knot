@@ -37,7 +37,7 @@ import { formatDurationFromSeconds } from "@utils/formatDurationFromSeconds";
 import { formatRecordingTime } from "@utils/formatRecordingTime";
 import { delay, http, HttpResponse } from "msw";
 import { createMemoryRouter, Outlet, RouterProvider } from "react-router";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import TranscriptPanel from ".";
 import { formatTranscriptText } from "./utils/formatTranscriptText";
@@ -762,6 +762,107 @@ describe("TranscriptPanel · 녹음 문서 화면 (STT-R39)", () => {
   afterEach(() => {
     vi.useRealTimers();
     Reflect.deleteProperty(navigator, "clipboard");
+  });
+
+  describe("화자 이름 사용 기록", () => {
+    const SPEAKER_NAME_REQUEST =
+      "*/api/v1/workspaces/:workspaceId/recordings/:recordingId/speakers/:speakerNumber";
+    const recordingTarget = {
+      recording_id: expectedRecordingDocument.recordingId,
+      workspace_id: Number(WORKSPACE_ID),
+    };
+
+    // 앞 테스트에서도 사용 기록이 남으므로, 테스트마다 기록을 비우고 시작해요
+    beforeEach(() => {
+      vi.mocked(captureAnalyticsEvent).mockClear();
+    });
+
+    /** 화자 이름 결과만 골라 그 속성을 보낸 순서대로 모아요 */
+    const getRenamedProperties = () =>
+      vi
+        .mocked(captureAnalyticsEvent)
+        .mock.calls.map(([event]) => event)
+        .filter(({ event }) => event === "speaker_renamed")
+        .map(({ properties }) => properties);
+
+    /** 첫 화자의 이름 바꾸기 창을 열어요 */
+    const openRenameDialog = async () => {
+      renderRecordingTranscriptPanel();
+      fireEvent.click(
+        (
+          await screen.findAllByRole("button", { name: "참여자 1 이름 바꾸기" })
+        )[0],
+      );
+
+      return within(await screen.findByRole("dialog", { name: "이름 바꾸기" }));
+    };
+
+    it("멤버를 골라 저장하면 멤버로 정한 이름의 저장을 보낸다", async () => {
+      const dialog = await openRenameDialog();
+
+      fireEvent.click(await dialog.findByRole("button", { name: "흑곰" }));
+      fireEvent.click(dialog.getByRole("button", { name: "바꾸기" }));
+
+      await waitFor(() =>
+        expect(getRenamedProperties()).toEqual([
+          { result: "saved", name_source: "member", ...recordingTarget },
+        ]),
+      );
+    });
+
+    it("멤버를 고른 뒤 이름을 고쳐 적으면 직접 적은 이름의 저장을 보낸다", async () => {
+      const dialog = await openRenameDialog();
+
+      fireEvent.click(await dialog.findByRole("button", { name: "흑곰" }));
+      fireEvent.change(dialog.getByLabelText("새 이름"), {
+        target: { value: "흑곰 팀장" },
+      });
+      fireEvent.click(dialog.getByRole("button", { name: "바꾸기" }));
+
+      await waitFor(() =>
+        expect(getRenamedProperties()).toEqual([
+          { result: "saved", name_source: "typed", ...recordingTarget },
+        ]),
+      );
+    });
+
+    it("저장이 실패하면 실패를 보낸다", async () => {
+      mockServer.use(
+        http.patch(
+          SPEAKER_NAME_REQUEST,
+          () => new HttpResponse(null, { status: 500 }),
+        ),
+      );
+      const dialog = await openRenameDialog();
+
+      fireEvent.change(dialog.getByLabelText("새 이름"), {
+        target: { value: "직접 이름" },
+      });
+      fireEvent.click(dialog.getByRole("button", { name: "바꾸기" }));
+
+      await dialog.findByText(/이름 저장을 확인하지 못했어요/);
+      expect(getRenamedProperties()).toEqual([
+        { result: "failed", name_source: "typed", ...recordingTarget },
+      ]);
+    });
+
+    it("저장에서 로그인이 풀렸으면(401) 보내지 않는다", async () => {
+      mockServer.use(
+        http.patch(
+          SPEAKER_NAME_REQUEST,
+          () => new HttpResponse(null, { status: 401 }),
+        ),
+      );
+      const dialog = await openRenameDialog();
+
+      fireEvent.change(dialog.getByLabelText("새 이름"), {
+        target: { value: "직접 이름" },
+      });
+      fireEvent.click(dialog.getByRole("button", { name: "바꾸기" }));
+
+      expect(await screen.findByText("로그인 화면")).toBeInTheDocument();
+      expect(getRenamedProperties()).toEqual([]);
+    });
   });
 
   it("녹음의 전사를 발화 줄로 보여 주고, 녹음을 시작한 날과 녹음 길이를 둔다", async () => {

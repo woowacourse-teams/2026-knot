@@ -1,6 +1,4 @@
-/** 랜딩의 장면 이름. 오른쪽 장면 이동 버튼의 글자이고, 순서가 곧 장면 번호예요. */
-export const SCENE_NAMES = ["소개", "문제", "녹음", "정리", "확인", "탐색", "기술: 녹음", "기술: 탐색", "시작"];
-
+/** 소개부터 탐색까지 모든 랜딩이 같은 번호로 쓰는 장면. 그 뒤 장면은 `LandingScenes`가 정해요. */
 export const SCENE = {
   INTRO: 0,
   PROBLEM: 1,
@@ -8,23 +6,91 @@ export const SCENE = {
   DOCUMENTS: 3,
   CONFIRMATION: 4,
   SEARCH: 5,
+} as const;
+
+/** 사용 기록(`landing_scene_viewed`)에 남길 수 있는 장면 이름 */
+export type LandingSceneAnalyticsName =
+  | "intro"
+  | "problem"
+  | "recording"
+  | "documents"
+  | "confirmation"
+  | "search"
+  | "recording_technology"
+  | "search_technology"
+  | "start";
+
+/** 랜딩 한 벌의 장면 묶음. `names`의 순서가 곧 장면 번호이고 오른쪽 장면 이동 버튼의 글자예요. */
+export interface LandingScenes {
+  names: readonly string[];
+  /** 사용 기록(`landing_scene_viewed`)에 남기는 장면 이름. `names`와 순서가 같아요. */
+  analyticsNames: readonly LandingSceneAnalyticsName[];
+  /** 녹음 기술 소개 장면 번호. 기술 소개가 없는 랜딩에는 없어요. */
+  RECORDING_TECHNOLOGY?: number;
+  /** 탐색 기술 소개 장면 번호. 기술 소개가 없는 랜딩에는 없어요. */
+  SEARCH_TECHNOLOGY?: number;
+  START: number;
+}
+
+/** 공개 랜딩(`/`)의 7장면. 탐색 소개 다음이 바로 시작하기예요. */
+export const LANDING_SCENES: LandingScenes = {
+  names: ["소개", "문제", "녹음", "정리", "확인", "탐색", "시작"],
+  analyticsNames: [
+    "intro",
+    "problem",
+    "recording",
+    "documents",
+    "confirmation",
+    "search",
+    "start",
+  ],
+  START: 6,
+};
+
+/**
+ * 기술 소개 페이지(`/landing/technology`)의 9장면. 탐색 소개와 시작하기 사이에 녹음 기술, 탐색 기술 장면이 있어요.
+ * 공개 랜딩에서는 뺐지만 팀이 가장 자신 있는 기술로 어떤 문제를 어떻게 풀었는지 보여 줘야 할 때 이 페이지를 열어요.
+ */
+export const LANDING_TECHNOLOGY_SCENES: LandingScenes = {
+  names: [
+    "소개",
+    "문제",
+    "녹음",
+    "정리",
+    "확인",
+    "탐색",
+    "기술: 녹음",
+    "기술: 탐색",
+    "시작",
+  ],
+  analyticsNames: [
+    "intro",
+    "problem",
+    "recording",
+    "documents",
+    "confirmation",
+    "search",
+    "recording_technology",
+    "search_technology",
+    "start",
+  ],
   RECORDING_TECHNOLOGY: 6,
   SEARCH_TECHNOLOGY: 7,
   START: 8,
-} as const;
-
-export const SCENE_COUNT = SCENE_NAMES.length;
+};
 
 /** 탐색 장면에서 고를 수 있는 예시 질문과 답변. 답변의 `|`는 줄이 바뀌어도 끊기지 않는 덩어리의 경계예요. */
 export const SAMPLE_QUESTIONS = [
   {
     text: "탈퇴한 사용자 게시글은 어떻게 하기로 했지?",
-    answer: "게시글은 유지하고,|작성자를 ‘탈퇴한 사용자’로 표시해요.|9월 15일 기록에서 찾았어요.",
+    answer:
+      "게시글은 유지하고,|작성자를 ‘탈퇴한 사용자’로 표시해요.|9월 15일 기록에서 찾았어요.",
     found: "기록 2개에서 찾았어요",
   },
   {
     text: "결제 수단 화면은 어떻게 바꾸기로 했어?",
-    answer: "결제 수단 선택을|한 화면으로 모으기로 했어요.|단계가 길수록|이탈이 늘어난다는 이유였어요.",
+    answer:
+      "결제 수단 선택을|한 화면으로 모으기로 했어요.|단계가 길수록|이탈이 늘어난다는 이유였어요.",
     found: "기록 1개에서 찾았어요",
   },
   {
@@ -35,10 +101,20 @@ export const SAMPLE_QUESTIONS = [
 ];
 
 /** 탐색 장면의 연결망에서 질문의 답이 되는 문서 이름. `SAMPLE_QUESTIONS`와 순서가 같아요. */
-export const ANSWER_DOCUMENT_TITLES = ["회원 탈퇴 정책", "결제 화면 개편", "비밀번호 재설정 정책"];
+export const ANSWER_DOCUMENT_TITLES = [
+  "회원 탈퇴 정책",
+  "결제 화면 개편",
+  "비밀번호 재설정 정책",
+];
 
 /** 탐색 장면의 연결망에서 답과 상관없이 떠 있는 문서 이름 */
-export const OTHER_DOCUMENT_TITLES = ["온보딩 인터뷰", "배포 일정", "디자인 토큰 규칙", "API 에러 규칙", "스프린트 회고"];
+export const OTHER_DOCUMENT_TITLES = [
+  "온보딩 인터뷰",
+  "배포 일정",
+  "디자인 토큰 규칙",
+  "API 에러 규칙",
+  "스프린트 회고",
+];
 export const MOBILE_OTHER_DOCUMENT_TITLES = ["배포 일정", "스프린트 회고"];
 
 /** 문제 장면에서 흩어져 떠다니는 말 조각. 숫자는 영역 안의 가로·세로 위치 비율이에요. */
@@ -58,7 +134,8 @@ export const MOBILE_BREAKPOINT = 760;
 /** 입자 개수. 모바일은 그리는 비용을 줄이려고 덜 써요. */
 export const PARTICLE_COUNT = { desktop: 9000, mobile: 5200 } as const;
 
-export const CANVAS_FONT_FAMILY = '"Pretendard Variable", Pretendard, sans-serif';
+export const CANVAS_FONT_FAMILY =
+  '"Pretendard Variable", Pretendard, sans-serif';
 
 /**
  * knot 워드마크 경로. `assets/logos/logo.svg`와 같은 모양을 원점에서 시작하도록 옮긴 값이에요.
@@ -76,4 +153,9 @@ export const WORDMARK_SIZE = { width: 122, height: 52 } as const;
 export const SYMBOL_PATH =
   "M216 413 C246 413 270 437 270 467 L270 578 C270 609 247 634 217 634 C186 634 162 610 162 579 L162 469 C162 438 186 413 216 413 Z M355 313 C387 313 412 338 412 370 L412 662 C412 695 388 721 355 721 C323 721 298 696 298 664 L298 371 C298 339 323 313 355 313 Z M634 413 L820 413 C845 413 865 432 865 456 C865 481 846 501 821 501 L634 501 C609 501 590 482 590 457 C590 433 609 413 634 413 Z M488 430 C519 430 542 452 542 484 C542 507 545 526 561 538 C577 550 598 553 617 549 C630 547 638 541 656 541 L820 541 C845 541 865 560 865 585 C865 610 846 630 820 630 L660 630 C644 630 632 625 620 615 C607 605 596 589 580 587 C565 585 552 589 546 600 C538 611 537 626 525 637 C515 646 503 650 488 650 C457 650 432 625 432 594 L432 486 C432 454 457 430 488 430 Z";
 
-export const SYMBOL_BOUNDS = { x: 162, y: 313, width: 703, height: 408 } as const;
+export const SYMBOL_BOUNDS = {
+  x: 162,
+  y: 313,
+  width: 703,
+  height: 408,
+} as const;

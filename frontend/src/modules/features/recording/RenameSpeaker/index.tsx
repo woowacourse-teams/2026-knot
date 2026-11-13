@@ -3,6 +3,10 @@ import useChangeSpeakerNameMutation from "@api/mutations/useChangeSpeakerNameMut
 import Popover from "@composites/Popover";
 import styled from "@emotion/styled";
 import useRedirectToLoginOnUnauthorized from "@hooks/domain/auth/useRedirectToLoginOnUnauthorized";
+import { captureAnalyticsEvent } from "@utils/captureAnalyticsEvent";
+import { isUnauthorizedError } from "@utils/isUnauthorizedError";
+
+import type { SpeakerNameDraft } from "./types/speakerName";
 import SpeakerNameForm from "./ui/SpeakerNameForm";
 
 interface RenameSpeakerProps {
@@ -12,7 +16,18 @@ interface RenameSpeakerProps {
   displayName: string;
   isInitiallyOpen?: boolean;
 }
-/** 이름 선택은 계정 연결 없이 문자열만 복사해요. */
+
+interface TrackSpeakerRenamedParams {
+  result: "saved" | "failed";
+  nameSource: SpeakerNameDraft["nameSource"];
+}
+
+/**
+ * 이름 선택은 계정 연결 없이 문자열만 복사해요.
+ *
+ * 저장 결과가 정해지면 이름을 정한 방법과 함께 사용 기록(`speaker_renamed`)으로 보내요. 바꾼 이름은 넣지 않아요.
+ * 로그인이 풀린 401은 결과가 아니라 보내지 않아요.
+ */
 export default function RenameSpeaker({
   workspaceId,
   recordingId,
@@ -27,6 +42,22 @@ export default function RenameSpeaker({
     isEnabled: false,
   });
   useRedirectToLoginOnUnauthorized({ error: mutation.error });
+
+  const trackSpeakerRenamed = ({
+    result,
+    nameSource,
+  }: TrackSpeakerRenamedParams) => {
+    captureAnalyticsEvent({
+      event: "speaker_renamed",
+      properties: {
+        result,
+        name_source: nameSource,
+        recording_id: recordingId,
+        workspace_id: workspaceId,
+      },
+    });
+  };
+
   return (
     <Popover
       placement="bottom-start"
@@ -44,10 +75,20 @@ export default function RenameSpeaker({
           isVerifying={verification.isFetching}
           onVerify={() => void verification.refetch()}
           onClose={close}
-          onSave={(name) =>
+          onSave={({ name, nameSource }) =>
             mutation.mutate(
               { workspaceId, recordingId, speakerNumber, displayName: name },
-              { onSuccess: () => close() },
+              {
+                onSuccess: () => {
+                  trackSpeakerRenamed({ result: "saved", nameSource });
+                  close();
+                },
+                onError: (error) => {
+                  if (isUnauthorizedError(error)) return;
+
+                  trackSpeakerRenamed({ result: "failed", nameSource });
+                },
+              },
             )
           }
         />

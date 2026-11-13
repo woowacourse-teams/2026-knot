@@ -20,6 +20,7 @@ import { RECORDING_AUDIO_MODE } from "@constants/recording";
 import { TOAST_MESSAGES } from "@constants/toastMessages";
 import useNavigateToRecordingDocuments from "@hooks/domain/recording/useNavigateToRecordingDocuments";
 import useRecordingEndedAnalytics from "@hooks/domain/recording/useRecordingEndedAnalytics";
+import useRecordingReconnectAnalytics from "@hooks/domain/recording/useRecordingReconnectAnalytics";
 import useNavigateToWorkspaceHome from "@hooks/domain/workspace/useNavigateToWorkspaceHome";
 import { useToast } from "@provider/context/toastContext";
 import { countMetric } from "@provider/sentry";
@@ -45,6 +46,7 @@ import { isClosedRecordingError } from "@utils/isClosedRecordingError";
 import { isRetryableAudioUploadError } from "@utils/isRetryableAudioUploadError";
 import { isUnreachableRecordingError } from "@utils/isUnreachableRecordingError";
 import { logRequestError } from "@utils/logRequestError";
+import { trackRecordingAutoEnded } from "@utils/trackRecordingAutoEnded";
 import {
   clearRecordingStartProof,
   completeRecordingReconnect,
@@ -97,16 +99,21 @@ interface CountRecordingEndParams {
   isUploaded: boolean;
 }
 
-/** 녹음이 끝난 이유를 Sentry 지표로 세요. 녹음이 끝나는 경로마다 한 번만 불러요(ADR 915) */
+/**
+ * 녹음이 끝난 이유를 Sentry 지표로 세요. 녹음이 끝나는 경로마다 한 번만 불러요(ADR 915).
+ * 서버가 끝낸 녹음은 사용 기록(`recording_auto_ended`)으로도 보내요. 한 번만 부르니 같은 녹음을 두 번 보내지 않아요
+ */
 const countRecordingEnd = ({
   session,
   reason,
   isUploaded,
-}: CountRecordingEndParams) =>
+}: CountRecordingEndParams) => {
   countMetric({
     name: "recording.end",
     attributes: { reason, uploaded: isUploaded, audio_mode: session.audioMode },
   });
+  trackRecordingAutoEnded({ ...session, reason, isUploaded });
+};
 
 /** 생존 신호가 알려 준 서버의 종료 사유를 지표의 끝난 이유로 바꿔요. 다른 탭에서 끝냈거나 사유가 없으면 `endedByServer`예요 */
 const toServerEndCause = (endReason: string | null) => {
@@ -150,6 +157,11 @@ interface UploadRecordedAudioParams {
 }
 
 type ControlProof = NonNullable<ReturnType<typeof getRecordingControlProof>>;
+
+/** 녹음을 끝낸 곳. 끝낸 결과의 사용 기록에 남기려고 끝내기를 부른 화면이 넘겨요 */
+type RecordingEndSurface = Parameters<
+  ReturnType<typeof useRecordingEndedAnalytics>["endAndTrackRecording"]
+>[0];
 
 interface CreateChunkRequestsParams extends ControlProof {
   workspaceId: number;
@@ -207,6 +219,7 @@ interface LeaveReloadedRecordingParams {
  *
  * 녹음 탭 증명은 sessionStorage에 두고, 실패는 콘솔에 남겨요. 위에 적은 경우만 토스트나 모달로 안내해요.
  * 시작을 시도한 결과와 녹음이 끝난 이유는 오류가 아니어도 Sentry 지표(`recording.start`, `recording.end`)로 세요.
+ * 사용자가 끝낸 녹음 · 서버가 끝낸 녹음 · 새로고침 뒤 이어 받은 결과는 사용 기록(PostHog)으로도 보내요.
  * 안내하는 이동은 모두 독이 있는 화면끼리라 `show`로 띄운 토스트가 이동 뒤에도 남아요.
  * 독의 마이크 끊김 알림처럼 효과 안에서 부르는 곳이 있어 동작의 참조를 고정해요.
  */
@@ -743,7 +756,8 @@ const useRecordingControl = () => {
 
   /**
    * 새로고침 전 녹음을 이어 받아 마이크 없이 일시정지로 되살리고, 보관한 조각을 먼저 올려요.
-   * 결과는 `reconnected`(이어 받음)·`closed`(이어 갈 수 없어 홈으로 감)·`failed`(증명을 그대로 둬 다시 누를 수 있음)예요
+   * 결과는 `reconnected`(이어 받음)·`closed`(녹음이 끝났거나 볼 수 없어 홈으로 감)·`takenOver`(다른 탭이 먼저 이어 받아 홈으로 감)·
+   * `failed`(증명을 그대로 둬 다시 누를 수 있음)예요
    */
   const reconnectRecording = useCallback(async () => {
     const resumeProof = getRecordingResumeProof();
@@ -803,7 +817,7 @@ const useRecordingControl = () => {
         leaveReloadedRecording({ ...sessionIds, isTakenOver: true });
         show(TOAST_MESSAGES.RECORDING_TAKEN_OVER);
 
-        return "closed";
+        return "takenOver";
       }
       if (isClosedRecordingError(error) || isUnreachableRecordingError(error)) {
         leaveReloadedRecording(sessionIds);
@@ -823,18 +837,24 @@ const useRecordingControl = () => {
     show,
   ]);
 
+  // 「이어서 녹음」과 끝내기 확인 창이 모두 이 함수로 이어 받아요. 이어 받은 결과는 사용 기록으로도 보내요
+  const { reconnectAndTrackRecording } =
+    useRecordingReconnectAnalytics(reconnectRecording);
+
   /**
    * 새로고침 뒤 「이어서 녹음」을 눌렀을 때 이어 받고 마이크를 받아 이어 가요.
    * 마이크를 받지 못했을 때만 `false`예요. 서버는 녹음 중일 수 있어 일시정지를 알려 화면과 맞춰요
    */
   const resumeReloadedRecording = useCallback(async () => {
-    if ((await reconnectRecording()) !== "reconnected") return true;
+    if ((await reconnectAndTrackRecording("resume_button")) !== "reconnected") {
+      return true;
+    }
 
     const isResumed = await resumeRecording();
     if (!isResumed) void syncPause();
 
     return isResumed;
-  }, [reconnectRecording, resumeRecording, syncPause]);
+  }, [reconnectAndTrackRecording, resumeRecording, syncPause]);
 
   /**
    * PCM 녹음을 봉인해 끝내요. 일시 실패는 같은 봉인으로 간격을 두고 다시 보내고, 봉인이 거절되면 봉인 없이 한 번 더 보내요.
@@ -980,7 +1000,7 @@ const useRecordingControl = () => {
   const { endAndTrackRecording: endRecordingWithoutConfirm } =
     useRecordingEndedAnalytics(endAndCountRecording);
 
-  const endRecording = useCallback(() => {
+  const endRecording = useCallback((surface: RecordingEndSurface) => {
     // 끝내는 동안 다시 눌러도 이미 끝내는 중이라 확인 창을 또 띄우지 않아요
     if (useRecordingStore.getState().isEnding) return;
 
@@ -989,7 +1009,7 @@ const useRecordingControl = () => {
         // 새로고침 뒤 이어 받기 전이면 보관한 소리를 올릴 수 있게 먼저 이어 받아요
         if (
           useRecordingStore.getState().status === "idle" &&
-          (await reconnectRecording()) !== "reconnected"
+          (await reconnectAndTrackRecording("end_dialog")) !== "reconnected"
         ) {
           return;
         }
@@ -997,7 +1017,7 @@ const useRecordingControl = () => {
         const { session } = useRecordingStore.getState();
         if (!session) return;
 
-        const result = await endRecordingWithoutConfirm();
+        const result = await endRecordingWithoutConfirm(surface);
         if (result === "notEnded") return;
 
         const workspaceId = String(session.workspaceId);
@@ -1018,7 +1038,7 @@ const useRecordingControl = () => {
     navigateToRecordingDocuments,
     navigateToWorkspaceHome,
     openEndRecordingDialog,
-    reconnectRecording,
+    reconnectAndTrackRecording,
   ]);
 
   return {

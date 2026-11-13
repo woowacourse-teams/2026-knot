@@ -52,6 +52,7 @@ export default function RecordingDocumentViewer() {
     recordingId,
     status,
     recordingDocument,
+    isTranscriptAvailable,
   });
 
   if (status === "unsupported") {

@@ -182,6 +182,21 @@ const passSeconds = (seconds: number) => {
   });
 };
 
+/**
+ * 녹음한 시간을 정해 두려고 지금 시각(`Date.now`)만 멈춰 두고, 요청을 주고받는 타이머는 실제로 돌려요.
+ * 시각은 `pass`로만 흘러요.
+ */
+const freezeNow = () => {
+  let now = Date.now();
+  vi.spyOn(Date, "now").mockImplementation(() => now);
+
+  return {
+    pass: (ms: number) => {
+      now += ms;
+    },
+  };
+};
+
 describe("RecorderBar", () => {
   beforeEach(() => {
     vi.useFakeTimers({ shouldAdvanceTime: false });
@@ -368,10 +383,15 @@ describe("RecorderBar", () => {
         return { router };
       };
 
-      it("오디오를 올리면 올렸다고 녹음 방식 · 녹음 · 워크스페이스 id와 함께 한 번 보낸다", async () => {
+      it("오디오를 올리면 올렸다고 녹음 방식 · 녹음한 시간 · 녹음 바에서 끝냈다는 것 · 녹음 · 워크스페이스 id와 함께 한 번 보낸다", async () => {
         vi.useRealTimers();
+        const clock = freezeNow();
+        await startRecording();
+        const { router } = renderRecorderBar();
+        clock.pass(12_340);
 
-        const { router } = await endRecordingByDialog();
+        await clickEndRecording();
+        await chooseInEndRecordingDialog("녹음 끝내기");
 
         await waitFor(() =>
           expect(router.state.location.pathname).toBe(DOCUMENTS_PATH),
@@ -384,9 +404,34 @@ describe("RecorderBar", () => {
             audio_mode: "FINAL_WEBM_V1",
             // jsdom은 Chrome 계열이 아니라 회의 소리를 받을 수 없는 브라우저예요
             meeting_audio: "unsupported",
+            duration_seconds: 12.3,
+            surface: "recorder_bar",
             recording_id: RECORDING_ID,
             workspace_id: Number(WORKSPACE_ID),
           },
+        });
+      });
+
+      it("일시정지한 동안은 녹음한 시간에 넣지 않는다", async () => {
+        vi.useRealTimers();
+        const clock = freezeNow();
+        await startRecording();
+        const { router } = renderRecorderBar();
+        clock.pass(5_000);
+        await act(async () => {
+          fireEvent.click(screen.getByRole("button", { name: "일시정지" }));
+        });
+        clock.pass(10_000);
+
+        await clickEndRecording();
+        await chooseInEndRecordingDialog("녹음 끝내기");
+
+        await waitFor(() =>
+          expect(router.state.location.pathname).toBe(DOCUMENTS_PATH),
+        );
+        expect(captureAnalyticsEvent).toHaveBeenCalledWith({
+          event: "recording_ended",
+          properties: expect.objectContaining({ duration_seconds: 5 }),
         });
       });
 
@@ -827,6 +872,142 @@ describe("RecorderBar", () => {
       expect(requests.indexOf("reconnect")).toBeLessThan(
         requests.indexOf("end"),
       );
+    });
+
+    describe("이어 받은 결과를 사용 기록으로 보낸다", () => {
+      const RECONNECT_PATH =
+        "*/api/v1/workspaces/:workspaceId/recordings/:recordingId/reconnect";
+
+      const getReconnectResults = () =>
+        vi
+          .mocked(captureAnalyticsEvent)
+          .mock.calls.map(([params]) => params)
+          .filter(({ event }) => event === "recording_reconnect_result");
+
+      const reconnectResult = (
+        result: "reconnected" | "closed" | "taken_over" | "failed",
+        trigger: "resume_button" | "end_dialog",
+      ) => ({
+        event: "recording_reconnect_result",
+        properties: {
+          result,
+          trigger,
+          recording_id: RECORDING_ID,
+          workspace_id: Number(WORKSPACE_ID),
+        },
+      });
+
+      const renderReloadedRecorderBar = async () => {
+        leaveResumeProof();
+        respondCurrent("RECORDING");
+        const requests = collectRequests();
+        renderRecorderBar();
+        await screen.findByText(/새로고침으로 녹음이 멈췄어요/);
+
+        return requests;
+      };
+
+      it("「이어서 녹음」으로 이어 받으면 resume_button으로 reconnected를 한 번 보낸다", async () => {
+        await renderReloadedRecorderBar();
+
+        await clickResume();
+
+        await waitFor(() =>
+          expect(useRecordingStore.getState().status).toBe("recording"),
+        );
+        expect(getReconnectResults()).toEqual([
+          reconnectResult("reconnected", "resume_button"),
+        ]);
+      });
+
+      it.each([
+        {
+          name: "녹음이 이미 끝났으면(ENDED)",
+          response: () =>
+            HttpResponse.json({
+              ...recordingHeartbeatResponse,
+              status: "ENDED",
+              endReason: "CONNECTION_EXPIRED",
+            }),
+          result: "closed",
+        },
+        {
+          name: "더는 볼 수 없는 녹음이면(404)",
+          response: () =>
+            HttpResponse.json(
+              { code: "RECORDING_NOT_FOUND" },
+              { status: 404 },
+            ),
+          result: "closed",
+        },
+        {
+          name: "다른 탭이 먼저 이어 받았으면(403 RECORDING_CONTROL_DENIED)",
+          response: () =>
+            HttpResponse.json(
+              { code: "RECORDING_CONTROL_DENIED" },
+              { status: 403 },
+            ),
+          result: "taken_over",
+        },
+        {
+          name: "요청이 실패하면(500)",
+          response: () =>
+            HttpResponse.json(
+              { code: "INTERNAL_SERVER_ERROR" },
+              { status: 500 },
+            ),
+          result: "failed",
+        },
+      ] as const)(
+        "「이어서 녹음」을 눌렀는데 $name $result를 보낸다",
+        async ({ response, result }) => {
+          vi.spyOn(console, "error").mockImplementation(() => {});
+          mockServer.use(http.post(RECONNECT_PATH, response));
+          await renderReloadedRecorderBar();
+
+          await clickResume();
+
+          await waitFor(() =>
+            expect(getReconnectResults()).toEqual([
+              reconnectResult(result, "resume_button"),
+            ]),
+          );
+        },
+      );
+
+      it("이어 받기 전에 끝내면 끝내기 확인 창에서 이어 받았다고 end_dialog로 보낸다", async () => {
+        const requests = await renderReloadedRecorderBar();
+
+        await clickEndRecording();
+        await chooseInEndRecordingDialog("녹음 끝내기");
+
+        await waitFor(() => expect(requests).toContain("end"));
+        expect(getReconnectResults()).toEqual([
+          reconnectResult("reconnected", "end_dialog"),
+        ]);
+      });
+
+      it("끝내기 확인 창에서 이어 받다 다른 탭이 먼저 이어 받았으면 taken_over를 end_dialog로 보내고 끝내지 않는다", async () => {
+        mockServer.use(
+          http.post(RECONNECT_PATH, () =>
+            HttpResponse.json(
+              { code: "RECORDING_CONTROL_DENIED" },
+              { status: 403 },
+            ),
+          ),
+        );
+        const requests = await renderReloadedRecorderBar();
+
+        await clickEndRecording();
+        await chooseInEndRecordingDialog("녹음 끝내기");
+
+        await waitFor(() =>
+          expect(getReconnectResults()).toEqual([
+            reconnectResult("taken_over", "end_dialog"),
+          ]),
+        );
+        expect(requests).not.toContain("end");
+      });
     });
   });
 });

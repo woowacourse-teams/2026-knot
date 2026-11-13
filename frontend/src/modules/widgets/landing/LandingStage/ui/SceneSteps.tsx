@@ -1,19 +1,19 @@
 import styled from "@emotion/styled";
 
-import { SCENE_NAMES } from "../constants/landing";
-
 import { focusRing, mobile } from "./SceneLayer";
 
 interface SceneStepsProps {
+  /** 장면 이름. 순서가 곧 장면 번호예요. */
+  names: readonly string[];
   scene: number;
   onSceneSelect: (scene: number) => void;
 }
 
 /** 오른쪽에 세로로 놓인 장면 목록. 지금 장면을 표시하고, 누르면 그 장면으로 넘어가요. 모바일에서는 숨겨요. */
-export default function SceneSteps({ scene, onSceneSelect }: SceneStepsProps) {
+export default function SceneSteps({ names, scene, onSceneSelect }: SceneStepsProps) {
   return (
     <Container aria-label="섹션">
-      {SCENE_NAMES.map((name, index) => (
+      {names.map((name, index) => (
         <Step
           key={name}
           type="button"

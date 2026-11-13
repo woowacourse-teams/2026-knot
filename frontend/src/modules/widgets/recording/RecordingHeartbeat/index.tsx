@@ -4,6 +4,7 @@ import useInterval from "@hooks/common/useInterval";
 import useScreenWakeLock from "@hooks/common/useScreenWakeLock";
 import useRecordingConnectionToast from "@hooks/domain/recording/useRecordingConnectionToast";
 import useRecordingControl from "@hooks/domain/recording/useRecordingControl";
+import useRecordingDisconnectedAnalytics from "@hooks/domain/recording/useRecordingDisconnectedAnalytics";
 import useRecordingMaxDuration from "@hooks/domain/recording/useRecordingMaxDuration";
 import useRecordingState from "@hooks/domain/recording/useRecordingState";
 import { useToast } from "@provider/context/toastContext";
@@ -29,7 +30,7 @@ interface RecordingHeartbeatProps {
  * 연결이 돌아오거나 탭이 다시 보이면 다음 주기를 기다리지 않고 신호를 한 번 보내요. 두 일이 겹쳐도 응답을 기다리는 동안에는 더 보내지 않아요.
  * 녹음한 시간이 2시간에 닿으면 서버가 녹음을 끝내므로, 다음 주기를 기다리지 않고 신호를 한 번 보내 바로 확인해요.
  * 그보다 15분 앞서서는 주의 토스트로 남은 시간을 녹음마다 한 번 알려요.
- * 모든 화면을 감싸는 자리라, 연결이 끊긴 동안의 토스트도 여기서 띄워요(STT-R53).
+ * 모든 화면을 감싸는 자리라, 연결이 끊긴 동안의 토스트도 여기서 띄워요(STT-R53). 그 끊김이 끝나면 사용 기록으로도 보내요.
  * 녹음 중에는 기기 화면이 꺼지지 않게 해요(STT-R13). 일시정지하거나 끝내면 놓아요.
  * 같은 브라우저의 다른 탭이 녹음을 끝내면 신호를 바로 보내 멈춰요(STT-R28).
  * 응답에 맞춰 녹음한 시간을 맞추거나 서버가 끝낸 녹음을 닫는 일은 `useRecordingControl`이 맡아요.
@@ -85,6 +86,9 @@ export default function RecordingHeartbeat({
   );
 
   useRecordingConnectionToast();
+
+  // 토스트를 띄우는 끊김과 같은 끊김을, 끝날 때 끊긴 시간과 함께 보내요
+  useRecordingDisconnectedAnalytics();
 
   useScreenWakeLock({ isEnabled: status === "recording" });
 

@@ -118,7 +118,7 @@ const useLogout = () => {
     const isRecordingActive = useRecordingStore.getState().status !== "idle";
     if (
       isRecordingActive &&
-      (await endRecordingWithoutConfirm()) === "notEnded"
+      (await endRecordingWithoutConfirm("logout")) === "notEnded"
     ) {
       setIsLoggingOut(false);
       return;
