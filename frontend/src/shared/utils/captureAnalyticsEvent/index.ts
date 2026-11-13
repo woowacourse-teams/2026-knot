@@ -64,7 +64,8 @@ interface AnalyticsEventMap {
   /**
    * 서버가 녹음을 끝냈어요. 사용자가 끝내지 않은 녹음이 끝난 경우라 녹음 손실을 볼 때 써요. 사용자가 끝낸 녹음은 `recording_ended`로 보내요.
    * 연결이 끊긴 채 30분이 지남(`connection_expired`) · 2시간에 닿음(`max_duration`) · 다른 곳에서 끝냈거나 사유를 모름(`ended_by_server`) ·
-   * 녹음이 버려짐(`discarded`) · 녹음에 더는 접근할 수 없음(`unreachable`) · 이 탭이 녹음 제어권을 잃음(`control_lost`)이에요
+   * 녹음이 버려짐(`discarded`) · 녹음에 더는 접근할 수 없음(`unreachable`) · 이 탭이 녹음 제어권을 잃음(`control_lost`)이에요.
+   * 새로고침한 사이 서버가 끝낸 녹음은 이 이벤트가 아니라 `recording_reconnect_result`의 `closed`로 남아요
    */
   recording_auto_ended: {
     reason:
@@ -80,9 +81,12 @@ interface AnalyticsEventMap {
     recording_id: number;
     workspace_id: number;
   };
-  /** 녹음 중 서버와의 연결이 끊겼다가 그 끊김이 끝났어요. 끊길 때가 아니라 끝날 때 한 번 보내서, 끊긴 시간과 결과를 함께 봐요 */
+  /**
+   * 녹음 중 서버와의 연결이 끊겼다가 그 끊김이 끝났어요. 끊길 때가 아니라 끝날 때 한 번 보내서, 끊긴 시간과 결과를 함께 봐요.
+   * 끊김은 화면이 연결 끊김 안내를 띄우는 조건(생존 신호 실패 또는 조각 전송 밀림)과 같아요. 끊긴 채 탭을 닫으면 끊김이 끝나지 않아 보내지 않아요
+   */
   recording_disconnected: {
-    /** 연결이 돌아와 녹음이 이어짐(`restored`) · 돌아오지 못하고 녹음이 끝남(`recording_closed`) */
+    /** 연결이 돌아와 녹음이 이어짐(`restored`) · 녹음이 끝남(`recording_closed`). 안내가 떠 있는 채 사용자가 끝낸 녹음도 `recording_closed`예요 */
     outcome: "restored" | "recording_closed";
     /** 끊긴 동안의 시간(초, 소수 첫째 자리까지) */
     disconnected_seconds: number;
@@ -100,7 +104,7 @@ interface AnalyticsEventMap {
     recording_id: number;
     workspace_id: number;
   };
-  /** 같은 브라우저의 다른 탭에서 하는 녹음을 독의 녹음 칩으로 끝낸 결과가 정해졌어요. 이 탭의 녹음을 끝낸 것은 `recording_ended`로 보내요 */
+  /** 다른 탭이나 다른 기기에서 하는 녹음을 독의 녹음 칩으로 끝낸 결과가 정해졌어요. 이 탭의 녹음을 끝낸 것은 `recording_ended`로 보내요 */
   recording_end_other_tab_result: {
     /** 끝냄(`ended`) · 이미 끝나 있었음(`already_ended`) · 실패(`failed`) */
     result: "ended" | "already_ended" | "failed";
@@ -140,7 +144,7 @@ interface AnalyticsEventMap {
   };
   /**
    * 탐색 답변이 끝났어요. 사용자가 받기를 끊었으면 결과가 없어 보내지 않아요.
-   * 끊긴 답변을 이어 받다가 서버가 그 답변을 더는 주지 않으면(4xx) `unavailable`이에요
+   * 끊긴 답변을 이어 받다가 서버가 그 답변을 더는 주지 않으면(4xx) `unavailable`이에요. 서버에서는 이미 끝난 답변(409)도 여기에 들어가요
    */
   search_answer_result: {
     result: "completed" | "stopped" | "failed" | "accept_failed" | "unavailable";
@@ -336,7 +340,10 @@ interface AnalyticsEventMap {
     recording_id: number;
     workspace_id: number;
   };
-  /** 랜딩의 한 장면을 처음 봤어요. 페이지를 열 때마다 장면마다 한 번만 보내요 */
+  /**
+   * 랜딩의 한 장면을 처음 봤어요. 페이지를 열 때마다 장면마다 한 번만 보내요.
+   * 오른쪽 장면 목록 · 로고 · Home/End로 여러 장면을 한 번에 건너뛰면 지나친 장면도 본 것으로 남아요
+   */
   landing_scene_viewed: {
     scene:
       | "intro"
