@@ -147,7 +147,12 @@ export const useSearchTutorialFlow = () => {
 
   const chooseQuestionKind = async (kind: SearchTutorialQuestionKind, question: string) => {
     end({ result: "completed", via: "question_kind", questionKind: kind });
-    await sendQuestion({ workspaceId: numericWorkspaceId, conversationId: undefined, content: question });
+    await sendQuestion({
+      workspaceId: numericWorkspaceId,
+      conversationId: undefined,
+      content: question,
+      entry: "tutorial",
+    });
   };
 
   return {

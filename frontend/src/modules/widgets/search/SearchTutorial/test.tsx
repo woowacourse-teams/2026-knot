@@ -4,13 +4,17 @@ import { ThemeProvider } from "@emotion/react";
 import { ToastProvider } from "@provider/context/toastContext";
 import { theme } from "@provider/themeProvider";
 import { getRouterPath } from "@routes/PATH_ROUTE";
+import { useSearchAnswerStore } from "@store/searchAnswerStore";
 import { useSearchTutorialStore } from "@store/searchTutorialStore";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { captureAnalyticsEvent } from "@utils/captureAnalyticsEvent";
 import SearchConversation from "@widgets/search/SearchConversation";
 import { http, HttpResponse } from "msw";
 import { createMemoryRouter, Outlet, RouterProvider } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+import WorkspaceAnalytics from "@/shared/components/domain/WorkspaceAnalytics";
 
 import SearchTutorial from ".";
 import { COACH_COPY, DOCUMENT_COACH_TITLE } from "./constants/searchTutorial";
@@ -23,6 +27,10 @@ vi.mock("./constants/searchTutorial", async (importOriginal) => ({
   SEARCH_TUTORIAL_DOCUMENT_DWELL_MS: 50,
   SEARCH_TUTORIAL_TYPING_INTERVAL_MS: 1,
   SEARCH_TUTORIAL_SEND_DELAY_MS: 10,
+}));
+
+vi.mock("@utils/captureAnalyticsEvent", () => ({
+  captureAnalyticsEvent: vi.fn(),
 }));
 
 const WORKSPACE_ID = "1";
@@ -44,6 +52,15 @@ const Targets = ({ isChat = false }: { isChat?: boolean }) => (
   </>
 );
 
+/** 탐색 화면. 실제 대화 칸을 그려 예시 대화와 보낸 질문의 답변을 보여 줘요 */
+const ChatScreen = () => (
+  <>
+    <Targets isChat />
+    <SearchConversation />
+  </>
+);
+
+/** 라우트에서처럼 사용 기록(`WorkspaceAnalytics`)이 레이아웃을 감싸, 튜토리얼에서 보낸 질문의 답변 결과도 남아요 */
 const renderTutorial = (initialPath = HOME_PATH) => {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const router = createMemoryRouter(
@@ -51,23 +68,18 @@ const renderTutorial = (initialPath = HOME_PATH) => {
       {
         path: "/workspace/:workspaceId",
         element: (
-          <ToastProvider>
-            <Outlet />
-            <SearchTutorial />
-          </ToastProvider>
+          <WorkspaceAnalytics>
+            <ToastProvider>
+              <Outlet />
+              <SearchTutorial />
+            </ToastProvider>
+          </WorkspaceAnalytics>
         ),
         children: [
           { index: true, element: <Targets /> },
           { path: "recordings/:recordingId/document", element: <Targets /> },
-          {
-            path: "chat",
-            element: (
-              <>
-                <Targets isChat />
-                <SearchConversation />
-              </>
-            ),
-          },
+          { path: "chat", element: <ChatScreen /> },
+          { path: "chat/:sessionId", element: <ChatScreen /> },
         ],
       },
     ],
@@ -102,10 +114,27 @@ beforeEach(() => {
   });
 });
 
+/** 보낸 사용 기록 중 그 이름의 것만 모아요 */
+const getEvents = (name: Parameters<typeof captureAnalyticsEvent>[0]["event"]) =>
+  vi
+    .mocked(captureAnalyticsEvent)
+    .mock.calls.map(([params]) => params)
+    .filter(({ event }) => event === name);
+
+/** 1단계의 「보여 주세요」부터 예시 대화를 지나 4단계(질문 종류 카드)까지 가요 */
+const proceedToQuestionKinds = async () => {
+  fireEvent.click(await screen.findByRole("button", { name: "보여 주세요" }));
+  await screen.findByText(COACH_COPY[3].title, {}, { timeout: 3000 });
+  fireEvent.click(screen.getByRole("button", { name: "다음" }));
+};
+
 afterEach(() => {
   vi.restoreAllMocks();
+  vi.mocked(captureAnalyticsEvent).mockClear();
   localStorage.clear();
   useSearchTutorialStore.getState().end();
+  // 전역 저장소라 테스트끼리 답변이 새지 않게 비워요
+  useSearchAnswerStore.getState().abort();
 });
 
 describe("SearchTutorial", () => {
@@ -197,6 +226,21 @@ describe("SearchTutorial", () => {
     await waitFor(() => expect(questionRequests.length).toBeGreaterThan(0));
     expect(screen.queryByTestId("search-tutorial")).not.toBeInTheDocument();
     expect(JSON.parse(localStorage.getItem(RECORD_KEY) ?? "null")).toEqual({ state: "done" });
+  });
+
+  it("질문 종류 카드로 보낸 질문의 답변 결과는 튜토리얼에서 보냈다고 남긴다", async () => {
+    renderTutorial();
+    await proceedToQuestionKinds();
+
+    const [firstKind] = SEARCH_TUTORIAL_QUESTION_KINDS;
+    fireEvent.click(await screen.findByRole("button", { name: new RegExp(firstKind.question) }));
+
+    await waitFor(() => expect(getEvents("search_answer_result")).toHaveLength(1), { timeout: 3000 });
+    expect(getEvents("search_answer_result")[0].properties).toMatchObject({
+      result: "completed",
+      entry: "tutorial",
+      question: firstKind.question,
+    });
   });
 
   it("2단계에서 건너뛰기를 누르면 끝내고 다시 띄우지 않는다", async () => {
