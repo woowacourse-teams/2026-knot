@@ -1075,6 +1075,145 @@ describe("RecordingHeartbeat", () => {
     });
   });
 
+  // 끊김은 위 연결 끊김 토스트를 띄우는 조건과 같아요. 끊길 때가 아니라 끝날 때 보내 끊긴 시간과 결과를 함께 봐요
+  describe("연결 끊김 사용 기록 (recording_disconnected)", () => {
+    const DISCONNECTED_AT = new Date("2026-11-12T03:00:00.000Z").getTime();
+    /** 끊긴 뒤 몇 초가 지난 때로 시계를 맞춰요 */
+    const at = (seconds: number) =>
+      vi.setSystemTime(DISCONNECTED_AT + seconds * 1000);
+
+    const setConnection = (state: {
+      isHeartbeatFailing?: boolean;
+      isChunkTransferStalled?: boolean;
+    }) => act(() => useRecordingStore.setState(state));
+
+    const disconnectedEvent = (
+      outcome: "restored" | "recording_closed",
+      seconds: number,
+    ) => ({
+      event: "recording_disconnected",
+      properties: {
+        outcome,
+        disconnected_seconds: seconds,
+        recording_id: expected.recordingId,
+        workspace_id: Number(WORKSPACE_ID),
+      },
+    });
+
+    it("생존 신호가 실패하다 다시 닿으면 restored로 한 번 보낸다", async () => {
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      respondHeartbeatWithError(503, "SERVICE_UNAVAILABLE");
+      await startRecording();
+      renderRecordingHeartbeat();
+
+      passHeartbeatInterval();
+      await screen.findByText(TOAST_MESSAGES.RECORDING_DISCONNECTED.message);
+      expect(getEvents("recording_disconnected")).toEqual([]);
+
+      respondHeartbeat(() => HttpResponse.json(recordingHeartbeatResponse));
+      passHeartbeatInterval();
+
+      await waitFor(() =>
+        expect(getEvents("recording_disconnected")).toEqual([
+          {
+            event: "recording_disconnected",
+            properties: expect.objectContaining({
+              outcome: "restored",
+              recording_id: expected.recordingId,
+            }),
+          },
+        ]),
+      );
+    });
+
+    describe("끊긴 시간", () => {
+      beforeEach(async () => {
+        // 끊긴 시간을 정확히 보려고 시계만 가짜로 돌려요. 신호 주기는 기다리지 않고 연결 상태를 직접 바꿔요
+        vi.useFakeTimers({ toFake: ["Date"] });
+        at(0);
+        await startRecording();
+        renderRecordingHeartbeat();
+      });
+
+      it("신호가 닿지 않다가 다시 닿으면 끊긴 시간과 함께 restored로 보낸다", () => {
+        setConnection({ isHeartbeatFailing: true });
+        at(12.34);
+        setConnection({ isHeartbeatFailing: false });
+
+        expect(getEvents("recording_disconnected")).toEqual([
+          disconnectedEvent("restored", 12.3),
+        ]);
+      });
+
+      it("조각 전송이 밀렸다가 풀려도 보낸다", () => {
+        setConnection({ isChunkTransferStalled: true });
+        at(3);
+        setConnection({ isChunkTransferStalled: false });
+
+        expect(getEvents("recording_disconnected")).toEqual([
+          disconnectedEvent("restored", 3),
+        ]);
+      });
+
+      it("신호와 조각이 함께 끊기면 둘 다 돌아와 안내가 닫힐 때 처음 끊긴 때부터 세어 한 번 보낸다", () => {
+        setConnection({ isHeartbeatFailing: true });
+        at(1);
+        setConnection({ isChunkTransferStalled: true });
+        at(2);
+        setConnection({ isHeartbeatFailing: false });
+
+        expect(getEvents("recording_disconnected")).toEqual([]);
+
+        at(5);
+        setConnection({ isChunkTransferStalled: false });
+
+        expect(getEvents("recording_disconnected")).toEqual([
+          disconnectedEvent("restored", 5),
+        ]);
+      });
+
+      it("끊긴 채 녹음이 끝나면 recording_closed로 보낸다", () => {
+        setConnection({ isHeartbeatFailing: true });
+        at(40);
+        act(() => useRecordingStore.getState().discardRecording());
+
+        expect(getEvents("recording_disconnected")).toEqual([
+          disconnectedEvent("recording_closed", 40),
+        ]);
+      });
+
+      it("다시 끊기면 새 끊김으로 따로 보낸다", () => {
+        setConnection({ isHeartbeatFailing: true });
+        at(2);
+        setConnection({ isHeartbeatFailing: false });
+        at(10);
+        setConnection({ isHeartbeatFailing: true });
+        at(17);
+        act(() => useRecordingStore.getState().discardRecording());
+
+        expect(getEvents("recording_disconnected")).toEqual([
+          disconnectedEvent("restored", 2),
+          disconnectedEvent("recording_closed", 7),
+        ]);
+      });
+
+      it("끊기지 않은 채 녹음이 끝나면 보내지 않는다", () => {
+        act(() => useRecordingStore.getState().discardRecording());
+
+        expect(getEvents("recording_disconnected")).toEqual([]);
+      });
+
+      it("녹음을 끝낸 뒤 남은 조각을 올리다 밀리는 것은 안내를 띄우지 않아 세지 않는다", () => {
+        act(() => useRecordingStore.getState().discardRecording());
+        setConnection({ isChunkTransferStalled: true });
+        at(3);
+        setConnection({ isChunkTransferStalled: false });
+
+        expect(getEvents("recording_disconnected")).toEqual([]);
+      });
+    });
+  });
+
   // 사용자가 끝내지 않은 녹음이 끝난 것이라 녹음 손실을 볼 때 써요. 사용자가 끝낸 녹음은 녹음 바의 recording_ended가 맡아요
   describe("서버가 끝낸 녹음의 사용 기록 (recording_auto_ended)", () => {
     const respondEnded = (endReason: string) => () =>
