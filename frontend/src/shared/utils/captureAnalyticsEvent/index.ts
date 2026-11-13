@@ -301,11 +301,11 @@ interface AnalyticsEventMap {
     recording_id: number;
     workspace_id: number;
   };
-  /** 문서 보기의 「문서를 확인했어요」에 서버가 응답했어요. 누른 것은 자동 클릭으로 세요 */
+  /** 문서 보기의 「문서를 확인했어요」에 서버가 응답했어요. 누른 것은 자동 클릭으로 세요. 로그인이 풀린 401은 보내지 않아요 */
   document_confirmed: {
-    /** 확인됨(`confirmed`) 또는 실패(`failed`) */
+    /** 확인됨(`confirmed`) 또는 실패(`failed`). 확인 대상이 아니라는 409도 `failed`예요 */
     result: "confirmed" | "failed";
-    /** `confirmed`일 때만 있어요. 이 확인으로 같은 녹음의 문서를 모두 확인했는지 */
+    /** `confirmed`일 때만 있어요. 이 확인으로 같은 녹음의 문서를 모두 확인했는지. 내 미확인 문서 목록을 받지 못해 알 수 없으면 없어요 */
     is_all_confirmed?: boolean;
     document_id: number;
     workspace_id: number;
