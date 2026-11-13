@@ -5,6 +5,7 @@ import useNavigateToRecording from "@hooks/domain/recording/useNavigateToRecordi
 import useRecordingState from "@hooks/domain/recording/useRecordingState";
 import useRecordingControl from "@hooks/domain/recording/useRecordingControl";
 import useRecordingElapsedTime from "@hooks/domain/recording/useRecordingElapsedTime";
+import useRecordingMicrophoneLostAnalytics from "@hooks/domain/recording/useRecordingMicrophoneLostAnalytics";
 import useRecordingStartAnalytics from "@hooks/domain/recording/useRecordingStartAnalytics";
 import useRecordingStartNetworkErrorDialog from "@hooks/domain/recording/useRecordingStartNetworkErrorDialog";
 import useRecordingStartRefusedDialog from "@hooks/domain/recording/useRecordingStartRefusedDialog";
@@ -40,6 +41,10 @@ import { useMatch, useParams } from "react-router";
  *
  * 독은 어느 화면에서나 떠 있으므로, 녹음 중에 마이크가 끊겼다는 알림도 여기서 같은 알림으로 띄워요.
  * 녹음은 저장소가 이미 일시정지해 두었으므로 서버에도 일시정지를 알리고, 마이크를 다시 받는 일은 녹음 화면의 「이어서 녹음」이 맡아요.
+ * 끊겨 알림을 띄운 것은 끊길 때까지 녹음한 시간과 함께 사용 기록(`recording_microphone_lost`)으로 남겨요.
+ *
+ * 녹음 칩의 중지로 이 탭의 녹음을 끝낸 결과는 독에서 끝냈다고(`surface: "dock"`) 사용 기록에 남기고,
+ * 다른 탭의 녹음을 끝낸 결과는 `useEndOtherTabRecording`이 남겨요.
  */
 export const useDockRecording = () => {
   const { workspaceId } = useParams();
@@ -71,6 +76,7 @@ export const useDockRecording = () => {
     startRecording,
     surface: "dock",
   });
+  const { trackMicrophoneLost } = useRecordingMicrophoneLostAnalytics();
   const [isRecordingStarting, setIsRecordingStarting] = useState(false);
 
   const isServerRecordingVisible =
@@ -101,12 +107,14 @@ export const useDockRecording = () => {
     // 알림은 한 번만 띄우도록 끊김 표시를 바로 지워요. 녹음은 일시정지로 남아요
     clearMicrophoneLost();
     void syncPause();
+    trackMicrophoneLost();
     openMicrophoneUnavailableDialog();
   }, [
     clearMicrophoneLost,
     isMicrophoneLost,
     openMicrophoneUnavailableDialog,
     syncPause,
+    trackMicrophoneLost,
   ]);
 
   const handleMicClick = async () => {
