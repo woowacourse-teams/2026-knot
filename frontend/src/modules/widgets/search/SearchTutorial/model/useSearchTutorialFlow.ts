@@ -18,7 +18,27 @@ import { useSearchTutorialScreen } from "./useSearchTutorialScreen";
 type EndResult =
   | { result: "completed"; via: "question_kind"; questionKind: SearchTutorialQuestionKind }
   | { result: "completed"; via: "typed" | "finish_button" }
-  | { result: "skipped" | "snoozed" | "closed" };
+  | { result: "skipped" | "snoozed" | "closed" | "left" };
+
+interface CaptureTutorialEndedParams {
+  endResult: EndResult;
+  /** 끝낸 단계 */
+  step: SearchTutorialStep;
+  workspaceId: number;
+}
+
+/** 튜토리얼이 끝났다는 사용 기록(`search_tutorial_ended`)을 보내요 */
+const captureTutorialEnded = ({ endResult, step, workspaceId }: CaptureTutorialEndedParams) =>
+  captureAnalyticsEvent({
+    event: "search_tutorial_ended",
+    properties: {
+      result: endResult.result,
+      step,
+      via: "via" in endResult ? endResult.via : undefined,
+      question_kind: "questionKind" in endResult ? endResult.questionKind : undefined,
+      workspace_id: workspaceId,
+    },
+  });
 
 const prefersReducedMotion = () =>
   typeof window.matchMedia === "function" &&
@@ -31,10 +51,13 @@ const prefersReducedMotion = () =>
  * - 2단계는 예시 질문을 독 입력창에 한 글자씩 넣은 뒤 자동으로 보내고 3단계로 넘어가요. 서버에는 보내지 않아요.
  * - 3단계의 예시 답변은 대화 칸이 그리고, 다 그리면 안내 카드가 「다음」을 보여 줘요.
  * - 4단계에서 사용자가 독으로 직접 질문을 보내면 튜토리얼을 끝내요.
- * - 2~4단계에 탐색 화면을 벗어나면 건너뛴 것으로 봐요.
+ * - 2~4단계에 탐색 화면을 벗어나면 떠난 것으로 보고 끝내요.
  *
  * 끝날 때 멤버의 기록을 남겨요. 미루면 오늘 날짜를, 그 밖에는 다 본 것으로 남겨 다시 띄우지 않아요.
  * 움직임 줄이기 설정이면 예시 질문을 한 번에 채워요.
+ *
+ * 끝내지 않고 떠나면 그때의 단계로 떠났다는 사용 기록(`left`)을 한 번 남겨요. 2~4단계에 탐색 화면을 벗어난 것도 `left`예요.
+ * 새로고침하거나 탭을 닫으면(`pagehide`) 남기되 멤버의 기록은 남기지 않아, 다음에 다시 판단해 띄워요.
  */
 export const useSearchTutorialFlow = () => {
   const { workspaceId } = useParams();
@@ -62,16 +85,7 @@ export const useSearchTutorialFlow = () => {
       );
     }
 
-    captureAnalyticsEvent({
-      event: "search_tutorial_ended",
-      properties: {
-        result: endResult.result,
-        step,
-        via: "via" in endResult ? endResult.via : undefined,
-        question_kind: "questionKind" in endResult ? endResult.questionKind : undefined,
-        workspace_id: numericWorkspaceId,
-      },
-    });
+    captureTutorialEnded({ endResult, step, workspaceId: numericWorkspaceId });
     endTutorial();
   };
 
@@ -128,14 +142,35 @@ export const useSearchTutorialFlow = () => {
   // 1단계에서 탐색으로 옮기는 중인지. 주소가 바뀌기 전에 2단계가 되어도 화면을 벗어난 것으로 보지 않아요
   const isMovingToChatRef = useRef(false);
 
-  // 2~4단계는 탐색 화면에서 이어져요. 다른 화면으로 나가면 건너뛴 것으로 봐요
+  // 2~4단계는 탐색 화면에서 이어져요. 다른 화면으로 나가면 떠난 것으로 보고 끝내요
   useEffect(() => {
     if (isChatScreen) isMovingToChatRef.current = false;
     if (step === null || step === 1 || isChatScreen || isMovingToChatRef.current) return;
 
-    end({ result: "skipped" });
+    end({ result: "left" });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isChatScreen, step]);
+
+  // 떠났다고 이미 남겼는지. 브라우저가 떠난 페이지를 되살린 뒤 다시 떠나도 한 번 더 남기지 않아요. 튜토리얼이 끝나면 다시 세요
+  const isLeftCapturedRef = useRef(false);
+
+  // 끝내지 않고 새로고침하거나 탭을 닫으면 그때의 단계에서 떠났다고 남겨요
+  useEffect(() => {
+    if (step === null) {
+      isLeftCapturedRef.current = false;
+      return;
+    }
+
+    const handlePageHide = () => {
+      if (isLeftCapturedRef.current) return;
+
+      isLeftCapturedRef.current = true;
+      captureTutorialEnded({ endResult: { result: "left" }, step, workspaceId: numericWorkspaceId });
+    };
+
+    window.addEventListener("pagehide", handlePageHide);
+    return () => window.removeEventListener("pagehide", handlePageHide);
+  }, [step, numericWorkspaceId]);
 
   const proceedFromFirst = () => {
     if (!workspaceId) return;
