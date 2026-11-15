@@ -3,9 +3,16 @@ import useRecordingQuery from "@api/queries/useRecordingQuery";
 import styled from "@emotion/styled";
 import useRecordingState from "@hooks/domain/recording/useRecordingState";
 import useRedirectToLoginOnUnauthorized from "@hooks/domain/auth/useRedirectToLoginOnUnauthorized";
+import { captureAnalyticsEvent } from "@utils/captureAnalyticsEvent";
+import { isUnauthorizedError } from "@utils/isUnauthorizedError";
 import { getRecordingControlProof } from "@utils/recordingControlProof";
 
-/** 녹음·일시정지 중 서버에 저장한 참가자 수만 표시하는 스테퍼. */
+/**
+ * 녹음·일시정지 중 서버에 저장한 참가자 수만 표시하는 스테퍼.
+ *
+ * 저장 결과가 정해지면 자동 감지인지, 정한 수와 함께 사용 기록(`speaker_count_saved`)으로 보내요.
+ * 로그인이 풀린 401은 결과가 아니라 보내지 않아요.
+ */
 export default function SpeakerCount() {
   const { session, status, isEnding, isConnectionLost } = useRecordingState();
   const params = {
@@ -32,9 +39,34 @@ export default function SpeakerCount() {
     error !== null ||
     data.sessionStatus === "ENDED" ||
     data.sessionStatus === "DISCARDED";
+  const trackSpeakerCountSaved = (
+    result: "saved" | "failed",
+    speakerCount: number | null,
+  ) => {
+    captureAnalyticsEvent({
+      event: "speaker_count_saved",
+      properties: {
+        result,
+        is_auto: speakerCount === null,
+        ...(speakerCount !== null && { speaker_count: speakerCount }),
+        recording_id: params.recordingId,
+        workspace_id: params.workspaceId,
+      },
+    });
+  };
   const change = (speakerCount: number | null) => {
     if (isDisabled || !proof) return;
-    mutation.mutate({ ...params, ...proof, speakerCount });
+    mutation.mutate(
+      { ...params, ...proof, speakerCount },
+      {
+        onSuccess: () => trackSpeakerCountSaved("saved", speakerCount),
+        onError: (mutationError) => {
+          if (isUnauthorizedError(mutationError)) return;
+
+          trackSpeakerCountSaved("failed", speakerCount);
+        },
+      },
+    );
   };
   return (
     <Group>

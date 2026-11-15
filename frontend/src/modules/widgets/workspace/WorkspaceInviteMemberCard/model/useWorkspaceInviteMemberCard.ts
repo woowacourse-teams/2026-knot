@@ -22,7 +22,10 @@ export const useWorkspaceInviteMemberCard = () => {
     retryInvitation,
     copyInviteCode,
     copyInviteLink,
-  } = useCopyWorkspaceInvite({ workspaceId: Number(workspaceId) });
+  } = useCopyWorkspaceInvite({
+    workspaceId: Number(workspaceId),
+    surface: "home_card",
+  });
   const { start: startLinkTimeout, isTimedOut: isLinkCopied } = useTimeout({
     timeout: COPIED_DURATION_MS,
   });

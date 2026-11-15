@@ -30,6 +30,7 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
+import { captureAnalyticsEvent } from "@utils/captureAnalyticsEvent";
 import {
   clearRecordingStartProof,
   getRecordingControlProof,
@@ -41,6 +42,10 @@ import { createMemoryRouter, Outlet, RouterProvider } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import RecordingHeartbeat from ".";
+
+vi.mock("@utils/captureAnalyticsEvent", () => ({
+  captureAnalyticsEvent: vi.fn(),
+}));
 
 const HEARTBEAT_INTERVAL_MS = 10 * 1000;
 
@@ -205,6 +210,15 @@ const collectRequests = () => {
 
 const UPLOAD_REQUESTS = ["audio-upload-url", "audio", "audio-upload-complete"];
 
+/** 보낸 사용 기록 중 그 이름의 것만 모아요. 이름을 이벤트 목록으로 좁혀 오타가 「보내지 않는다」를 늘 통과시키지 않게 해요 */
+const getEvents = (
+  name: Parameters<typeof captureAnalyticsEvent>[0]["event"],
+) =>
+  vi
+    .mocked(captureAnalyticsEvent)
+    .mock.calls.map(([params]) => params)
+    .filter(({ event }) => event === name);
+
 describe("RecordingHeartbeat", () => {
   beforeEach(() => {
     // 요청은 실제 시간으로 흘러야 해서 신호 주기만 가짜로 돌려요.
@@ -222,6 +236,7 @@ describe("RecordingHeartbeat", () => {
     mockServer.events.removeAllListeners();
     // 연결 상태는 TanStack Query 전역 값이라, 오프라인으로 끝난 테스트가 다음 테스트의 요청을 멈추지 않게 되돌려요
     onlineManager.setOnline(true);
+    vi.mocked(captureAnalyticsEvent).mockClear();
     vi.useRealTimers();
   });
 
@@ -1057,6 +1072,277 @@ describe("RecordingHeartbeat", () => {
       act(() => useRecordingStore.getState().discardRecording());
 
       await expectNoToast();
+    });
+  });
+
+  // 끊김은 위 연결 끊김 토스트를 띄우는 조건과 같아요. 끊길 때가 아니라 끝날 때 보내 끊긴 시간과 결과를 함께 봐요
+  describe("연결 끊김 사용 기록 (recording_disconnected)", () => {
+    const DISCONNECTED_AT = new Date("2026-11-12T03:00:00.000Z").getTime();
+    /** 끊긴 뒤 몇 초가 지난 때로 시계를 맞춰요 */
+    const at = (seconds: number) =>
+      vi.setSystemTime(DISCONNECTED_AT + seconds * 1000);
+
+    const setConnection = (state: {
+      isHeartbeatFailing?: boolean;
+      isChunkTransferStalled?: boolean;
+    }) => act(() => useRecordingStore.setState(state));
+
+    const disconnectedEvent = (
+      outcome: "restored" | "recording_closed",
+      seconds: number,
+    ) => ({
+      event: "recording_disconnected",
+      properties: {
+        outcome,
+        disconnected_seconds: seconds,
+        recording_id: expected.recordingId,
+        workspace_id: Number(WORKSPACE_ID),
+      },
+    });
+
+    it("생존 신호가 실패하다 다시 닿으면 restored로 한 번 보낸다", async () => {
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      respondHeartbeatWithError(503, "SERVICE_UNAVAILABLE");
+      await startRecording();
+      renderRecordingHeartbeat();
+
+      passHeartbeatInterval();
+      await screen.findByText(TOAST_MESSAGES.RECORDING_DISCONNECTED.message);
+      expect(getEvents("recording_disconnected")).toEqual([]);
+
+      respondHeartbeat(() => HttpResponse.json(recordingHeartbeatResponse));
+      passHeartbeatInterval();
+
+      await waitFor(() =>
+        expect(getEvents("recording_disconnected")).toEqual([
+          {
+            event: "recording_disconnected",
+            properties: expect.objectContaining({
+              outcome: "restored",
+              recording_id: expected.recordingId,
+            }),
+          },
+        ]),
+      );
+    });
+
+    describe("끊긴 시간", () => {
+      beforeEach(async () => {
+        // 끊긴 시간을 정확히 보려고 시계만 가짜로 돌려요. 신호 주기는 기다리지 않고 연결 상태를 직접 바꿔요
+        vi.useFakeTimers({ toFake: ["Date"] });
+        at(0);
+        await startRecording();
+        renderRecordingHeartbeat();
+      });
+
+      it("신호가 닿지 않다가 다시 닿으면 끊긴 시간과 함께 restored로 보낸다", () => {
+        setConnection({ isHeartbeatFailing: true });
+        at(12.34);
+        setConnection({ isHeartbeatFailing: false });
+
+        expect(getEvents("recording_disconnected")).toEqual([
+          disconnectedEvent("restored", 12.3),
+        ]);
+      });
+
+      it("조각 전송이 밀렸다가 풀려도 보낸다", () => {
+        setConnection({ isChunkTransferStalled: true });
+        at(3);
+        setConnection({ isChunkTransferStalled: false });
+
+        expect(getEvents("recording_disconnected")).toEqual([
+          disconnectedEvent("restored", 3),
+        ]);
+      });
+
+      it("신호와 조각이 함께 끊기면 둘 다 돌아와 안내가 닫힐 때 처음 끊긴 때부터 세어 한 번 보낸다", () => {
+        setConnection({ isHeartbeatFailing: true });
+        at(1);
+        setConnection({ isChunkTransferStalled: true });
+        at(2);
+        setConnection({ isHeartbeatFailing: false });
+
+        expect(getEvents("recording_disconnected")).toEqual([]);
+
+        at(5);
+        setConnection({ isChunkTransferStalled: false });
+
+        expect(getEvents("recording_disconnected")).toEqual([
+          disconnectedEvent("restored", 5),
+        ]);
+      });
+
+      it("끊긴 채 녹음이 끝나면 recording_closed로 보낸다", () => {
+        setConnection({ isHeartbeatFailing: true });
+        at(40);
+        act(() => useRecordingStore.getState().discardRecording());
+
+        expect(getEvents("recording_disconnected")).toEqual([
+          disconnectedEvent("recording_closed", 40),
+        ]);
+      });
+
+      it("다시 끊기면 새 끊김으로 따로 보낸다", () => {
+        setConnection({ isHeartbeatFailing: true });
+        at(2);
+        setConnection({ isHeartbeatFailing: false });
+        at(10);
+        setConnection({ isHeartbeatFailing: true });
+        at(17);
+        act(() => useRecordingStore.getState().discardRecording());
+
+        expect(getEvents("recording_disconnected")).toEqual([
+          disconnectedEvent("restored", 2),
+          disconnectedEvent("recording_closed", 7),
+        ]);
+      });
+
+      it("끊기지 않은 채 녹음이 끝나면 보내지 않는다", () => {
+        act(() => useRecordingStore.getState().discardRecording());
+
+        expect(getEvents("recording_disconnected")).toEqual([]);
+      });
+
+      it("녹음을 끝낸 뒤 남은 조각을 올리다 밀리는 것은 안내를 띄우지 않아 세지 않는다", () => {
+        act(() => useRecordingStore.getState().discardRecording());
+        setConnection({ isChunkTransferStalled: true });
+        at(3);
+        setConnection({ isChunkTransferStalled: false });
+
+        expect(getEvents("recording_disconnected")).toEqual([]);
+      });
+    });
+  });
+
+  // 사용자가 끝내지 않은 녹음이 끝난 것이라 녹음 손실을 볼 때 써요. 사용자가 끝낸 녹음은 녹음 바의 recording_ended가 맡아요
+  describe("서버가 끝낸 녹음의 사용 기록 (recording_auto_ended)", () => {
+    const respondEnded = (endReason: string) => () =>
+      respondHeartbeat(() =>
+        HttpResponse.json({
+          ...recordingHeartbeatResponse,
+          status: "ENDED",
+          endReason,
+        }),
+      );
+
+    const settle = () =>
+      act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+
+    it.each([
+      {
+        name: "연결 끊김으로 끝낸(ENDED, CONNECTION_EXPIRED)",
+        respond: respondEnded("CONNECTION_EXPIRED"),
+        reason: "connection_expired",
+        isUploaded: true,
+      },
+      {
+        name: "2시간에 닿아 끝낸(ENDED, MAX_DURATION)",
+        respond: respondEnded("MAX_DURATION"),
+        reason: "max_duration",
+        isUploaded: true,
+      },
+      {
+        name: "다른 곳에서 끝낸(ENDED, USER_ENDED)",
+        respond: respondEnded("USER_ENDED"),
+        reason: "ended_by_server",
+        isUploaded: true,
+      },
+      {
+        name: "버린(DISCARDED)",
+        respond: () =>
+          respondHeartbeat(() =>
+            HttpResponse.json({
+              ...recordingHeartbeatResponse,
+              status: "DISCARDED",
+            }),
+          ),
+        reason: "discarded",
+        isUploaded: false,
+      },
+      {
+        name: "더는 볼 수 없는(404 RECORDING_NOT_FOUND)",
+        respond: () => respondHeartbeatWithError(404, "RECORDING_NOT_FOUND"),
+        reason: "unreachable",
+        isUploaded: false,
+      },
+      {
+        name: "이 탭의 제어를 거절한(403 RECORDING_CONTROL_DENIED)",
+        respond: () =>
+          respondHeartbeatWithError(403, "RECORDING_CONTROL_DENIED"),
+        reason: "control_lost",
+        isUploaded: false,
+      },
+    ])(
+      "생존 신호가 서버가 $name 녹음이라 알리면 $reason으로 한 번만 보낸다",
+      async ({ respond, reason, isUploaded }) => {
+        respond();
+        await startRecording();
+        const { router } = renderRecordingHeartbeat();
+
+        passHeartbeatInterval();
+        await waitFor(() =>
+          expect(router.state.location.pathname).toBe(HOME_PATH),
+        );
+        // 녹음을 닫아 다음 주기에는 신호를 보내지 않으니 다시 보내지 않아요
+        passHeartbeatInterval();
+        await settle();
+
+        expect(getEvents("recording_auto_ended")).toEqual([
+          {
+            event: "recording_auto_ended",
+            properties: {
+              reason,
+              is_uploaded: isUploaded,
+              audio_mode: "FINAL_WEBM_V1",
+              recording_id: expected.recordingId,
+              workspace_id: Number(WORKSPACE_ID),
+            },
+          },
+        ]);
+      },
+    );
+
+    it("서버가 끝낸 녹음의 오디오를 끝내 올리지 못하면 넘기지 못했다고 보낸다", async () => {
+      respondEnded("CONNECTION_EXPIRED")();
+      mockServer.use(
+        http.post(
+          "*/api/v1/workspaces/:workspaceId/recordings/:recordingId/audio-upload-url",
+          () =>
+            HttpResponse.json({ code: "INVALID_REQUEST" }, { status: 400 }),
+        ),
+      );
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      await startRecording();
+      const { router } = renderRecordingHeartbeat();
+
+      passHeartbeatInterval();
+
+      await waitFor(() =>
+        expect(router.state.location.pathname).toBe(HOME_PATH),
+      );
+      expect(getEvents("recording_auto_ended")).toEqual([
+        {
+          event: "recording_auto_ended",
+          properties: expect.objectContaining({
+            reason: "connection_expired",
+            is_uploaded: false,
+          }),
+        },
+      ]);
+    });
+
+    it("생존 신호가 녹음 중이라 답하면 보내지 않는다", async () => {
+      await startRecording();
+      renderRecordingHeartbeat();
+
+      passHeartbeatInterval();
+      await waitFor(() =>
+        expect(useRecordingStore.getState().accumulatedMs).toBe(
+          expected.elapsedMillis,
+        ),
+      );
+
+      expect(getEvents("recording_auto_ended")).toEqual([]);
     });
   });
 

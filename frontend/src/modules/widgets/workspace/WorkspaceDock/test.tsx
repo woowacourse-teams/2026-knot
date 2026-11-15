@@ -105,6 +105,31 @@ const OTHER_TAB_ELAPSED_TIME = formatRecordingTime(
   new GetCurrentRecordingResponseDto(currentRecordingResponse).elapsedMillis /
     1000,
 );
+/** 현재 녹음 조회가 기본으로 답하는 다른 탭 녹음의 id */
+const OTHER_TAB_RECORDING_ID = new GetCurrentRecordingResponseDto(
+  currentRecordingResponse,
+).recordingId;
+
+/**
+ * 녹음한 시간을 정해 두려고 지금 시각(`Date.now`)만 멈춰 두고, 요청을 주고받는 타이머는 실제로 돌려요.
+ * 시각은 `pass`로만 흘러요.
+ */
+const freezeNow = () => {
+  let now = Date.now();
+  vi.spyOn(Date, "now").mockImplementation(() => now);
+
+  return {
+    pass: (ms: number) => {
+      now += ms;
+    },
+  };
+};
+
+/** 보낸 사용 기록 가운데 이 이벤트만 골라요 */
+const capturedEvents = (event: string) =>
+  vi
+    .mocked(captureAnalyticsEvent)
+    .mock.calls.filter(([captured]) => captured.event === event);
 
 const respondNoCurrentRecording = () =>
   mockServer.use(
@@ -1482,6 +1507,29 @@ describe("WorkspaceDock", () => {
         ).toBeInTheDocument();
       });
 
+      it("확인 창에서 녹음 끝내기를 고르면 독의 녹음 칩에서 끝냈다고 사용 기록을 남긴다", async () => {
+        const { router } = renderDock();
+
+        await stopRecording();
+
+        await waitFor(() =>
+          expect(router.state.location.pathname).toBe(DOCUMENTS_PATH),
+        );
+        expect(capturedEvents("recording_ended")).toEqual([
+          [
+            {
+              event: "recording_ended",
+              properties: expect.objectContaining({
+                result: "uploaded",
+                surface: "dock",
+                recording_id: RECORDING_ID,
+                workspace_id: Number(WORKSPACE_ID),
+              }),
+            },
+          ],
+        ]);
+      });
+
       it("녹음 화면에서는 녹음 칩도 숨긴다", () => {
         renderDock(RECORDING_PATH);
 
@@ -1583,6 +1631,75 @@ describe("WorkspaceDock", () => {
         );
 
         await waitFor(() => expect(bodies).toEqual([""]));
+      });
+
+      describe("끝낸 결과를 사용 기록으로 남긴다", () => {
+        const END_PATH =
+          "*/api/v1/workspaces/:workspaceId/recordings/:recordingId/end";
+
+        it.each([
+          {
+            reason: "끝내면",
+            respond: () => HttpResponse.json(recordingEndResponse),
+            result: "ended",
+          },
+          {
+            reason: "이미 끝난 녹음이면",
+            respond: () =>
+              HttpResponse.json(
+                { code: "RECORDING_ALREADY_ENDED" },
+                { status: 409 },
+              ),
+            result: "already_ended",
+          },
+          {
+            reason: "종료 요청이 실패하면",
+            respond: () => new HttpResponse(null, { status: 500 }),
+            result: "failed",
+          },
+        ])(
+          "$reason $result와 그 녹음의 id를 한 번 남기고, 이 탭의 녹음을 끝낸 기록은 남기지 않는다",
+          async ({ respond, result }) => {
+            // 실패는 콘솔에도 남기므로, 테스트 출력에 섞이지 않게 막아요
+            vi.spyOn(console, "error").mockImplementation(() => {});
+            respondCurrentRecordingStatus("RECORDING");
+            mockServer.use(http.post(END_PATH, respond));
+            renderDock();
+            await screen.findByRole("img", { name: "녹음 중" });
+
+            await clickMic("녹음 끝내기");
+            await chooseInEndRecordingDialog("녹음 끝내기");
+
+            await waitFor(() =>
+              expect(
+                capturedEvents("recording_end_other_tab_result"),
+              ).toEqual([
+                [
+                  {
+                    event: "recording_end_other_tab_result",
+                    properties: {
+                      result,
+                      recording_id: OTHER_TAB_RECORDING_ID,
+                      workspace_id: Number(WORKSPACE_ID),
+                    },
+                  },
+                ],
+              ]),
+            );
+            expect(capturedEvents("recording_ended")).toEqual([]);
+          },
+        );
+
+        it("확인 창에서 계속 녹음을 고르면 남기지 않는다", async () => {
+          respondCurrentRecordingStatus("RECORDING");
+          renderDock();
+          await screen.findByRole("img", { name: "녹음 중" });
+
+          await clickMic("녹음 끝내기");
+          await chooseInEndRecordingDialog("계속 녹음");
+
+          expect(capturedEvents("recording_end_other_tab_result")).toEqual([]);
+        });
       });
 
       describe("녹음 탭의 연결이 끊기면 (STT-R28)", () => {
@@ -1873,6 +1990,94 @@ describe("WorkspaceDock", () => {
           expect(useRecordingStore.getState().status).toBe("paused");
         },
       );
+
+      describe("끊긴 것을 사용 기록으로 남긴다", () => {
+        /** 녹음 중에 마이크가 빠진 것처럼 그 마이크의 트랙을 끊었다고 알려요. 같은 트랙에 다시 알리면 같은 끊김이 또 알려진 거예요 */
+        const disconnect = (stream: MediaStream) =>
+          act(() => {
+            const [track] = stream.getTracks();
+            track.stop();
+            track.dispatchEvent(new Event("ended"));
+          });
+
+        const microphoneLost = (elapsedSeconds: number) => [
+          {
+            event: "recording_microphone_lost",
+            properties: {
+              elapsed_seconds: elapsedSeconds,
+              recording_id: RECORDING_ID,
+              workspace_id: Number(WORKSPACE_ID),
+            },
+          },
+        ];
+
+        it("끊길 때까지 녹음한 시간과 녹음 · 워크스페이스 id를 남긴다", async () => {
+          const clock = freezeNow();
+          const getUserMedia = vi.spyOn(
+            navigator.mediaDevices,
+            "getUserMedia",
+          );
+          await startRecording();
+          const stream: MediaStream = await getUserMedia.mock.results[0].value;
+          renderDock();
+          clock.pass(7_240);
+
+          disconnect(stream);
+
+          expect(capturedEvents("recording_microphone_lost")).toEqual([
+            microphoneLost(7.2),
+          ]);
+        });
+
+        it("같은 끊김이 다시 알려져 안내 창을 또 띄워도 한 번만 남긴다", async () => {
+          const getUserMedia = vi.spyOn(
+            navigator.mediaDevices,
+            "getUserMedia",
+          );
+          await startRecording();
+          const stream: MediaStream = await getUserMedia.mock.results[0].value;
+          renderDock();
+          disconnect(stream);
+
+          disconnect(stream);
+
+          expect(capturedEvents("recording_microphone_lost")).toHaveLength(1);
+        });
+
+        it("이어서 녹음한 뒤 다시 끊기면 그 끊김도 남긴다", async () => {
+          const clock = freezeNow();
+          const getUserMedia = vi.spyOn(
+            navigator.mediaDevices,
+            "getUserMedia",
+          );
+          await startRecording();
+          const firstStream: MediaStream =
+            await getUserMedia.mock.results[0].value;
+          renderDock();
+          clock.pass(3_000);
+          disconnect(firstStream);
+
+          await act(() => useRecordingStore.getState().resumeRecording());
+          const secondStream: MediaStream =
+            await getUserMedia.mock.results[1].value;
+          clock.pass(2_000);
+          disconnect(secondStream);
+
+          expect(capturedEvents("recording_microphone_lost")).toEqual([
+            microphoneLost(3),
+            microphoneLost(5),
+          ]);
+        });
+
+        it("마이크가 끊기지 않고 사용자가 일시정지하면 남기지 않는다", async () => {
+          await startRecording();
+          renderDock();
+
+          await act(() => useRecordingStore.getState().pauseRecording());
+
+          expect(capturedEvents("recording_microphone_lost")).toEqual([]);
+        });
+      });
     });
   });
 });

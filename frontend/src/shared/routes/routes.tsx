@@ -3,6 +3,7 @@ import WorkspaceLayout from "@pages/_layout/WorkspaceLayout";
 import InvitePage from "@pages/invite/[token]";
 import JoinErrorPage from "@pages/join-error";
 import LandingPage from "@pages/landing";
+import LandingTechnologyPage from "@pages/landing/technology";
 import LoginPage from "@pages/login";
 import LoginFailedPage from "@pages/login/failed";
 import NotFoundPage from "@pages/not-found";
@@ -35,7 +36,7 @@ import RecordingGuard from "./RecordingGuard";
 /**
  * 로그인 여부로 세 구역이 나뉘어요.
  *
- * - 누구나: 온보딩, 가입 완료, 초대 링크 판정, 입장 확인, 초대 오류
+ * - 누구나: 기술 소개 랜딩, 온보딩, 가입 완료, 초대 링크 판정, 입장 확인, 초대 오류
  * - 로그인한 사람만(`AuthGuard`): 워크스페이스 선택·생성·초대·코드
  * - 로그인하지 않은 사람용(`GuestGuard`): 로그인 화면
  *
@@ -62,6 +63,12 @@ const screenRoutes: RouteObject[] = [
         children: [{ index: true, element: <EntryRedirect /> }],
       },
     ],
+  },
+
+  // 기술 소개 랜딩 — 로그인 여부와 상관없이 화면 전체를 쓰는 9장면 랜딩을 보여 줘요
+  {
+    path: PATH_ROUTE.LANDING_TECHNOLOGY,
+    element: <LandingTechnologyPage />,
   },
 
   // 화면 가운데 정렬 — 워크스페이스 진입 전 플로우

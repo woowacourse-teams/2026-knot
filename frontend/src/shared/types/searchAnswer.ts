@@ -71,3 +71,6 @@ export interface SearchAnswer {
   /** 답변 실패 오류 코드. `failed` 이벤트로 실패했을 때만 값이 있어요 */
   failedCode: string | null;
 }
+
+/** 질문을 보낸 곳. 독의 입력창(`dock`) 또는 탐색 튜토리얼의 질문 종류 카드(`tutorial`)예요. 사용 기록에 남겨요 */
+export type SearchQuestionEntry = "dock" | "tutorial";

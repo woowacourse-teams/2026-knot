@@ -4,13 +4,17 @@ import { ThemeProvider } from "@emotion/react";
 import { ToastProvider } from "@provider/context/toastContext";
 import { theme } from "@provider/themeProvider";
 import { getRouterPath } from "@routes/PATH_ROUTE";
+import { useSearchAnswerStore } from "@store/searchAnswerStore";
 import { useSearchTutorialStore } from "@store/searchTutorialStore";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { captureAnalyticsEvent } from "@utils/captureAnalyticsEvent";
 import SearchConversation from "@widgets/search/SearchConversation";
 import { http, HttpResponse } from "msw";
 import { createMemoryRouter, Outlet, RouterProvider } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+import WorkspaceAnalytics from "@/shared/components/domain/WorkspaceAnalytics";
 
 import SearchTutorial from ".";
 import { COACH_COPY, DOCUMENT_COACH_TITLE } from "./constants/searchTutorial";
@@ -25,6 +29,10 @@ vi.mock("./constants/searchTutorial", async (importOriginal) => ({
   SEARCH_TUTORIAL_SEND_DELAY_MS: 10,
 }));
 
+vi.mock("@utils/captureAnalyticsEvent", () => ({
+  captureAnalyticsEvent: vi.fn(),
+}));
+
 const WORKSPACE_ID = "1";
 const MEMBER_ID = 1; // meResponse의 회원
 const RECORD_KEY = `knot.searchTutorial.${MEMBER_ID}`;
@@ -33,6 +41,8 @@ const RECORDING_DOCUMENT_PATH = getRouterPath({
   routeKey: "RECORDING_DOCUMENT",
   params: { workspaceId: WORKSPACE_ID, recordingId: "10" },
 });
+/** 워크스페이스 레이아웃 밖의 화면. 이리로 가면 튜토리얼이 화면에서 사라져요 */
+const ELSEWHERE_PATH = "/elsewhere";
 
 /** 튜토리얼이 밝히는 대상. 실제 GNB와 독 대신 자리만 둬요 */
 const Targets = ({ isChat = false }: { isChat?: boolean }) => (
@@ -44,6 +54,15 @@ const Targets = ({ isChat = false }: { isChat?: boolean }) => (
   </>
 );
 
+/** 탐색 화면. 실제 대화 칸을 그려 예시 대화와 보낸 질문의 답변을 보여 줘요 */
+const ChatScreen = () => (
+  <>
+    <Targets isChat />
+    <SearchConversation />
+  </>
+);
+
+/** 라우트에서처럼 사용 기록(`WorkspaceAnalytics`)이 레이아웃을 감싸, 튜토리얼에서 보낸 질문의 답변 결과도 남아요 */
 const renderTutorial = (initialPath = HOME_PATH) => {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const router = createMemoryRouter(
@@ -51,25 +70,21 @@ const renderTutorial = (initialPath = HOME_PATH) => {
       {
         path: "/workspace/:workspaceId",
         element: (
-          <ToastProvider>
-            <Outlet />
-            <SearchTutorial />
-          </ToastProvider>
+          <WorkspaceAnalytics>
+            <ToastProvider>
+              <Outlet />
+              <SearchTutorial />
+            </ToastProvider>
+          </WorkspaceAnalytics>
         ),
         children: [
           { index: true, element: <Targets /> },
           { path: "recordings/:recordingId/document", element: <Targets /> },
-          {
-            path: "chat",
-            element: (
-              <>
-                <Targets isChat />
-                <SearchConversation />
-              </>
-            ),
-          },
+          { path: "chat", element: <ChatScreen /> },
+          { path: "chat/:sessionId", element: <ChatScreen /> },
         ],
       },
+      { path: ELSEWHERE_PATH, element: <p>다른 화면</p> },
     ],
     { initialEntries: [initialPath] },
   );
@@ -102,10 +117,36 @@ beforeEach(() => {
   });
 });
 
+/** 보낸 사용 기록 중 그 이름의 것만 모아요 */
+const getEvents = (name: Parameters<typeof captureAnalyticsEvent>[0]["event"]) =>
+  vi
+    .mocked(captureAnalyticsEvent)
+    .mock.calls.map(([params]) => params)
+    .filter(({ event }) => event === name);
+
+/** 그 단계에서 끝내지 않고 떠났다는 사용 기록 */
+const leftEvent = (step: number) => ({
+  event: "search_tutorial_ended",
+  properties: { result: "left", step, workspace_id: Number(WORKSPACE_ID) },
+});
+
+/** 탭을 닫거나 새로고침할 때 브라우저가 보내는 이벤트예요 */
+const hidePage = () => act(() => window.dispatchEvent(new Event("pagehide")));
+
+/** 1단계의 「보여 주세요」부터 예시 대화를 지나 4단계(질문 종류 카드)까지 가요 */
+const proceedToQuestionKinds = async () => {
+  fireEvent.click(await screen.findByRole("button", { name: "보여 주세요" }));
+  await screen.findByText(COACH_COPY[3].title, {}, { timeout: 3000 });
+  fireEvent.click(screen.getByRole("button", { name: "다음" }));
+};
+
 afterEach(() => {
   vi.restoreAllMocks();
+  vi.mocked(captureAnalyticsEvent).mockClear();
   localStorage.clear();
   useSearchTutorialStore.getState().end();
+  // 전역 저장소라 테스트끼리 답변이 새지 않게 비워요
+  useSearchAnswerStore.getState().abort();
 });
 
 describe("SearchTutorial", () => {
@@ -199,6 +240,21 @@ describe("SearchTutorial", () => {
     expect(JSON.parse(localStorage.getItem(RECORD_KEY) ?? "null")).toEqual({ state: "done" });
   });
 
+  it("질문 종류 카드로 보낸 질문의 답변 결과는 튜토리얼에서 보냈다고 남긴다", async () => {
+    renderTutorial();
+    await proceedToQuestionKinds();
+
+    const [firstKind] = SEARCH_TUTORIAL_QUESTION_KINDS;
+    fireEvent.click(await screen.findByRole("button", { name: new RegExp(firstKind.question) }));
+
+    await waitFor(() => expect(getEvents("search_answer_result")).toHaveLength(1), { timeout: 3000 });
+    expect(getEvents("search_answer_result")[0].properties).toMatchObject({
+      result: "completed",
+      entry: "tutorial",
+      question: firstKind.question,
+    });
+  });
+
   it("2단계에서 건너뛰기를 누르면 끝내고 다시 띄우지 않는다", async () => {
     renderTutorial();
 
@@ -207,6 +263,46 @@ describe("SearchTutorial", () => {
 
     expect(screen.queryByTestId("search-tutorial")).not.toBeInTheDocument();
     expect(JSON.parse(localStorage.getItem(RECORD_KEY) ?? "null")).toEqual({ state: "done" });
+  });
+
+  describe("끝내지 않고 떠난 사용 기록", () => {
+    it("1단계를 띄운 채 탭을 닫거나 새로고침하면 1단계에서 떠났다고 한 번 남기고, 다 본 것으로 기록하지 않는다", async () => {
+      const { router } = renderTutorial();
+      await screen.findByText(COACH_COPY[1].title);
+
+      await hidePage();
+      // 탭을 닫으며 남긴 뒤 다른 화면으로 가도 한 번 더 남기지 않아요
+      await act(() => router.navigate(ELSEWHERE_PATH));
+
+      expect(getEvents("search_tutorial_ended")).toEqual([leftEvent(1)]);
+      expect(localStorage.getItem(RECORD_KEY)).toBeNull();
+    });
+
+    it("탐색 화면에서 2~4단계를 보다 다른 화면으로 가면 그 단계에서 떠났다고 남기고 다시 띄우지 않는다", async () => {
+      const { router } = renderTutorial();
+      fireEvent.click(await screen.findByRole("button", { name: "보여 주세요" }));
+      await screen.findByText(COACH_COPY[3].title, {}, { timeout: 3000 });
+
+      await act(() => router.navigate(HOME_PATH));
+
+      expect(getEvents("search_tutorial_ended")).toEqual([leftEvent(3)]);
+      expect(screen.queryByTestId("search-tutorial")).not.toBeInTheDocument();
+      expect(JSON.parse(localStorage.getItem(RECORD_KEY) ?? "null")).toEqual({ state: "done" });
+    });
+
+    it("끝낸 뒤에는 탭을 닫아도 떠났다고 남기지 않는다", async () => {
+      renderTutorial();
+
+      fireEvent.click(await screen.findByRole("button", { name: "다음에 볼게요" }));
+      await hidePage();
+
+      expect(getEvents("search_tutorial_ended")).toEqual([
+        {
+          event: "search_tutorial_ended",
+          properties: { result: "snoozed", step: 1, workspace_id: Number(WORKSPACE_ID) },
+        },
+      ]);
+    });
   });
 
   it("탐색 빈 대화의 탐색 사용법 보기로 끝낸 튜토리얼을 다시 볼 수 있다", async () => {

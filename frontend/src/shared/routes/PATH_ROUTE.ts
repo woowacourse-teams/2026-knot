@@ -2,6 +2,8 @@ import { generatePath, PathParam } from "react-router";
 
 export const PATH_ROUTE = {
   HOME: "/",
+  // 공개 랜딩에 녹음 기술, 탐색 기술 소개 두 장면을 더한 페이지. 기술 소개를 보여 줘야 할 때 열어요
+  LANDING_TECHNOLOGY: "/landing/technology",
 
   LOGIN: "/login",
   // 로그인 처리에 실패해 돌아왔을 때 보여 주는 로그인 실패 화면(ERR-15, AUTH-R7)

@@ -25,6 +25,7 @@ import {
   consumeAuthSessionExpired,
   markAuthSessionConfirmed,
 } from "@utils/authSession";
+import { captureAnalyticsEvent } from "@utils/captureAnalyticsEvent";
 import { readFeedbackDraft, saveFeedbackDraft } from "@utils/feedbackDraft";
 import {
   readLastConversationId,
@@ -36,9 +37,13 @@ import {
 } from "@utils/recordingControlProof";
 import { delay, http, HttpResponse } from "msw";
 import { createMemoryRouter, Outlet, RouterProvider } from "react-router";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import MemberProfileAvatar from ".";
+
+vi.mock("@utils/captureAnalyticsEvent", () => ({
+  captureAnalyticsEvent: vi.fn(),
+}));
 
 const WORKSPACE_ID = "1";
 const HOME_PATH = getRouterPath({
@@ -200,6 +205,7 @@ describe("MemberProfileAvatar", () => {
     useRecordingStore.getState().discardRecording();
     clearRecordingStartProof();
     sessionStorage.clear();
+    vi.mocked(captureAnalyticsEvent).mockClear();
   });
 
   /** 녹음은 독에서 증명을 만들어 시작하므로, 같은 순서로 미리 시작해 둬요 */
@@ -519,6 +525,26 @@ describe("MemberProfileAvatar", () => {
       await expectLoggedOut(router);
       expect(useRecordingStore.getState().status).toBe("idle");
       expect(logoutRequests.count).toBe(1);
+    });
+
+    it("「끝내고 로그아웃」으로 끝낸 녹음은 로그아웃 확인 창에서 끝냈다고 사용 기록을 남긴다", async () => {
+      await startRecording();
+      const { router } = renderAvatar();
+      pressLogout();
+
+      fireEvent.click(
+        await screen.findByRole("button", { name: "끝내고 로그아웃" }),
+      );
+
+      await expectLoggedOut(router);
+      expect(captureAnalyticsEvent).toHaveBeenCalledWith({
+        event: "recording_ended",
+        properties: expect.objectContaining({
+          surface: "logout",
+          recording_id: 10,
+          workspace_id: Number(WORKSPACE_ID),
+        }),
+      });
     });
 
     it("[AUTH-R22] 녹음을 끝내는 동안 「로그아웃」은 처리 중이고 메뉴가 닫히지 않는다", async () => {

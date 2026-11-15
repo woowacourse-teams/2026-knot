@@ -314,7 +314,7 @@ const endRecording = async (
     ReturnType<typeof result.current.endRecordingWithoutConfirm>
   >;
   await act(async () => {
-    outcome = await result.current.endRecordingWithoutConfirm();
+    outcome = await result.current.endRecordingWithoutConfirm("recorder_bar");
   });
 
   return outcome!;
@@ -754,7 +754,7 @@ describe("useRecordingControl의 PCM 조각 녹음", () => {
 
       let ending!: ReturnType<typeof result.current.endRecordingWithoutConfirm>;
       act(() => {
-        ending = result.current.endRecordingWithoutConfirm();
+        ending = result.current.endRecordingWithoutConfirm("recorder_bar");
       });
       await vi.advanceTimersByTimeAsync(10_999);
 
@@ -938,7 +938,7 @@ describe("useRecordingControl의 PCM 조각 녹음", () => {
           typeof result.current.endRecordingWithoutConfirm
         >;
         act(() => {
-          ending = result.current.endRecordingWithoutConfirm();
+          ending = result.current.endRecordingWithoutConfirm("recorder_bar");
         });
         await vi.advanceTimersByTimeAsync(7_000);
         expect(await ending).toBe("notUploaded");
@@ -1272,7 +1272,7 @@ describe("useRecordingControl의 PCM 조각 녹음", () => {
 
       let outcome!: Promise<unknown>;
       act(() => {
-        outcome = result.current.endRecordingWithoutConfirm();
+        outcome = result.current.endRecordingWithoutConfirm("recorder_bar");
       });
       mockServer.resetHandlers();
       mockServer.use(
@@ -1328,7 +1328,7 @@ describe("useRecordingControl의 PCM 조각 녹음", () => {
 
       let ended!: Promise<unknown>;
       act(() => {
-        ended = result.current.endRecordingWithoutConfirm();
+        ended = result.current.endRecordingWithoutConfirm("recorder_bar");
       });
       await flushRequests();
       expect(endRecordingApi).not.toHaveBeenCalled();

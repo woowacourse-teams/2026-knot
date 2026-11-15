@@ -1,6 +1,7 @@
 import useWorkspaceMembersInfiniteQuery from "@api/queries/useWorkspaceMembersInfiniteQuery";
 import styled from "@emotion/styled";
 import { useId, useRef, useEffect, useState } from "react";
+import type { SpeakerNameDraft } from "@features/recording/RenameSpeaker/types/speakerName";
 import { validateSpeakerName } from "@features/recording/RenameSpeaker/utils/validateSpeakerName";
 interface SpeakerNameFormProps {
   workspaceId: number;
@@ -10,7 +11,7 @@ interface SpeakerNameFormProps {
   isVerificationFailed: boolean;
   isVerifying: boolean;
   onVerify: () => void;
-  onSave: (name: string) => void;
+  onSave: (draft: SpeakerNameDraft) => void;
   onClose: () => void;
 }
 export default function SpeakerNameForm({
@@ -47,7 +48,10 @@ export default function SpeakerNameForm({
           !isVerifying &&
           validation === null
         )
-          onSave(name.trim());
+          onSave({
+            name: name.trim(),
+            nameSource: selectedId === null ? "typed" : "member",
+          });
       }}
     >
       <Header>

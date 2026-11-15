@@ -26,6 +26,7 @@ import {
   waitFor,
   within,
 } from "@testing-library/react";
+import { captureAnalyticsEvent } from "@utils/captureAnalyticsEvent";
 import {
   clearRecordingStartProof,
   getRecordingStartProof,
@@ -35,6 +36,10 @@ import { createMemoryRouter, Outlet, RouterProvider } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import WorkspaceSwitcher from ".";
+
+vi.mock("@utils/captureAnalyticsEvent", () => ({
+  captureAnalyticsEvent: vi.fn(),
+}));
 
 const {
   workspaces: [currentWorkspace, otherWorkspace],
@@ -118,6 +123,7 @@ describe("WorkspaceSwitcher", () => {
     useRecordingStore.getState().discardRecording();
     clearRecordingStartProof();
     mockServer.events.removeAllListeners();
+    vi.mocked(captureAnalyticsEvent).mockClear();
   });
 
   /** 녹음은 독에서 증명을 만들어 시작하므로, 같은 순서로 미리 시작해 둬요 */
@@ -286,6 +292,27 @@ describe("WorkspaceSwitcher", () => {
       expect(
         await screen.findByText(TOAST_MESSAGES.WORKSPACE_CHANGED.message),
       ).toBeInTheDocument();
+    });
+
+    it("끝내고 이동으로 끝낸 녹음은 워크스페이스를 옮기기 전 확인 창에서 끝냈다고 사용 기록을 남긴다", async () => {
+      await startRecording();
+      const { router } = renderSwitcher();
+      await openMenu();
+      fireEvent.click(await findWorkspaceItem(otherWorkspace.name));
+
+      fireEvent.click(screen.getByRole("button", { name: "끝내고 이동" }));
+
+      await waitFor(() =>
+        expect(router.state.location.pathname).toBe(OTHER_HOME_PATH),
+      );
+      expect(captureAnalyticsEvent).toHaveBeenCalledWith({
+        event: "recording_ended",
+        properties: expect.objectContaining({
+          surface: "workspace_move",
+          recording_id: 10,
+          workspace_id: currentWorkspace.id,
+        }),
+      });
     });
 
     it("끝내고 이동에서 오디오를 끝내 올리지 못하면 그대로 이동하며 주의 토스트로 알린다", async () => {

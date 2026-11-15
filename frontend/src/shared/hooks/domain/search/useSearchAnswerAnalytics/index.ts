@@ -18,13 +18,15 @@ const isAnswering = ({ status }: SearchAnswerState) =>
 
 /**
  * 답변이 끝난 방식. 받기를 끊었으면 결과가 아니라 `null`이에요.
- * 끊음과 접수 전 실패는 둘 다 처음 상태로 돌아가요. 끊을 때는 직전 요청을 abort하므로 그것으로 가려요
+ * 끊음 · 접수 전 실패 · 이어 받을 수 없음은 모두 처음 상태로 돌아가요. 끊을 때는 직전 요청을 abort하므로 그것으로 가려요.
+ * 끊지 않았는데 접수 대기에서 돌아왔으면 접수 전 실패, 생성 중에서 돌아왔으면 끊긴 답변을 이어 받다가
+ * 서버가 그 답변을 더는 주지 않은 것(4xx, `useSearchAnswerControl`이 저장소의 `release`를 불러요)이에요
  */
 const getOutcome = (state: SearchAnswerState, previous: SearchAnswerState) => {
   if (state.status === "IDLE") {
     if (previous.controller?.signal.aborted) return null;
 
-    return previous.status === "SENDING" ? "ACCEPT_FAILED" : null;
+    return previous.status === "SENDING" ? "ACCEPT_FAILED" : "UNAVAILABLE";
   }
 
   return state.status === "SENDING" || state.status === "STREAMING"
@@ -59,7 +61,9 @@ const captureAnswerLeft = ({ sentAt, leftAt }: CaptureAnswerLeftParams) =>
  * 탐색 답변에서 일어난 일을 사용 기록으로 보내는 도메인 훅. 답변 저장소와 주소를 지켜보기만 하고, 탐색 동작은 바꾸지 않아요.
  * 워크스페이스 레이아웃을 감싼 `WorkspaceAnalytics`에서 한 번만 불러요.
  *
- * - 답변 결과(`search_answer_result`): 질문을 보낸 뒤 완료 · 중지 · 실패 · 접수 전 실패로 끝나면 보내요. 홈 · 문서로 옮겨도 답변은 뒤에서 계속 받아 끝나면 보내요.
+ * - 답변 결과(`search_answer_result`): 질문을 보낸 뒤 완료 · 중지 · 실패 · 접수 전 실패 · 이어 받을 수 없음으로 끝나면 보내요.
+ *   홈 · 문서로 옮겨도 답변은 뒤에서 계속 받아 끝나면 보내요. 질문을 보낸 곳(독 · 튜토리얼)은 저장소가 질문과 함께 들고 있어요.
+ *   이어 받을 수 없음은 끝 이벤트 없이 끊긴 답변을 이어 받다가 서버가 그 답변을 더는 주지 않은(4xx) 경우예요.
  *   받기를 끊었으면(다른 대화를 열거나 워크스페이스를 나감) 결과가 없어 보내지 않아요.
  *   돌아와서 서버의 답변을 이어 받은 것도 보낸 질문이 아니라서 보내지 않아요.
  * - 떠남(`search_answer_left`): 답변이 끝나기 전에 그 답변의 대화 주소에서 다른 주소로 옮기면, 질문을 보낸 뒤 기다린 시간을 보내요.
@@ -98,7 +102,9 @@ const useSearchAnswerAnalytics = () => {
           question: state.question,
           isRetry: state.questionMessageId !== null,
           isFirstQuestion: state.conversationId === null,
+          entry: state.entry,
           getAnswer: () => useSearchAnswerStore.getState().text,
+          getFailureCode: () => useSearchAnswerStore.getState().failedCode,
         });
         return;
       }

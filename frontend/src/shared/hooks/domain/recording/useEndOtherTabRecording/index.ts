@@ -6,6 +6,7 @@ import { deleteRecordingChunks } from "@store/recordingStore/recordingChunkArchi
 import { isClosedRecordingError } from "@utils/isClosedRecordingError";
 import { logRequestError } from "@utils/logRequestError";
 import { postRecordingEnded } from "@utils/recordingChannel";
+import { trackRecordingEndOtherTabResult } from "@utils/trackRecordingEndOtherTabResult";
 import { forgetUnfinishedRecording } from "@utils/unfinishedRecording";
 import { useCallback } from "react";
 
@@ -21,6 +22,7 @@ interface EndOtherTabRecordingParams {
  * 같은 브라우저의 녹음 탭에는 바로 알리고, 다른 기기의 녹음 탭은 다음 신호 응답에서 멈춰요.
  * 탭을 닫아 둔 녹음이면 이 브라우저에 남은 조각도 지워요.
  * 이미 끝난 녹음이면 끝낸 것과 같아 알리지 않고, 그 밖의 실패는 오류 토스트로 알려요.
+ * 끝낸 결과(끝냄 · 이미 끝나 있었음 · 실패)는 사용 기록(`recording_end_other_tab_result`)으로도 보내요.
  */
 const useEndOtherTabRecording = () => {
   const { openEndRecordingDialog } = useEndRecordingDialog();
@@ -33,7 +35,9 @@ const useEndOtherTabRecording = () => {
         onEnd: async () => {
           try {
             await endRecording(recording);
+            trackRecordingEndOtherTabResult({ ...recording, error: null });
           } catch (error) {
+            trackRecordingEndOtherTabResult({ ...recording, error });
             if (!isClosedRecordingError(error)) {
               logRequestError({
                 feature: "recording",

@@ -5,6 +5,7 @@ import type {
   SearchAnswer,
   SearchAnswerStatus,
   SearchAnswerStreamEvent,
+  SearchQuestionEntry,
 } from "@/shared/types/searchAnswer";
 
 import { reduceSearchStreamEvent } from "./reduceSearchStreamEvent";
@@ -15,6 +16,12 @@ interface SearchAnswerState extends SearchAnswer {
    * 스트림을 끊는 데도 쓰고, 동작을 부른 요청이 지금 요청인지 가리는 표식으로도 써요.
    */
   controller: AbortController | null;
+
+  /**
+   * 지금 답변의 질문을 보낸 곳. 사용 기록(`search_answer_result`)에 남겨요.
+   * 이어 받은 답변은 이 탭에서 보낸 질문이 아니라 처음 값(`dock`) 그대로예요
+   */
+  entry: SearchQuestionEntry;
 }
 
 /** 다시 요청할 실패한 답변의 메시지 ID */
@@ -34,6 +41,9 @@ interface StartSearchAnswerParams {
    * 접수 전부터 들고 있어야 화면이 저장된 실패 턴을 이 답변으로 바꿔 그려요
    */
   retryOf?: SearchAnswerRetryTarget;
+
+  /** 질문을 보낸 곳. 없으면 독(`dock`)이에요 */
+  entry?: SearchQuestionEntry;
 }
 
 /** 화면이 받고 있지 않은, 서버에서 만들고 있는 답변 */
@@ -106,6 +116,7 @@ const IDLE_STATE: SearchAnswerState = {
   excludedDocumentCount: 0,
   failedCode: null,
   controller: null,
+  entry: "dock",
 };
 
 /**
@@ -128,7 +139,7 @@ export const useSearchAnswerStore = create<
   return {
     ...IDLE_STATE,
 
-    start: ({ question, conversationId, retryOf }) => {
+    start: ({ question, conversationId, retryOf, entry = "dock" }) => {
       const { status } = get();
       if (status === "SENDING" || status === "STREAMING") return null;
 
@@ -141,6 +152,7 @@ export const useSearchAnswerStore = create<
         questionMessageId: retryOf?.questionMessageId ?? null,
         answerMessageId: retryOf?.answerMessageId ?? null,
         controller,
+        entry,
       });
 
       return controller;

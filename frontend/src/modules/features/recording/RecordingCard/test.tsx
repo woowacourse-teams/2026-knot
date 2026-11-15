@@ -7,8 +7,9 @@ import { ThemeProvider } from "@emotion/react";
 import { theme } from "@provider/themeProvider";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { captureAnalyticsEvent } from "@utils/captureAnalyticsEvent";
 import { delay, http, HttpResponse } from "msw";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import RecordingCard from ".";
 import { useRecordingStore } from "@store/recordingStore";
@@ -20,6 +21,10 @@ import {
 import { recordingDetailsResponse } from "@api/mock/responses/recording";
 
 import { MemoryRouter } from "react-router";
+
+vi.mock("@utils/captureAnalyticsEvent", () => ({
+  captureAnalyticsEvent: vi.fn(),
+}));
 
 const expected = new GetMeResponseDto(meResponse);
 const GUIDE_TEXT =
@@ -214,5 +219,134 @@ describe("참가자 수 설정", () => {
     expect(
       screen.getByRole("button", { name: "참가자 수 줄이기" }),
     ).toBeDisabled();
+  });
+
+  describe("저장 결과 사용 기록", () => {
+    const SPEAKER_COUNT_REQUEST =
+      "*/api/v1/workspaces/:workspaceId/recordings/:recordingId/speaker-count";
+    const recordingTarget = {
+      recording_id: session.recordingId,
+      workspace_id: session.workspaceId,
+    };
+
+    // 앞 테스트에서도 사용 기록이 남을 수 있어, 테스트마다 기록을 비우고 시작해요
+    beforeEach(() => {
+      vi.mocked(captureAnalyticsEvent).mockClear();
+    });
+
+    /** 참가자 수 저장 결과만 골라 그 속성을 보낸 순서대로 모아요 */
+    const getSavedProperties = () =>
+      vi
+        .mocked(captureAnalyticsEvent)
+        .mock.calls.map(([event]) => event)
+        .filter(({ event }) => event === "speaker_count_saved")
+        .map(({ properties }) => properties);
+
+    /** 저장된 참가자 수가 `speakerCount`인 녹음 중 녹음을 보여 주고, 늘리기 버튼을 누를 수 있을 때까지 기다려요 */
+    const renderWithSpeakerCount = async (speakerCount: number | null) => {
+      start();
+      mockServer.use(
+        http.get(
+          "*/api/v1/workspaces/:workspaceId/recordings/:recordingId",
+          () =>
+            HttpResponse.json({ ...base, status: "RECORDING", speakerCount }),
+        ),
+      );
+      renderCard();
+      const more = await screen.findByRole("button", {
+        name: "참가자 수 늘리기",
+      });
+      await waitFor(() => expect(more).toBeEnabled());
+
+      return { more };
+    };
+
+    it("수를 정해 저장하면 정한 수를, 자동 감지로 돌려 저장하면 자동으로 저장했다고 보낸다", async () => {
+      let saved: number | null = null;
+      mockServer.use(
+        http.get(
+          "*/api/v1/workspaces/:workspaceId/recordings/:recordingId",
+          () =>
+            HttpResponse.json({
+              ...base,
+              status: "RECORDING",
+              speakerCount: saved,
+            }),
+        ),
+        http.patch(SPEAKER_COUNT_REQUEST, async ({ request }) => {
+          saved = ((await request.json()) as { speakerCount: number | null })
+            .speakerCount;
+          return HttpResponse.json({ recordingId: 101, speakerCount: saved });
+        }),
+      );
+      start();
+      renderCard();
+      const more = await screen.findByRole("button", {
+        name: "참가자 수 늘리기",
+      });
+      await waitFor(() => expect(more).toBeEnabled());
+
+      fireEvent.click(more);
+      await screen.findByText("1명");
+      await waitFor(() => expect(more).toBeEnabled());
+      fireEvent.click(screen.getByRole("button", { name: "참가자 수 줄이기" }));
+      await screen.findByText("자동 감지");
+
+      await waitFor(() =>
+        expect(getSavedProperties()).toEqual([
+          {
+            result: "saved",
+            is_auto: false,
+            speaker_count: 1,
+            ...recordingTarget,
+          },
+          { result: "saved", is_auto: true, ...recordingTarget },
+        ]),
+      );
+    });
+
+    it("저장이 거절되면 실패와 저장하려던 수를 보낸다", async () => {
+      mockServer.use(
+        http.patch(SPEAKER_COUNT_REQUEST, () =>
+          HttpResponse.json(
+            {
+              code: "RECORDING_CONTROL_CONFLICT",
+              message: "제어권이 없습니다.",
+            },
+            { status: 409 },
+          ),
+        ),
+      );
+      const { more } = await renderWithSpeakerCount(2);
+
+      fireEvent.click(more);
+
+      await screen.findByRole("alert");
+      expect(getSavedProperties()).toEqual([
+        {
+          result: "failed",
+          is_auto: false,
+          speaker_count: 3,
+          ...recordingTarget,
+        },
+      ]);
+    });
+
+    it("저장에서 로그인이 풀렸으면(401) 보내지 않는다", async () => {
+      let isPatched = false;
+      mockServer.use(
+        http.patch(SPEAKER_COUNT_REQUEST, () => {
+          isPatched = true;
+          return new HttpResponse(null, { status: 401 });
+        }),
+      );
+      const { more } = await renderWithSpeakerCount(2);
+
+      fireEvent.click(more);
+
+      await waitFor(() => expect(isPatched).toBe(true));
+      await screen.findByRole("alert");
+      expect(getSavedProperties()).toEqual([]);
+    });
   });
 });

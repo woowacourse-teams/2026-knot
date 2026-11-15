@@ -19,7 +19,10 @@ import { useQueryClient } from "@tanstack/react-query";
 import { logRequestError } from "@utils/logRequestError";
 import { useMatch } from "react-router";
 
-import type { SearchAnswerStreamEvent } from "@/shared/types/searchAnswer";
+import type {
+  SearchAnswerStreamEvent,
+  SearchQuestionEntry,
+} from "@/shared/types/searchAnswer";
 
 interface SendQuestionParams {
   workspaceId: number;
@@ -28,6 +31,9 @@ interface SendQuestionParams {
   conversationId?: number;
 
   content: string;
+
+  /** 질문을 보낸 곳. 사용 기록에만 남기고 보내는 방식은 같아요. 없으면 독(`dock`)이에요 */
+  entry?: SearchQuestionEntry;
 }
 
 interface RetryAnswerParams extends SearchAnswerRetryTarget {
@@ -59,6 +65,9 @@ interface RunAnswerParams {
   question: string;
 
   retryOf?: SearchAnswerRetryTarget;
+
+  /** 질문을 보낸 곳. 없으면 독(`dock`)이에요 */
+  entry?: SearchQuestionEntry;
 
   /** 공통 값을 받아 이번 요청의 뮤테이션을 불러요. 끝난 결과는 `relaySearchAnswerUntilEnd`와 같아요 */
   requestAnswer: (
@@ -198,6 +207,7 @@ const useSearchAnswerControl = () => {
       conversationId,
       question,
       retryOf,
+      entry,
       requestAnswer,
     }: RunAnswerParams) => {
       const { start, applyEvent, settle, fail } =
@@ -207,6 +217,7 @@ const useSearchAnswerControl = () => {
         question,
         conversationId: conversationId ?? null,
         retryOf,
+        entry,
       });
       if (!controller) return { isAcceptFailed: false };
 
@@ -283,11 +294,12 @@ const useSearchAnswerControl = () => {
   );
 
   const sendQuestion = useCallback(
-    ({ workspaceId, conversationId, content }: SendQuestionParams) =>
+    ({ workspaceId, conversationId, content, entry }: SendQuestionParams) =>
       runAnswer({
         workspaceId,
         conversationId,
         question: content,
+        entry,
         requestAnswer: (request) =>
           conversationId === undefined
             ? createSearchConversation({ ...request, workspaceId, content })

@@ -11,6 +11,10 @@ interface TrackRecordingEndedParams {
   meetingAudioStatus: MeetingAudioStatus;
   /** 이 브라우저가 회의 소리를 받을 수 있는지(Chrome 계열) */
   isMeetingAudioSupported: boolean;
+  /** 끝내기 직전까지 녹음한 시간(ms). 일시정지한 동안은 빠져요 */
+  elapsedMs: number;
+  /** 끝낸 곳. 녹음 바 · 독의 녹음 칩 · 로그아웃 확인 창 · 워크스페이스를 옮기기 전 확인 창이에요 */
+  surface: "recorder_bar" | "dock" | "logout" | "workspace_move";
   /** 녹음 끝내기의 결과. `useRecordingControl`의 `endRecordingWithoutConfirm`이 돌려주는 값이에요 */
   result: "uploaded" | "notUploaded" | "notEnded";
 }
@@ -29,11 +33,12 @@ const MEETING_AUDIO_BY_STATUS = {
 
 /**
  * @description 녹음을 끝낸 결과를 사용 기록(`recording_ended`)으로 보내요
- * @param params - 녹음 세션의 워크스페이스 · 녹음 id와 녹음 방식, 끝내기 직전의 회의 소리 상태, 끝내기 결과
+ * @param params - 녹음 세션의 워크스페이스 · 녹음 id와 녹음 방식, 끝내기 직전의 회의 소리 상태와 녹음한 시간, 끝낸 곳, 끝내기 결과
  * @example
- * trackRecordingEnded({ ...session, meetingAudioStatus, isMeetingAudioSupported: true, result });
+ * trackRecordingEnded({ ...session, meetingAudioStatus, isMeetingAudioSupported: true, elapsedMs: 754_240, surface: "dock", result });
  *
  * 마이크만 녹음했으면 회의 소리를 받을 수 없는 브라우저는 `unsupported`, 받을 수 있는데 고르지 않았으면 `off`로 보내요.
+ * 녹음한 시간은 초로 바꿔 소수 첫째 자리까지 반올림해요.
  * 끝내지 못했으면(`notEnded`) 녹음이 이어지므로 보내지 않아요.
  */
 export const trackRecordingEnded = ({
@@ -42,6 +47,8 @@ export const trackRecordingEnded = ({
   audioMode,
   meetingAudioStatus,
   isMeetingAudioSupported,
+  elapsedMs,
+  surface,
   result,
 }: TrackRecordingEndedParams) => {
   if (result === "notEnded") return;
@@ -57,6 +64,8 @@ export const trackRecordingEnded = ({
             ? "off"
             : "unsupported"
           : MEETING_AUDIO_BY_STATUS[meetingAudioStatus],
+      duration_seconds: Math.round(elapsedMs / 100) / 10,
+      surface,
       recording_id: recordingId,
       workspace_id: workspaceId,
     },

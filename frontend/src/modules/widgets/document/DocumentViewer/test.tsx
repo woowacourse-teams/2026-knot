@@ -783,6 +783,138 @@ describe("DocumentViewer", () => {
     });
   });
 
+  describe("문서 확인 사용 기록", () => {
+    const documentTarget = {
+      document_id: expected.id,
+      workspace_id: Number(WORKSPACE_ID),
+    };
+
+    // 앞 테스트에서도 사용 기록이 남으므로, 테스트마다 기록을 비우고 시작해요
+    beforeEach(() => {
+      vi.mocked(captureAnalyticsEvent).mockClear();
+    });
+
+    /** 문서 확인 결과만 골라 그 속성을 보낸 순서대로 모아요 */
+    const getConfirmedProperties = () =>
+      vi
+        .mocked(captureAnalyticsEvent)
+        .mock.calls.map(([event]) => event)
+        .filter(({ event }) => event === "document_confirmed")
+        .map(({ properties }) => properties);
+
+    const clickConfirm = async () =>
+      fireEvent.click(
+        await screen.findByRole("button", { name: CONFIRM_BUTTON_NAME }),
+      );
+
+    it("확인으로 같은 녹음의 내 미확인 문서가 남지 않으면 모두 확인했다고 보낸다", async () => {
+      renderViewer(String(expected.id));
+
+      await clickConfirm();
+
+      await waitFor(() =>
+        expect(getConfirmedProperties()).toEqual([
+          { result: "confirmed", is_all_confirmed: true, ...documentTarget },
+        ]),
+      );
+    });
+
+    it("같은 녹음에 아직 확인하지 않은 문서가 남아 있으면 모두 확인하지 않았다고 보낸다", async () => {
+      const [otherDocument] = documentsResponse.items.filter(
+        ({ id }) => id !== expected.id,
+      );
+      mockServer.use(
+        http.get(DOCUMENTS_REQUEST, ({ request }) =>
+          new URL(request.url).searchParams.get("myConfirmation") === "PENDING"
+            ? HttpResponse.json({
+                topics: [],
+                items: [
+                  {
+                    ...otherDocument,
+                    recordingSessionId: expected.recordingSessionId,
+                    myConfirmationState: "PENDING",
+                  },
+                ],
+                nextCursor: null,
+              } satisfies DocumentsResponse)
+            : undefined,
+        ),
+      );
+      renderViewer(String(expected.id));
+
+      await clickConfirm();
+
+      await waitFor(() =>
+        expect(getConfirmedProperties()).toEqual([
+          { result: "confirmed", is_all_confirmed: false, ...documentTarget },
+        ]),
+      );
+    });
+
+    it("미확인 목록을 받지 못하면 모두 확인했는지 없이 확인됨을 보낸다", async () => {
+      mockServer.use(
+        http.get(DOCUMENTS_REQUEST, ({ request }) =>
+          new URL(request.url).searchParams.get("myConfirmation") === "PENDING"
+            ? new HttpResponse(null, { status: 500 })
+            : undefined,
+        ),
+      );
+      renderViewer(String(expected.id));
+
+      await clickConfirm();
+
+      await waitFor(() =>
+        expect(getConfirmedProperties()).toEqual([
+          { result: "confirmed", ...documentTarget },
+        ]),
+      );
+    });
+
+    it.each([
+      {
+        reason: "서버 오류로",
+        respond: () => new HttpResponse(null, { status: 500 }),
+      },
+      {
+        reason: "확인 대상이 아니라는 응답(409)으로",
+        respond: () =>
+          HttpResponse.json(
+            {
+              code: "CONFIRMATION_NOT_REQUIRED",
+              message: "확인 대상이 아닙니다.",
+            },
+            { status: 409 },
+          ),
+      },
+    ])("확인 요청이 $reason 실패하면 실패를 보낸다", async ({ respond }) => {
+      mockServer.use(http.put(MY_CONFIRMATION_REQUEST, respond));
+      renderViewer(String(expected.id));
+
+      await clickConfirm();
+
+      await waitFor(() =>
+        expect(getConfirmedProperties()).toEqual([
+          { result: "failed", ...documentTarget },
+        ]),
+      );
+    });
+
+    it("확인 요청에서 로그인이 풀렸으면(401) 보내지 않는다", async () => {
+      mockServer.use(
+        http.put(
+          MY_CONFIRMATION_REQUEST,
+          () => new HttpResponse(null, { status: 401 }),
+        ),
+      );
+      renderViewer(String(expected.id));
+
+      await clickConfirm();
+
+      expect(await screen.findByText("로그인 화면")).toBeInTheDocument();
+      expect(getConfirmedProperties()).toEqual([]);
+    });
+  });
+
   it("없는 문서면 문서를 불러오지 못했다고 알리고, 다시 시도를 누르면 다시 조회한다", async () => {
     let requestCount = 0;
     mockServer.use(
