@@ -15,11 +15,13 @@ import com.knot.backend.search.infrastructure.llm.SearchFastPathDocumentRetrieve
 import com.knot.backend.search.infrastructure.llm.SearchQueryNormalizer;
 import com.knot.backend.search.infrastructure.llm.SearchStreamingAnswerGenerator;
 import com.knot.backend.search.infrastructure.mcp.SearchMcpClient;
+import com.knot.backend.search.infrastructure.index.SearchMeetingHybridRetrieval;
 import com.knot.backend.search.infrastructure.mcp.SearchToolTokenCodec;
 import com.knot.backend.search.domain.SearchException;
 import com.knot.backend.search.domain.SearchErrorCode;
 import java.net.http.HttpClient;
 import java.time.Clock;
+import java.util.Optional;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -113,6 +115,44 @@ public class SearchAgentConfig {
 
     @Bean
     public SearchDocumentRetriever searchDocumentRetriever(
+            SearchLlmClient llm,
+            SearchMcpClient mcp,
+            SearchHistoryQuery history,
+            SearchToolAccess access,
+            SearchAgentProperties properties,
+            ObjectMapper mapper,
+            SearchDocumentQuery query,
+            Optional<SearchMeetingHybridRetrieval> hybrid
+    ) {
+        SearchDocumentRetriever baseline = baselineRetriever(
+                llm,
+                mcp,
+                history,
+                access,
+                properties,
+                mapper,
+                query
+        );
+        if (hybrid.isEmpty()) {
+            return baseline;
+        }
+        SearchMeetingHybridRetrieval retrieval = hybrid.orElseThrow();
+        return (
+                scope,
+                question
+        ) -> retrieval.retrieve(
+                scope,
+                question
+        )
+                .orElseGet(
+                        () -> baseline.retrieve(
+                                scope,
+                                question
+                        )
+                );
+    }
+
+    private SearchDocumentRetriever baselineRetriever(
             SearchLlmClient llm,
             SearchMcpClient mcp,
             SearchHistoryQuery history,

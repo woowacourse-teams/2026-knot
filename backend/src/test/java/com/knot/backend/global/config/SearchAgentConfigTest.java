@@ -11,6 +11,7 @@ import com.knot.backend.search.infrastructure.llm.SearchFastPathDocumentRetrieve
 import com.knot.backend.search.infrastructure.llm.SearchLlmClient;
 import com.knot.backend.search.infrastructure.llm.SearchMcpDocumentRetriever;
 import com.knot.backend.search.infrastructure.mcp.SearchMcpClient;
+import java.util.Optional;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.ObjectMapper;
@@ -39,7 +40,8 @@ class SearchAgentConfigTest {
                 access,
                 properties,
                 mapper,
-                query
+                query,
+                Optional.empty()
         );
 
         // then
@@ -61,7 +63,8 @@ class SearchAgentConfigTest {
                 access,
                 properties,
                 mapper,
-                query
+                query,
+                Optional.empty()
         );
 
         // then
@@ -83,7 +86,8 @@ class SearchAgentConfigTest {
                 access,
                 properties,
                 mapper,
-                query
+                query,
+                Optional.empty()
         );
 
         // then
