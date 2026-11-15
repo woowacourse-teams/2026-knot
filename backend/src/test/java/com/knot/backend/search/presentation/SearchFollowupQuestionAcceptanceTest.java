@@ -43,6 +43,10 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import org.junit.jupiter.api.BeforeEach;
@@ -207,31 +211,38 @@ class SearchFollowupQuestionAcceptanceTest {
         // given
         UUID request = UUID.randomUUID();
         // when
+        SearchSseTiming timing = new SearchSseTiming(json);
         try (InputStream stream = connect(
                 body(
                         request,
                         "후속 😀"
                 )
-        ).body(); BufferedReader reader = reader(stream)) {
+        ).body();
+                BufferedReader reader = reader(stream);
+                ExecutorService executor = Executors.newSingleThreadExecutor()) {
             JsonNode accepted = accepted(reader);
             assertThat(
                     accepted.path("conversationId")
                             .asLong()
             ).isEqualTo(conversation);
-            worker.execute(
-                    accepted.path("answerMessageId")
-                            .asLong()
-            );
+            long answer = accepted.path("answerMessageId")
+                    .asLong();
+            Future<?> execution = executor.submit(() -> worker.execute(answer));
             // then
-            assertThat(
-                    reader.lines()
-                            .collect(Collectors.joining("\n"))
-            ).contains(
+            assertThat(timing.readToEnd(reader)).contains(
                     "event:delta",
                     "event:completed",
                     "event:excluded_documents",
                     "\"count\":0"
             );
+            execution.get(
+                    10,
+                    TimeUnit.SECONDS
+            );
+            assertThat(timing.firstDelta()).isPresent();
+            assertThat(timing.terminalEvent()).contains("completed");
+            timing.log("followup");
+            SearchSseTiming replayTiming = new SearchSseTiming(json);
             try (InputStream replay = connect(
                     body(
                             request,
@@ -239,10 +250,9 @@ class SearchFollowupQuestionAcceptanceTest {
                     )
             ).body(); BufferedReader repeated = reader(replay)) {
                 assertThat(accepted(repeated)).isEqualTo(accepted);
-                assertThat(
-                        repeated.lines()
-                                .collect(Collectors.joining("\n"))
-                ).contains("event:completed");
+                assertThat(replayTiming.readToEnd(repeated)).contains("event:completed");
+                assertThat(replayTiming.terminalEvent()).contains("completed");
+                replayTiming.log("duplicate-followup");
             }
         }
         assertThat(countMessages()).isEqualTo(4);
