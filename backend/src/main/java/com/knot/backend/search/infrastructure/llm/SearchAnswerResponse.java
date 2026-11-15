@@ -245,10 +245,9 @@ public record SearchAnswerResponse(
         if (!ids.isEmpty()) {
             throw invalid();
         }
-        if (!"UNKNOWN".equals(
-                response.path("decisionState")
-                        .asString()
-        )) {
+        String decision = response.path("decisionState")
+                .asString();
+        if (!"UNKNOWN".equals(decision) && !"NOT_APPLICABLE".equals(decision)) {
             throw invalid();
         }
     }

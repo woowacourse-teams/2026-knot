@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -12,17 +13,22 @@ import com.knot.backend.auth.domain.AuthTokenProvider;
 import com.knot.backend.auth.domain.model.AuthenticatedMember;
 import com.knot.backend.document.DocumentFixtures;
 import com.knot.backend.global.config.JwtProperties;
+import com.knot.backend.global.config.SearchAgentProperties;
 import com.knot.backend.search.SearchMessageFixtures;
 import com.knot.backend.search.application.SearchAnswerGenerator;
 import com.knot.backend.search.application.SearchAnswerWorker;
 import com.knot.backend.search.application.SearchDocumentRetriever;
 import com.knot.backend.search.application.SearchGenerationAvailability;
 import com.knot.backend.search.application.SearchIntentClassifier;
+import com.knot.backend.search.application.SearchToolAccess;
 import com.knot.backend.search.application.dto.result.SearchDocumentResult;
 import com.knot.backend.search.application.dto.result.SearchRetrievalResult;
 import com.knot.backend.search.domain.model.SearchIntent;
 import com.knot.backend.search.domain.SearchToolException;
 import com.knot.backend.search.infrastructure.llm.SearchExploration;
+import com.knot.backend.search.infrastructure.llm.SearchLlmClient;
+import com.knot.backend.search.infrastructure.llm.SearchStreamingAnswerGenerator;
+import com.knot.backend.search.infrastructure.persistence.SearchHistoryQuery;
 import com.knot.backend.testsupport.TestApplicationProperties;
 import com.knot.backend.testsupport.TestcontainersConfiguration;
 import java.io.BufferedReader;
@@ -155,6 +161,10 @@ class SearchQuestionAcceptanceTest {
     private JsonMapper json;
     @Autowired
     private SearchAnswerWorker worker;
+    @Autowired
+    private SearchToolAccess toolAccess;
+    @Autowired
+    private SearchHistoryQuery searchHistory;
     @Autowired
     @Qualifier("searchStreamExecutor")
     private ThreadPoolTaskExecutor streamExecutor;
@@ -323,6 +333,96 @@ class SearchQuestionAcceptanceTest {
             );
             assertThat(status()).isEqualTo("COMPLETED");
         }
+    }
+
+    @Test
+    @DisplayName("결과 없음과 해당 없음 상태의 모델 응답은 근거를 붙이지 않고 SSE를 완료한다")
+    void create_success_notFoundWithNotApplicable() throws Exception {
+        String question = "회의 자료에 외부 배포 계획이 있어?";
+        String expected = "현재 회의 문서에서 외부 배포 계획을 찾지 못했습니다.";
+        long documentId = new SearchMessageFixtures(jdbc).saveDocument(
+                workspaceId,
+                memberId
+        );
+        List<SearchDocumentResult> documents = List.of(
+                new SearchDocumentResult(
+                        documentId,
+                        "탐색 자료",
+                        "회의",
+                        "내부 회의 내용을 기록한다."
+                )
+        );
+        when(
+                retriever.retrieve(
+                        any(),
+                        eq(question)
+                )
+        ).thenReturn(
+                new SearchRetrievalResult(
+                        documents,
+                        0
+                )
+        );
+        SearchLlmClient upstream = mock(SearchLlmClient.class);
+        doAnswer(invocation -> {
+            Consumer<String> delta = invocation.getArgument(2);
+            delta.accept(
+                    """
+                            {"status":"NOT_FOUND","decisionState":"NOT_APPLICABLE","answer":"%s","evidenceIds":[],"clarificationQuestion":null}
+                            """
+                            .formatted(expected)
+            );
+            return null;
+        }).when(upstream)
+                .stream(
+                        any(),
+                        any(),
+                        any()
+                );
+        SearchStreamingAnswerGenerator actual = new SearchStreamingAnswerGenerator(
+                upstream,
+                searchHistory,
+                toolAccess,
+                new SearchAgentProperties(),
+                json
+        );
+        doAnswer(
+                invocation -> actual.generate(
+                        invocation.getArgument(0),
+                        invocation.getArgument(1),
+                        invocation.getArgument(2),
+                        invocation.getArgument(3)
+                )
+        ).when(generator)
+                .generate(
+                        any(),
+                        eq(question),
+                        eq(documents),
+                        any()
+                );
+
+        try (InputStream stream = connect(
+                UUID.randomUUID(),
+                question
+        ).body(); BufferedReader reader = reader(stream)) {
+            assertThat(readEvent(reader)).startsWith("event:accepted");
+            worker.execute(answerId());
+            assertThat(
+                    reader.lines()
+                            .collect(Collectors.joining("\n"))
+            ).contains(
+                    "event:delta",
+                    expected,
+                    "event:completed"
+            )
+                    .doesNotContain("event:failed");
+        }
+        assertThat(status()).isEqualTo("COMPLETED");
+        assertThat(
+                jdbc.sql("SELECT COUNT(*) FROM search_evidences")
+                        .query(Long.class)
+                        .single()
+        ).isZero();
     }
 
     @Test
