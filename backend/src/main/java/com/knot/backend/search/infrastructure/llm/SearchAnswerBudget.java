@@ -17,6 +17,7 @@ public class SearchAnswerBudget {
     private final int limit;
     private final String question;
     private final Instant requestedAt;
+    private final boolean fullDocumentsOnly;
     private final List<SearchDocumentResult> selected = new ArrayList<>();
     private final List<Map<String, Object>> history = new ArrayList<>();
     private boolean partial;
@@ -40,10 +41,27 @@ public class SearchAnswerBudget {
             String question,
             Instant requestedAt
     ) {
+        this(
+                mapper,
+                limit,
+                question,
+                requestedAt,
+                false
+        );
+    }
+
+    SearchAnswerBudget(
+            ObjectMapper mapper,
+            int limit,
+            String question,
+            Instant requestedAt,
+            boolean fullDocumentsOnly
+    ) {
         this.mapper = mapper;
         this.limit = limit;
         this.question = question;
         this.requestedAt = requestedAt;
+        this.fullDocumentsOnly = fullDocumentsOnly;
     }
 
     public void select(
@@ -88,7 +106,7 @@ public class SearchAnswerBudget {
             return;
         }
         selected.removeLast();
-        if (!selected.isEmpty()) {
+        if (fullDocumentsOnly || !selected.isEmpty()) {
             return;
         }
         addPartialDocument(

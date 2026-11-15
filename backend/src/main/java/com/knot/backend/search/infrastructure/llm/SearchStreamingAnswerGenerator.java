@@ -12,6 +12,7 @@ import com.knot.backend.search.application.dto.result.SearchDocumentResult;
 import com.knot.backend.search.domain.SearchToolException;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.function.Consumer;
 import lombok.extern.slf4j.Slf4j;
 import lombok.RequiredArgsConstructor;
@@ -26,6 +27,24 @@ public class SearchStreamingAnswerGenerator implements SearchAnswerGenerator {
     private final SearchToolAccess access;
     private final SearchAgentProperties properties;
     private final ObjectMapper mapper;
+    private final Optional<SearchSpringAiModel> springAi;
+
+    public SearchStreamingAnswerGenerator(
+            SearchLlmClient llm,
+            SearchHistoryQuery history,
+            SearchToolAccess access,
+            SearchAgentProperties properties,
+            ObjectMapper mapper
+    ) {
+        this(
+                llm,
+                history,
+                access,
+                properties,
+                mapper,
+                Optional.empty()
+        );
+    }
 
     @Override
     public List<Long> generate(
@@ -35,12 +54,16 @@ public class SearchStreamingAnswerGenerator implements SearchAnswerGenerator {
             Consumer<String> onDelta
     ) {
         access.validate(scope);
+        boolean fullDocumentsOnly = !documents.isEmpty()
+                && springAi.filter(model -> model.supports(scope.workspaceId()))
+                        .isPresent();
         List<Map<String, Object>> previous = history.beforeQuestion(scope);
         SearchAnswerBudget budget = new SearchAnswerBudget(
                 mapper,
                 properties.getContextCharacterLimit(),
                 question,
-                scope.startedAt()
+                scope.startedAt(),
+                fullDocumentsOnly
         );
         try {
             budget.select(
@@ -48,6 +71,14 @@ public class SearchStreamingAnswerGenerator implements SearchAnswerGenerator {
                     previous
             );
         } catch (SearchToolException exception) {
+            if (fullDocumentsOnly && "SEARCH_CONTEXT_LIMIT_EXCEEDED".equals(exception.getCode())) {
+                access.validate(scope);
+                publishGuidance(
+                        List.of(),
+                        onDelta
+                );
+                return List.of();
+            }
             log.warn(
                     "Search context budget failed workspaceId={} answerId={} limitChars={} documents={} history={} failureCode={}",
                     scope.workspaceId(),
@@ -87,9 +118,10 @@ public class SearchStreamingAnswerGenerator implements SearchAnswerGenerator {
             );
             List<Long> ids;
             try {
-                llm.stream(
+                stream(
                         scope,
                         messages,
+                        fullDocumentsOnly,
                         text -> {
                             access.validate(scope);
                             answer.accept(text);
@@ -140,6 +172,28 @@ public class SearchStreamingAnswerGenerator implements SearchAnswerGenerator {
             return ids;
         }
         throw new IllegalStateException("Unreachable answer attempt");
+    }
+
+    private void stream(
+            SearchToolScope scope,
+            List<Map<String, Object>> messages,
+            boolean fullDocumentsOnly,
+            Consumer<String> onDelta
+    ) {
+        if (fullDocumentsOnly) {
+            springAi.orElseThrow()
+                    .stream(
+                            scope,
+                            messages,
+                            onDelta
+                    );
+            return;
+        }
+        llm.stream(
+                scope,
+                messages,
+                onDelta
+        );
     }
 
     private void publishGuidance(

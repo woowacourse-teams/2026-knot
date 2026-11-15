@@ -14,6 +14,7 @@ import com.knot.backend.search.infrastructure.llm.SearchMcpDocumentRetriever;
 import com.knot.backend.search.infrastructure.llm.SearchFastPathDocumentRetriever;
 import com.knot.backend.search.infrastructure.llm.SearchQueryNormalizer;
 import com.knot.backend.search.infrastructure.llm.SearchStreamingAnswerGenerator;
+import com.knot.backend.search.infrastructure.llm.SearchSpringAiModel;
 import com.knot.backend.search.infrastructure.mcp.SearchMcpClient;
 import com.knot.backend.search.infrastructure.index.SearchMeetingHybridRetrieval;
 import com.knot.backend.search.infrastructure.mcp.SearchToolTokenCodec;
@@ -184,14 +185,16 @@ public class SearchAgentConfig {
             SearchHistoryQuery history,
             SearchToolAccess access,
             SearchAgentProperties properties,
-            ObjectMapper mapper
+            ObjectMapper mapper,
+            Optional<SearchSpringAiModel> springAi
     ) {
         return new SearchStreamingAnswerGenerator(
                 llm,
                 history,
                 access,
                 properties,
-                mapper
+                mapper,
+                springAi
         );
     }
 }
