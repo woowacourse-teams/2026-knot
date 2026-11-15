@@ -25,6 +25,29 @@ public class SearchFastPathDocumentRetriever implements SearchDocumentRetriever 
             String question
     ) {
         access.validate(scope);
+        if (scope.recordingSessionId() != null) {
+            SearchDocumentParameters meeting = new SearchDocumentParameters(
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    CANDIDATE_LIMIT
+            );
+            return new SearchRetrievalResult(
+                    documents(
+                            query.listPage(
+                                    scope,
+                                    meeting,
+                                    null
+                            )
+                                    .stream()
+                                    .limit(CANDIDATE_LIMIT)
+                                    .toList()
+                    ),
+                    0
+            );
+        }
         SearchDateFilter date = SearchDateFilter.parse(
                 question,
                 scope.startedAt()

@@ -44,12 +44,19 @@ public class SearchMcpDocumentRetriever implements SearchDocumentRetriever {
     private final SearchToolAccess access;
     private final SearchAgentProperties properties;
     private final ObjectMapper mapper;
+    private final SearchFastPathDocumentRetriever meetingRetriever;
 
     @Override
     public SearchRetrievalResult retrieve(
             SearchToolScope scope,
             String question
     ) {
+        if (scope.recordingSessionId() != null) {
+            return meetingRetriever.retrieve(
+                    scope,
+                    question
+            );
+        }
         access.validate(scope);
         List<Map<String, Object>> tools = new ArrayList<>(mcp.definitions(scope));
         List<Map<String, Object>> messages = new ArrayList<>();
