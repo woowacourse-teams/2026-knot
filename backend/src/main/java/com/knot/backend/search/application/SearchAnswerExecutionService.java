@@ -7,6 +7,8 @@ import com.knot.backend.global.config.SearchWorkerProperties;
 import com.knot.backend.search.application.dto.result.SearchAnswerWorkResult;
 import com.knot.backend.search.application.dto.result.SearchAnswerStopResult;
 import com.knot.backend.search.application.dto.result.SearchDocumentResult;
+import com.knot.backend.search.application.dto.query.SearchQuestionContext;
+import com.knot.backend.search.infrastructure.persistence.SearchQuestionContextStore;
 import com.knot.backend.search.domain.model.SearchAnswerExecution;
 import com.knot.backend.search.domain.model.SearchConversation;
 import com.knot.backend.search.domain.SearchErrorCode;
@@ -43,6 +45,7 @@ public class SearchAnswerExecutionService {
     private final DocumentRepository documents;
     private final SearchWorkerProperties properties;
     private final Clock clock;
+    private final SearchQuestionContextStore questionContexts;
 
     public SearchAnswerStopResult stop(
             long workspaceId,
@@ -246,6 +249,26 @@ public class SearchAnswerExecutionService {
         SearchAnswerExecution execution = current.get();
         answer(execution).appendContent(text);
         conversation(execution).recordMessageActivity(clock.instant());
+        return true;
+    }
+
+    public boolean saveQuestionContext(
+            long answerId,
+            UUID token,
+            SearchQuestionContext context
+    ) {
+        Optional<SearchAnswerExecution> current = currentExecution(
+                answerId,
+                token
+        );
+        if (current.isEmpty()) {
+            return false;
+        }
+        questionContexts.save(
+                current.orElseThrow()
+                        .getQuestionId(),
+                context
+        );
         return true;
     }
 

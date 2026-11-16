@@ -2,6 +2,7 @@ package com.knot.backend.search.application;
 
 import com.knot.backend.global.logging.ServerErrorLogger;
 import com.knot.backend.search.application.dto.result.SearchAnswerWorkResult;
+import com.knot.backend.search.application.dto.query.SearchQuestionContext;
 import com.knot.backend.search.application.dto.result.SearchDocumentResult;
 import com.knot.backend.search.application.dto.result.SearchRetrievalResult;
 import com.knot.backend.search.domain.model.SearchIntent;
@@ -31,6 +32,7 @@ public class SearchAnswerWorker {
     private final Clock clock;
     private final SearchAgentProperties agentProperties;
     private final ObjectProvider<SearchIntentClassifier> classifiers;
+    private final SearchFollowupContextResolver followups;
 
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public void execute(long answerId) {
@@ -126,14 +128,23 @@ public class SearchAnswerWorker {
             AtomicLong persistenceCount,
             AtomicLong persistenceNanos
     ) {
+        boolean contextEnabled = agentProperties.isFollowupContextEnabled();
+        boolean shortReference = contextEnabled && followups.isShortReference(work.question());
+        Optional<SearchQuestionContext> previous = Optional.empty();
+        if (shortReference) {
+            previous = followups.previousEvidenceContext(scope);
+        }
         long classificationStarted = System.nanoTime();
         SearchIntent intent;
         try {
-            intent = classifiers.getObject()
-                    .classify(
-                            scope,
-                            work.question()
-                    );
+            intent = SearchIntent.MEETING_SEARCH;
+            if (previous.isEmpty()) {
+                intent = classifiers.getObject()
+                        .classify(
+                                scope,
+                                work.question()
+                        );
+            }
             log.info(
                     "Search latency phase=intent_classification workspaceId={} questionId={} answerId={} elapsedMs={} inputChars={} outcome=success intent={}",
                     work.workspaceId(),
@@ -165,6 +176,35 @@ public class SearchAnswerWorker {
                 return;
             }
             intent = SearchIntent.MEETING_SEARCH;
+        }
+        if (shortReference && intent.requiresSearch() && previous.map(SearchQuestionContext::recordingSessionId)
+                .isEmpty()) {
+            executions.completeGenerated(
+                    work.answerId(),
+                    work.token(),
+                    SearchAnswerGuidance.CLARIFY_MEETING,
+                    List.of(),
+                    Set.of()
+            );
+            return;
+        }
+        if (contextEnabled && intent.requiresSearch()) {
+            SearchQuestionContext context = previous.orElseGet(
+                    () -> followups.describe(
+                            work.question(),
+                            work.createdAt()
+                    )
+            );
+            if (!executions.saveQuestionContext(
+                    work.answerId(),
+                    work.token(),
+                    context
+            )) {
+                return;
+            }
+            if (context.recordingSessionId() != null) {
+                scope = scope.forMeeting(context.recordingSessionId());
+            }
         }
         long retrievalStarted = System.nanoTime();
         SearchRetrievalResult retrieval;

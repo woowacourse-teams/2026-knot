@@ -13,8 +13,32 @@ public record SearchToolScope(
         long answerId,
         UUID token,
         Instant startedAt,
-        Instant expiresAt
+        Instant expiresAt,
+        Long recordingSessionId
 ) {
+
+    public SearchToolScope(
+            long workspaceId,
+            long memberId,
+            long conversationId,
+            long questionId,
+            long answerId,
+            UUID token,
+            Instant startedAt,
+            Instant expiresAt
+    ) {
+        this(
+                workspaceId,
+                memberId,
+                conversationId,
+                questionId,
+                answerId,
+                token,
+                startedAt,
+                expiresAt,
+                null
+        );
+    }
 
     public SearchToolScope {
         if (workspaceId <= 0 || memberId <= 0 || conversationId <= 0 || questionId <= 0 || answerId <= 0) {
@@ -26,6 +50,23 @@ public record SearchToolScope(
         if (!expiresAt.isAfter(startedAt)) {
             throw new SearchToolException("INVALID_TOOL_ARGUMENTS");
         }
+        if (recordingSessionId != null && recordingSessionId <= 0) {
+            throw new SearchToolException("INVALID_TOOL_ARGUMENTS");
+        }
+    }
+
+    public SearchToolScope forMeeting(long recordingId) {
+        return new SearchToolScope(
+                workspaceId,
+                memberId,
+                conversationId,
+                questionId,
+                answerId,
+                token,
+                startedAt,
+                expiresAt,
+                recordingId
+        );
     }
 
     public static SearchToolScope from(

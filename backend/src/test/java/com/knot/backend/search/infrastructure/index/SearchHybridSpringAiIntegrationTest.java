@@ -3,6 +3,7 @@ package com.knot.backend.search.infrastructure.index;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.verify;
 
 import com.knot.backend.document.DocumentFixtures;
 import com.knot.backend.search.SearchMessageFixtures;
@@ -10,6 +11,7 @@ import com.knot.backend.search.application.SearchAnswerWorker;
 import com.knot.backend.search.application.SearchIntentClassifier;
 import com.knot.backend.search.application.SearchQuestionIntakeService;
 import com.knot.backend.search.application.dto.command.SearchQuestionCommand;
+import com.knot.backend.search.application.dto.result.SearchQuestionAcceptedResult;
 import com.knot.backend.search.domain.model.SearchIntent;
 import com.knot.backend.testsupport.LlmHttpServer;
 import com.knot.backend.testsupport.TestApplicationProperties;
@@ -43,6 +45,7 @@ import tools.jackson.databind.node.ArrayNode;
 @ActiveProfiles("dev")
 @SpringBootTest(properties = {"knot.llm.enabled=true", "knot.llm.provider=lm-studio", "knot.llm.api-token=fixture",
         "knot.llm.model=fixture-chat", "knot.search.agent.enabled=true",
+        "knot.search.agent.followup-context-enabled=true",
         "knot.search.agent.signing-key=test-signing-key-32-characters-minimum", "knot.search.worker.enabled=true",
         "knot.search.worker.poll-interval=PT1H", "knot.search.worker.recovery-interval=PT1H",
         "knot.search.meeting-pipeline.enabled=true", "knot.search.index.enabled=true",
@@ -137,15 +140,15 @@ class SearchHybridSpringAiIntegrationTest {
         EVIDENCE.set(document);
         synchronizer.refresh();
 
-        long answerId = intake.acceptFirst(
+        SearchQuestionAcceptedResult initial = intake.acceptFirst(
                 workspace,
                 member,
                 new SearchQuestionCommand(
                         "문서 #" + document + "의 적용 범위가 확정됐어?",
                         UUID.randomUUID()
                 )
-        )
-                .answerMessageId();
+        );
+        long answerId = initial.answerMessageId();
         worker.execute(answerId);
 
         assertThat(
@@ -172,6 +175,68 @@ class SearchHybridSpringAiIntegrationTest {
         );
         assertThat(UPSTREAM.requestCount()).isEqualTo(3);
 
+        long otherDocument = messages.saveDocument(
+                workspace,
+                member
+        );
+        jdbc.sql("UPDATE documents SET content = '다른 회의에서만 결정하는 조건' WHERE id = :id")
+                .param(
+                        "id",
+                        otherDocument
+                )
+                .update();
+        synchronizer.refresh();
+
+        SearchQuestionAcceptedResult followup = intake.acceptNext(
+                workspace,
+                member,
+                initial.conversationId(),
+                new SearchQuestionCommand(
+                        "왜?",
+                        UUID.randomUUID()
+                )
+        );
+        worker.execute(followup.answerMessageId());
+
+        assertThat(
+                jdbc.sql("SELECT document_id FROM search_evidences WHERE message_id = :id")
+                        .param(
+                                "id",
+                                followup.answerMessageId()
+                        )
+                        .query(Long.class)
+                        .single()
+        ).isEqualTo(document);
+        assertThat(UPSTREAM.requestBody()).contains(decision)
+                .doesNotContain("다른 회의에서만 결정하는 조건");
+        assertThat(
+                jdbc.sql(
+                        """
+                                SELECT first.search_text = followup.search_text AND followup.recording_session_id = d.recording_session_id
+                                FROM search_question_contexts first, search_question_contexts followup, documents d
+                                WHERE first.question_message_id = :first AND followup.question_message_id = :followup AND d.id = :document
+                                """
+                )
+                        .param(
+                                "first",
+                                initial.questionMessageId()
+                        )
+                        .param(
+                                "followup",
+                                followup.questionMessageId()
+                        )
+                        .param(
+                                "document",
+                                document
+                        )
+                        .query(Boolean.class)
+                        .single()
+        ).isTrue();
+        verify(classifier).classify(
+                any(),
+                any()
+        );
+        int requestsBeforePartial = UPSTREAM.requestCount();
         long partialAnswerId = intake.acceptFirst(
                 workspace,
                 member,
@@ -209,7 +274,7 @@ class SearchHybridSpringAiIntegrationTest {
                 "E" + document
         )
                 .doesNotContain("E9999");
-        assertThat(UPSTREAM.requestCount()).isEqualTo(5);
+        assertThat(UPSTREAM.requestCount()).isEqualTo(requestsBeforePartial + 2);
     }
 
     private static LlmHttpServer upstream() {
