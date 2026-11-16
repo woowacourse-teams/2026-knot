@@ -286,6 +286,7 @@ class SearchQuestionAcceptanceTest {
                         org.mockito.ArgumentMatchers.eq(documents),
                         org.mockito.ArgumentMatchers.any()
                 );
+        SearchSseTiming timing = new SearchSseTiming(json);
         try (ExecutorService executor = Executors.newSingleThreadExecutor();
                 InputStream stream = connect(
                         UUID.randomUUID(),
@@ -300,13 +301,15 @@ class SearchQuestionAcceptanceTest {
                     "answerMessageId"
             );
             long answerId = answerId();
-            executor.submit(() -> worker.execute(answerId))
-                    .get(
-                            10,
-                            TimeUnit.SECONDS
-                    );
-            String rest = reader.lines()
-                    .collect(java.util.stream.Collectors.joining("\n"));
+            Future<?> execution = executor.submit(() -> worker.execute(answerId));
+            String rest = timing.readToEnd(reader);
+            execution.get(
+                    10,
+                    TimeUnit.SECONDS
+            );
+            assertThat(timing.firstDelta()).isPresent();
+            assertThat(timing.terminalEvent()).contains("completed");
+            timing.log("initial");
             assertThat(rest).contains(
                     "event:delta",
                     "한글 😀",
