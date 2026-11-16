@@ -12,6 +12,8 @@ public class SearchDateFilter {
     private static final Pattern DATE = Pattern
             .compile("(?<![0-9])(?:(\\d{4})[-./])?(\\d{1,2})[-./](\\d{1,2})(?![0-9])");
     private static final Pattern RELATIVE = Pattern.compile("(?<![가-힣])(오늘|어제)(?![가-힣])");
+    private static final Pattern MEETING_DATE = Pattern
+            .compile("(?:오늘|어제|(?:\\d{4}[-./])?\\d{1,2}[-./]\\d{1,2})\\s*(?:에\\s*)?" + "(?:(?:열린|진행한|했던)\\s*)?회의");
     private static final Pattern GENERIC = Pattern.compile("(?<![가-힣])(회의|요약|정리)(?![가-힣])");
 
     private final LocalDate date;
@@ -23,6 +25,20 @@ public class SearchDateFilter {
     ) {
         this.date = date;
         this.query = query;
+    }
+
+    public static SearchDateFilter parseMeetingDate(
+            String question,
+            Instant reference
+    ) {
+        if (!MEETING_DATE.matcher(question)
+                .find()) {
+            return null;
+        }
+        return parse(
+                question,
+                reference
+        );
     }
 
     public static SearchDateFilter parse(

@@ -37,6 +37,9 @@ final class SearchMeetingIndexSource {
     ) {
         SearchDateFilter date = item.meetingDate();
         String sql = SELECT_DOCUMENTS + " AND d.created_at <= :cutoff";
+        if (scope.recordingSessionId() != null) {
+            sql += " AND r.id = :recording";
+        }
         if (item.documentId() != null) {
             sql += " AND d.id = :document";
         }
@@ -52,6 +55,12 @@ final class SearchMeetingIndexSource {
                         "cutoff",
                         Timestamp.from(scope.requestAcceptedAt())
                 );
+        if (scope.recordingSessionId() != null) {
+            statement.param(
+                    "recording",
+                    scope.recordingSessionId()
+            );
+        }
         if (item.documentId() != null) {
             statement.param(
                     "document",

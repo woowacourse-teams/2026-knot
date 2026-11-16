@@ -21,6 +21,9 @@ import com.knot.backend.search.application.dto.result.SearchDocumentPage;
 import com.knot.backend.search.application.dto.result.SearchDocumentCard;
 import com.knot.backend.search.application.dto.result.SearchDocumentSlice;
 import com.knot.backend.search.infrastructure.persistence.SearchDocumentQueryAdapter;
+import com.knot.backend.search.infrastructure.llm.SearchFastPathDocumentRetriever;
+import com.knot.backend.search.infrastructure.llm.SearchQueryNormalizer;
+import com.knot.backend.search.infrastructure.persistence.SearchQuestionContextStore;
 import com.knot.backend.search.infrastructure.llm.SearchAnswerPrompt;
 import com.knot.backend.search.infrastructure.mcp.SearchToolTokenCodec;
 import com.knot.backend.testsupport.TestApplicationProperties;
@@ -1187,7 +1190,12 @@ class SearchDocumentToolServiceIntegrationTest {
                             history,
                             access,
                             properties,
-                            mapper
+                            mapper,
+                            new SearchFastPathDocumentRetriever(
+                                    query,
+                                    access,
+                                    new SearchQueryNormalizer()
+                            )
                     )
             );
             adapters.addBean(
@@ -1216,7 +1224,11 @@ class SearchDocumentToolServiceIntegrationTest {
                     adapters.getBeanProvider(SearchAnswerGenerator.class),
                     clock,
                     properties,
-                    adapters.getBeanProvider(SearchIntentClassifier.class)
+                    adapters.getBeanProvider(SearchIntentClassifier.class),
+                    new SearchFollowupContextResolver(
+                            new SearchQuestionContextStore(jdbc),
+                            access
+                    )
             );
             SearchQuestionAcceptedResult accepted = intake.acceptFirst(
                     workspaceId,

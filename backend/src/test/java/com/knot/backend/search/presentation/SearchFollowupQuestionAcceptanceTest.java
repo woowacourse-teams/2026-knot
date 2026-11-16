@@ -25,10 +25,14 @@ import com.knot.backend.search.SearchMessageFixtures;
 import com.knot.backend.search.application.SearchAnswerGenerator;
 import com.knot.backend.search.application.SearchAnswerWorker;
 import com.knot.backend.search.application.SearchDocumentRetriever;
+import com.knot.backend.search.application.SearchDocumentQuery;
 import com.knot.backend.search.application.SearchGenerationAvailability;
+import com.knot.backend.search.application.SearchToolAccess;
 import com.knot.backend.search.application.SearchToolScope;
 import com.knot.backend.search.application.dto.result.SearchDocumentResult;
 import com.knot.backend.search.application.dto.result.SearchRetrievalResult;
+import com.knot.backend.search.infrastructure.llm.SearchFastPathDocumentRetriever;
+import com.knot.backend.search.infrastructure.llm.SearchQueryNormalizer;
 import com.knot.backend.testsupport.TestApplicationProperties;
 import com.knot.backend.testsupport.TestcontainersConfiguration;
 import java.io.BufferedReader;
@@ -43,6 +47,10 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import org.junit.jupiter.api.BeforeEach;
@@ -68,7 +76,7 @@ import tools.jackson.databind.json.JsonMapper;
 @Tag("acceptance")
 @ActiveProfiles("dev")
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = {
-        "knot.search.worker.stream-timeout=3s"})
+        "knot.search.worker.stream-timeout=3s", "knot.search.agent.followup-context-enabled=true"})
 @Import(TestcontainersConfiguration.class)
 @TestApplicationProperties
 @Timeout(30)
@@ -86,6 +94,10 @@ class SearchFollowupQuestionAcceptanceTest {
     private JsonMapper json;
     @Autowired
     private SearchAnswerWorker worker;
+    @Autowired
+    private SearchDocumentQuery documentQuery;
+    @Autowired
+    private SearchToolAccess toolAccess;
     @Autowired
     private SearchWorkerProperties streamLimits;
     @Autowired
@@ -248,6 +260,244 @@ class SearchFollowupQuestionAcceptanceTest {
         assertThat(countMessages()).isEqualTo(4);
         assertThat(
                 jdbc.sql("SELECT COUNT(*) FROM search_answer_executions")
+                        .query(Long.class)
+                        .single()
+        ).isEqualTo(1);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"누가?", "왜?"})
+    @DisplayName("짧은 후속은 같은 회의의 문서만 조회하고 질문 조건을 저장한다")
+    void ask_success_resolvesVerifiedMeetingScope(String question) throws Exception {
+        SearchMessageFixtures messages = new SearchMessageFixtures(jdbc);
+        long sourceAnswer = messages.messageId(
+                conversation,
+                2
+        );
+        long sourceDocument = messages.saveDocument(
+                workspace,
+                member
+        );
+        messages.saveDocument(
+                workspace,
+                member
+        );
+        messages.saveEvidence(
+                sourceAnswer,
+                sourceDocument,
+                1
+        );
+        SearchFastPathDocumentRetriever actual = new SearchFastPathDocumentRetriever(
+                documentQuery,
+                toolAccess,
+                new SearchQueryNormalizer()
+        );
+        when(
+                classifier.classify(
+                        any(),
+                        any()
+                )
+        ).thenReturn(SearchIntent.OUT_OF_SCOPE);
+        when(
+                retriever.retrieve(
+                        any(),
+                        eq(question)
+                )
+        ).thenAnswer(
+                call -> actual.retrieve(
+                        call.getArgument(0),
+                        question
+                )
+        );
+        doAnswer(call -> {
+            List<SearchDocumentResult> documents = call.getArgument(2);
+            assertThat(documents).extracting(SearchDocumentResult::documentId)
+                    .containsExactly(sourceDocument);
+            Consumer<String> delta = call.getArgument(3);
+            delta.accept("같은 회의 기록에서 확인했어요.");
+            return List.of(sourceDocument);
+        }).when(generator)
+                .generate(
+                        any(),
+                        eq(question),
+                        any(),
+                        any()
+                );
+
+        long started = System.nanoTime();
+        try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
+                InputStream stream = connect(
+                        body(
+                                UUID.randomUUID(),
+                                question
+                        )
+                ).body();
+                BufferedReader reader = reader(stream)) {
+            JsonNode receipt = accepted(reader);
+            Future<?> execution = executor.submit(
+                    () -> worker.execute(
+                            receipt.path("answerMessageId")
+                                    .asLong()
+                    )
+            );
+            String line = reader.readLine();
+            while (line != null && !line.equals("event:delta")) {
+                line = reader.readLine();
+            }
+            assertThat(line).isEqualTo("event:delta");
+            assertThat(reader.readLine()).contains("같은 회의 기록");
+            long firstDeltaMs = (System.nanoTime() - started) / 1_000_000;
+            assertThat(
+                    reader.lines()
+                            .collect(Collectors.joining("\n"))
+            ).contains("event:completed");
+            execution.get(
+                    5,
+                    TimeUnit.SECONDS
+            );
+            assertThat(
+                    jdbc.sql("""
+                            SELECT c.recording_session_id = d.recording_session_id
+                            FROM search_question_contexts c
+                            JOIN documents d ON d.id = :document
+                            WHERE c.question_message_id = :question
+                            """)
+                            .param(
+                                    "document",
+                                    sourceDocument
+                            )
+                            .param(
+                                    "question",
+                                    receipt.path("questionMessageId")
+                                            .asLong()
+                            )
+                            .query(Boolean.class)
+                            .single()
+            ).isTrue();
+            System.out.printf(
+                    "Scoped follow-up %s firstDeltaMs=%d%n",
+                    question,
+                    firstDeltaMs
+            );
+        }
+    }
+
+    @Test
+    @DisplayName("두 회의를 인용한 답변 뒤 짧은 질문은 워크스페이스로 검색 범위를 넓히지 않는다")
+    void ask_success_clarifiesAmbiguousMeeting() throws Exception {
+        SearchMessageFixtures messages = new SearchMessageFixtures(jdbc);
+        long previous = messages.messageId(
+                conversation,
+                2
+        );
+        messages.saveEvidence(
+                previous,
+                messages.saveDocument(
+                        workspace,
+                        member
+                ),
+                1
+        );
+        messages.saveEvidence(
+                previous,
+                messages.saveDocument(
+                        workspace,
+                        member
+                ),
+                2
+        );
+        when(
+                classifier.classify(
+                        any(),
+                        any()
+                )
+        ).thenReturn(SearchIntent.OUT_OF_SCOPE);
+
+        try (InputStream stream = connect(
+                body(
+                        UUID.randomUUID(),
+                        "왜?"
+                )
+        ).body(); BufferedReader reader = reader(stream)) {
+            worker.execute(
+                    accepted(reader).path("answerMessageId")
+                            .asLong()
+            );
+            assertThat(
+                    reader.lines()
+                            .collect(Collectors.joining("\n"))
+            ).contains(
+                    "event:delta",
+                    SearchAnswerGuidance.CLARIFY_MEETING,
+                    "event:completed",
+                    "\"items\":[]"
+            );
+        }
+        verifyNoInteractions(
+                classifier,
+                retriever,
+                generator
+        );
+        assertThat(
+                jdbc.sql("SELECT COUNT(*) FROM search_question_contexts")
+                        .query(Long.class)
+                        .single()
+        ).isZero();
+    }
+
+    @Test
+    @DisplayName("검색이 실패해도 접수 시점의 서울 회의 날짜와 검색 조건을 보존한다")
+    void ask_success_keepsQuestionConditionsAfterRetrievalFailure() throws Exception {
+        String question = "오늘 회의 배포 결정 알려줘";
+        when(
+                retriever.retrieve(
+                        any(),
+                        eq(question)
+                )
+        ).thenThrow(new IllegalStateException("fixture"));
+        UUID requestId = UUID.randomUUID();
+        String payload = body(
+                requestId,
+                question
+        );
+        JsonNode receipt;
+        try (InputStream stream = connect(payload).body(); BufferedReader reader = reader(stream)) {
+            receipt = accepted(reader);
+            worker.execute(
+                    receipt.path("answerMessageId")
+                            .asLong()
+            );
+            assertThat(
+                    reader.lines()
+                            .collect(Collectors.joining("\n"))
+            ).contains("event:completed");
+        }
+        try (InputStream stream = connect(payload).body(); BufferedReader reader = reader(stream)) {
+            assertThat(accepted(reader)).isEqualTo(receipt);
+            assertThat(
+                    reader.lines()
+                            .collect(Collectors.joining("\n"))
+            ).contains("event:completed");
+        }
+        assertThat(
+                jdbc.sql("""
+                        SELECT ctx.search_text LIKE '%배포%'
+                            AND ctx.recorded_from = date_trunc('day', q.created_at AT TIME ZONE 'Asia/Seoul')
+                                AT TIME ZONE 'Asia/Seoul'
+                            AND ctx.recorded_before = ctx.recorded_from + interval '24 hours'
+                        FROM search_question_contexts ctx JOIN search_messages q ON q.id = ctx.question_message_id
+                        WHERE q.id = :question
+                        """)
+                        .param(
+                                "question",
+                                receipt.path("questionMessageId")
+                                        .asLong()
+                        )
+                        .query(Boolean.class)
+                        .single()
+        ).isTrue();
+        assertThat(
+                jdbc.sql("SELECT COUNT(*) FROM search_question_contexts")
                         .query(Long.class)
                         .single()
         ).isEqualTo(1);

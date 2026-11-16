@@ -9,6 +9,8 @@ import com.knot.backend.global.logging.ServerErrorLogger;
 import com.knot.backend.search.application.SearchToolAccess;
 import com.knot.backend.search.application.SearchToolScope;
 import com.knot.backend.search.application.dto.result.SearchDocumentResult;
+import com.knot.backend.search.application.dto.result.SearchRetrievalResult;
+import com.knot.backend.search.application.dto.result.SearchRetrievalResult.Item;
 import com.knot.backend.search.domain.SearchToolException;
 import java.util.List;
 import java.util.Map;
@@ -53,6 +55,38 @@ public class SearchStreamingAnswerGenerator implements SearchAnswerGenerator {
             List<SearchDocumentResult> documents,
             Consumer<String> onDelta
     ) {
+        return generate(
+                scope,
+                question,
+                documents,
+                List.of(),
+                onDelta
+        );
+    }
+
+    @Override
+    public List<Long> generateFromRetrieval(
+            SearchToolScope scope,
+            String question,
+            SearchRetrievalResult retrieval,
+            Consumer<String> onDelta
+    ) {
+        return generate(
+                scope,
+                question,
+                retrieval.documents(),
+                retrieval.items(),
+                onDelta
+        );
+    }
+
+    private List<Long> generate(
+            SearchToolScope scope,
+            String question,
+            List<SearchDocumentResult> documents,
+            List<Item> items,
+            Consumer<String> onDelta
+    ) {
         access.validate(scope);
         boolean fullDocumentsOnly = !documents.isEmpty()
                 && springAi.filter(model -> model.supports(scope.workspaceId()))
@@ -63,7 +97,8 @@ public class SearchStreamingAnswerGenerator implements SearchAnswerGenerator {
                 properties.getContextCharacterLimit(),
                 question,
                 scope.questionAcceptedAt(),
-                fullDocumentsOnly
+                fullDocumentsOnly,
+                items
         );
         try {
             budget.select(
@@ -71,10 +106,13 @@ public class SearchStreamingAnswerGenerator implements SearchAnswerGenerator {
                     previous
             );
         } catch (SearchToolException exception) {
-            if (fullDocumentsOnly && "SEARCH_CONTEXT_LIMIT_EXCEEDED".equals(exception.getCode())) {
+            if (!documents.isEmpty() && "SEARCH_CONTEXT_LIMIT_EXCEEDED".equals(exception.getCode())) {
                 access.validate(scope);
-                publishGuidance(
+                onDelta.accept(SearchAnswerGuidance.DOCUMENT_BUDGET_EXHAUSTED);
+                publishCoverage(
+                        items,
                         List.of(),
+                        false,
                         onDelta
                 );
                 return List.of();
@@ -150,6 +188,12 @@ public class SearchStreamingAnswerGenerator implements SearchAnswerGenerator {
                         related,
                         onDelta
                 );
+                publishCoverage(
+                        items,
+                        List.of(),
+                        budget.documentsLimited(),
+                        onDelta
+                );
                 log.info(
                         "Search answer outcome=guidance workspaceId={} answerId={}",
                         scope.workspaceId(),
@@ -164,6 +208,12 @@ public class SearchStreamingAnswerGenerator implements SearchAnswerGenerator {
             // Consumer/persistence errors are handled by the worker, never retried as model
             // errors.
             onDelta.accept(validatedText.toString());
+            publishCoverage(
+                    items,
+                    ids,
+                    budget.documentsLimited(),
+                    onDelta
+            );
             log.info(
                     "Search answer outcome=generated workspaceId={} answerId={}",
                     scope.workspaceId(),
@@ -172,6 +222,38 @@ public class SearchStreamingAnswerGenerator implements SearchAnswerGenerator {
             return ids;
         }
         throw new IllegalStateException("Unreachable answer attempt");
+    }
+
+    private void publishCoverage(
+            List<Item> items,
+            List<Long> citedIds,
+            boolean documentsLimited,
+            Consumer<String> onDelta
+    ) {
+        StringBuilder guidance = new StringBuilder();
+        for (Item item : items) {
+            if (item.documentIds()
+                    .stream()
+                    .anyMatch(citedIds::contains)) {
+                continue;
+            }
+            String description = switch (item.status()) {
+                case UNAVAILABLE -> "회의 기록을 조회하지 못했어요.";
+                case NO_MATCH -> "검색한 범위에서 관련 기록을 찾지 못했어요.";
+                case MATCHED, EXCLUDED -> "답변을 뒷받침할 근거를 확인하지 못했어요.";
+            };
+            guidance.append("\n\n요청의 ")
+                    .append(item.ordinal())
+                    .append("번째 항목은 ")
+                    .append(description);
+        }
+        if (documentsLimited) {
+            guidance.append("\n\n")
+                    .append(SearchAnswerGuidance.DOCUMENT_BUDGET_LIMITED);
+        }
+        if (!guidance.isEmpty()) {
+            onDelta.accept(guidance.toString());
+        }
     }
 
     private void stream(

@@ -2,6 +2,7 @@ package com.knot.backend.search.application;
 
 import com.knot.backend.global.logging.ServerErrorLogger;
 import com.knot.backend.search.application.dto.result.SearchAnswerWorkResult;
+import com.knot.backend.search.application.dto.query.SearchQuestionContext;
 import com.knot.backend.search.application.dto.result.SearchDocumentResult;
 import com.knot.backend.search.application.dto.result.SearchRetrievalResult;
 import com.knot.backend.search.domain.model.SearchIntent;
@@ -31,6 +32,7 @@ public class SearchAnswerWorker {
     private final Clock clock;
     private final SearchAgentProperties agentProperties;
     private final ObjectProvider<SearchIntentClassifier> classifiers;
+    private final SearchFollowupContextResolver followups;
 
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public void execute(long answerId) {
@@ -111,10 +113,7 @@ public class SearchAnswerWorker {
             String question
     ) {
         if (!intent.requiresSearch()) {
-            return new SearchRetrievalResult(
-                    List.of(),
-                    0
-            );
+            return SearchRetrievalResult.skipped();
         }
         return retrievers.getObject()
                 .retrieve(
@@ -129,14 +128,23 @@ public class SearchAnswerWorker {
             AtomicLong persistenceCount,
             AtomicLong persistenceNanos
     ) {
+        boolean contextEnabled = agentProperties.isFollowupContextEnabled();
+        boolean shortReference = contextEnabled && followups.isShortReference(work.question());
+        Optional<SearchQuestionContext> previous = Optional.empty();
+        if (shortReference) {
+            previous = followups.previousEvidenceContext(scope);
+        }
         long classificationStarted = System.nanoTime();
         SearchIntent intent;
         try {
-            intent = classifiers.getObject()
-                    .classify(
-                            scope,
-                            work.question()
-                    );
+            intent = SearchIntent.MEETING_SEARCH;
+            if (previous.isEmpty()) {
+                intent = classifiers.getObject()
+                        .classify(
+                                scope,
+                                work.question()
+                        );
+            }
             log.info(
                     "Search latency phase=intent_classification workspaceId={} questionId={} answerId={} elapsedMs={} inputChars={} outcome=success intent={}",
                     work.workspaceId(),
@@ -169,9 +177,37 @@ public class SearchAnswerWorker {
             }
             intent = SearchIntent.MEETING_SEARCH;
         }
+        if (shortReference && intent.requiresSearch() && previous.map(SearchQuestionContext::recordingSessionId)
+                .isEmpty()) {
+            executions.completeGenerated(
+                    work.answerId(),
+                    work.token(),
+                    SearchAnswerGuidance.CLARIFY_MEETING,
+                    List.of(),
+                    Set.of()
+            );
+            return;
+        }
+        if (contextEnabled && intent.requiresSearch()) {
+            SearchQuestionContext context = previous.orElseGet(
+                    () -> followups.describe(
+                            work.question(),
+                            work.questionAcceptedAt()
+                    )
+            );
+            if (!executions.saveQuestionContext(
+                    work.answerId(),
+                    work.token(),
+                    context
+            )) {
+                return;
+            }
+            if (context.recordingSessionId() != null) {
+                scope = scope.forMeeting(context.recordingSessionId());
+            }
+        }
         long retrievalStarted = System.nanoTime();
         SearchRetrievalResult retrieval;
-        boolean retrievalUnavailable = false;
         try {
             retrieval = retrieve(
                     intent,
@@ -204,11 +240,7 @@ public class SearchAnswerWorker {
             if (ServerErrorLogger.isControlFlow(exception)) {
                 throw exception;
             }
-            retrievalUnavailable = true;
-            retrieval = new SearchRetrievalResult(
-                    List.of(),
-                    0
-            );
+            retrieval = SearchRetrievalResult.unavailable();
         }
         if (!executions.recordRetrieval(
                 work.answerId(),
@@ -224,14 +256,13 @@ public class SearchAnswerWorker {
         StringBuilder content = new StringBuilder();
         long generationStarted = System.nanoTime();
         try {
-            if (retrievalUnavailable) {
-                content.append(SearchAnswerGuidance.RETRIEVAL_UNAVAILABLE);
-            }
-            usedIds = generator.generate(
+            content.append(retrievalGuidance(retrieval));
+            usedIds = generateAnswer(
+                    generator,
                     scope,
                     work.question(),
-                    documents,
-                    content::append
+                    retrieval,
+                    content
             );
             log.info(
                     "Search latency phase=answer_generation workspaceId={} questionId={} answerId={} elapsedMs={} inputChars={} documentCount={} outcome=success",
@@ -273,5 +304,43 @@ public class SearchAnswerWorker {
             persistenceCount.incrementAndGet();
             persistenceNanos.addAndGet(System.nanoTime() - persistenceStarted);
         }
+    }
+
+    private String retrievalGuidance(SearchRetrievalResult retrieval) {
+        if (retrieval.status() == SearchRetrievalResult.Status.UNAVAILABLE) {
+            return SearchAnswerGuidance.RETRIEVAL_UNAVAILABLE;
+        }
+        if (retrieval.foundNothing()) {
+            return SearchAnswerGuidance.NO_SEARCH_MATCHES;
+        }
+        if (retrieval.excludedCount() > 0 && retrieval.items()
+                .isEmpty()) {
+            return SearchAnswerGuidance.RETRIEVAL_LIMITED;
+        }
+        return "";
+    }
+
+    private List<Long> generateAnswer(
+            SearchAnswerGenerator generator,
+            SearchToolScope scope,
+            String question,
+            SearchRetrievalResult retrieval,
+            StringBuilder content
+    ) {
+        if (retrieval.items()
+                .isEmpty()) {
+            return generator.generate(
+                    scope,
+                    question,
+                    retrieval.documents(),
+                    content::append
+            );
+        }
+        return generator.generateFromRetrieval(
+                scope,
+                question,
+                retrieval,
+                content::append
+        );
     }
 }

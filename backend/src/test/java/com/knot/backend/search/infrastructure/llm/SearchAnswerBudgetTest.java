@@ -209,7 +209,8 @@ class SearchAnswerBudgetTest {
                 LIMIT,
                 "결정과 조건은?",
                 NOW,
-                true
+                true,
+                List.of()
         );
         SearchDocumentResult large = new SearchDocumentResult(
                 1,
@@ -244,7 +245,8 @@ class SearchAnswerBudgetTest {
                 LIMIT,
                 "결정과 조건은?",
                 NOW,
-                true
+                true,
+                List.of()
         );
         SearchDocumentResult large = new SearchDocumentResult(
                 1,

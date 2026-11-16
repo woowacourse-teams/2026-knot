@@ -64,7 +64,8 @@ class SearchMcpDocumentRetrieverTest {
                 history,
                 access,
                 properties,
-                mapper
+                mapper,
+                mock(SearchFastPathDocumentRetriever.class)
         );
     }
 
