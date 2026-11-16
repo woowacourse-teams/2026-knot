@@ -127,7 +127,7 @@ class SearchAnswerWorkerConversationTest {
         ).thenReturn(intent);
         worker.execute(5);
         verifyNoInteractions(retriever);
-        verifyGeneratedAnswer();
+        verifyGeneratedAnswer("생성한 답변");
     }
 
     @Test
@@ -138,7 +138,7 @@ class SearchAnswerWorkerConversationTest {
                 any(),
                 eq("질문")
         );
-        verifyGeneratedAnswer();
+        verifyGeneratedAnswer(SearchAnswerGuidance.NO_SEARCH_MATCHES + "생성한 답변");
     }
 
     @Test
@@ -161,7 +161,7 @@ class SearchAnswerWorkerConversationTest {
                 any(),
                 eq("질문")
         );
-        verifyGeneratedAnswer();
+        verifyGeneratedAnswer(SearchAnswerGuidance.NO_SEARCH_MATCHES + "생성한 답변");
     }
 
     @Test
@@ -281,7 +281,7 @@ class SearchAnswerWorkerConversationTest {
         );
     }
 
-    private void verifyGeneratedAnswer() {
+    private void verifyGeneratedAnswer(String expected) {
         verify(generator).generate(
                 any(),
                 eq("질문"),
@@ -291,7 +291,7 @@ class SearchAnswerWorkerConversationTest {
         verify(executions).completeGenerated(
                 5,
                 token,
-                "생성한 답변",
+                expected,
                 List.of(),
                 Set.of()
         );

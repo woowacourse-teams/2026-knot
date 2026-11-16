@@ -236,6 +236,45 @@ class SearchHybridSpringAiIntegrationTest {
                 any(),
                 any()
         );
+        int requestsBeforePartial = UPSTREAM.requestCount();
+        long partialAnswerId = intake.acceptFirst(
+                workspace,
+                member,
+                new SearchQuestionCommand(
+                        "1. 문서 #" + document + "의 결정\n2. 문서 #9999의 결정",
+                        UUID.randomUUID()
+                )
+        )
+                .answerMessageId();
+        worker.execute(partialAnswerId);
+
+        assertThat(
+                jdbc.sql("SELECT content FROM search_messages WHERE id = :id")
+                        .param(
+                                "id",
+                                partialAnswerId
+                        )
+                        .query(String.class)
+                        .single()
+        ).contains(
+                ANSWER,
+                "요청의 2번째 항목은 검색한 범위에서 관련 기록을 찾지 못했어요."
+        );
+        assertThat(
+                jdbc.sql("SELECT document_id FROM search_evidences WHERE message_id = :id")
+                        .param(
+                                "id",
+                                partialAnswerId
+                        )
+                        .query(Long.class)
+                        .list()
+        ).containsExactly(document);
+        assertThat(UPSTREAM.requestBody()).contains(
+                "searchItems",
+                "E" + document
+        )
+                .doesNotContain("E9999");
+        assertThat(UPSTREAM.requestCount()).isEqualTo(requestsBeforePartial + 2);
     }
 
     private static LlmHttpServer upstream() {

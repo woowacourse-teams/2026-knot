@@ -14,6 +14,7 @@ import com.knot.backend.search.application.SearchDocumentQuery;
 import com.knot.backend.search.application.SearchToolAccess;
 import com.knot.backend.search.application.SearchToolScope;
 import com.knot.backend.search.application.dto.result.SearchDocumentResult;
+import com.knot.backend.search.application.dto.result.SearchRetrievalResult;
 import com.knot.backend.testsupport.TestApplicationProperties;
 import com.knot.backend.testsupport.TestcontainersConfiguration;
 import java.nio.file.Path;
@@ -233,12 +234,25 @@ class SearchMeetingIndexSynchronizerIntegrationTest {
                         second
                 )
                 .update();
-        assertThat(
-                retrieval.retrieve(
-                        scope,
-                        question
+        SearchRetrievalResult partial = retrieval.retrieve(
+                scope,
+                question
+        )
+                .orElseThrow();
+        assertThat(partial.documents()).extracting(SearchDocumentResult::documentId)
+                .containsExactly(first);
+        assertThat(partial.items()).containsExactly(
+                new SearchRetrievalResult.Item(
+                        1,
+                        SearchRetrievalResult.ItemStatus.MATCHED,
+                        List.of(first)
+                ),
+                new SearchRetrievalResult.Item(
+                        2,
+                        SearchRetrievalResult.ItemStatus.UNAVAILABLE,
+                        List.of()
                 )
-        ).isEmpty();
+        );
     }
 
     private void setMeetingDate(

@@ -113,10 +113,7 @@ public class SearchAnswerWorker {
             String question
     ) {
         if (!intent.requiresSearch()) {
-            return new SearchRetrievalResult(
-                    List.of(),
-                    0
-            );
+            return SearchRetrievalResult.skipped();
         }
         return retrievers.getObject()
                 .retrieve(
@@ -211,7 +208,6 @@ public class SearchAnswerWorker {
         }
         long retrievalStarted = System.nanoTime();
         SearchRetrievalResult retrieval;
-        boolean retrievalUnavailable = false;
         try {
             retrieval = retrieve(
                     intent,
@@ -244,11 +240,7 @@ public class SearchAnswerWorker {
             if (ServerErrorLogger.isControlFlow(exception)) {
                 throw exception;
             }
-            retrievalUnavailable = true;
-            retrieval = new SearchRetrievalResult(
-                    List.of(),
-                    0
-            );
+            retrieval = SearchRetrievalResult.unavailable();
         }
         if (!executions.recordRetrieval(
                 work.answerId(),
@@ -264,14 +256,13 @@ public class SearchAnswerWorker {
         StringBuilder content = new StringBuilder();
         long generationStarted = System.nanoTime();
         try {
-            if (retrievalUnavailable) {
-                content.append(SearchAnswerGuidance.RETRIEVAL_UNAVAILABLE);
-            }
-            usedIds = generator.generate(
+            content.append(retrievalGuidance(retrieval));
+            usedIds = generateAnswer(
+                    generator,
                     scope,
                     work.question(),
-                    documents,
-                    content::append
+                    retrieval,
+                    content
             );
             log.info(
                     "Search latency phase=answer_generation workspaceId={} questionId={} answerId={} elapsedMs={} inputChars={} documentCount={} outcome=success",
@@ -313,5 +304,43 @@ public class SearchAnswerWorker {
             persistenceCount.incrementAndGet();
             persistenceNanos.addAndGet(System.nanoTime() - persistenceStarted);
         }
+    }
+
+    private String retrievalGuidance(SearchRetrievalResult retrieval) {
+        if (retrieval.status() == SearchRetrievalResult.Status.UNAVAILABLE) {
+            return SearchAnswerGuidance.RETRIEVAL_UNAVAILABLE;
+        }
+        if (retrieval.foundNothing()) {
+            return SearchAnswerGuidance.NO_SEARCH_MATCHES;
+        }
+        if (retrieval.excludedCount() > 0 && retrieval.items()
+                .isEmpty()) {
+            return SearchAnswerGuidance.RETRIEVAL_LIMITED;
+        }
+        return "";
+    }
+
+    private List<Long> generateAnswer(
+            SearchAnswerGenerator generator,
+            SearchToolScope scope,
+            String question,
+            SearchRetrievalResult retrieval,
+            StringBuilder content
+    ) {
+        if (retrieval.items()
+                .isEmpty()) {
+            return generator.generate(
+                    scope,
+                    question,
+                    retrieval.documents(),
+                    content::append
+            );
+        }
+        return generator.generateFromRetrieval(
+                scope,
+                question,
+                retrieval,
+                content::append
+        );
     }
 }

@@ -526,10 +526,59 @@ class SearchStreamingAnswerGeneratorTest {
                         deltas
                 )
         ).contains("첫 문서")
+                .contains("입력 한도")
                 .doesNotContain(
                         "둘째 문서",
                         "세 회의의 변화"
                 );
+    }
+
+    @Test
+    @DisplayName("대화 이력만 예산에서 빠지면 회의 기록 일부만 읽었다고 안내하지 않는다")
+    void generate_success_historyBudgetDoesNotLimitDocumentCoverage() {
+        when(history.beforeQuestion(scope)).thenReturn(
+                List.of(
+                        Map.of(
+                                "role",
+                                "assistant",
+                                "content",
+                                "이전 대화".repeat(10_000)
+                        )
+                )
+        );
+        doAnswer(call -> {
+            Consumer<String> consumer = call.getArgument(2);
+            consumer.accept(response(List.of("E1")));
+            return null;
+        }).when(llm)
+                .stream(
+                        eq(scope),
+                        any(),
+                        any()
+                );
+        List<String> deltas = new ArrayList<>();
+
+        assertThat(
+                generator.generate(
+                        scope,
+                        "어제 회의",
+                        List.of(
+                                new SearchDocumentResult(
+                                        1,
+                                        "회의",
+                                        "주제",
+                                        "결정 근거"
+                                )
+                        ),
+                        deltas::add
+                )
+        ).containsExactly(1L);
+        assertThat(
+                String.join(
+                        "",
+                        deltas
+                )
+        ).isEqualTo("세 회의의 변화");
     }
 
     private String response(List<String> ids) {
