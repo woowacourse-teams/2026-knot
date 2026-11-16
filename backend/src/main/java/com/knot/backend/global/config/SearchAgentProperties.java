@@ -14,6 +14,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 public class SearchAgentProperties {
 
     private boolean enabled;
+    private boolean followupContextEnabled;
     private String signingKey;
     private URI mcpBaseUrl = URI.create("http://127.0.0.1:8080");
     private Duration budget = Duration.ofSeconds(120);

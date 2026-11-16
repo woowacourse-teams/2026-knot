@@ -51,7 +51,8 @@ class SearchAnswerWorkerConversationTest {
                 beans.getBeanProvider(SearchAnswerGenerator.class),
                 Clock.systemUTC(),
                 new SearchAgentProperties(),
-                beans.getBeanProvider(SearchIntentClassifier.class)
+                beans.getBeanProvider(SearchIntentClassifier.class),
+                mock(SearchFollowupContextResolver.class)
         );
         when(executions.claim(5)).thenReturn(
                 Optional.of(

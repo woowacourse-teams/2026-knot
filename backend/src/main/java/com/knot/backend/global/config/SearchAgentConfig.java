@@ -162,12 +162,13 @@ public class SearchAgentConfig {
             ObjectMapper mapper,
             SearchDocumentQuery query
     ) {
+        SearchFastPathDocumentRetriever fastPath = new SearchFastPathDocumentRetriever(
+                query,
+                access,
+                new SearchQueryNormalizer()
+        );
         if (properties.getRetrievalMode() == SearchRetrievalMode.FAST_PATH) {
-            return new SearchFastPathDocumentRetriever(
-                    query,
-                    access,
-                    new SearchQueryNormalizer()
-            );
+            return fastPath;
         }
         return new SearchMcpDocumentRetriever(
                 llm,
@@ -175,7 +176,8 @@ public class SearchAgentConfig {
                 history,
                 access,
                 properties,
-                mapper
+                mapper,
+                fastPath
         );
     }
 
