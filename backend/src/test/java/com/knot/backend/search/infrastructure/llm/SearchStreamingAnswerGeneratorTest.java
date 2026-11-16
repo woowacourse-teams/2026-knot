@@ -365,6 +365,8 @@ class SearchStreamingAnswerGeneratorTest {
             assertThat(system).contains(
                     "핵심 원칙: 회의 기록에 관한 사실은 제공된 근거에서만 답변합니다.",
                     "제안을 결정으로 바꾸지 않습니다.",
+                    "변경 기록이 없으면 변경 여부를 확인하지 못했다고 답합니다.",
+                    "질문이 요구한 사실을 하나도 확인할 수 없다면 관련 배경 기록이 있어도 NOT_FOUND로 답합니다.",
                     "서로 다른 출처 문서는 최대 3개로 제한합니다."
             );
             JsonNode user = mapper.readTree(
