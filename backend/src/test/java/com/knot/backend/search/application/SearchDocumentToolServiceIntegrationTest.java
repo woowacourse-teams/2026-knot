@@ -25,6 +25,8 @@ import com.knot.backend.search.infrastructure.llm.SearchFastPathDocumentRetrieve
 import com.knot.backend.search.infrastructure.llm.SearchQueryNormalizer;
 import com.knot.backend.search.infrastructure.persistence.SearchQuestionContextStore;
 import com.knot.backend.search.infrastructure.llm.SearchAnswerPrompt;
+import com.knot.backend.search.infrastructure.llm.SearchFastPathDocumentRetriever;
+import com.knot.backend.search.infrastructure.llm.SearchQueryNormalizer;
 import com.knot.backend.search.infrastructure.mcp.SearchToolTokenCodec;
 import com.knot.backend.testsupport.TestApplicationProperties;
 import com.knot.backend.testsupport.TestcontainersConfiguration;
@@ -129,6 +131,49 @@ class SearchDocumentToolServiceIntegrationTest {
                 ),
                 properties
         );
+    }
+
+    @Test
+    @DisplayName("합성 문서가 100개를 넘더라도 같은 워크스페이스의 배포 결정만 키워드 검색으로 찾는다")
+    void retrieve_success_keywordBaselineWithManyDocuments() {
+        for (int index = 0; index < 100; index++) {
+            saveDocument(
+                    workspaceId,
+                    "DRAFT",
+                    "고객 설문 " + index,
+                    "사용자 인터뷰 질문을 검토했다."
+            );
+        }
+        long expectedDocument = saveDocument(
+                workspaceId,
+                "ARCHIVED",
+                "배포 권한 결정",
+                "품질 검사를 통과하면 금요일에 배포한다."
+        );
+        long otherWorkspace = fixtures.saveWorkspace();
+        fixtures.join(
+                otherWorkspace,
+                memberId
+        );
+        saveDocument(
+                otherWorkspace,
+                "DRAFT",
+                "배포 권한 결정",
+                "월요일에 배포한다."
+        );
+        SearchFastPathDocumentRetriever retriever = new SearchFastPathDocumentRetriever(
+                query,
+                access,
+                new SearchQueryNormalizer()
+        );
+
+        SearchRetrievalResult result = retriever.retrieve(
+                scope,
+                "배포"
+        );
+
+        assertThat(result.documents()).extracting(SearchDocumentResult::documentId)
+                .containsExactly(expectedDocument);
     }
 
     @Test
