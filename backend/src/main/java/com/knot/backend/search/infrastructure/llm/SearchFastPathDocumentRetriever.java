@@ -104,18 +104,7 @@ public class SearchFastPathDocumentRetriever implements SearchDocumentRetriever 
 
     private List<SearchDocumentResult> documents(List<SearchDocumentRecord> records) {
         return records.stream()
-                .map(this::document)
+                .map(SearchDocumentResult::from)
                 .toList();
-    }
-
-    private SearchDocumentResult document(SearchDocumentRecord record) {
-        return new SearchDocumentResult(
-                record.documentId(),
-                record.title(),
-                record.topic(),
-                record.content(),
-                record.recordingStartedAt(),
-                record.createdAt()
-        );
     }
 }

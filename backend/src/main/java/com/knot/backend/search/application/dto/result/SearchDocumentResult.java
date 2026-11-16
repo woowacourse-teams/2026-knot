@@ -11,6 +11,17 @@ public record SearchDocumentResult(
         Instant createdAt
 ) {
 
+    public static SearchDocumentResult from(SearchDocumentRecord record) {
+        return new SearchDocumentResult(
+                record.documentId(),
+                record.title(),
+                record.topic(),
+                record.content(),
+                record.recordingStartedAt(),
+                record.createdAt()
+        );
+    }
+
     public SearchDocumentResult(
             long documentId,
             String title,
