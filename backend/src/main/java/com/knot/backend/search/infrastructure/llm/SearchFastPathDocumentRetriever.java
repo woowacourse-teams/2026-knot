@@ -35,10 +35,7 @@ public class SearchFastPathDocumentRetriever implements SearchDocumentRetriever 
         }
         String normalizedQuery = normalizer.normalize(queryText);
         if (normalizedQuery.isBlank() && date == null) {
-            return new SearchRetrievalResult(
-                    List.of(),
-                    0
-            );
+            return SearchRetrievalResult.skipped();
         }
         SearchDocumentParameters parameters = parameters(
                 normalizedQuery,

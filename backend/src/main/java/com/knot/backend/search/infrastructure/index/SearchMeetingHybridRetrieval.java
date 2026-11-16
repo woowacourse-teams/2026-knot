@@ -5,11 +5,15 @@ import com.knot.backend.search.application.SearchToolAccess;
 import com.knot.backend.search.application.SearchToolScope;
 import com.knot.backend.search.application.dto.result.SearchDocumentResult;
 import com.knot.backend.search.application.dto.result.SearchRetrievalResult;
+import com.knot.backend.search.application.dto.result.SearchRetrievalResult.Item;
+import com.knot.backend.search.application.dto.result.SearchRetrievalResult.ItemStatus;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -51,7 +55,7 @@ public final class SearchMeetingHybridRetrieval {
                     scope,
                     question
             );
-        } catch (IOException | IllegalStateException exception) {
+        } catch (IllegalStateException exception) {
             log.warn(
                     "Hybrid search unavailable workspaceId={} errorType={}",
                     scope.workspaceId(),
@@ -65,7 +69,7 @@ public final class SearchMeetingHybridRetrieval {
     private Optional<SearchRetrievalResult> retrieveCurrent(
             SearchToolScope scope,
             String question
-    ) throws IOException {
+    ) {
         List<SearchMeetingSearchItem> items = SearchMeetingSearchItem.parse(
                 question,
                 scope.startedAt()
@@ -75,20 +79,19 @@ public final class SearchMeetingHybridRetrieval {
             itemLimit = PER_ITEM_LIMIT;
         }
         Set<Long> ranked = new LinkedHashSet<>();
+        List<Optional<List<Long>>> matches = new ArrayList<>();
         for (SearchMeetingSearchItem item : items) {
-            Optional<List<Long>> itemMatches = index.findCurrent(
-                    scope.workspaceId(),
-                    item.question(),
-                    source.eligibleDocuments(
-                            scope,
-                            item
-                    ),
+            Optional<List<Long>> itemMatches = searchItem(
+                    scope,
+                    item,
                     itemLimit
             );
-            if (itemMatches.isEmpty()) {
-                return Optional.empty();
-            }
-            ranked.addAll(itemMatches.orElseThrow());
+            matches.add(itemMatches);
+            itemMatches.ifPresent(ranked::addAll);
+        }
+        if (matches.stream()
+                .noneMatch(Optional::isPresent)) {
+            return Optional.empty();
         }
         access.validate(scope);
         List<SearchDocumentResult> current = ranked.stream()
@@ -108,8 +111,99 @@ public final class SearchMeetingHybridRetrieval {
                         Math.min(
                                 ranked.size(),
                                 TOTAL_LIMIT
-                        ) - current.size()
+                        ) - current.size(),
+                        SearchRetrievalResult.Status.SEARCHED,
+                        itemResults(
+                                matches,
+                                current
+                        )
                 )
+        );
+    }
+
+    private Optional<List<Long>> searchItem(
+            SearchToolScope scope,
+            SearchMeetingSearchItem item,
+            int limit
+    ) {
+        try {
+            return index.findCurrent(
+                    scope.workspaceId(),
+                    item.question(),
+                    source.eligibleDocuments(
+                            scope,
+                            item
+                    ),
+                    limit
+            );
+        } catch (IOException | IllegalStateException exception) {
+            log.warn(
+                    "Hybrid search item unavailable workspaceId={} errorType={}",
+                    scope.workspaceId(),
+                    exception.getClass()
+                            .getSimpleName()
+            );
+            return Optional.empty();
+        }
+    }
+
+    private List<Item> itemResults(
+            List<Optional<List<Long>>> matches,
+            List<SearchDocumentResult> current
+    ) {
+        if (matches.size() < 2) {
+            return List.of();
+        }
+        Set<Long> currentIds = current.stream()
+                .map(SearchDocumentResult::documentId)
+                .collect(Collectors.toSet());
+        List<Item> results = new ArrayList<>();
+        for (int index = 0; index < matches.size(); index++) {
+            results.add(
+                    itemResult(
+                            index + 1,
+                            matches.get(index),
+                            currentIds
+                    )
+            );
+        }
+        return results;
+    }
+
+    private Item itemResult(
+            int ordinal,
+            Optional<List<Long>> match,
+            Set<Long> currentIds
+    ) {
+        if (match.isEmpty()) {
+            return new Item(
+                    ordinal,
+                    ItemStatus.UNAVAILABLE,
+                    List.of()
+            );
+        }
+        List<Long> ranked = match.orElseThrow();
+        if (ranked.isEmpty()) {
+            return new Item(
+                    ordinal,
+                    ItemStatus.NO_MATCH,
+                    List.of()
+            );
+        }
+        List<Long> visible = ranked.stream()
+                .filter(currentIds::contains)
+                .toList();
+        if (visible.isEmpty()) {
+            return new Item(
+                    ordinal,
+                    ItemStatus.EXCLUDED,
+                    List.of()
+            );
+        }
+        return new Item(
+                ordinal,
+                ItemStatus.MATCHED,
+                visible
         );
     }
 }
