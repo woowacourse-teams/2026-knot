@@ -72,7 +72,7 @@ public final class SearchMeetingHybridRetrieval {
     ) {
         List<SearchMeetingSearchItem> items = SearchMeetingSearchItem.parse(
                 question,
-                scope.startedAt()
+                scope.questionAcceptedAt()
         );
         int itemLimit = TOTAL_LIMIT;
         if (items.size() > 1) {

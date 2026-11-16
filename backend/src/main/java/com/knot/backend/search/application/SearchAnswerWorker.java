@@ -192,7 +192,7 @@ public class SearchAnswerWorker {
             SearchQuestionContext context = previous.orElseGet(
                     () -> followups.describe(
                             work.question(),
-                            work.createdAt()
+                            work.questionAcceptedAt()
                     )
             );
             if (!executions.saveQuestionContext(

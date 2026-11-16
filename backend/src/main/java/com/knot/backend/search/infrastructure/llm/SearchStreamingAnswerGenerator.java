@@ -96,7 +96,7 @@ public class SearchStreamingAnswerGenerator implements SearchAnswerGenerator {
                 mapper,
                 properties.getContextCharacterLimit(),
                 question,
-                scope.startedAt(),
+                scope.questionAcceptedAt(),
                 fullDocumentsOnly,
                 items
         );

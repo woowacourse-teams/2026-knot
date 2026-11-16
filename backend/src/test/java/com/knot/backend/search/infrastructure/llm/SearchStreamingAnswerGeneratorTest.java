@@ -339,6 +339,21 @@ class SearchStreamingAnswerGeneratorTest {
     @Test
     @DisplayName("지정 시스템 프롬프트와 구분된 대화 문맥·근거를 모델 요청에 전달한다")
     void generate_success_promptAndEvidenceBoundary() {
+        Instant acceptedAt = Instant.parse("2026-11-16T14:59:50Z");
+        Instant startedAt = acceptedAt.plusSeconds(30);
+        scope = new SearchToolScope(
+                1,
+                1,
+                1,
+                1,
+                2,
+                UUID.randomUUID(),
+                acceptedAt,
+                acceptedAt.plusSeconds(20),
+                startedAt,
+                startedAt.plusSeconds(120),
+                null
+        );
         List<Map<String, Object>> previous = List.of(
                 Map.of(
                         "role",
@@ -373,6 +388,10 @@ class SearchStreamingAnswerGeneratorTest {
                     (String) messages.getLast()
                             .get("content")
             );
+            assertThat(
+                    user.path("requestedAt")
+                            .asString()
+            ).isEqualTo("2026-11-16T23:59:50+09:00");
             assertThat(
                     user.path("question")
                             .asString()

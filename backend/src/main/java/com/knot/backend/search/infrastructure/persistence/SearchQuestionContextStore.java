@@ -54,7 +54,7 @@ public class SearchQuestionContextStore {
                 )
                 .param(
                         "cutoff",
-                        Timestamp.from(scope.startedAt())
+                        Timestamp.from(scope.requestAcceptedAt())
                 )
                 .query(
                         (

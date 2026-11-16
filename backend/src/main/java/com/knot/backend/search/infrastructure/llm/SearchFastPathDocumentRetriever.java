@@ -50,7 +50,7 @@ public class SearchFastPathDocumentRetriever implements SearchDocumentRetriever 
         }
         SearchDateFilter date = SearchDateFilter.parse(
                 question,
-                scope.startedAt()
+                scope.questionAcceptedAt()
         );
         String queryText = question;
         if (date != null) {
