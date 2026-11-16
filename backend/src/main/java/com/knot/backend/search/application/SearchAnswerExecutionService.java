@@ -15,6 +15,7 @@ import com.knot.backend.search.domain.model.SearchEvidence;
 import com.knot.backend.search.domain.model.SearchMessage;
 import com.knot.backend.search.domain.model.SearchMessageStatus;
 import com.knot.backend.search.domain.model.SearchMessageRole;
+import com.knot.backend.search.domain.model.SearchRequestReceipt;
 import com.knot.backend.search.domain.model.SearchExecutionState;
 import com.knot.backend.search.domain.SearchException;
 import com.knot.backend.search.domain.SearchErrorCode;
@@ -22,6 +23,7 @@ import com.knot.backend.search.domain.repository.SearchRepository;
 import com.knot.backend.workspace.domain.repository.WorkspaceRepository;
 import com.knot.backend.workspace.domain.repository.WorkspaceMemberRepository;
 import java.time.Clock;
+import java.time.Instant;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
@@ -178,6 +180,10 @@ public class SearchAnswerExecutionService {
         }
         SearchMessage question = repository.findMessage(execution.getQuestionId())
                 .orElseThrow();
+        Instant questionAcceptedAt = question.getCreatedAt();
+        Instant requestAcceptedAt = repository.findLatestReceipt(answerId)
+                .map(SearchRequestReceipt::getCreatedAt)
+                .orElse(questionAcceptedAt);
         return Optional.of(
                 new SearchAnswerWorkResult(
                         conversation.getWorkspaceId(),
@@ -187,7 +193,9 @@ public class SearchAnswerExecutionService {
                         answerId,
                         token,
                         question.getContent(),
-                        execution.getCreatedAt()
+                        execution.getCreatedAt(),
+                        questionAcceptedAt,
+                        requestAcceptedAt
                 )
         );
     }

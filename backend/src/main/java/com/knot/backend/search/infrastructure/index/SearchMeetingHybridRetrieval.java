@@ -68,7 +68,7 @@ public final class SearchMeetingHybridRetrieval {
     ) throws IOException {
         List<SearchMeetingSearchItem> items = SearchMeetingSearchItem.parse(
                 question,
-                scope.startedAt()
+                scope.questionAcceptedAt()
         );
         int itemLimit = TOTAL_LIMIT;
         if (items.size() > 1) {

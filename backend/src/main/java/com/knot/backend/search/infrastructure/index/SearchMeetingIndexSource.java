@@ -50,7 +50,7 @@ final class SearchMeetingIndexSource {
                 )
                 .param(
                         "cutoff",
-                        Timestamp.from(scope.startedAt())
+                        Timestamp.from(scope.requestAcceptedAt())
                 );
         if (item.documentId() != null) {
             statement.param(

@@ -153,6 +153,10 @@ class SearchMeetingIndexSynchronizerIntegrationTest {
                 workspace,
                 member
         );
+        long afterAcceptance = messages.saveDocument(
+                workspace,
+                member
+        );
         setMeetingDate(
                 first,
                 Instant.parse("2026-11-14T14:59:00Z")
@@ -160,6 +164,10 @@ class SearchMeetingIndexSynchronizerIntegrationTest {
         setMeetingDate(
                 second,
                 Instant.parse("2026-11-14T15:00:00Z")
+        );
+        setMeetingDate(
+                afterAcceptance,
+                Instant.parse("2026-11-14T15:01:00Z")
         );
         Instant now = Instant.parse("2026-11-15T00:00:00Z");
         jdbc.sql("UPDATE documents SET created_at = :cutoff WHERE workspace_id = :workspace")
@@ -172,6 +180,16 @@ class SearchMeetingIndexSynchronizerIntegrationTest {
                         workspace
                 )
                 .update();
+        jdbc.sql("UPDATE documents SET created_at = :cutoff WHERE id = :id")
+                .param(
+                        "cutoff",
+                        Timestamp.from(now.plusSeconds(3))
+                )
+                .param(
+                        "id",
+                        afterAcceptance
+                )
+                .update();
         SearchToolScope scope = new SearchToolScope(
                 workspace,
                 member,
@@ -180,7 +198,9 @@ class SearchMeetingIndexSynchronizerIntegrationTest {
                 3,
                 UUID.randomUUID(),
                 now,
-                now.plusSeconds(60)
+                now.plusSeconds(2),
+                now.plusSeconds(86_400),
+                now.plusSeconds(86_460)
         );
         SearchToolAccess access = mock(SearchToolAccess.class);
         SearchMeetingIndexSource source = new SearchMeetingIndexSource(jdbc);

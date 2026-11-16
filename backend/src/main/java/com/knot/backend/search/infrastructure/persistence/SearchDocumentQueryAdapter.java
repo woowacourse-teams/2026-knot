@@ -51,7 +51,7 @@ public class SearchDocumentQueryAdapter implements SearchDocumentQuery {
                 )
                 .param(
                         "cutoff",
-                        Timestamp.from(scope.startedAt())
+                        Timestamp.from(scope.requestAcceptedAt())
                 )
                 .query(this::map)
                 .optional();
@@ -179,7 +179,7 @@ public class SearchDocumentQueryAdapter implements SearchDocumentQuery {
         )
                 .param(
                         "cutoff",
-                        Timestamp.from(scope.startedAt())
+                        Timestamp.from(scope.requestAcceptedAt())
                 )
                 .param(
                         "topic",

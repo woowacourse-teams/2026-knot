@@ -27,7 +27,7 @@ public class SearchFastPathDocumentRetriever implements SearchDocumentRetriever 
         access.validate(scope);
         SearchDateFilter date = SearchDateFilter.parse(
                 question,
-                scope.startedAt()
+                scope.questionAcceptedAt()
         );
         String queryText = question;
         if (date != null) {
