@@ -1,6 +1,7 @@
 package com.knot.backend.search.infrastructure.llm;
 
 import com.knot.backend.search.application.dto.result.SearchDocumentResult;
+import com.knot.backend.search.application.dto.result.SearchRetrievalResult.Item;
 import com.knot.backend.search.domain.SearchToolException;
 import java.time.Instant;
 import java.time.ZoneId;
@@ -8,6 +9,8 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 import tools.jackson.databind.ObjectMapper;
 
 public class SearchAnswerBudget {
@@ -17,9 +20,12 @@ public class SearchAnswerBudget {
     private final int limit;
     private final String question;
     private final Instant requestedAt;
+    private final boolean fullDocumentsOnly;
+    private final List<Item> items;
     private final List<SearchDocumentResult> selected = new ArrayList<>();
     private final List<Map<String, Object>> history = new ArrayList<>();
-    private boolean partial;
+    private boolean documentsLimited;
+    private boolean historyLimited;
 
     public SearchAnswerBudget(
             ObjectMapper mapper,
@@ -40,10 +46,30 @@ public class SearchAnswerBudget {
             String question,
             Instant requestedAt
     ) {
+        this(
+                mapper,
+                limit,
+                question,
+                requestedAt,
+                false,
+                List.of()
+        );
+    }
+
+    SearchAnswerBudget(
+            ObjectMapper mapper,
+            int limit,
+            String question,
+            Instant requestedAt,
+            boolean fullDocumentsOnly,
+            List<Item> items
+    ) {
         this.mapper = mapper;
         this.limit = limit;
         this.question = question;
         this.requestedAt = requestedAt;
+        this.fullDocumentsOnly = fullDocumentsOnly;
+        this.items = List.copyOf(items);
     }
 
     public void select(
@@ -63,6 +89,7 @@ public class SearchAnswerBudget {
         if (!documents.isEmpty() && selected.isEmpty()) {
             throw new SearchToolException("SEARCH_CONTEXT_LIMIT_EXCEEDED");
         }
+        documentsLimited = documentsLimited || selected.size() < documents.size();
         for (int index = previous.size() - 1; index >= 0; index--) {
             history.addFirst(previous.get(index));
             if (!fits(limit)) {
@@ -70,10 +97,7 @@ public class SearchAnswerBudget {
                 break;
             }
         }
-        partial = partial || selected.size() < documents.size();
-        if (history.size() < previous.size()) {
-            partial = true;
-        }
+        historyLimited = history.size() < previous.size();
         if (!fits(limit)) {
             throw new SearchToolException("SEARCH_CONTEXT_LIMIT_EXCEEDED");
         }
@@ -88,7 +112,7 @@ public class SearchAnswerBudget {
             return;
         }
         selected.removeLast();
-        if (!selected.isEmpty()) {
+        if (fullDocumentsOnly || !selected.isEmpty()) {
             return;
         }
         addPartialDocument(
@@ -138,7 +162,7 @@ public class SearchAnswerBudget {
                         low
                 )
         );
-        partial = true;
+        documentsLimited = true;
     }
 
     private SearchDocumentResult partialDocument(
@@ -169,7 +193,7 @@ public class SearchAnswerBudget {
     }
 
     public List<Map<String, Object>> messages() {
-        return messages(partial);
+        return messages(documentsLimited);
     }
 
     private List<Map<String, Object>> messages(boolean isPartial) {
@@ -179,6 +203,10 @@ public class SearchAnswerBudget {
         }
         if (isPartial) {
             system += PARTIAL_INSTRUCTION;
+        }
+        if (!items.isEmpty()) {
+            system += "\nsearchItems는 요청의 등장 순서별 검색 범위입니다. 각 항목은 같은 항목의 evidenceIds에서만 확인하세요. "
+                    + "근거 ID가 비어 있으면 해당 항목의 회의 사실을 단정하지 말고 제공된 범위만 답하세요.";
         }
         List<Map<String, Object>> evidence = selected.stream()
                 .map(this::evidence)
@@ -196,6 +224,12 @@ public class SearchAnswerBudget {
                 "evidence",
                 evidence
         );
+        if (!items.isEmpty()) {
+            user.put(
+                    "searchItems",
+                    itemEvidence()
+            );
+        }
         if (requestedAt != null) {
             user.put(
                     "requestedAt",
@@ -216,6 +250,26 @@ public class SearchAnswerBudget {
                         mapper.writeValueAsString(user)
                 )
         );
+    }
+
+    private List<Map<String, Object>> itemEvidence() {
+        Set<Long> included = selected.stream()
+                .map(SearchDocumentResult::documentId)
+                .collect(Collectors.toSet());
+        return items.stream()
+                .map(
+                        item -> Map.<String, Object>of(
+                                "ordinal",
+                                item.ordinal(),
+                                "evidenceIds",
+                                item.documentIds()
+                                        .stream()
+                                        .filter(included::contains)
+                                        .map(id -> "E" + id)
+                                        .toList()
+                        )
+                )
+                .toList();
     }
 
     private Map<String, Object> evidence(SearchDocumentResult document) {
@@ -270,6 +324,10 @@ public class SearchAnswerBudget {
     }
 
     public boolean partial() {
-        return partial;
+        return documentsLimited || historyLimited;
+    }
+
+    boolean documentsLimited() {
+        return documentsLimited;
     }
 }

@@ -287,7 +287,8 @@ class SearchAnswerWorkerLoggingTest {
                 generators,
                 clock,
                 new SearchAgentProperties(),
-                classifiers
+                classifiers,
+                mock(SearchFollowupContextResolver.class)
         );
     }
 }

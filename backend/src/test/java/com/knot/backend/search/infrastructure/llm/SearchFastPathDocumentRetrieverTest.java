@@ -110,6 +110,8 @@ class SearchFastPathDocumentRetrieverTest {
         // then
         assertThat(result.documents()).isEmpty();
         assertThat(result.excludedCount()).isZero();
+        assertThat(result.status()).isEqualTo(SearchRetrievalResult.Status.SKIPPED);
+        assertThat(result.foundNothing()).isFalse();
         verify(access).validate(scope);
         verifyNoInteractions(query);
     }

@@ -468,7 +468,7 @@ class SearchAnswerExecutionIntegrationTest {
         });
         worker.execute(accepted.answerMessageId());
         assertThat(status()).isEqualTo("COMPLETED");
-        assertThat(content()).isEqualTo("일반적인 설명이에요.");
+        assertThat(content()).isEqualTo(SearchAnswerGuidance.RETRIEVAL_LIMITED + "일반적인 설명이에요.");
         assertThat(evidenceCount()).isZero();
         assertThat(
                 jdbc.sql("SELECT excluded_count FROM search_answer_executions")
@@ -518,7 +518,7 @@ class SearchAnswerExecutionIntegrationTest {
                 );
         worker.execute(accepted.answerMessageId());
         assertThat(status()).isEqualTo("COMPLETED");
-        assertThat(content()).isEqualTo("한글 😀");
+        assertThat(content()).isEqualTo(SearchAnswerGuidance.RETRIEVAL_LIMITED + "한글 😀");
         assertThat(evidenceCount()).isEqualTo(1);
     }
 

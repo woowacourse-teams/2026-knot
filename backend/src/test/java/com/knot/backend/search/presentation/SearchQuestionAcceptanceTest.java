@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -12,17 +13,22 @@ import com.knot.backend.auth.domain.AuthTokenProvider;
 import com.knot.backend.auth.domain.model.AuthenticatedMember;
 import com.knot.backend.document.DocumentFixtures;
 import com.knot.backend.global.config.JwtProperties;
+import com.knot.backend.global.config.SearchAgentProperties;
 import com.knot.backend.search.SearchMessageFixtures;
 import com.knot.backend.search.application.SearchAnswerGenerator;
 import com.knot.backend.search.application.SearchAnswerWorker;
 import com.knot.backend.search.application.SearchDocumentRetriever;
 import com.knot.backend.search.application.SearchGenerationAvailability;
 import com.knot.backend.search.application.SearchIntentClassifier;
+import com.knot.backend.search.application.SearchToolAccess;
 import com.knot.backend.search.application.dto.result.SearchDocumentResult;
 import com.knot.backend.search.application.dto.result.SearchRetrievalResult;
 import com.knot.backend.search.domain.model.SearchIntent;
 import com.knot.backend.search.domain.SearchToolException;
 import com.knot.backend.search.infrastructure.llm.SearchExploration;
+import com.knot.backend.search.infrastructure.llm.SearchLlmClient;
+import com.knot.backend.search.infrastructure.llm.SearchStreamingAnswerGenerator;
+import com.knot.backend.search.infrastructure.persistence.SearchHistoryQuery;
 import com.knot.backend.testsupport.TestApplicationProperties;
 import com.knot.backend.testsupport.TestcontainersConfiguration;
 import java.io.BufferedReader;
@@ -50,6 +56,7 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -70,6 +77,266 @@ import tools.jackson.databind.json.JsonMapper;
 @TestApplicationProperties
 @Timeout(30)
 class SearchQuestionAcceptanceTest {
+
+    private enum Coverage {
+        NO_MATCH,
+        UNAVAILABLE,
+        PARTIAL,
+        BUDGET
+    }
+
+    @ParameterizedTest
+    @EnumSource(Coverage.class)
+    @DisplayName("검색 확인 범위에 맞는 본문·근거를 완료하고 재연결에서도 복구한다")
+    void create_success_replaysSearchCoverage(Coverage coverage) throws Exception {
+        String question = "1. 배포 회의의 결정\n2. 홍보 회의의 결정";
+        List<Long> expectedIds = prepareCoverage(coverage);
+        String expected = switch (coverage) {
+            case NO_MATCH -> "검색한 범위에서 관련 회의 기록을 찾지 못했어요.";
+            case UNAVAILABLE -> "지금은 회의 기록을 조회하기 어려워";
+            case PARTIAL -> "요청의 2번째 항목은 회의 기록을 조회하지 못했어요.";
+            case BUDGET -> "입력 한도 때문에 일부 기록만 확인했어요.";
+        };
+        UUID requestId = UUID.randomUUID();
+        long started = System.nanoTime();
+        long answer;
+        String body;
+        try (BufferedReader stream = reader(
+                connect(
+                        requestId,
+                        question
+                ).body()
+        )) {
+            assertThat(readEvent(stream)).startsWith("event:accepted");
+            answer = answerId();
+            worker.execute(answer);
+            String event = readEvent(stream);
+            while (!event.isEmpty() && !event.startsWith("event:delta")) {
+                event = readEvent(stream);
+            }
+            long firstDeltaMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started);
+            assertThat(event).startsWith("event:delta");
+            body = json.readTree(
+                    event.lines()
+                            .filter(line -> line.startsWith("data:"))
+                            .findFirst()
+                            .orElseThrow()
+                            .substring("data:".length())
+                            .strip()
+            )
+                    .path("text")
+                    .asString();
+            assertThat(body).contains(expected)
+                    .doesNotContain("확인하지 못한 문서 제목");
+            assertThat(
+                    stream.lines()
+                            .collect(Collectors.joining("\n"))
+            ).contains(
+                    "event:evidence",
+                    "event:completed"
+            )
+                    .doesNotContain("event:failed");
+            System.out.printf(
+                    "Search coverage %s firstDeltaMs=%d%n",
+                    coverage,
+                    firstDeltaMs
+            );
+        }
+        assertThat(
+                jdbc.sql("SELECT document_id FROM search_evidences WHERE message_id = :id")
+                        .param(
+                                "id",
+                                answer
+                        )
+                        .query(Long.class)
+                        .list()
+        ).containsExactlyElementsOf(expectedIds);
+        HttpResponse<String> replay = client
+                .send(
+                        HttpRequest
+                                .newBuilder(
+                                        uri(
+                                                path(workspaceId) + "/" + conversationId() + "/answers/" + answer
+                                                        + "/events"
+                                        )
+                                )
+                                .header(
+                                        "Cookie",
+                                        accessCookie
+                                )
+                                .header(
+                                        "Accept",
+                                        "text/event-stream"
+                                )
+                                .timeout(Duration.ofSeconds(5))
+                                .GET()
+                                .build(),
+                        HttpResponse.BodyHandlers.ofString()
+                );
+        assertThat(replay.statusCode()).isEqualTo(200);
+        assertThat(replay.body()).contains(
+                expected,
+                "event:completed"
+        );
+        assertThat(
+                replay.body()
+                        .split(
+                                java.util.regex.Pattern.quote(expected),
+                                -1
+                        )
+        ).hasSize(2);
+        assertThat(
+                jdbc.sql("SELECT content FROM search_messages WHERE id = :id")
+                        .param(
+                                "id",
+                                answer
+                        )
+                        .query(String.class)
+                        .single()
+        ).isEqualTo(body);
+    }
+
+    private List<Long> prepareCoverage(Coverage coverage) {
+        if (coverage == Coverage.NO_MATCH) {
+            when(
+                    retriever.retrieve(
+                            any(),
+                            any()
+                    )
+            ).thenReturn(
+                    new SearchRetrievalResult(
+                            List.of(),
+                            0
+                    )
+            );
+            return List.of();
+        }
+        if (coverage == Coverage.UNAVAILABLE) {
+            when(
+                    retriever.retrieve(
+                            any(),
+                            any()
+                    )
+            ).thenThrow(new SearchToolException("SEARCH_TRANSPORT_FAILED"));
+            return List.of();
+        }
+        long document = saveArchivedDocument(
+                workspaceId,
+                memberId
+        );
+        SearchDocumentResult first = new SearchDocumentResult(
+                document,
+                "배포 회의",
+                "배포",
+                "금요일 배포를 결정했다."
+        );
+        SearchStreamingAnswerGenerator actual = groundAnswerFrom(document);
+        if (coverage == Coverage.PARTIAL) {
+            when(
+                    retriever.retrieve(
+                            any(),
+                            any()
+                    )
+            ).thenReturn(
+                    new SearchRetrievalResult(
+                            List.of(first),
+                            0,
+                            SearchRetrievalResult.Status.SEARCHED,
+                            List.of(
+                                    new SearchRetrievalResult.Item(
+                                            1,
+                                            SearchRetrievalResult.ItemStatus.MATCHED,
+                                            List.of(document)
+                                    ),
+                                    new SearchRetrievalResult.Item(
+                                            2,
+                                            SearchRetrievalResult.ItemStatus.UNAVAILABLE,
+                                            List.of()
+                                    )
+                            )
+                    )
+            );
+            doAnswer(
+                    call -> actual.generateFromRetrieval(
+                            call.getArgument(0),
+                            call.getArgument(1),
+                            call.getArgument(2),
+                            call.getArgument(3)
+                    )
+            ).when(generator)
+                    .generateFromRetrieval(
+                            any(),
+                            any(),
+                            any(),
+                            any()
+                    );
+            return List.of(document);
+        }
+        long excluded = saveArchivedDocument(
+                workspaceId,
+                memberId
+        );
+        when(
+                retriever.retrieve(
+                        any(),
+                        any()
+                )
+        ).thenReturn(
+                new SearchRetrievalResult(
+                        List.of(
+                                first,
+                                new SearchDocumentResult(
+                                        excluded,
+                                        "확인하지 못한 문서 제목",
+                                        "홍보",
+                                        "긴 문서".repeat(12_000)
+                                )
+                        ),
+                        0
+                )
+        );
+        doAnswer(
+                call -> actual.generate(
+                        call.getArgument(0),
+                        call.getArgument(1),
+                        call.getArgument(2),
+                        call.getArgument(3)
+                )
+        ).when(generator)
+                .generate(
+                        any(),
+                        any(),
+                        any(),
+                        any()
+                );
+        return List.of(document);
+    }
+
+    private SearchStreamingAnswerGenerator groundAnswerFrom(long document) {
+        SearchLlmClient upstream = mock(SearchLlmClient.class);
+        doAnswer(call -> {
+            Consumer<String> delta = call.getArgument(2);
+            delta.accept("""
+                    {"status":"ANSWERED","decisionState":"DECIDED","answer":"금요일 배포를 결정했어요.",
+                    "evidenceIds":["E%s"],"clarificationQuestion":null}
+                    """.formatted(document));
+            return null;
+        }).when(upstream)
+                .stream(
+                        any(),
+                        any(),
+                        any()
+                );
+        SearchAgentProperties properties = new SearchAgentProperties();
+        properties.setContextCharacterLimit(8_000);
+        return new SearchStreamingAnswerGenerator(
+                upstream,
+                searchHistory,
+                toolAccess,
+                properties,
+                json
+        );
+    }
 
     @Test
     @DisplayName("실제 SSE 접수 뒤 분류 대기 중에는 DB 본문이 없고 판정 후에만 안내를 전송한다")
@@ -155,6 +422,10 @@ class SearchQuestionAcceptanceTest {
     private JsonMapper json;
     @Autowired
     private SearchAnswerWorker worker;
+    @Autowired
+    private SearchToolAccess toolAccess;
+    @Autowired
+    private SearchHistoryQuery searchHistory;
     @Autowired
     @Qualifier("searchStreamExecutor")
     private ThreadPoolTaskExecutor streamExecutor;
@@ -326,6 +597,96 @@ class SearchQuestionAcceptanceTest {
             );
             assertThat(status()).isEqualTo("COMPLETED");
         }
+    }
+
+    @Test
+    @DisplayName("결과 없음과 해당 없음 상태의 모델 응답은 근거를 붙이지 않고 SSE를 완료한다")
+    void create_success_notFoundWithNotApplicable() throws Exception {
+        String question = "회의 자료에 외부 배포 계획이 있어?";
+        String expected = "현재 회의 문서에서 외부 배포 계획을 찾지 못했습니다.";
+        long documentId = new SearchMessageFixtures(jdbc).saveDocument(
+                workspaceId,
+                memberId
+        );
+        List<SearchDocumentResult> documents = List.of(
+                new SearchDocumentResult(
+                        documentId,
+                        "탐색 자료",
+                        "회의",
+                        "내부 회의 내용을 기록한다."
+                )
+        );
+        when(
+                retriever.retrieve(
+                        any(),
+                        eq(question)
+                )
+        ).thenReturn(
+                new SearchRetrievalResult(
+                        documents,
+                        0
+                )
+        );
+        SearchLlmClient upstream = mock(SearchLlmClient.class);
+        doAnswer(invocation -> {
+            Consumer<String> delta = invocation.getArgument(2);
+            delta.accept(
+                    """
+                            {"status":"NOT_FOUND","decisionState":"NOT_APPLICABLE","answer":"%s","evidenceIds":[],"clarificationQuestion":null}
+                            """
+                            .formatted(expected)
+            );
+            return null;
+        }).when(upstream)
+                .stream(
+                        any(),
+                        any(),
+                        any()
+                );
+        SearchStreamingAnswerGenerator actual = new SearchStreamingAnswerGenerator(
+                upstream,
+                searchHistory,
+                toolAccess,
+                new SearchAgentProperties(),
+                json
+        );
+        doAnswer(
+                invocation -> actual.generate(
+                        invocation.getArgument(0),
+                        invocation.getArgument(1),
+                        invocation.getArgument(2),
+                        invocation.getArgument(3)
+                )
+        ).when(generator)
+                .generate(
+                        any(),
+                        eq(question),
+                        eq(documents),
+                        any()
+                );
+
+        try (InputStream stream = connect(
+                UUID.randomUUID(),
+                question
+        ).body(); BufferedReader reader = reader(stream)) {
+            assertThat(readEvent(reader)).startsWith("event:accepted");
+            worker.execute(answerId());
+            assertThat(
+                    reader.lines()
+                            .collect(Collectors.joining("\n"))
+            ).contains(
+                    "event:delta",
+                    expected,
+                    "event:completed"
+            )
+                    .doesNotContain("event:failed");
+        }
+        assertThat(status()).isEqualTo("COMPLETED");
+        assertThat(
+                jdbc.sql("SELECT COUNT(*) FROM search_evidences")
+                        .query(Long.class)
+                        .single()
+        ).isZero();
     }
 
     @Test

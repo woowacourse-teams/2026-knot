@@ -23,6 +23,7 @@ public class SearchDocumentQueryAdapter implements SearchDocumentQuery {
             FROM documents d JOIN recording_sessions r ON r.id = d.recording_session_id
             WHERE d.workspace_id = :workspace AND r.workspace_id = :workspace
               AND d.status IN ('DRAFT', 'ARCHIVED') AND d.created_at <= :cutoff
+              AND (CAST(:recording AS bigint) IS NULL OR r.id = :recording)
               AND (CAST(:topic AS text) IS NULL OR d.topic = :topic)
               AND (CAST(:from AS timestamptz) IS NULL OR r.started_at >= :from)
               AND (CAST(:before AS timestamptz) IS NULL OR r.started_at < :before)
@@ -39,6 +40,7 @@ public class SearchDocumentQueryAdapter implements SearchDocumentQuery {
                 FROM documents d JOIN recording_sessions r ON r.id = d.recording_session_id
                 WHERE d.id = :id AND d.workspace_id = :workspace AND r.workspace_id = :workspace
                   AND d.status IN ('DRAFT', 'ARCHIVED') AND d.created_at <= :cutoff
+                  AND (CAST(:recording AS bigint) IS NULL OR r.id = :recording)
                 """;
         return jdbc.sql(sql)
                 .param(
@@ -51,7 +53,11 @@ public class SearchDocumentQueryAdapter implements SearchDocumentQuery {
                 )
                 .param(
                         "cutoff",
-                        Timestamp.from(scope.startedAt())
+                        Timestamp.from(scope.requestAcceptedAt())
+                )
+                .param(
+                        "recording",
+                        scope.recordingSessionId()
                 )
                 .query(this::map)
                 .optional();
@@ -179,11 +185,15 @@ public class SearchDocumentQueryAdapter implements SearchDocumentQuery {
         )
                 .param(
                         "cutoff",
-                        Timestamp.from(scope.startedAt())
+                        Timestamp.from(scope.requestAcceptedAt())
                 )
                 .param(
                         "topic",
                         parameters.topic()
+                )
+                .param(
+                        "recording",
+                        scope.recordingSessionId()
                 )
                 .param(
                         "from",

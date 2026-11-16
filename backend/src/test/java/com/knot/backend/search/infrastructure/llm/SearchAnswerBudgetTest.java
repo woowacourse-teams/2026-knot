@@ -12,6 +12,8 @@ import org.junit.jupiter.api.Test;
 import tools.jackson.databind.json.JsonMapper;
 
 class SearchAnswerBudgetTest {
+    private static final Instant NOW = Instant.parse("2026-11-15T00:00:00Z");
+    private static final int LIMIT = 18_000;
 
     private final JsonMapper mapper = JsonMapper.builder()
             .build();
@@ -197,5 +199,68 @@ class SearchAnswerBudgetTest {
         assertThat(budget.documents()).containsExactly(document);
         assertThat(budget.historyCount()).isEqualTo(1);
         assertThat(budget.partial()).isFalse();
+    }
+
+    @Test
+    @DisplayName("전문을 담지 못한 문서는 제외하고 뒤 문서의 미정 조건을 전문 그대로 전달한다")
+    void select_success_keepsCompleteDocumentsWithinBudget() {
+        SearchAnswerBudget budget = new SearchAnswerBudget(
+                mapper,
+                LIMIT,
+                "결정과 조건은?",
+                NOW,
+                true,
+                List.of()
+        );
+        SearchDocumentResult large = new SearchDocumentResult(
+                1,
+                "긴 회의",
+                "배포",
+                "가".repeat(LIMIT)
+        );
+        SearchDocumentResult evidence = new SearchDocumentResult(
+                2,
+                "신규 회의",
+                "모니터링",
+                "배포 때 함께 알린다.\n구체적인 적용 범위는 아직 미정이다."
+        );
+
+        budget.select(
+                List.of(
+                        large,
+                        evidence
+                ),
+                List.of()
+        );
+
+        assertThat(budget.documents()).containsExactly(evidence);
+        assertThat(budget.partial()).isTrue();
+    }
+
+    @Test
+    @DisplayName("전문을 하나도 담을 수 없으면 제한을 초과한 것으로 판정한다")
+    void select_failure_rejectsContextWithoutCompleteDocument() {
+        SearchAnswerBudget budget = new SearchAnswerBudget(
+                mapper,
+                LIMIT,
+                "결정과 조건은?",
+                NOW,
+                true,
+                List.of()
+        );
+        SearchDocumentResult large = new SearchDocumentResult(
+                1,
+                "긴 회의",
+                "배포",
+                "가".repeat(LIMIT)
+        );
+
+        assertThatThrownBy(
+                () -> budget.select(
+                        List.of(large),
+                        List.of()
+                )
+        ).hasMessage("SEARCH_CONTEXT_LIMIT_EXCEEDED");
+        assertThat(budget.documents()).isEmpty();
     }
 }

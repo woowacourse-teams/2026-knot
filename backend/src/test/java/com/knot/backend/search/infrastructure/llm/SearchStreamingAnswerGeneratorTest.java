@@ -339,6 +339,21 @@ class SearchStreamingAnswerGeneratorTest {
     @Test
     @DisplayName("지정 시스템 프롬프트와 구분된 대화 문맥·근거를 모델 요청에 전달한다")
     void generate_success_promptAndEvidenceBoundary() {
+        Instant acceptedAt = Instant.parse("2026-11-16T14:59:50Z");
+        Instant startedAt = acceptedAt.plusSeconds(30);
+        scope = new SearchToolScope(
+                1,
+                1,
+                1,
+                1,
+                2,
+                UUID.randomUUID(),
+                acceptedAt,
+                acceptedAt.plusSeconds(20),
+                startedAt,
+                startedAt.plusSeconds(120),
+                null
+        );
         List<Map<String, Object>> previous = List.of(
                 Map.of(
                         "role",
@@ -365,12 +380,18 @@ class SearchStreamingAnswerGeneratorTest {
             assertThat(system).contains(
                     "핵심 원칙: 회의 기록에 관한 사실은 제공된 근거에서만 답변합니다.",
                     "제안을 결정으로 바꾸지 않습니다.",
+                    "변경 기록이 없으면 변경 여부를 확인하지 못했다고 답합니다.",
+                    "질문이 요구한 사실을 하나도 확인할 수 없다면 관련 배경 기록이 있어도 NOT_FOUND로 답합니다.",
                     "서로 다른 출처 문서는 최대 3개로 제한합니다."
             );
             JsonNode user = mapper.readTree(
                     (String) messages.getLast()
                             .get("content")
             );
+            assertThat(
+                    user.path("requestedAt")
+                            .asString()
+            ).isEqualTo("2026-11-16T23:59:50+09:00");
             assertThat(
                     user.path("question")
                             .asString()
@@ -526,10 +547,59 @@ class SearchStreamingAnswerGeneratorTest {
                         deltas
                 )
         ).contains("첫 문서")
+                .contains("입력 한도")
                 .doesNotContain(
                         "둘째 문서",
                         "세 회의의 변화"
                 );
+    }
+
+    @Test
+    @DisplayName("대화 이력만 예산에서 빠지면 회의 기록 일부만 읽었다고 안내하지 않는다")
+    void generate_success_historyBudgetDoesNotLimitDocumentCoverage() {
+        when(history.beforeQuestion(scope)).thenReturn(
+                List.of(
+                        Map.of(
+                                "role",
+                                "assistant",
+                                "content",
+                                "이전 대화".repeat(10_000)
+                        )
+                )
+        );
+        doAnswer(call -> {
+            Consumer<String> consumer = call.getArgument(2);
+            consumer.accept(response(List.of("E1")));
+            return null;
+        }).when(llm)
+                .stream(
+                        eq(scope),
+                        any(),
+                        any()
+                );
+        List<String> deltas = new ArrayList<>();
+
+        assertThat(
+                generator.generate(
+                        scope,
+                        "어제 회의",
+                        List.of(
+                                new SearchDocumentResult(
+                                        1,
+                                        "회의",
+                                        "주제",
+                                        "결정 근거"
+                                )
+                        ),
+                        deltas::add
+                )
+        ).containsExactly(1L);
+        assertThat(
+                String.join(
+                        "",
+                        deltas
+                )
+        ).isEqualTo("세 회의의 변화");
     }
 
     private String response(List<String> ids) {

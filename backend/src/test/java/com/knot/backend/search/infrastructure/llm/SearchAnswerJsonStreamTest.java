@@ -127,16 +127,20 @@ class SearchAnswerJsonStreamTest {
         ).isEqualTo("어느 회의인가요?");
     }
 
-    @Test
-    @DisplayName("근거 없음 응답은 UNKNOWN과 빈 근거로 완료한다")
-    void complete_success_notFound() {
+    @ParameterizedTest
+    @ValueSource(strings = {"UNKNOWN", "NOT_APPLICABLE"})
+    @DisplayName("근거 없음 응답은 미확인이나 해당 없음 상태와 빈 근거로 완료한다")
+    void complete_success_notFound(String decisionState) {
         SearchAnswerJsonStream stream = new SearchAnswerJsonStream(
                 mapper,
                 text -> {
                 }
         );
         stream.accept(
-                "{\"status\":\"NOT_FOUND\",\"decisionState\":\"UNKNOWN\",\"answer\":\"현재 검색 가능한 회의 문서에서는 해당 내용을 확인하지 못했습니다.\",\"evidenceIds\":[],\"clarificationQuestion\":null}"
+                """
+                        {"status":"NOT_FOUND","decisionState":"%s","answer":"현재 검색 가능한 회의 문서에서는 해당 내용을 확인하지 못했습니다.","evidenceIds":[],"clarificationQuestion":null}
+                        """
+                        .formatted(decisionState)
         );
         assertThat(stream.complete(documents)).isEmpty();
     }
@@ -233,6 +237,7 @@ class SearchAnswerJsonStreamTest {
             "{\"status\":\"ANSWERED\",\"decisionState\":\"APPROVED\",\"answer\":\"본문\",\"evidenceIds\":[\"E7\"],\"clarificationQuestion\":null}",
             "{\"status\":\"ANSWERED\",\"decisionState\":\"DECIDED\",\"answer\":\"본문\",\"evidenceIds\":[\"E7\"],\"clarificationQuestion\":\"질문\"}",
             "{\"status\":\"NOT_FOUND\",\"decisionState\":\"DECIDED\",\"answer\":\"본문\",\"evidenceIds\":[],\"clarificationQuestion\":null}",
+            "{\"status\":\"NOT_FOUND\",\"decisionState\":\"NOT_APPLICABLE\",\"answer\":\"본문\",\"evidenceIds\":[\"E7\"],\"clarificationQuestion\":null}",
             "{\"status\":\"ANSWERED\",\"decisionState\":\"DECIDED\",\"answer\":\"본문\",\"evidenceIds\":[\"E7\"]}"})
     @DisplayName("잘린 JSON·중복 필드·뒤따른 JSON·잘못된 상태 조합은 완료로 인정하지 않는다")
     void complete_failure_invalidContract(String json) {

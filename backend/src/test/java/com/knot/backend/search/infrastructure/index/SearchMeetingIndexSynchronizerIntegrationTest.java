@@ -14,6 +14,7 @@ import com.knot.backend.search.application.SearchDocumentQuery;
 import com.knot.backend.search.application.SearchToolAccess;
 import com.knot.backend.search.application.SearchToolScope;
 import com.knot.backend.search.application.dto.result.SearchDocumentResult;
+import com.knot.backend.search.application.dto.result.SearchRetrievalResult;
 import com.knot.backend.testsupport.TestApplicationProperties;
 import com.knot.backend.testsupport.TestcontainersConfiguration;
 import java.nio.file.Path;
@@ -153,6 +154,10 @@ class SearchMeetingIndexSynchronizerIntegrationTest {
                 workspace,
                 member
         );
+        long afterAcceptance = messages.saveDocument(
+                workspace,
+                member
+        );
         setMeetingDate(
                 first,
                 Instant.parse("2026-11-14T14:59:00Z")
@@ -160,6 +165,10 @@ class SearchMeetingIndexSynchronizerIntegrationTest {
         setMeetingDate(
                 second,
                 Instant.parse("2026-11-14T15:00:00Z")
+        );
+        setMeetingDate(
+                afterAcceptance,
+                Instant.parse("2026-11-14T15:01:00Z")
         );
         Instant now = Instant.parse("2026-11-15T00:00:00Z");
         jdbc.sql("UPDATE documents SET created_at = :cutoff WHERE workspace_id = :workspace")
@@ -172,6 +181,16 @@ class SearchMeetingIndexSynchronizerIntegrationTest {
                         workspace
                 )
                 .update();
+        jdbc.sql("UPDATE documents SET created_at = :cutoff WHERE id = :id")
+                .param(
+                        "cutoff",
+                        Timestamp.from(now.plusSeconds(3))
+                )
+                .param(
+                        "id",
+                        afterAcceptance
+                )
+                .update();
         SearchToolScope scope = new SearchToolScope(
                 workspace,
                 member,
@@ -180,7 +199,10 @@ class SearchMeetingIndexSynchronizerIntegrationTest {
                 3,
                 UUID.randomUUID(),
                 now,
-                now.plusSeconds(60)
+                now.plusSeconds(2),
+                now.plusSeconds(86_400),
+                now.plusSeconds(86_460),
+                null
         );
         SearchToolAccess access = mock(SearchToolAccess.class);
         SearchMeetingIndexSource source = new SearchMeetingIndexSource(jdbc);
@@ -233,12 +255,25 @@ class SearchMeetingIndexSynchronizerIntegrationTest {
                         second
                 )
                 .update();
-        assertThat(
-                retrieval.retrieve(
-                        scope,
-                        question
+        SearchRetrievalResult partial = retrieval.retrieve(
+                scope,
+                question
+        )
+                .orElseThrow();
+        assertThat(partial.documents()).extracting(SearchDocumentResult::documentId)
+                .containsExactly(first);
+        assertThat(partial.items()).containsExactly(
+                new SearchRetrievalResult.Item(
+                        1,
+                        SearchRetrievalResult.ItemStatus.MATCHED,
+                        List.of(first)
+                ),
+                new SearchRetrievalResult.Item(
+                        2,
+                        SearchRetrievalResult.ItemStatus.UNAVAILABLE,
+                        List.of()
                 )
-        ).isEmpty();
+        );
     }
 
     private void setMeetingDate(

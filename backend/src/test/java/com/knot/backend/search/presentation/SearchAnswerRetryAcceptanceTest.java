@@ -12,6 +12,7 @@ import com.knot.backend.search.application.SearchAnswerGuidance;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doReturn;
 
 import com.knot.backend.auth.domain.AuthTokenProvider;
 import com.knot.backend.auth.domain.model.AuthenticatedMember;
@@ -23,6 +24,8 @@ import com.knot.backend.search.application.SearchAnswerWorker;
 import com.knot.backend.search.application.SearchQuestionIntakeService;
 import com.knot.backend.search.application.SearchAnswerExecutionService;
 import com.knot.backend.search.application.SearchDocumentRetriever;
+import com.knot.backend.search.application.SearchDocumentQuery;
+import com.knot.backend.search.application.SearchToolAccess;
 import com.knot.backend.search.application.SearchAnswerGenerator;
 import com.knot.backend.search.application.SearchGenerationAvailability;
 import com.knot.backend.search.application.dto.command.SearchQuestionCommand;
@@ -32,6 +35,8 @@ import com.knot.backend.search.application.dto.result.SearchRetrievalResult;
 import com.knot.backend.search.application.dto.result.SearchDocumentResult;
 import com.knot.backend.search.domain.SearchException;
 import com.knot.backend.search.domain.SearchErrorCode;
+import com.knot.backend.search.infrastructure.llm.SearchFastPathDocumentRetriever;
+import com.knot.backend.search.infrastructure.llm.SearchQueryNormalizer;
 import com.knot.backend.testsupport.TestApplicationProperties;
 import com.knot.backend.testsupport.TestcontainersConfiguration;
 import java.io.BufferedReader;
@@ -42,9 +47,16 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.sql.Timestamp;
+import java.time.Clock;
 import java.time.Duration;
+import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import java.util.function.Consumer;
 import org.junit.jupiter.api.BeforeEach;
@@ -64,6 +76,7 @@ import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -74,6 +87,12 @@ import tools.jackson.databind.json.JsonMapper;
 @TestApplicationProperties
 @Timeout(30)
 class SearchAnswerRetryAcceptanceTest {
+    private static final Instant FIRST_AT = Instant.parse("2026-11-16T14:59:50Z");
+    private static final Instant RETRY_AT = Instant.parse("2026-11-16T15:00:10Z");
+    private static final Instant WORK_AT = Instant.parse("2026-11-16T15:00:20Z");
+    private static final Instant NOVEMBER_15_MEETING = Instant.parse("2026-11-15T03:00:00Z");
+    private static final Instant NOVEMBER_16_MEETING = Instant.parse("2026-11-16T03:00:00Z");
+    private static final String RELATIVE_QUESTION = "어제 회의 요약";
 
     @LocalServerPort
     private int port;
@@ -91,6 +110,12 @@ class SearchAnswerRetryAcceptanceTest {
     private SearchAnswerExecutionService executions;
     @Autowired
     private SearchAnswerWorker worker;
+    @Autowired
+    private SearchDocumentQuery documentQuery;
+    @Autowired
+    private SearchToolAccess toolAccess;
+    @MockitoSpyBean
+    private Clock clock;
     @Autowired
     private SearchWorkerProperties limits;
     @Autowired
@@ -794,6 +819,337 @@ class SearchAnswerRetryAcceptanceTest {
                         .orElseThrow()
         ).contains("text/event-stream");
         return response;
+    }
+
+    @Test
+    @DisplayName("자정 뒤 재시도에서 최초 날짜와 재시도 접수까지의 문서를 사용한다")
+    void retry_success_keepsOriginalDateAndUsesRetryCutoff() throws Exception {
+        prepareMidnightSearch();
+        long original = timedDocument(
+                NOVEMBER_15_MEETING,
+                FIRST_AT.minusSeconds(1)
+        );
+        long beforeRetry = timedDocument(
+                NOVEMBER_15_MEETING,
+                RETRY_AT.minusSeconds(5)
+        );
+        long atRetry = timedDocument(
+                NOVEMBER_15_MEETING,
+                RETRY_AT
+        );
+        timedDocument(
+                NOVEMBER_15_MEETING,
+                RETRY_AT.plusSeconds(5)
+        );
+        timedDocument(
+                NOVEMBER_16_MEETING,
+                FIRST_AT.minusSeconds(1)
+        );
+
+        try (BufferedReader reader = openRelativeQuestion()) {
+            first = acceptFirstQuestion(reader);
+            failCurrent();
+            assertThat(
+                    reader.lines()
+                            .collect(Collectors.joining("\n"))
+            ).contains("event:failed");
+        }
+        setTime(RETRY_AT);
+        String request = body(UUID.randomUUID());
+        long started = System.nanoTime();
+        try (BufferedReader reader = reader(connect(request).body())) {
+            assertAccepted(accepted(reader));
+            setTime(WORK_AT);
+            assertThat(
+                    executeAndMeasure(
+                            first.answerMessageId(),
+                            reader,
+                            started,
+                            "retry"
+                    )
+            ).containsExactlyInAnyOrder(
+                    original,
+                    beforeRetry,
+                    atRetry
+            );
+        }
+        long receipts = count("search_request_receipts");
+        setTime(WORK_AT.plusSeconds(5));
+        HttpResponse<String> replay = send(
+                path(first.questionMessageId()),
+                request,
+                true,
+                true
+        );
+        assertThat(replay.statusCode()).isEqualTo(200);
+        assertThat(replay.body()).contains(
+                "event:completed",
+                "날짜 기준 검증 답변"
+        );
+        assertThat(count("search_request_receipts")).isEqualTo(receipts);
+        assertThat(
+                jdbc.sql("SELECT document_id FROM search_evidences WHERE message_id = :id")
+                        .param(
+                                "id",
+                                first.answerMessageId()
+                        )
+                        .query(Long.class)
+                        .list()
+        ).containsExactlyInAnyOrder(
+                original,
+                beforeRetry,
+                atRetry
+        );
+    }
+
+    @Test
+    @DisplayName("같은 날짜에서 재시도 접수 후 워커보다 먼저 생성된 문서는 제외한다")
+    void retry_success_excludesDocumentsCreatedWhileRetryQueued() throws Exception {
+        prepareMidnightSearch();
+        long original = timedDocument(
+                NOVEMBER_15_MEETING,
+                FIRST_AT.minusSeconds(1)
+        );
+        timedDocument(
+                NOVEMBER_15_MEETING,
+                FIRST_AT.plusSeconds(6)
+        );
+        try (BufferedReader reader = openRelativeQuestion()) {
+            first = acceptFirstQuestion(reader);
+            failCurrent();
+            assertThat(
+                    reader.lines()
+                            .collect(Collectors.joining("\n"))
+            ).contains("event:failed");
+        }
+        setTime(FIRST_AT.plusSeconds(4));
+        long started = System.nanoTime();
+        try (BufferedReader reader = reader(connect(body(UUID.randomUUID())).body())) {
+            assertAccepted(accepted(reader));
+            setTime(FIRST_AT.plusSeconds(8));
+            assertThat(
+                    executeAndMeasure(
+                            first.answerMessageId(),
+                            reader,
+                            started,
+                            "retry-same-day"
+                    )
+            ).containsExactly(original);
+        }
+    }
+
+    @Test
+    @DisplayName("자정을 지나 워커가 실행돼도 최초 접수 기준을 사용하고 새 질문은 새 날짜를 사용한다")
+    void create_success_usesAcceptanceTimeAcrossMidnightQueue() throws Exception {
+        prepareMidnightSearch();
+        long original = timedDocument(
+                NOVEMBER_15_MEETING,
+                FIRST_AT.minusSeconds(1)
+        );
+        timedDocument(
+                NOVEMBER_15_MEETING,
+                FIRST_AT.plusSeconds(2)
+        );
+        long nextDay = timedDocument(
+                NOVEMBER_16_MEETING,
+                FIRST_AT.minusSeconds(1)
+        );
+        long originalStarted = System.nanoTime();
+        try (BufferedReader reader = openRelativeQuestion()) {
+            SearchQuestionAcceptedResult accepted = acceptFirstQuestion(reader);
+            setTime(WORK_AT);
+            assertThat(
+                    executeAndMeasure(
+                            accepted.answerMessageId(),
+                            reader,
+                            originalStarted,
+                            "first-after-queue"
+                    )
+            ).containsExactly(original);
+        }
+        long nextStarted = System.nanoTime();
+        try (BufferedReader reader = openRelativeQuestion()) {
+            SearchQuestionAcceptedResult accepted = acceptFirstQuestion(reader);
+            assertThat(
+                    executeAndMeasure(
+                            accepted.answerMessageId(),
+                            reader,
+                            nextStarted,
+                            "new-question"
+                    )
+            ).containsExactly(nextDay);
+        }
+    }
+
+    private void prepareMidnightSearch() {
+        setTime(FIRST_AT);
+        cookies = csrfCookie + "; " + jwt.getCookieName() + "=" + tokens.issue(
+                AuthenticatedMember.of(
+                        member,
+                        "재시도 질문자",
+                        null
+                )
+        );
+        SearchDocumentRetriever actual = new SearchFastPathDocumentRetriever(
+                documentQuery,
+                toolAccess,
+                new SearchQueryNormalizer()
+        );
+        when(
+                retriever.retrieve(
+                        any(),
+                        any()
+                )
+        ).thenAnswer(
+                call -> actual.retrieve(
+                        call.getArgument(0),
+                        call.getArgument(1)
+                )
+        );
+        doAnswer(call -> {
+            List<SearchDocumentResult> found = call.getArgument(2);
+            Consumer<String> delta = call.getArgument(3);
+            delta.accept("날짜 기준 검증 답변");
+            return found.stream()
+                    .map(SearchDocumentResult::documentId)
+                    .toList();
+        }).when(generator)
+                .generate(
+                        any(),
+                        any(),
+                        any(),
+                        any()
+                );
+    }
+
+    private void setTime(Instant time) {
+        doReturn(time).when(clock)
+                .instant();
+    }
+
+    private long timedDocument(
+            Instant meetingTime,
+            Instant createdAt
+    ) {
+        long documentId = new SearchMessageFixtures(jdbc).saveDocument(
+                workspace,
+                member
+        );
+        jdbc.sql("UPDATE documents SET created_at = :createdAt WHERE id = :id")
+                .param(
+                        "createdAt",
+                        Timestamp.from(createdAt)
+                )
+                .param(
+                        "id",
+                        documentId
+                )
+                .update();
+        jdbc.sql("""
+                UPDATE recording_sessions
+                SET started_at = :startedAt, ended_at = :endedAt, last_seen_at = :endedAt
+                WHERE id = (SELECT recording_session_id FROM documents WHERE id = :id)
+                """)
+                .param(
+                        "startedAt",
+                        Timestamp.from(meetingTime)
+                )
+                .param(
+                        "endedAt",
+                        Timestamp.from(meetingTime.plusSeconds(60))
+                )
+                .param(
+                        "id",
+                        documentId
+                )
+                .update();
+        return documentId;
+    }
+
+    private BufferedReader openRelativeQuestion() throws Exception {
+        String path = "/api/v1/workspaces/" + workspace + "/search/conversations";
+        String request = json.writeValueAsString(
+                Map.of(
+                        "content",
+                        RELATIVE_QUESTION,
+                        "requestId",
+                        UUID.randomUUID()
+                )
+        );
+        HttpResponse<InputStream> response = client.send(
+                post(
+                        path,
+                        request,
+                        true,
+                        true
+                ),
+                HttpResponse.BodyHandlers.ofInputStream()
+        );
+        assertThat(response.statusCode()).isEqualTo(200);
+        return reader(response.body());
+    }
+
+    private SearchQuestionAcceptedResult acceptFirstQuestion(BufferedReader reader) throws Exception {
+        JsonNode payload = accepted(reader);
+        return new SearchQuestionAcceptedResult(
+                payload.path("conversationId")
+                        .asLong(),
+                payload.path("questionMessageId")
+                        .asLong(),
+                payload.path("answerMessageId")
+                        .asLong()
+        );
+    }
+
+    private List<Long> executeAndMeasure(
+            long answerId,
+            BufferedReader reader,
+            long start,
+            String label
+    ) throws Exception {
+        CompletableFuture<Void> execution = CompletableFuture.runAsync(() -> worker.execute(answerId));
+        Long firstDelta = null;
+        List<Long> documentIds = new ArrayList<>();
+        for (String line = reader.readLine(); line != null; line = reader.readLine()) {
+            if ("event:delta".equals(line)) {
+                JsonNode data = json.readTree(
+                        reader.readLine()
+                                .substring(5)
+                );
+                if (!data.path("text")
+                        .asString()
+                        .isBlank() && firstDelta == null) {
+                    firstDelta = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start);
+                }
+            }
+            if ("event:evidence".equals(line)) {
+                JsonNode data = json.readTree(
+                        reader.readLine()
+                                .substring(5)
+                );
+                for (JsonNode item : data.path("items")) {
+                    documentIds.add(
+                            item.path("documentId")
+                                    .asLong()
+                    );
+                }
+            }
+            if ("event:completed".equals(line)) {
+                assertThat(firstDelta).isNotNull();
+                System.out.printf(
+                        "SEARCH_REQUEST_TIME %s firstDeltaMs=%d%n",
+                        label,
+                        firstDelta
+                );
+                execution.get(
+                        5,
+                        TimeUnit.SECONDS
+                );
+                return documentIds;
+            }
+            assertThat(line).isNotEqualTo("event:failed");
+        }
+        throw new AssertionError("SSE completed event was not received");
     }
 
     private HttpResponse<String> send(
