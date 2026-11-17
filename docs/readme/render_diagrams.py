@@ -10,19 +10,16 @@ from PIL import Image, ImageDraw, ImageFont
 
 ROOT = Path(__file__).resolve().parent
 FONT = os.environ.get('DIAGRAM_FONT', '/System/Library/Fonts/AppleSDGothicNeo.ttc')
-BG, INK, MUTED, BORDER = '#FAF9F7', '#202623', '#626D68', '#CCD4CF'
-GREEN, BLUE, ORANGE = '#287565', '#326B9D', '#AD6728'
+BG, INK, MUTED, BORDER = '#FFFFFF', '#222222', '#666666', '#B7B7B7'
+GREEN, BLUE, ORANGE = '#555555', '#555555', '#555555'
 SCALE = 2
 
 class Diagram:
-    def __init__(self, width, height, title, subtitle):
+    def __init__(self, width, height):
         self.im = Image.new('RGB', (width*SCALE, height*SCALE), BG)
         self.draw = ImageDraw.Draw(self.im)
         self.elements, self.files = [], {}
         self.width, self.height = width, height
-        self.text(60, 35, 'KNOT  /  PRODUCTION', 20, GREEN)
-        self.text(60, 73, title, 38)
-        self.text(60, 126, subtitle, 22, MUTED)
 
     def base(self, typ, x, y, w, h, color=INK, fill='transparent'):
         n=len(self.elements)+1
@@ -55,14 +52,23 @@ class Diagram:
         e=self.base('image',x+ox/SCALE,y+oy/SCALE,im.width/SCALE,im.height/SCALE)
         e.update(fileId=name,status='saved',scale=[1,1])
 
-    def card(self,x,y,w,h,title,body='',icon=None,fill='#FFFFFF',color=BORDER):
-        first=len(self.elements); self.box(x,y,w,h,fill,color)
-        if icon:
-            self.icon(icon,x+20,y+20,46); self.text(x+80,y+26,title,25)
-        else:self.text(x+22,y+24,title,25)
-        if body:self.text(x+22,y+83 if icon else y+68,body,22,MUTED)
-        group=f'card-{first}'
-        for e in self.elements[first:]:e['groupIds']=[group]
+    def centered(self, cx, y, value, size=22, color=INK):
+        font=ImageFont.truetype(FONT,size*SCALE)
+        for i,line in enumerate(value.split('\n')):
+            width=self.draw.textlength(line,font=font)/SCALE
+            self.text(cx-width/2,y+i*size*1.35,line,size,color)
+
+    def node(self, icon, cx, y, name, note=''):
+        first=len(self.elements)
+        self.icon(icon,cx-32,y,64)
+        self.centered(cx,y+78,name,22)
+        if note:self.centered(cx,y+110,note,18,MUTED)
+        for e in self.elements[first:]:e['groupIds']=[f'node-{first}']
+
+    def boundary(self,x,y,w,h):
+        self.draw.rectangle((x*SCALE,y*SCALE,(x+w)*SCALE,(y+h)*SCALE),outline=BORDER,width=SCALE)
+        e=self.base('rectangle',x,y,w,h,BORDER)
+        e['strokeWidth']=1
 
     def arrow(self,pts,color=GREEN,label=None,lx=0,ly=0):
         self.draw.line([(round(x*SCALE),round(y*SCALE)) for x,y in pts],fill=color,width=3*SCALE,joint='curve')
@@ -81,63 +87,50 @@ class Diagram:
         self.im.save(ROOT/f'{name}.png',optimize=True)
         (ROOT/f'{name}.excalidraw').write_text(json.dumps(dict(type='excalidraw',version=2,source='https://excalidraw.com',elements=self.elements,appState=dict(viewBackgroundColor=BG,gridSize=None),files=self.files),ensure_ascii=False,indent=2)+'\n')
 
-a=Diagram(1600,1120,'서비스 아키텍처','웹 앱 · API · 데이터 저장 · 맥미니 AI 처리의 논리적 연결')
-a.card(60,225,250,150,'사용자 브라우저','React 웹 앱 · 회의 녹음','client')
-a.card(440,195,290,155,'Cloudflare Workers','정적 웹 앱 제공\nknoted.kr','cloudflare')
-a.card(440,400,290,155,'Cloudflare Proxy','API HTTPS 요청\napi.knoted.kr','cloudflare')
-a.box(820,195,360,400,'#F1F6F2')
-a.icon('ec2',840,215,48);a.text(900,225,'Amazon EC2',28)
-a.text(842,280,'단일 인스턴스 · Spring Boot',22,MUTED)
-a.card(845,330,310,95,'Nginx',fill='#FFFFFF')
-a.text(865,393,'활성 슬롯으로 라우팅',18,MUTED)
-a.arrow([(1000,425),(1000,455)])
-a.box(845,455,310,110,'#FFFFFF');a.text(863,474,'Blue :8080  /  Green :8081',21)
-a.text(863,513,'배포 시 비활성 슬롯 기동·전환',20,MUTED)
-a.card(1280,405,260,160,'Amazon RDS','PostgreSQL\n팀·문서·녹음 상태 저장','rds')
-a.card(60,750,310,165,'Amazon S3','오디오 조각·최종 파일','s3')
-a.box(820,745,720,275,'#F0F4FA','#BACDDD');a.text(845,765,'Mac mini',28,BLUE)
-a.card(845,825,310,165,'Whisper 전사 서버','Whisper.cpp · sherpa-onnx\n전사·화자 분리')
-a.card(1195,825,320,165,'로컬 LLM','LM Studio\n요약·문서 생성·탐색')
-a.arrow([(310,270),(440,270)],label='웹 앱 요청',lx=318,ly=235)
-a.arrow([(260,375),(260,477),(440,477)],label='API 호출',lx=315,ly=442)
-a.arrow([(730,477),(800,477),(800,375),(845,375)])
-a.arrow([(1180,480),(1280,480)],label='조회·저장',lx=1184,ly=443)
-a.arrow([(120,375),(120,750)],label='서명 URL로\n직접 업로드',lx=142,ly=590)
-a.arrow([(850,595),(850,650),(335,650),(335,750)],label='오디오 조회·저장',lx=430,ly=615)
-a.arrow([(1000,595),(1000,825)],label='작업 요청·상태 조회',lx=1015,ly=675)
-a.arrow([(1140,595),(1360,595),(1360,825)],label='생성·질의 요청',lx=1375,ly=660)
-a.arrow([(845,905),(370,905)],label='서명 URL로 S3 오디오 다운로드',lx=448,ly=866)
-a.text(60,1045,'화살표는 요청 방향이며 응답은 생략했습니다. 인증·분석·관측 등 보조 경로는 이 개요에서 생략했습니다.',21,MUTED)
+# Minimal icon diagrams. Keep implementation details in the accompanying README.
+a=Diagram(1280,780)
+a.node('client',100,230,'Browser')
+a.node('cloudflare',420,70,'Cloudflare Workers','React 웹 앱')
+a.node('cloudflare',420,270,'Cloudflare','API Proxy')
+a.boundary(660,215,360,205)
+a.icon('ec2',680,228,28);a.text(720,232,'Amazon EC2',20)
+a.node('nginx',735,285,'Nginx')
+a.node('spring',935,285,'Spring Boot')
+a.node('rds',1160,285,'Amazon RDS','PostgreSQL')
+a.node('s3',100,590,'Amazon S3','녹음 오디오')
+a.node('server',900,590,'Mac mini','Whisper · LM Studio')
+a.arrow([(135,250),(260,250),(260,102),(385,102)])
+a.arrow([(135,270),(290,270),(290,302),(385,302)],label='API',lx=310,ly=275)
+a.arrow([(455,302),(700,302)])
+a.arrow([(770,317),(900,317)])
+a.arrow([(970,317),(1125,317)])
+a.arrow([(100,345),(100,585)],label='직접 업로드',lx=120,ly=420)
+a.arrow([(935,420),(935,470),(240,470),(240,622),(140,622)],label='조회·저장',lx=490,ly=440)
+a.arrow([(975,420),(975,530),(900,530),(900,585)],label='전사·LLM 요청',lx=990,ly=500)
+a.arrow([(865,622),(865,650),(140,650)],label='오디오 다운로드',lx=495,ly=665)
 a.save('architecture-prod')
 
-c=Diagram(1600,1370,'CI / CD','PR 검증과 main 기준 운영 배포를 구분한 흐름')
-c.card(60,245,240,140,'Pull Request','변경 영역에 따라 검증','github')
-c.text(420,195,'GitHub Actions  /  PR 검증',25,GREEN)
-c.card(420,250,330,225,'Frontend','Vitest 단위·통합\nQA 연결 + Playwright E2E\nE2E: main·develop 대상 PR')
-c.card(790,250,330,225,'Backend','통합 테스트  ∥  나머지 검사\nSpotless → 단위 → 인수\n→ bootJar')
-c.card(1160,250,380,225,'AI Server','runner 타입 검사·테스트\nGradle check + bootJar\nai-server 관련 변경 PR')
-c.arrow([(300,315),(355,315),(355,230),(585,230),(585,250)])
-c.arrow([(355,230),(955,230),(955,250)])
-c.arrow([(955,230),(1350,230),(1350,250)])
-c.text(420,492,'FE 검사는 변경 감지 조건 적용 · AI 검사는 경로 필터 적용 · BE 검사는 PR마다 실행',20,MUTED)
-c.card(60,625,240,140,'GitHub main','운영 배포 소스','github')
-c.text(420,560,'Frontend CD  /  관련 경로 push 또는 수동 실행',25,BLUE)
-c.card(420,610,440,175,'GitHub Actions','의존성 설치 → pnpm build\nTypeScript 검사 + Webpack 빌드','github')
-c.card(1190,610,350,175,'Cloudflare Workers','Wrangler · prod 환경 배포','cloudflare')
-c.arrow([(300,675),(420,675)],BLUE)
-c.arrow([(860,695),(1190,695)],BLUE,label='빌드한 웹 앱·Worker 배포',lx=900,ly=655)
-c.box(420,850,1120,320,'#F4F1FA','#CFC3DC')
-c.icon('codepipeline',445,875,48);c.text(510,888,'AWS CodePipeline  /  Backend CD',27)
-c.card(445,955,400,185,'AWS CodeBuild','병렬: 통합 테스트 / 나머지 검사\nSpotless·단위·인수·bootJar\n두 작업 성공 후 Deploy 단계','codebuild')
-c.card(900,955,240,185,'Amazon S3','배포 산출물\nJAR · AppSpec · hooks','s3')
-c.card(1195,955,320,185,'AWS CodeDeploy','EC2 배포 hook 실행','codedeploy')
-c.arrow([(180,765),(180,915),(420,915)],ORANGE,label='main 소스',lx=220,ly=880)
-c.arrow([(845,1045),(900,1045)],ORANGE)
-c.arrow([(1140,1045),(1195,1045)],ORANGE)
-c.card(1100,1220,440,100,'EC2 · Nginx 슬롯 전환',icon='ec2',fill='#F1F6F2')
-c.arrow([(1350,1140),(1350,1220)],ORANGE)
-c.text(420,1210,'단일 EC2의 비활성 슬롯 기동 → 검증 → Nginx 전환',22,MUTED)
-c.text(420,1250,'PR CI와 운영 CD는 별도 트리거입니다. CI 성공 연동을 뜻하지 않습니다.',20,MUTED)
-c.text(60,1330,'AI 서버는 저장소에 정의된 PR 검증만 표시했습니다. 개발 환경 배포와 보조 자동화는 생략했습니다.',20,MUTED)
+c=Diagram(1280,750)
+c.node('github',120,60,'GitHub PR')
+c.node('github-actions',440,60,'GitHub Actions')
+c.arrow([(160,92),(400,92)])
+c.arrow([(480,92),(715,92)])
+c.text(745,72,'FE · BE · AI',23)
+c.text(745,108,'테스트 · 타입/포맷 검사 · 빌드',20,MUTED)
+c.node('github',120,300,'GitHub main')
+c.node('github-actions',440,300,'GitHub Actions','FE 빌드')
+c.node('cloudflare',1000,300,'Cloudflare Workers')
+c.arrow([(160,332),(400,332)])
+c.arrow([(480,332),(960,332)],label='FE 배포',lx=700,ly=300)
+c.boundary(335,500,700,190)
+c.icon('codepipeline',350,465,24);c.text(385,465,'AWS CodePipeline',21)
+c.node('codebuild',425,540,'CodeBuild','테스트 · 빌드')
+c.node('s3',670,540,'S3','배포 산출물')
+c.node('codedeploy',915,540,'CodeDeploy')
+c.node('ec2',1160,540,'EC2','Blue / Green')
+c.arrow([(120,425),(120,572),(385,572)],label='BE 배포',lx=180,ly=540)
+c.arrow([(465,572),(630,572)])
+c.arrow([(710,572),(875,572)])
+c.arrow([(955,572),(1120,572)])
 c.save('ci-cd-prod')
-print('Rendered architecture-prod and ci-cd-prod (PNG + Excalidraw).')
+print('Rendered minimal PNG icon diagrams and editable Excalidraw sources.')

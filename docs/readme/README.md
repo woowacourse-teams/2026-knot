@@ -13,6 +13,8 @@
 - PR CI와 운영 CD는 별도 이벤트로 실행된다. CI가 성공해야 CD가 시작되는 `workflow_run` 연결을 가정하지 않았다. 브랜치 보호 규칙의 필수 검사 설정은 이 그림에 포함하지 않았다.
 - CI 그림은 PR 검증과 운영 CD에 초점을 맞췄다. push 시의 추가 CI, Storybook 미리보기, Governance·Issue 자동화, dev 배포는 생략했다. AI 서버의 자동 배포 경로도 만들어 넣지 않았다.
 
+그림은 흰 배경·실제 PNG 아이콘·짧은 이름·연결선으로 구성했다. Mac mini에는 장비를 뜻하는 일반 서버 아이콘을 사용했다. 실제 장비 사진이나 Apple 공식 제품 아이콘은 아니다. 화살표는 요청 방향이며 응답은 생략했다. PR 검증의 구체적인 영역별 검사와 실행 조건은 아래 근거를 따른다.
+
 ## 구성별 근거
 
 | 표현 | 확인한 저장소 근거 |
@@ -32,8 +34,8 @@
 
 ## 편집과 다시 내보내기
 
-- `architecture-prod.excalidraw`와 `ci-cd-prod.excalidraw`는 Excalidraw의 파일 열기로 편집할 수 있다. Obsidian Excalidraw에서도 해당 파일을 가져올 수 있다. 카드의 도형·텍스트·아이콘은 그룹으로 묶었다.
-- `render_diagrams.py`는 카드·선·텍스트 좌표를 정의하고 PNG와 Excalidraw를 함께 생성한다. Excalidraw에서 직접 수정한 내용은 이 스크립트에 역으로 반영되지 않으므로, 직접 수정한 원본을 다시 생성해 덮어쓰지 않는다.
+- `architecture-prod.excalidraw`와 `ci-cd-prod.excalidraw`는 Excalidraw의 파일 열기로 편집할 수 있다. Obsidian Excalidraw에서도 해당 파일을 가져올 수 있다. 각 서비스의 아이콘과 이름은 그룹으로 묶었다.
+- `render_diagrams.py`는 아이콘·선·텍스트 좌표를 정의하고 PNG와 Excalidraw를 함께 생성한다. Excalidraw에서 직접 수정한 내용은 이 스크립트에 역으로 반영되지 않으므로, 직접 수정한 원본을 다시 생성해 덮어쓰지 않는다.
 - PNG는 2배 해상도, 불투명 배경이다. GitHub의 밝은 테마와 어두운 테마에서 동일하게 보인다.
 - 생성에는 Python 3와 Pillow가 필요하다. 기본 글꼴은 macOS의 Apple SD Gothic Neo다. 다른 환경에서는 한글 지원 글꼴 경로를 `DIAGRAM_FONT` 환경 변수로 지정한다.
 
@@ -51,5 +53,9 @@ python3 docs/readme/render_diagrams.py
 | `cloudflare.png` | [Diagrams의 Cloudflare PNG](https://github.com/mingrammer/diagrams/blob/master/resources/saas/cdn/cloudflare.png) |
 | `github.png` | [Diagrams의 GitHub PNG](https://github.com/mingrammer/diagrams/blob/master/resources/onprem/vcs/github.png) |
 | `client.png` | [Diagrams의 클라이언트 PNG](https://github.com/mingrammer/diagrams/blob/master/resources/onprem/client/client.png) |
+| `nginx.png` | [Diagrams의 Nginx PNG](https://github.com/mingrammer/diagrams/blob/master/resources/onprem/network/nginx.png) |
+| `spring.png` | [Diagrams의 Spring PNG](https://github.com/mingrammer/diagrams/blob/master/resources/programming/framework/spring.png) |
+| `github-actions.png` | [Diagrams의 GitHub Actions PNG](https://github.com/mingrammer/diagrams/blob/master/resources/onprem/ci/github-actions.png) |
+| `server.png` | [Diagrams의 일반 서버 PNG](https://github.com/mingrammer/diagrams/blob/master/resources/onprem/compute/server.png) |
 
 Diagrams의 소프트웨어 라이선스는 [MIT](https://github.com/mingrammer/diagrams/blob/master/LICENSE)이며, 제품 로고의 권리는 각각의 권리자에게 있다. 아이콘은 2026-11-17에 내려받았다.
