@@ -72,6 +72,8 @@
 
 운영(prod)의 핵심 서비스 흐름입니다. 맥미니에서 음성 전사를 처리하고, 별도 Windows PC의 LM Studio를 Cloudflare Tunnel로 연결해 로컬 LLM을 호출합니다.
 
+웹 접속, API 처리, 녹음 전사, LLM 호출 순으로 읽을 수 있습니다. 같은 이름의 아이콘은 같은 서비스를 반복 표시한 것입니다.
+
 ![Knot 운영 아키텍처 — 브라우저, Cloudflare, EC2, RDS, S3, 맥미니 전사 서버와 별도 Windows LLM 서버의 연결](docs/readme/architecture-prod.png)
 
 ### CI/CD
