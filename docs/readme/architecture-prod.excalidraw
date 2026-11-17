@@ -1730,10 +1730,10 @@
     {
       "id": "e45",
       "type": "arrow",
-      "x": 530,
-      "y": 622,
-      "width": 390,
-      "height": 28,
+      "x": 532,
+      "y": 628,
+      "width": 392,
+      "height": 22,
       "angle": 0,
       "strokeColor": "#555555",
       "backgroundColor": "transparent",
@@ -1759,12 +1759,16 @@
           0
         ],
         [
-          0,
-          28
+          -42,
+          0
         ],
         [
-          -390,
-          28
+          -42,
+          22
+        ],
+        [
+          -392,
+          22
         ]
       ],
       "lastCommittedPoint": null,
