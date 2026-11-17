@@ -58,9 +58,9 @@ class Diagram:
             width=self.draw.textlength(line,font=font)/SCALE
             self.text(cx-width/2,y+i*size*1.35,line,size,color)
 
-    def node(self, icon, cx, y, name, note=''):
+    def node(self, icon, cx, y, name, note='', size=64):
         first=len(self.elements)
-        self.icon(icon,cx-32,y,64)
+        self.icon(icon,cx-size/2,y+32-size/2,size)
         self.centered(cx,y+78,name,22)
         if note:self.centered(cx,y+110,note,18,MUTED)
         for e in self.elements[first:]:e['groupIds']=[f'node-{first}']
@@ -88,8 +88,8 @@ class Diagram:
         (ROOT/f'{name}.excalidraw').write_text(json.dumps(dict(type='excalidraw',version=2,source='https://excalidraw.com',elements=self.elements,appState=dict(viewBackgroundColor=BG,gridSize=None),files=self.files),ensure_ascii=False,indent=2)+'\n')
 
 # Minimal icon diagrams. Keep implementation details in the accompanying README.
-a=Diagram(1280,780)
-a.node('client',100,230,'Browser')
+a=Diagram(1280,980)
+a.node('chrome',100,230,'Chrome')
 a.node('cloudflare',420,70,'Cloudflare Workers','React 웹 앱')
 a.node('cloudflare',420,270,'Cloudflare','API Proxy')
 a.boundary(660,215,360,205)
@@ -98,16 +98,20 @@ a.node('nginx',735,285,'Nginx')
 a.node('spring',935,285,'Spring Boot')
 a.node('rds',1160,285,'Amazon RDS','PostgreSQL')
 a.node('s3',100,590,'Amazon S3','녹음 오디오')
-a.node('server',900,590,'Mac mini','Whisper · LM Studio')
+a.node('mac-mini',580,590,'Mac mini','Whisper.cpp · sherpa-onnx',size=112)
+a.node('cloudflare',935,600,'Cloudflare Tunnel')
+a.node('windows',935,805,'Windows PC','LM Studio')
 a.arrow([(135,250),(260,250),(260,102),(385,102)])
 a.arrow([(135,270),(290,270),(290,302),(385,302)],label='API',lx=310,ly=275)
 a.arrow([(455,302),(700,302)])
 a.arrow([(770,317),(900,317)])
 a.arrow([(970,317),(1125,317)])
 a.arrow([(100,345),(100,585)],label='직접 업로드',lx=120,ly=420)
-a.arrow([(935,420),(935,470),(240,470),(240,622),(140,622)],label='조회·저장',lx=490,ly=440)
-a.arrow([(975,420),(975,530),(900,530),(900,585)],label='전사·LLM 요청',lx=990,ly=500)
-a.arrow([(865,622),(865,650),(140,650)],label='오디오 다운로드',lx=495,ly=665)
+a.arrow([(735,420),(735,470),(240,470),(240,622),(140,622)],label='조회·저장',lx=490,ly=440)
+a.arrow([(855,420),(855,520),(580,520),(580,585)],label='전사 요청·상태 조회',lx=600,ly=490)
+a.arrow([(975,420),(975,540),(935,540),(935,595)],label='요약·문서·탐색',lx=995,ly=500)
+a.arrow([(935,735),(935,800)])
+a.arrow([(545,622),(545,650),(140,650)],label='오디오 다운로드',lx=260,ly=675)
 a.save('architecture-prod')
 
 c=Diagram(1280,750)
