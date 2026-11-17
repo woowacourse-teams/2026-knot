@@ -72,8 +72,14 @@ public final class SearchMeetingHybridRetrieval {
     ) {
         List<SearchMeetingSearchItem> items = SearchMeetingSearchItem.parse(
                 question,
-                scope.questionAcceptedAt()
+                scope.questionAcceptedAt(),
+                scope.dateContext()
         );
+        if (items.stream()
+                .map(SearchMeetingSearchItem::meetingDate)
+                .anyMatch(date -> date != null && date.requiresClarification())) {
+            return Optional.of(SearchRetrievalResult.skipped());
+        }
         int itemLimit = TOTAL_LIMIT;
         if (items.size() > 1) {
             itemLimit = PER_ITEM_LIMIT;

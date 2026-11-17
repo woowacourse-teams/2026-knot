@@ -20,6 +20,7 @@ import com.knot.backend.document.DocumentFixtures;
 import com.knot.backend.search.SearchMessageFixtures;
 import com.knot.backend.global.config.JwtProperties;
 import com.knot.backend.global.config.SearchWorkerProperties;
+import com.knot.backend.global.config.SearchAgentProperties;
 import com.knot.backend.search.application.SearchAnswerWorker;
 import com.knot.backend.search.application.SearchQuestionIntakeService;
 import com.knot.backend.search.application.SearchAnswerExecutionService;
@@ -116,6 +117,8 @@ class SearchAnswerRetryAcceptanceTest {
     private SearchToolAccess toolAccess;
     @MockitoSpyBean
     private Clock clock;
+    @MockitoSpyBean
+    private SearchAgentProperties agentProperties;
     @Autowired
     private SearchWorkerProperties limits;
     @Autowired
@@ -981,8 +984,228 @@ class SearchAnswerRetryAcceptanceTest {
         }
     }
 
+    @Test
+    @DisplayName("월요일 경계를 넘긴 새 후속 질문과 기존 질문 재시도는 각각 해당 주를 검색한다")
+    void retry_success_keepsWeekAcrossSeoulMonday() throws Exception {
+        Instant sunday = Instant.parse("2026-11-15T14:59:50Z");
+        Instant monday = sunday.plusSeconds(20);
+        String question = "지난주 회의";
+        prepareMidnightSearch(sunday);
+        long previousWeek = timedDocument(
+                Instant.parse("2026-11-05T03:00:00Z"),
+                sunday.minusSeconds(1)
+        );
+        long newWeek = timedDocument(
+                Instant.parse("2026-11-12T03:00:00Z"),
+                sunday.minusSeconds(1)
+        );
+        long beforeRetry = timedDocument(
+                Instant.parse("2026-11-06T03:00:00Z"),
+                monday.minusSeconds(5)
+        );
+        timedDocument(
+                Instant.parse("2026-11-06T03:00:00Z"),
+                monday.plusSeconds(5)
+        );
+
+        SearchQuestionAcceptedResult original;
+        long started = System.nanoTime();
+        try (BufferedReader reader = openQuestion(
+                conversationsPath(),
+                question
+        )) {
+            original = acceptFirstQuestion(reader);
+            assertThat(
+                    executeAndMeasure(
+                            original.answerMessageId(),
+                            reader,
+                            started,
+                            "week-first"
+                    )
+            ).containsExactly(previousWeek);
+        }
+        try (BufferedReader reader = openQuestion(
+                conversationsPath(),
+                question
+        )) {
+            first = acceptFirstQuestion(reader);
+            failCurrent();
+            assertThat(
+                    reader.lines()
+                            .collect(Collectors.joining("\n"))
+            ).contains("event:failed");
+        }
+
+        setTime(monday);
+        started = System.nanoTime();
+        try (BufferedReader reader = openQuestion(
+                conversationsPath() + "/" + original.conversationId() + "/questions",
+                question
+        )) {
+            SearchQuestionAcceptedResult followup = acceptFirstQuestion(reader);
+            assertThat(
+                    executeAndMeasure(
+                            followup.answerMessageId(),
+                            reader,
+                            started,
+                            "week-followup"
+                    )
+            ).containsExactly(newWeek);
+        }
+        String request = body(UUID.randomUUID());
+        started = System.nanoTime();
+        try (BufferedReader reader = reader(connect(request).body())) {
+            assertAccepted(accepted(reader));
+            setTime(monday.plusSeconds(10));
+            assertThat(
+                    executeAndMeasure(
+                            first.answerMessageId(),
+                            reader,
+                            started,
+                            "week-retry"
+                    )
+            ).containsExactlyInAnyOrder(
+                    previousWeek,
+                    beforeRetry
+            );
+        }
+        long receipts = count("search_request_receipts");
+        HttpResponse<String> replay = send(
+                path(first.questionMessageId()),
+                request,
+                true,
+                true
+        );
+        assertThat(replay.statusCode()).isEqualTo(200);
+        assertThat(replay.body()).contains("event:completed");
+        assertThat(count("search_request_receipts")).isEqualTo(receipts);
+    }
+
+    @Test
+    @DisplayName("후속 질문이 하루를 이어받아 정각을 제외하고 한쪽 날짜 경계도 저장한다")
+    void followup_success_inheritsCalendarDayAndPersistsOpenDateBoundary() throws Exception {
+        prepareMidnightSearch();
+        doReturn(true).when(agentProperties)
+                .isFollowupContextEnabled();
+        Instant boundary = Instant.parse("2026-11-15T06:00:00Z");
+        long before = timedDocument(
+                boundary.minusNanos(1_000),
+                FIRST_AT.minusSeconds(1)
+        );
+        long exact = timedDocument(
+                boundary,
+                FIRST_AT.minusSeconds(1)
+        );
+        long after = timedDocument(
+                boundary.plusNanos(1_000),
+                FIRST_AT.minusSeconds(1)
+        );
+        long priorDay = timedDocument(
+                Instant.parse("2026-11-14T03:00:00Z"),
+                FIRST_AT.minusSeconds(1)
+        );
+
+        SearchQuestionAcceptedResult original;
+        long started = System.nanoTime();
+        try (BufferedReader reader = openQuestion(
+                conversationsPath(),
+                "11월 15일에 열린 회의"
+        )) {
+            original = acceptFirstQuestion(reader);
+            assertThat(
+                    executeAndMeasure(
+                            original.answerMessageId(),
+                            reader,
+                            started,
+                            "day-first"
+                    )
+            ).containsExactlyInAnyOrder(
+                    before,
+                    exact,
+                    after
+            );
+        }
+        String followupPath = conversationsPath() + "/" + original.conversationId() + "/questions";
+        started = System.nanoTime();
+        try (BufferedReader reader = openQuestion(
+                followupPath,
+                "오후 3시 이전에 시작한 회의만"
+        )) {
+            SearchQuestionAcceptedResult followup = acceptFirstQuestion(reader);
+            assertThat(
+                    executeAndMeasure(
+                            followup.answerMessageId(),
+                            reader,
+                            started,
+                            "time-followup"
+                    )
+            ).containsExactly(before);
+        }
+        started = System.nanoTime();
+        try (BufferedReader reader = openQuestion(
+                followupPath,
+                "11월 15일 이전에 열린 회의"
+        )) {
+            SearchQuestionAcceptedResult earlier = acceptFirstQuestion(reader);
+            assertThat(
+                    executeAndMeasure(
+                            earlier.answerMessageId(),
+                            reader,
+                            started,
+                            "open-period"
+                    )
+            ).containsExactly(priorDay);
+            assertThat(
+                    jdbc.sql("""
+                            SELECT recorded_from IS NULL AND recorded_before = :end_at
+                            FROM search_question_contexts WHERE question_message_id = :id
+                            """)
+                            .param(
+                                    "end_at",
+                                    Timestamp.from(Instant.parse("2026-11-14T15:00:00Z"))
+                            )
+                            .param(
+                                    "id",
+                                    earlier.questionMessageId()
+                            )
+                            .query(Boolean.class)
+                            .single()
+            ).isTrue();
+        }
+    }
+
+    @Test
+    @DisplayName("존재하지 않는 날짜는 검색이나 생성 없이 SSE에서 확인한다")
+    void create_success_clarifiesInvalidDateWithoutSearching() throws Exception {
+        prepareMidnightSearch();
+
+        try (BufferedReader reader = openQuestion(
+                conversationsPath(),
+                "2026년 2월 29일에 열린 회의"
+        )) {
+            SearchQuestionAcceptedResult question = acceptFirstQuestion(reader);
+            worker.execute(question.answerMessageId());
+            assertThat(
+                    reader.lines()
+                            .collect(Collectors.joining("\n"))
+            ).contains(
+                    SearchAnswerGuidance.CLARIFY_MEETING_DATE,
+                    "event:completed"
+            )
+                    .doesNotContain("event:failed");
+        }
+        org.mockito.Mockito.verifyNoInteractions(
+                retriever,
+                generator
+        );
+    }
+
     private void prepareMidnightSearch() {
-        setTime(FIRST_AT);
+        prepareMidnightSearch(FIRST_AT);
+    }
+
+    private void prepareMidnightSearch(Instant reference) {
+        setTime(reference);
         cookies = csrfCookie + "; " + jwt.getCookieName() + "=" + tokens.issue(
                 AuthenticatedMember.of(
                         member,
@@ -1066,12 +1289,25 @@ class SearchAnswerRetryAcceptanceTest {
         return documentId;
     }
 
+    private String conversationsPath() {
+        return "/api/v1/workspaces/" + workspace + "/search/conversations";
+    }
+
     private BufferedReader openRelativeQuestion() throws Exception {
-        String path = "/api/v1/workspaces/" + workspace + "/search/conversations";
+        return openQuestion(
+                conversationsPath(),
+                RELATIVE_QUESTION
+        );
+    }
+
+    private BufferedReader openQuestion(
+            String path,
+            String question
+    ) throws Exception {
         String request = json.writeValueAsString(
                 Map.of(
                         "content",
-                        RELATIVE_QUESTION,
+                        question,
                         "requestId",
                         UUID.randomUUID()
                 )

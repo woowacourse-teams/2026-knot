@@ -43,8 +43,11 @@ final class SearchMeetingIndexSource {
         if (item.documentId() != null) {
             sql += " AND d.id = :document";
         }
-        if (date != null) {
-            sql += " AND r.started_at >= :from AND r.started_at < :before";
+        if (date != null && date.from() != null) {
+            sql += " AND r.started_at >= :from";
+        }
+        if (date != null && date.before() != null) {
+            sql += " AND r.started_at < :before";
         }
         JdbcClient.StatementSpec statement = jdbc.sql(sql + " ORDER BY d.id")
                 .param(
@@ -67,15 +70,17 @@ final class SearchMeetingIndexSource {
                     item.documentId()
             );
         }
-        if (date != null) {
+        if (date != null && date.from() != null) {
             statement.param(
                     "from",
                     Timestamp.from(date.from())
-            )
-                    .param(
-                            "before",
-                            Timestamp.from(date.before())
-                    );
+            );
+        }
+        if (date != null && date.before() != null) {
+            statement.param(
+                    "before",
+                    Timestamp.from(date.before())
+            );
         }
         return documents(statement);
     }

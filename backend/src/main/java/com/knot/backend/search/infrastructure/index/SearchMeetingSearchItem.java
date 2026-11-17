@@ -2,7 +2,7 @@ package com.knot.backend.search.infrastructure.index;
 
 import com.knot.backend.search.infrastructure.llm.SearchDateFilter;
 import java.time.Instant;
-import java.util.Arrays;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -12,7 +12,6 @@ record SearchMeetingSearchItem(
         Long documentId,
         SearchDateFilter meetingDate
 ) {
-    private static final Pattern ITEM = Pattern.compile("(?m)^\\h*[1-9]\\d?[.)]\\h+");
     private static final Pattern DOCUMENT = Pattern
             .compile("(?<![\\p{L}\\d])문서\\s*#?\\s*([1-9][0-9]{0,18}+)(?!\\d|[,.]\\d|\\s*(?:개|건|종|편|쪽|페이지))");
 
@@ -20,23 +19,25 @@ record SearchMeetingSearchItem(
             String question,
             Instant reference
     ) {
-        String stripped = question.strip();
-        if (!ITEM.matcher(stripped)
-                .lookingAt()) {
-            return List.of(
-                    item(
-                            stripped,
-                            reference
-                    )
-            );
-        }
-        return Arrays.stream(ITEM.split(stripped))
-                .map(String::strip)
-                .filter(value -> !value.isEmpty())
+        return parse(
+                question,
+                reference,
+                null
+        );
+    }
+
+    static List<SearchMeetingSearchItem> parse(
+            String question,
+            Instant reference,
+            LocalDate contextDate
+    ) {
+        return SearchDateFilter.splitItems(question)
+                .stream()
                 .map(
                         value -> item(
                                 value,
-                                reference
+                                reference,
+                                contextDate
                         )
                 )
                 .toList();
@@ -44,7 +45,8 @@ record SearchMeetingSearchItem(
 
     private static SearchMeetingSearchItem item(
             String question,
-            Instant reference
+            Instant reference,
+            LocalDate contextDate
     ) {
         Long documentId = explicitDocumentId(question);
         return new SearchMeetingSearchItem(
@@ -52,7 +54,8 @@ record SearchMeetingSearchItem(
                 documentId,
                 SearchDateFilter.parseMeetingDate(
                         question,
-                        reference
+                        reference,
+                        contextDate
                 )
         );
     }
