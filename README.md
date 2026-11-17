@@ -68,6 +68,27 @@
 | [기여 가이드](CONTRIBUTING.md) | Issue·브랜치·PR 규칙과 코드 컨벤션 |
 | [AI 서버 가이드](ai-server/README.md) | 음성 처리 서버 설치, 실행과 검증 |
 
+## 프로젝트 아키텍처
+
+운영(prod)의 핵심 서비스 흐름입니다. 맥미니에서 Whisper 전사와 로컬 LLM을 실행합니다.
+
+![Knot 운영 아키텍처 — 브라우저, Cloudflare, EC2, RDS, S3와 맥미니 AI의 연결](docs/readme/architecture-prod.png)
+
+### CI/CD
+
+PR 검증과 운영 배포는 별도 트리거로 실행됩니다. 프론트엔드는 GitHub Actions에서 Cloudflare Workers로, 백엔드는 AWS CodePipeline을 통해 EC2로 배포합니다.
+
+![Knot CI/CD — GitHub Actions PR 검증과 프론트엔드·백엔드 운영 배포 경로](docs/readme/ci-cd-prod.png)
+
+<details>
+<summary>다이어그램 원본과 확인 근거</summary>
+
+- [아키텍처 Excalidraw 원본](docs/readme/architecture-prod.excalidraw)
+- [CI/CD Excalidraw 원본](docs/readme/ci-cd-prod.excalidraw)
+- [구성 근거·확인 범위·아이콘 출처](docs/readme/README.md)
+
+</details>
+
 ## 팀원
 
 ### 프론트엔드
