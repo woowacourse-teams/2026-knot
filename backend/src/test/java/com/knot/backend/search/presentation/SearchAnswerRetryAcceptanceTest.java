@@ -77,6 +77,7 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.context.annotation.Import;
@@ -104,6 +105,8 @@ class SearchAnswerRetryAcceptanceTest {
 
     @LocalServerPort
     private int port;
+    @Value("${knot.search.openai-fallback.model}")
+    private String openAiFallbackModel;
     @Autowired
     private JdbcClient jdbc;
     @Autowired
@@ -1071,7 +1074,7 @@ class SearchAnswerRetryAcceptanceTest {
                                     transport,
                                     openAi,
                                     "openai",
-                                    "gpt-4.1-mini"
+                                    openAiFallbackModel
                             )
                     )
             );
@@ -1162,7 +1165,7 @@ class SearchAnswerRetryAcceptanceTest {
             assertThat(primary.requestCount()).isEqualTo(3);
             assertThat(openAi.requestCount()).isEqualTo(3);
             assertThat(openAi.requestBody()).contains(
-                    "gpt-4.1-mini",
+                    "gpt-6-luna",
                     "json_schema",
                     "E" + document
             )

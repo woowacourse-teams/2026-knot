@@ -194,7 +194,7 @@ public class SearchAgentConfig {
             SearchAgentHttp http,
             @Value("${knot.search.openai-fallback.enabled:false}") boolean fallbackEnabled,
             @Value("${knot.search.openai-fallback.api-key:}") String fallbackKey,
-            @Value("${knot.search.openai-fallback.model:gpt-4.1-mini}") String fallbackModel
+            @Value("${knot.search.openai-fallback.model}") String fallbackModel
     ) {
         return new SearchStreamingAnswerGenerator(
                 llm,
