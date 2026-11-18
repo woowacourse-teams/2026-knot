@@ -1,6 +1,10 @@
 package com.knot.backend.search.infrastructure.llm;
 
 import com.knot.backend.global.logging.ServerErrorLogger;
+import com.knot.backend.search.domain.SearchAttemptFailure;
+import com.knot.backend.search.domain.SearchToolException;
+import org.springframework.dao.TransientDataAccessResourceException;
+import org.springframework.jdbc.CannotGetJdbcConnectionException;
 import com.knot.backend.search.application.SearchDocumentQuery;
 import com.knot.backend.search.application.SearchDocumentRetriever;
 import com.knot.backend.search.application.SearchToolAccess;
@@ -79,13 +83,23 @@ public class SearchFastPathDocumentRetriever implements SearchDocumentRetriever 
         List<Item> coverage = new ArrayList<>();
         boolean limited = false;
         boolean checked = false;
+        RuntimeException temporaryFailure = null;
         for (int index = 0; index < items.size(); index++) {
-            SearchRetrievalResult found = retrieveDatedItem(
-                    scope,
-                    items.get(index),
-                    dates.get(index),
-                    !checked
-            );
+            SearchRetrievalResult found;
+            try {
+                found = retrieveDatedItem(
+                        scope,
+                        items.get(index),
+                        dates.get(index),
+                        !checked
+                );
+            } catch (RuntimeException failure) {
+                if (!SearchAttemptFailure.temporary(failure)) {
+                    throw failure;
+                }
+                temporaryFailure = failure;
+                found = SearchRetrievalResult.unavailable();
+            }
             limited |= found.candidateLimited();
             checked |= found.additionalChecked();
             if (found.status() == SearchRetrievalResult.Status.UNAVAILABLE) {
@@ -126,6 +140,9 @@ public class SearchFastPathDocumentRetriever implements SearchDocumentRetriever 
                     )
             );
         }
+        if (documents.isEmpty() && temporaryFailure != null) {
+            throw temporaryFailure;
+        }
         if (coverage.stream()
                 .allMatch(item -> item.status() == ItemStatus.UNAVAILABLE)) {
             return SearchRetrievalResult.unavailable();
@@ -156,7 +173,7 @@ public class SearchFastPathDocumentRetriever implements SearchDocumentRetriever 
                     checkAllowed
             );
         } catch (RuntimeException exception) {
-            if (ServerErrorLogger.isControlFlow(exception)) {
+            if (ServerErrorLogger.isControlFlow(exception) || SearchAttemptFailure.temporary(exception)) {
                 throw exception;
             }
             return SearchRetrievalResult.unavailable();
@@ -265,18 +282,25 @@ public class SearchFastPathDocumentRetriever implements SearchDocumentRetriever 
             String queryText,
             SearchDocumentParameters parameters
     ) {
-        if (queryText.isBlank()) {
-            return query.listPage(
+        try {
+            if (queryText.isBlank()) {
+                return query.listPage(
+                        scope,
+                        parameters,
+                        null
+                );
+            }
+            return query.searchPage(
                     scope,
                     parameters,
                     null
             );
+        } catch (CannotGetJdbcConnectionException | TransientDataAccessResourceException exception) {
+            throw new SearchToolException(
+                    SearchAttemptFailure.DATABASE_UNAVAILABLE,
+                    exception
+            );
         }
-        return query.searchPage(
-                scope,
-                parameters,
-                null
-        );
     }
 
     private List<SearchDocumentResult> documents(List<SearchDocumentRecord> records) {

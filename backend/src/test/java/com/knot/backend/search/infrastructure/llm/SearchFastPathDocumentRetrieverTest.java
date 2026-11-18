@@ -46,6 +46,33 @@ class SearchFastPathDocumentRetrieverTest {
     );
 
     @Test
+    @DisplayName("두 비교 항목의 DB 연결이 모두 실패하면 공유 재시도에 원인을 전달한다")
+    void retrieve_failure_preservesTemporaryDatabaseFailure() {
+        when(
+                query.searchPage(
+                        eq(scope),
+                        any(SearchDocumentParameters.class),
+                        isNull()
+                )
+        ).thenThrow(new org.springframework.jdbc.CannotGetJdbcConnectionException("fixture"));
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(
+                () -> retriever.retrieve(
+                        scope,
+                        "1. 10월 12일에 열린 배포 회의 조건은?\n2. 10월 13일에 열린 홍보 회의 조건은?"
+                )
+        )
+                .isInstanceOfSatisfying(
+                        com.knot.backend.search.domain.SearchToolException.class,
+                        failure -> {
+                            assertThat(com.knot.backend.search.domain.SearchAttemptFailure.temporary(failure)).isTrue();
+                            assertThat(com.knot.backend.search.domain.SearchAttemptFailure.isNetwork(failure))
+                                    .isFalse();
+                        }
+                );
+    }
+
+    @Test
     @DisplayName("명시한 문서 ID의 범위를 Fast Path 추가 후보로 넓히지 않는다")
     void retrieve_success_keepsExplicitDocumentReferenceOutOfAdditionalCheck() {
         List<SearchDocumentRecord> records = new java.util.ArrayList<>(

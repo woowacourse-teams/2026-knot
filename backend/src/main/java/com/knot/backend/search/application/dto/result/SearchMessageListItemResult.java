@@ -12,6 +12,7 @@ public record SearchMessageListItemResult(
         int sequence,
         String content,
         SearchMessageStatus status,
+        boolean retryable,
         Instant createdAt,
         List<SearchEvidenceItemResult> evidences
 ) {
@@ -30,6 +31,7 @@ public record SearchMessageListItemResult(
                 message.getSequence(),
                 message.getContent(),
                 message.getStatus(),
+                message.isRetryable(),
                 message.getCreatedAt(),
                 evidences
         );

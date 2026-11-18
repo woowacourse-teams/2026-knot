@@ -12,6 +12,7 @@ import com.knot.backend.search.infrastructure.persistence.SearchQuestionContextS
 import com.knot.backend.search.domain.model.SearchAnswerExecution;
 import com.knot.backend.search.domain.model.SearchConversation;
 import com.knot.backend.search.domain.SearchErrorCode;
+import com.knot.backend.search.domain.SearchAttemptFailure;
 import com.knot.backend.search.domain.SearchException;
 import com.knot.backend.search.domain.model.SearchEvidence;
 import com.knot.backend.search.domain.model.SearchMessage;
@@ -492,6 +493,16 @@ public class SearchAnswerExecutionService {
                     execution,
                     code,
                     "access_denied",
+                    SearchMessageStatus.FAILED
+            );
+            return;
+        }
+        if (SearchAttemptFailure.NETWORK_ERROR.equals(code)) {
+            answer(execution).failNetwork();
+            finishTerminal(
+                    execution,
+                    code,
+                    "network_error",
                     SearchMessageStatus.FAILED
             );
             return;
