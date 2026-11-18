@@ -5,6 +5,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -17,6 +18,7 @@ import com.knot.backend.global.config.SearchAgentProperties;
 import com.knot.backend.search.SearchMessageFixtures;
 import com.knot.backend.search.application.SearchAnswerGenerator;
 import com.knot.backend.search.application.SearchAnswerWorker;
+import com.knot.backend.search.application.SearchDocumentQuery;
 import com.knot.backend.search.application.SearchDocumentRetriever;
 import com.knot.backend.search.application.SearchGenerationAvailability;
 import com.knot.backend.search.application.SearchIntentClassifier;
@@ -26,6 +28,8 @@ import com.knot.backend.search.application.dto.result.SearchRetrievalResult;
 import com.knot.backend.search.domain.model.SearchIntent;
 import com.knot.backend.search.domain.SearchToolException;
 import com.knot.backend.search.infrastructure.llm.SearchExploration;
+import com.knot.backend.search.infrastructure.llm.SearchFastPathDocumentRetriever;
+import com.knot.backend.search.infrastructure.llm.SearchQueryNormalizer;
 import com.knot.backend.search.infrastructure.llm.SearchLlmClient;
 import com.knot.backend.search.infrastructure.llm.SearchStreamingAnswerGenerator;
 import com.knot.backend.search.infrastructure.persistence.SearchHistoryQuery;
@@ -39,8 +43,11 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.sql.Timestamp;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -194,6 +201,357 @@ class SearchQuestionAcceptanceTest {
                         .query(String.class)
                         .single()
         ).isEqualTo(body);
+    }
+
+    private enum EvidenceScenario {
+        ONE_SIDE,
+        CANDIDATE_LIMIT,
+        TRUNCATED_BODY
+    }
+
+    @ParameterizedTest
+    @EnumSource(EvidenceScenario.class)
+    @DisplayName("실제 최초·후속 SSE와 모델 입력에서 부분 근거와 추가 확인 범위를 일치시킨다")
+    void createAndFollowup_success_preservesCheckedEvidence(EvidenceScenario scenario) throws Exception {
+        String release = "1. 2026년 11월 12일에 열린 배포 회의에서 확정 날짜와 연기 조건은?";
+        String promotion = "\n2. 2026년 11월 13일에 열린 홍보 회의에서 외부 공개를 보류한 조건은?";
+        String question = release + promotion;
+        String expected = "11월 20일 확정. 테스트가 완료되지 않으면 연기한다.";
+        long document;
+        if (scenario == EvidenceScenario.TRUNCATED_BODY) {
+            question = "2026년 11월 12일에 열린 마이그레이션 회의에서 이관할 자료와 제외 조건은?";
+            expected = "이미지 링크는 제외하고 글만 이관한다. 방식은 미정이다.";
+            document = saveDatedCoverageDocument(
+                    workspaceId,
+                    "2026-11-12T06:00:00Z",
+                    "마이그레이션 회의",
+                    "## 배경\n" + "일반 검토 ".repeat(3000) + "\n\n## 이관 결정 및 조건\n" + expected
+            );
+        } else {
+            document = saveDatedCoverageDocument(
+                    workspaceId,
+                    "2026-11-12T06:00:00Z",
+                    "배포 회의",
+                    expected
+            );
+        }
+        long otherWorkspace = new DocumentFixtures(jdbc).saveWorkspace();
+        saveDatedCoverageDocument(
+                otherWorkspace,
+                "2026-11-13T06:00:00Z",
+                "접근 제한 홍보 회의",
+                "타 워크스페이스 외부 공개 보류."
+        );
+        saveDatedCoverageDocument(
+                workspaceId,
+                "2026-11-14T06:00:00Z",
+                "다른 날짜 홍보 회의",
+                "범위 밖 외부 공개 보류."
+        );
+        String extra = "검수 승인 전에는 외부 공개 보류.";
+        List<Long> expectedIds = List.of(document);
+        if (scenario == EvidenceScenario.CANDIDATE_LIMIT) {
+            long next = saveDatedCoverageDocument(
+                    workspaceId,
+                    "2026-11-13T03:00:00Z",
+                    "홍보 회의",
+                    extra
+            );
+            for (int hour = 4; hour <= 6; hour++) {
+                saveDatedCoverageDocument(
+                        workspaceId,
+                        "2026-11-13T0" + hour + ":00:00Z",
+                        "홍보 회의 외부 공개 보류 조건",
+                        "운영 안건 개요와 진행 상황 공유."
+                );
+            }
+            expectedIds = List.of(
+                    document,
+                    next
+            );
+        }
+
+        SearchFastPathDocumentRetriever actualRetriever = new SearchFastPathDocumentRetriever(
+                documentQuery,
+                toolAccess,
+                new SearchQueryNormalizer()
+        );
+        when(
+                retriever.retrieve(
+                        any(),
+                        any()
+                )
+        ).thenAnswer(
+                call -> actualRetriever.retrieve(
+                        call.getArgument(0),
+                        call.getArgument(1)
+                )
+        );
+        SearchLlmClient upstream = mock(SearchLlmClient.class);
+        List<Long> citations = expectedIds;
+        String required = expected;
+        doAnswer(call -> {
+            List<Map<String, Object>> messages = call.getArgument(1);
+            var evidence = json.readTree(
+                    (String) messages.getLast()
+                            .get("content")
+            )
+                    .path("evidence");
+            assertThat(evidence.toString()).contains(required)
+                    .doesNotContain(
+                            "타 워크스페이스",
+                            "범위 밖"
+                    );
+            String answer = required;
+            if (scenario == EvidenceScenario.CANDIDATE_LIMIT) {
+                assertThat(evidence.toString()).contains(extra);
+                answer += " " + extra;
+            }
+            if (scenario == EvidenceScenario.TRUNCATED_BODY) {
+                assertThat(evidence.toString()).doesNotContain("일반 검토");
+            }
+            assertThat(json.writeValueAsString(messages)).hasSizeLessThanOrEqualTo(9000);
+            Consumer<String> delta = call.getArgument(2);
+            var modelResponse = json.createObjectNode();
+            modelResponse.put(
+                    "status",
+                    "ANSWERED"
+            );
+            if (scenario == EvidenceScenario.TRUNCATED_BODY) {
+                modelResponse.put(
+                        "decisionState",
+                        "UNDECIDED"
+                );
+            } else {
+                modelResponse.put(
+                        "decisionState",
+                        "DECIDED"
+                );
+            }
+            modelResponse.put(
+                    "answer",
+                    answer
+            );
+            var evidenceIds = modelResponse.putArray("evidenceIds");
+            citations.forEach(id -> evidenceIds.add("E" + id));
+            modelResponse.putNull("clarificationQuestion");
+            delta.accept(modelResponse.toString());
+            return null;
+        }).when(upstream)
+                .stream(
+                        any(),
+                        any(),
+                        any()
+                );
+        SearchAgentProperties properties = new SearchAgentProperties();
+        properties.setContextCharacterLimit(9000);
+        SearchStreamingAnswerGenerator actual = new SearchStreamingAnswerGenerator(
+                upstream,
+                searchHistory,
+                toolAccess,
+                properties,
+                json
+        );
+        doAnswer(
+                call -> actual.generate(
+                        call.getArgument(0),
+                        call.getArgument(1),
+                        call.getArgument(2),
+                        call.getArgument(3)
+                )
+        ).when(generator)
+                .generate(
+                        any(),
+                        any(),
+                        any(),
+                        any()
+                );
+        doAnswer(
+                call -> actual.generateFromRetrieval(
+                        call.getArgument(0),
+                        call.getArgument(1),
+                        call.getArgument(2),
+                        call.getArgument(3)
+                )
+        ).when(generator)
+                .generateFromRetrieval(
+                        any(),
+                        any(),
+                        any(),
+                        any()
+                );
+
+        String endpoint = path(workspaceId);
+        assertCoverageTurn(
+                endpoint,
+                question,
+                scenario,
+                "first",
+                required,
+                citations
+        );
+        assertCoverageTurn(
+                endpoint + "/" + conversationId() + "/questions",
+                question,
+                scenario,
+                "followup",
+                required,
+                citations
+        );
+        verify(
+                upstream,
+                times(2)
+        ).stream(
+                any(),
+                any(),
+                any()
+        );
+    }
+
+    private void assertCoverageTurn(
+            String endpoint,
+            String question,
+            EvidenceScenario scenario,
+            String turn,
+            String required,
+            List<Long> citations
+    ) throws Exception {
+        HttpRequest request = request(
+                UUID.randomUUID(),
+                question,
+                uri(endpoint),
+                true,
+                true
+        );
+        SearchSseTiming timing = new SearchSseTiming(json);
+        HttpResponse<InputStream> response = client.send(
+                request,
+                HttpResponse.BodyHandlers.ofInputStream()
+        );
+        assertThat(response.statusCode()).isEqualTo(200);
+        try (BufferedReader stream = reader(response.body())) {
+            String accepted = readEvent(stream);
+            assertThat(accepted).startsWith("event:accepted");
+            JsonNode receipt = json.readTree(
+                    accepted.lines()
+                            .filter(line -> line.startsWith("data:"))
+                            .findFirst()
+                            .orElseThrow()
+                            .substring("data:".length())
+                            .strip()
+            );
+            long answer = receipt.path("answerMessageId")
+                    .asLong();
+            worker.execute(answer);
+            String events = timing.readToEnd(stream);
+            assertThat(events).contains(
+                    required,
+                    "event:completed"
+            )
+                    .doesNotContain(
+                            "event:failed",
+                            "다른 날짜 홍보",
+                            "접근 제한 홍보"
+                    );
+            assertThat(events).contains(switch (scenario) {
+                case ONE_SIDE -> "요청의 2번째 항목은 검색한 범위에서 관련 기록을 찾지 못했어요.";
+                case CANDIDATE_LIMIT -> "검수 승인 전에는 외부 공개 보류.";
+                case TRUNCATED_BODY -> "입력 한도 때문에 일부 기록만 확인했어요.";
+            });
+            assertThat(
+                    jdbc.sql("SELECT document_id FROM search_evidences WHERE message_id = :answer ORDER BY rank")
+                            .param(
+                                    "answer",
+                                    answer
+                            )
+                            .query(Long.class)
+                            .list()
+            ).containsExactlyElementsOf(citations);
+            assertThat(timing.firstDelta()).isPresent();
+            assertThat(timing.terminalEvent()).contains("completed");
+            System.out.printf(
+                    "SEARCH_EVIDENCE_COVERAGE case=%s turn=%s firstDeltaMs=%d completedMs=%d%n",
+                    scenario,
+                    turn,
+                    timing.firstDelta()
+                            .orElseThrow()
+                            .toMillis(),
+                    timing.terminalTime()
+                            .orElseThrow()
+                            .toMillis()
+            );
+            HttpRequest reconnect = HttpRequest.newBuilder(
+                    uri(
+                            path(workspaceId) + "/" + receipt.path("conversationId")
+                                    .asLong() + "/answers/" + answer + "/events"
+                    )
+            )
+                    .header(
+                            "Cookie",
+                            accessCookie
+                    )
+                    .header(
+                            "Accept",
+                            "text/event-stream"
+                    )
+                    .GET()
+                    .build();
+            HttpResponse<String> replay = client.send(
+                    reconnect,
+                    HttpResponse.BodyHandlers.ofString()
+            );
+            assertThat(replay.statusCode()).isEqualTo(200);
+            assertThat(replay.body()).contains(
+                    "event:snapshot",
+                    required,
+                    "event:completed"
+            )
+                    .doesNotContain("event:failed");
+        }
+    }
+
+    private long saveDatedCoverageDocument(
+            long workspace,
+            String date,
+            String title,
+            String content
+    ) {
+        long document = new SearchMessageFixtures(jdbc).saveDocument(
+                workspace,
+                memberId
+        );
+        Timestamp recorded = Timestamp.from(Instant.parse(date));
+        jdbc.sql(
+                "UPDATE recording_sessions SET started_at = :recorded, ended_at = :recorded, last_seen_at = :recorded WHERE id = (SELECT recording_session_id FROM documents WHERE id = :document)"
+        )
+                .param(
+                        "recorded",
+                        recorded
+                )
+                .param(
+                        "document",
+                        document
+                )
+                .update();
+        jdbc.sql("UPDATE documents SET title = :title, content = :content, created_at = :recorded WHERE id = :document")
+                .param(
+                        "title",
+                        title
+                )
+                .param(
+                        "content",
+                        content
+                )
+                .param(
+                        "recorded",
+                        recorded
+                )
+                .param(
+                        "document",
+                        document
+                )
+                .update();
+        return document;
     }
 
     private List<Long> prepareCoverage(Coverage coverage) {
@@ -426,6 +784,8 @@ class SearchQuestionAcceptanceTest {
     private SearchToolAccess toolAccess;
     @Autowired
     private SearchHistoryQuery searchHistory;
+    @Autowired
+    private SearchDocumentQuery documentQuery;
     @Autowired
     @Qualifier("searchStreamExecutor")
     private ThreadPoolTaskExecutor streamExecutor;
@@ -1314,7 +1674,23 @@ class SearchQuestionAcceptanceTest {
             boolean authenticated,
             boolean csrf
     ) {
-        HttpRequest.Builder builder = HttpRequest.newBuilder(uri(path(workspace)))
+        return request(
+                requestId,
+                content,
+                uri(path(workspace)),
+                authenticated,
+                csrf
+        );
+    }
+
+    private HttpRequest request(
+            UUID requestId,
+            String content,
+            URI target,
+            boolean authenticated,
+            boolean csrf
+    ) {
+        HttpRequest.Builder builder = HttpRequest.newBuilder(target)
                 .timeout(Duration.ofSeconds(15))
                 .header(
                         "Content-Type",

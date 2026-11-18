@@ -1,6 +1,7 @@
 package com.knot.backend.search.infrastructure.llm;
 
 import com.knot.backend.search.application.dto.result.SearchDocumentResult;
+import com.knot.backend.search.application.dto.result.SearchRetrievalResult;
 import com.knot.backend.search.application.dto.result.SearchRetrievalResult.Item;
 import com.knot.backend.search.domain.SearchToolException;
 import java.time.Instant;
@@ -22,10 +23,13 @@ public class SearchAnswerBudget {
     private final Instant requestedAt;
     private final boolean fullDocumentsOnly;
     private final List<Item> items;
+    private final boolean additionalChecked;
+    private final boolean candidateLimited;
     private final List<SearchDocumentResult> selected = new ArrayList<>();
     private final List<Map<String, Object>> history = new ArrayList<>();
     private boolean documentsLimited;
     private boolean historyLimited;
+    private boolean recoveredSection;
 
     public SearchAnswerBudget(
             ObjectMapper mapper,
@@ -64,12 +68,37 @@ public class SearchAnswerBudget {
             boolean fullDocumentsOnly,
             List<Item> items
     ) {
+        this(
+                mapper,
+                limit,
+                question,
+                requestedAt,
+                fullDocumentsOnly,
+                new SearchRetrievalResult(
+                        List.of(),
+                        0,
+                        SearchRetrievalResult.Status.SEARCHED,
+                        items
+                )
+        );
+    }
+
+    SearchAnswerBudget(
+            ObjectMapper mapper,
+            int limit,
+            String question,
+            Instant requestedAt,
+            boolean fullDocumentsOnly,
+            SearchRetrievalResult retrieval
+    ) {
         this.mapper = mapper;
         this.limit = limit;
         this.question = question;
         this.requestedAt = requestedAt;
         this.fullDocumentsOnly = fullDocumentsOnly;
-        this.items = List.copyOf(items);
+        this.items = retrieval.items();
+        this.additionalChecked = retrieval.additionalChecked();
+        this.candidateLimited = retrieval.candidateLimited();
     }
 
     public void select(
@@ -80,9 +109,15 @@ public class SearchAnswerBudget {
             throw new SearchToolException("SEARCH_CONTEXT_LIMIT_EXCEEDED");
         }
         int documentLimit = limit - limit / 4;
-        for (SearchDocumentResult document : documents) {
+        for (SearchDocumentResult document : prioritizeItems(documents)) {
             addDocument(
                     document,
+                    documentLimit
+            );
+        }
+        if (!additionalChecked && (documentsLimited || selected.size() < documents.size())) {
+            recoverRelevantSection(
+                    documents,
                     documentLimit
             );
         }
@@ -101,6 +136,121 @@ public class SearchAnswerBudget {
         if (!fits(limit)) {
             throw new SearchToolException("SEARCH_CONTEXT_LIMIT_EXCEEDED");
         }
+    }
+
+    private List<SearchDocumentResult> prioritizeItems(List<SearchDocumentResult> documents) {
+        if (!additionalChecked || items.size() < 2) {
+            return documents;
+        }
+        Set<Long> leading = items.stream()
+                .filter(
+                        item -> !item.documentIds()
+                                .isEmpty()
+                )
+                .map(
+                        item -> item.documentIds()
+                                .getFirst()
+                )
+                .collect(Collectors.toSet());
+        List<SearchDocumentResult> ordered = new ArrayList<>();
+        documents.stream()
+                .filter(document -> leading.contains(document.documentId()))
+                .forEach(ordered::add);
+        documents.stream()
+                .filter(document -> !leading.contains(document.documentId()))
+                .forEach(ordered::add);
+        return ordered;
+    }
+
+    private void recoverRelevantSection(
+            List<SearchDocumentResult> documents,
+            int documentLimit
+    ) {
+        if (items.isEmpty()) {
+            recoverRelevantSection(
+                    question,
+                    documents,
+                    documentLimit
+            );
+            return;
+        }
+        List<String> questions = SearchDateFilter.splitItems(question);
+        for (Item item : items) {
+            if (item.ordinal() > questions.size()) {
+                continue;
+            }
+            List<SearchDocumentResult> itemDocuments = documents.stream()
+                    .filter(
+                            document -> item.documentIds()
+                                    .contains(document.documentId())
+                    )
+                    .toList();
+            if (recoverRelevantSection(
+                    questions.get(item.ordinal() - 1),
+                    itemDocuments,
+                    documentLimit
+            )) {
+                return;
+            }
+        }
+    }
+
+    private boolean recoverRelevantSection(
+            String itemQuestion,
+            List<SearchDocumentResult> documents,
+            int documentLimit
+    ) {
+        SearchEvidenceRelevance relevance = new SearchEvidenceRelevance(itemQuestion);
+        List<Long> ids = documents.stream()
+                .map(SearchDocumentResult::documentId)
+                .toList();
+        List<SearchDocumentResult> current = selected.stream()
+                .filter(document -> ids.contains(document.documentId()))
+                .toList();
+        if (!relevance.needsCandidate(current)) {
+            return false;
+        }
+        for (SearchDocumentResult document : documents) {
+            if (current.contains(document) || !relevance.matches(document)) {
+                continue;
+            }
+            relevance.excerpt(document.content())
+                    .ifPresent(
+                            section -> keepExcerpt(
+                                    document,
+                                    section,
+                                    documentLimit
+                            )
+                    );
+            return true;
+        }
+        return false;
+    }
+
+    private void keepExcerpt(
+            SearchDocumentResult document,
+            String section,
+            int documentLimit
+    ) {
+        List<SearchDocumentResult> before = List.copyOf(selected);
+        selected.removeIf(value -> value.documentId() == document.documentId());
+        selected.add(
+                new SearchDocumentResult(
+                        document.documentId(),
+                        document.title(),
+                        document.topic(),
+                        section + "\n[본문 일부만 제공됨]",
+                        document.recordingStartedAt(),
+                        document.createdAt()
+                )
+        );
+        if (fits(documentLimit)) {
+            documentsLimited = true;
+            recoveredSection = true;
+            return;
+        }
+        selected.clear();
+        selected.addAll(before);
     }
 
     private void addDocument(
@@ -201,7 +351,7 @@ public class SearchAnswerBudget {
         if (requestedAt != null) {
             system += "\nrequestedAt은 질문 시각, recordingStartedAt은 회의 녹음 시작 시각, documentCreatedAt은 문서 생성 시각입니다. 날짜는 서울 시간입니다. 회의 날짜와 문서 생성 날짜를 구별하세요.";
         }
-        if (isPartial) {
+        if (isPartial || candidateLimited) {
             system += PARTIAL_INSTRUCTION;
         }
         if (!items.isEmpty()) {
@@ -325,6 +475,10 @@ public class SearchAnswerBudget {
 
     public boolean partial() {
         return documentsLimited || historyLimited;
+    }
+
+    boolean recoveredSection() {
+        return recoveredSection;
     }
 
     boolean documentsLimited() {

@@ -111,6 +111,88 @@ class SearchMeetingHybridRetrievalTest {
     }
 
     @Test
+    @DisplayName("다른 항목의 근거를 유지하고 같은 항목의 상한 바로 뒤 후보에서 조건을 찾는다")
+    void retrieve_success_recoversNextCandidateInsideItemScope() throws IOException {
+        String release = "11월 12일 배포 일정은?";
+        String promotion = "11월 13일 홍보 회의에서 외부 공개를 보류한 조건은?";
+        when(
+                index.findCurrent(
+                        eq(1L),
+                        eq(release),
+                        any(),
+                        anyInt()
+                )
+        ).thenReturn(Optional.of(List.of(7L)));
+        when(
+                index.findCurrent(
+                        eq(1L),
+                        eq(promotion),
+                        any(),
+                        anyInt()
+                )
+        ).thenAnswer(call -> {
+            List<Long> ranked = List.of(
+                    11L,
+                    12L,
+                    13L,
+                    14L
+            );
+            int limit = call.getArgument(3);
+            return Optional.of(
+                    ranked.subList(
+                            0,
+                            Math.min(
+                                    ranked.size(),
+                                    limit
+                            )
+                    )
+            );
+        });
+        when(
+                documents.find(
+                        eq(scope),
+                        any(Long.class)
+                )
+        ).thenAnswer(call -> {
+            long id = call.getArgument(1);
+            String body = "개요와 진행 상황을 검토했다.";
+            if (id == 14L) {
+                body = "검수 승인 전에는 외부 공개 보류.";
+            }
+            return Optional.of(
+                    new SearchDocumentRecord(
+                            id,
+                            "회의 기록",
+                            "회의",
+                            body,
+                            DocumentStatus.DRAFT,
+                            NOW,
+                            NOW,
+                            null,
+                            1
+                    )
+            );
+        });
+
+        SearchRetrievalResult result = retrieval.retrieve(
+                scope,
+                "1. " + release + "\n2. " + promotion
+        )
+                .orElseThrow();
+
+        assertThat(result.documents()).extracting(SearchDocumentResult::documentId)
+                .startsWith(7L)
+                .contains(14L)
+                .hasSize(4);
+        assertThat(
+                result.items()
+                        .getLast()
+                        .documentIds()
+        ).contains(14L)
+                .hasSize(3);
+    }
+
+    @Test
     @DisplayName("어느 항목도 조회할 수 없으면 기존 검색으로 넘긴다")
     void retrieve_success_defersWhenEveryItemIsUnavailable() throws IOException {
         when(

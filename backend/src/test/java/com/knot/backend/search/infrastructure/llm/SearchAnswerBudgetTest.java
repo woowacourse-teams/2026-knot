@@ -238,6 +238,43 @@ class SearchAnswerBudgetTest {
     }
 
     @Test
+    @DisplayName("전문을 담을 수 없으면 같은 문서에서 질문에 필요한 결정과 조건을 보존한다")
+    void select_success_recoversRelevantSectionFromLongDocument() {
+        String answer = "이미지 링크는 제외하고 글만 이관한다. 방식은 미정이다.";
+        SearchDocumentResult evidence = new SearchDocumentResult(
+                105,
+                "11월 12일 마이그레이션 회의",
+                "이관",
+                "## 배경\n" + "일반 검토 ".repeat(LIMIT) + "\n\n## 이관 결정 및 조건\n" + answer
+        );
+        SearchAnswerBudget budget = new SearchAnswerBudget(
+                mapper,
+                LIMIT,
+                "11월 12일 마이그레이션 회의에서 이관할 자료와 제외 조건은?",
+                NOW,
+                true,
+                List.of()
+        );
+
+        budget.select(
+                List.of(evidence),
+                List.of()
+        );
+
+        assertThat(budget.documents()).extracting(SearchDocumentResult::documentId)
+                .containsExactly(105L);
+        assertThat(
+                budget.documents()
+                        .getFirst()
+                        .content()
+        ).contains(answer)
+                .doesNotContain("일반 검토");
+        assertThat(mapper.writeValueAsString(budget.messages())).contains(answer)
+                .hasSizeLessThanOrEqualTo(LIMIT);
+        assertThat(budget.documentsLimited()).isTrue();
+    }
+
+    @Test
     @DisplayName("전문을 하나도 담을 수 없으면 제한을 초과한 것으로 판정한다")
     void select_failure_rejectsContextWithoutCompleteDocument() {
         SearchAnswerBudget budget = new SearchAnswerBudget(

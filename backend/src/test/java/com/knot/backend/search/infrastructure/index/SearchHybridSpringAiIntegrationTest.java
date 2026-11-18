@@ -275,6 +275,51 @@ class SearchHybridSpringAiIntegrationTest {
         )
                 .doesNotContain("E9999");
         assertThat(UPSTREAM.requestCount()).isEqualTo(requestsBeforePartial + 2);
+
+        long longDocument = messages.saveDocument(
+                workspace,
+                member
+        );
+        String condition = "이미지 링크는 제외하고 글만 이관한다. 구체적인 적용 범위는 아직 미정이다.";
+        jdbc.sql("UPDATE documents SET title = '마이그레이션 회의', content = :content WHERE id = :id")
+                .param(
+                        "content",
+                        "## 배경\n" + "관련 없는 회의 배경 ".repeat(6000) + "\n\n## 이관 결정 및 조건\n" + condition
+                )
+                .param(
+                        "id",
+                        longDocument
+                )
+                .update();
+        EVIDENCE.set(longDocument);
+        synchronizer.refresh();
+        int requestsBeforeExcerpt = UPSTREAM.requestCount();
+        long excerptAnswer = intake.acceptFirst(
+                workspace,
+                member,
+                new SearchQuestionCommand(
+                        "문서 #" + longDocument + "에서 마이그레이션 때 이관할 자료와 제외 조건은?",
+                        UUID.randomUUID()
+                )
+        )
+                .answerMessageId();
+        worker.execute(excerptAnswer);
+
+        assertThat(UPSTREAM.requestBody()).contains(
+                condition,
+                "본문 일부만 제공됨"
+        )
+                .doesNotContain("관련 없는 회의 배경");
+        assertThat(UPSTREAM.requestCount()).isEqualTo(requestsBeforeExcerpt + 2);
+        assertThat(
+                jdbc.sql("SELECT document_id FROM search_evidences WHERE message_id = :id")
+                        .param(
+                                "id",
+                                excerptAnswer
+                        )
+                        .query(Long.class)
+                        .list()
+        ).containsExactly(longDocument);
     }
 
     private static LlmHttpServer upstream() {

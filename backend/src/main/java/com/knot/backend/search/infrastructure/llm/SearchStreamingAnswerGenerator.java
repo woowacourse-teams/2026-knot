@@ -55,11 +55,13 @@ public class SearchStreamingAnswerGenerator implements SearchAnswerGenerator {
             List<SearchDocumentResult> documents,
             Consumer<String> onDelta
     ) {
-        return generate(
+        return generateFromRetrieval(
                 scope,
                 question,
-                documents,
-                List.of(),
+                new SearchRetrievalResult(
+                        documents,
+                        0
+                ),
                 onDelta
         );
     }
@@ -71,23 +73,8 @@ public class SearchStreamingAnswerGenerator implements SearchAnswerGenerator {
             SearchRetrievalResult retrieval,
             Consumer<String> onDelta
     ) {
-        return generate(
-                scope,
-                question,
-                retrieval.documents(),
-                retrieval.items(),
-                onDelta
-        );
-    }
-
-    private List<Long> generate(
-            SearchToolScope scope,
-            String question,
-            List<SearchDocumentResult> documents,
-            List<Item> items,
-            Consumer<String> onDelta
-    ) {
         access.validate(scope);
+        List<SearchDocumentResult> documents = retrieval.documents();
         boolean fullDocumentsOnly = !documents.isEmpty()
                 && springAi.filter(model -> model.supports(scope.workspaceId()))
                         .isPresent();
@@ -98,7 +85,7 @@ public class SearchStreamingAnswerGenerator implements SearchAnswerGenerator {
                 question,
                 scope.questionAcceptedAt(),
                 fullDocumentsOnly,
-                items
+                retrieval
         );
         try {
             budget.select(
@@ -110,7 +97,7 @@ public class SearchStreamingAnswerGenerator implements SearchAnswerGenerator {
                 access.validate(scope);
                 onDelta.accept(SearchAnswerGuidance.DOCUMENT_BUDGET_EXHAUSTED);
                 publishCoverage(
-                        items,
+                        retrieval,
                         List.of(),
                         false,
                         onDelta
@@ -130,7 +117,7 @@ public class SearchStreamingAnswerGenerator implements SearchAnswerGenerator {
         }
         List<Map<String, Object>> messages = budget.messages();
         log.info(
-                "Search context budget workspaceId={} answerId={} inputChars={} limitChars={} documents={} selectedDocuments={} history={} selectedHistory={} partial={}",
+                "Search context budget workspaceId={} answerId={} inputChars={} limitChars={} documents={} selectedDocuments={} history={} selectedHistory={} partial={} recoveredSection={}",
                 scope.workspaceId(),
                 scope.answerId(),
                 mapper.writeValueAsString(messages)
@@ -141,7 +128,8 @@ public class SearchStreamingAnswerGenerator implements SearchAnswerGenerator {
                         .size(),
                 previous.size(),
                 budget.historyCount(),
-                budget.partial()
+                budget.partial(),
+                budget.recoveredSection()
         );
         SearchAgentContext context = new SearchAgentContext(
                 properties,
@@ -189,7 +177,7 @@ public class SearchStreamingAnswerGenerator implements SearchAnswerGenerator {
                         onDelta
                 );
                 publishCoverage(
-                        items,
+                        retrieval,
                         List.of(),
                         budget.documentsLimited(),
                         onDelta
@@ -209,7 +197,7 @@ public class SearchStreamingAnswerGenerator implements SearchAnswerGenerator {
             // errors.
             onDelta.accept(validatedText.toString());
             publishCoverage(
-                    items,
+                    retrieval,
                     ids,
                     budget.documentsLimited(),
                     onDelta
@@ -225,13 +213,13 @@ public class SearchStreamingAnswerGenerator implements SearchAnswerGenerator {
     }
 
     private void publishCoverage(
-            List<Item> items,
+            SearchRetrievalResult retrieval,
             List<Long> citedIds,
             boolean documentsLimited,
             Consumer<String> onDelta
     ) {
         StringBuilder guidance = new StringBuilder();
-        for (Item item : items) {
+        for (Item item : retrieval.items()) {
             if (item.documentIds()
                     .stream()
                     .anyMatch(citedIds::contains)) {
@@ -246,6 +234,10 @@ public class SearchStreamingAnswerGenerator implements SearchAnswerGenerator {
                     .append(item.ordinal())
                     .append("번째 항목은 ")
                     .append(description);
+        }
+        if (retrieval.candidateLimited() && !documentsLimited) {
+            guidance.append("\n\n")
+                    .append(SearchAnswerGuidance.CANDIDATE_LIMITED);
         }
         if (documentsLimited) {
             guidance.append("\n\n")
