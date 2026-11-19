@@ -10,6 +10,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
+import java.util.function.Function;
 import java.net.URI;
 import lombok.extern.slf4j.Slf4j;
 import lombok.RequiredArgsConstructor;
@@ -233,6 +234,23 @@ public class SearchLlmClient {
             List<Map<String, Object>> messages,
             Consumer<String> onDelta
     ) {
+        stream(
+                scope,
+                messages,
+                SearchAnswerSchema::responseFormat,
+                onDelta
+        );
+    }
+
+    /**
+     * responseFormat은 공급자가 배열 길이 제한을 받는지(true)에 맞는 답변 출력 형식을 돌려준다.
+     */
+    public void stream(
+            SearchToolScope scope,
+            List<Map<String, Object>> messages,
+            Function<Boolean, Map<String, Object>> responseFormat,
+            Consumer<String> onDelta
+    ) {
         long started = System.nanoTime();
         long[] firstContentAt = {-1};
         String[] promptTokens = {"unavailable"};
@@ -245,7 +263,7 @@ public class SearchLlmClient {
             );
             request.put(
                     "response_format",
-                    SearchAnswerSchema.responseFormat(!"claude".equals(properties.getProvider()))
+                    responseFormat.apply(!"claude".equals(properties.getProvider()))
             );
             http.stream(
                     endpoint(),
