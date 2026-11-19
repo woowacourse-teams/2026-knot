@@ -784,10 +784,15 @@ describe("SearchConversation", () => {
     expect(screen.getAllByRole("region", { name: WRITE_CARD_NAME })).toHaveLength(1);
   });
 
-  it("다른 탭에서 실행 중인 카드는 끝날 때까지 대화 메시지를 다시 받아 끝 상태로 바꿔 보여준다 (SEARCH-R50)", async () => {
+  it("[SEARCH-R43,SEARCH-R50] 자기 요청 없이 실행 중인 카드를 보면 실행 API로 지금 상태를 받아 끝 상태로 바꿔 보여준다", async () => {
     let requestCount = 0;
+    let executeCount = 0;
     const [question, answer, ...rest] = searchMessagesResponse.items;
     mockServer.use(
+      http.post(EXECUTE_PATH, () => {
+        executeCount += 1;
+        return HttpResponse.json(doneWriteCard);
+      }),
       http.get(MESSAGES_PATH, ({ params }) => {
         requestCount += 1;
         return HttpResponse.json({
@@ -815,5 +820,6 @@ describe("SearchConversation", () => {
     expect(
       await screen.findByText("만들었어요", undefined, { timeout: 4000 }),
     ).toBeInTheDocument();
+    expect(executeCount).toBe(1);
   });
 });
