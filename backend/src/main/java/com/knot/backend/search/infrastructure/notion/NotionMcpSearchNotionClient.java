@@ -210,7 +210,7 @@ class NotionMcpSearchNotionClient implements SearchNotionClient {
     }
 
     /**
-     * 갱신한 토큰도 거절되면 연결을 만료로 바꾸지 않고 FAILED로 끝낸다(갱신은 호출 하나에 한 번만 한다).
+     * 갱신한 토큰도 인증 문제로 거절되면 연결을 만료로 바꾼다(SEARCH-R34). 갱신은 호출 하나에 한 번만 한다.
      */
     private <T> T afterRefresh(
             long workspaceId,
@@ -229,10 +229,9 @@ class NotionMcpSearchNotionClient implements SearchNotionClient {
                     deadline
             );
         } catch (NotionMcpUnauthorizedException exception) {
-            throw new SearchNotionException(
-                    SearchNotionFailure.FAILED,
-                    null,
-                    exception
+            throw refresher.expireRejected(
+                    workspaceId,
+                    token
             );
         }
     }

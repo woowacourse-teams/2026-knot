@@ -64,6 +64,26 @@ class NotionTokenRefresher {
         );
     }
 
+    /**
+     * 갱신한 토큰까지 거절되면 연결을 만료로 바꾼다. 그사이 다른 요청이 또 갱신해 저장된 토큰이 달라졌으면 그대로 둔다.
+     */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public SearchNotionException expireRejected(
+            long workspaceId,
+            String rejectedAccessToken
+    ) {
+        Optional<NotionConnection> found = connections.findByWorkspaceIdForUpdate(workspaceId);
+        if (found.isEmpty()) {
+            return new SearchNotionException(SearchNotionFailure.NOT_CONNECTED);
+        }
+        NotionConnection connection = found.get();
+        if (!cipher.decrypt(connection.getEncryptedAccessToken())
+                .equals(rejectedAccessToken)) {
+            return new SearchNotionException(SearchNotionFailure.FAILED);
+        }
+        return expire(connection);
+    }
+
     private String save(
             NotionConnection connection,
             SearchNotionIssuedGrant renewed

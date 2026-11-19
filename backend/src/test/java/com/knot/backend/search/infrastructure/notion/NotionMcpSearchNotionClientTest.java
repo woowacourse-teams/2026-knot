@@ -315,6 +315,38 @@ class NotionMcpSearchNotionClientTest {
     }
 
     @Test
+    @DisplayName("갱신한 토큰까지 401로 거절되면 연결을 만료로 바꾼다")
+    void search_refreshedTokenRejected() {
+        // given
+        connect(
+                Instant.now()
+                        .plusSeconds(3600)
+        );
+        notion.acceptToken("access-other");
+        notion.tokenResponse(
+                FakeNotionServer.Response.json(
+                        200,
+                        "{\"access_token\":\"access-new\",\"refresh_token\":\"refresh-new\",\"expires_in\":28800}"
+                )
+        );
+
+        // when & then
+        assertThatThrownBy(
+                () -> client.search(
+                        WORKSPACE_ID,
+                        "회의",
+                        TIMEOUT
+                )
+        ).isInstanceOf(SearchNotionException.class)
+                .extracting("failure")
+                .isEqualTo(SearchNotionFailure.CONNECTION_EXPIRED);
+        assertThat(
+                connections.current()
+                        .isConnected()
+        ).isFalse();
+    }
+
+    @Test
     @DisplayName("만료된 연결이면 노션을 부르지 않고, 연결이 없으면 연결 없음으로 알린다")
     void search_notUsableConnection() {
         // given
