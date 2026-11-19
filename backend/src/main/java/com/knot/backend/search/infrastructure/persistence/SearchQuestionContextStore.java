@@ -17,10 +17,12 @@ public class SearchQuestionContextStore {
     public Optional<SearchQuestionContext> findPreviousEvidenceContext(SearchToolScope scope) {
         return jdbc.sql("""
                 SELECT COALESCE(ctx.search_text, prior_question.content) AS search_text,
-                       ctx.recorded_from, ctx.recorded_before,
+                       CASE WHEN COUNT(*) = COUNT(r.id) THEN ctx.recorded_from END AS recorded_from,
+                       CASE WHEN COUNT(*) = COUNT(r.id) THEN ctx.recorded_before END AS recorded_before,
                        CASE WHEN COUNT(*) = COUNT(r.id) AND COUNT(DISTINCT r.id) = 1 THEN MIN(r.id) END AS recording_id
                 FROM search_messages current_question
                 JOIN search_conversations c ON c.id = current_question.conversation_id
+                JOIN workspace_members wm ON wm.workspace_id = c.workspace_id AND wm.member_id = c.member_id
                 JOIN search_messages prior_answer ON prior_answer.conversation_id = c.id
                      AND prior_answer.sequence = current_question.sequence - 1
                      AND prior_answer.role = 'ASSISTANT' AND prior_answer.status = 'COMPLETED'
@@ -28,13 +30,14 @@ public class SearchQuestionContextStore {
                 JOIN search_messages prior_question ON prior_question.conversation_id = c.id
                      AND prior_question.sequence = prior_answer.sequence - 1 AND prior_question.role = 'USER'
                 JOIN search_evidences e ON e.message_id = prior_answer.id
-                LEFT JOIN documents d ON d.id = e.document_id AND d.workspace_id = c.workspace_id
+                LEFT JOIN documents d ON d.id = e.live_document_id AND d.workspace_id = c.workspace_id
                      AND d.status IN ('DRAFT', 'ARCHIVED') AND d.created_at <= :cutoff
                 LEFT JOIN recording_sessions r ON r.id = d.recording_session_id AND r.workspace_id = c.workspace_id
                 LEFT JOIN search_question_contexts ctx ON ctx.question_message_id = prior_question.id
                 WHERE c.id = :conversation AND c.workspace_id = :workspace AND c.member_id = :member
                      AND current_question.id = :question AND current_question.role = 'USER'
                 GROUP BY prior_question.content, ctx.search_text, ctx.recorded_from, ctx.recorded_before
+                HAVING COUNT(*) = COUNT(r.id)
                 """)
                 .param(
                         "conversation",

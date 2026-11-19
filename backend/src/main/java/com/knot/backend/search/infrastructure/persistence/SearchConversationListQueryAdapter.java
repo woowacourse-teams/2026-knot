@@ -1,5 +1,6 @@
 package com.knot.backend.search.infrastructure.persistence;
 
+import com.knot.backend.search.application.SearchAnswerContentPolicy;
 import com.knot.backend.search.application.SearchConversationListQuery;
 import com.knot.backend.search.application.dto.result.SearchConversationListItemResult;
 import com.knot.backend.search.domain.model.SearchConversationCursor;
@@ -28,6 +29,7 @@ public class SearchConversationListQueryAdapter implements SearchConversationLis
                 cursor != null,
                 cursorTime(cursor),
                 cursorId(cursor),
+                SearchAnswerContentPolicy.SOURCE_UNAVAILABLE,
                 PageRequest.of(
                         0,
                         size + 1

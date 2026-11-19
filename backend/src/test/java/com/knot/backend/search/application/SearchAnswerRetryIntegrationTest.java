@@ -176,7 +176,23 @@ class SearchAnswerRetryIntegrationTest {
         );
         legacyFailure(
                 old,
-                "ANSWER_GENERATION_FAILED"
+                "SEARCH_NETWORK_ERROR"
+        );
+    }
+
+    @Test
+    @DisplayName("과거의 비네트워크 FAILED 답변을 수동 재시도로 접수하지 않는다")
+    void acceptRetry_failure_legacyFailureIsNotRetryable() {
+        jdbc.sql("UPDATE search_messages SET failure_code = 'ANSWER_GENERATION_FAILED' WHERE id = :id")
+                .param(
+                        "id",
+                        old.answerId()
+                )
+                .update();
+        assertError(
+                member,
+                first.questionMessageId(),
+                "ANSWER_NOT_FAILED"
         );
     }
 
@@ -417,7 +433,7 @@ class SearchAnswerRetryIntegrationTest {
                 .orElseThrow();
         legacyFailure(
                 current,
-                "NEW_FAILURE"
+                "SEARCH_NETWORK_ERROR"
         );
         assertThat(visible()).isFalse();
         SearchQuestionAcceptedResult later = retry(UUID.randomUUID());
@@ -778,7 +794,9 @@ class SearchAnswerRetryIntegrationTest {
                         document
                 )
                 .update();
-        jdbc.sql("INSERT INTO search_evidences (message_id, document_id, rank) VALUES (:message, :document, 1)")
+        jdbc.sql(
+                "INSERT INTO search_evidences (message_id, document_id, live_document_id, rank) VALUES (:message, :document, :document, 1)"
+        )
                 .param(
                         "message",
                         first.answerMessageId()

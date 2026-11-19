@@ -1,5 +1,7 @@
 package com.knot.backend.search.application.dto.result;
 
+import com.knot.backend.search.application.SearchAnswerContentPolicy;
+import com.knot.backend.search.application.SearchAnswerContentPolicy.EvidenceStatus;
 import com.knot.backend.search.domain.model.SearchMessage;
 import com.knot.backend.search.domain.model.SearchMessageRole;
 import com.knot.backend.search.domain.model.SearchMessageStatus;
@@ -12,8 +14,10 @@ public record SearchMessageListItemResult(
         int sequence,
         String content,
         SearchMessageStatus status,
+        boolean retryable,
         Instant createdAt,
         List<SearchEvidenceItemResult> evidences,
+        SearchDocumentSelection documentSelection,
         SearchAnswerNotionResult notion
 ) {
 
@@ -23,17 +27,58 @@ public record SearchMessageListItemResult(
 
     public static SearchMessageListItemResult from(
             SearchMessage message,
+            List<SearchEvidenceItemResult> evidences
+    ) {
+        return from(
+                message,
+                evidences,
+                null
+        );
+    }
+
+    public static SearchMessageListItemResult from(
+            SearchMessage message,
             List<SearchEvidenceItemResult> evidences,
+            SearchDocumentListResult documentList
+    ) {
+        return from(
+                message,
+                evidences,
+                documentList,
+                EvidenceStatus.AVAILABLE,
+                SearchAnswerNotionResult.EMPTY
+        );
+    }
+
+    public static SearchMessageListItemResult from(
+            SearchMessage message,
+            List<SearchEvidenceItemResult> evidences,
+            SearchDocumentListResult documentList,
+            EvidenceStatus evidenceStatus,
             SearchAnswerNotionResult notion
     ) {
+        String content = SearchAnswerContentPolicy.content(
+                message.getContent(),
+                evidenceStatus
+        );
+        SearchDocumentSelection selection = null;
+        if (documentList != null && evidenceStatus != EvidenceStatus.SOURCE_UNAVAILABLE) {
+            content = documentList.content();
+            selection = documentList.selectedDocument();
+        }
         return new SearchMessageListItemResult(
                 message.getId(),
                 message.getRole(),
                 message.getSequence(),
-                message.getContent(),
+                content,
                 message.getStatus(),
+                message.isRetryable(),
                 message.getCreatedAt(),
-                evidences,
+                SearchAnswerContentPolicy.evidences(
+                        evidences,
+                        evidenceStatus
+                ),
+                selection,
                 notion
         );
     }

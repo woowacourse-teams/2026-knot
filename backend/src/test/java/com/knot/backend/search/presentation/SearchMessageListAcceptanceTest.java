@@ -232,9 +232,11 @@ class SearchMessageListAcceptanceTest {
     void find_success_answerStates(String answerStatus) throws Exception {
         // given
         String content = " \n😀\t" + "긴 답변".repeat(200);
-        jdbc.sql(
-                "UPDATE search_messages SET status = :status, content = :content WHERE conversation_id = :id AND sequence = 2"
-        )
+        jdbc.sql("""
+                UPDATE search_messages SET status = :status, content = :content,
+                    answer_kind = CASE WHEN :status = 'COMPLETED' THEN 'UNVERIFIED_ANSWER' END
+                WHERE conversation_id = :id AND sequence = 2
+                """)
                 .param(
                         "status",
                         answerStatus

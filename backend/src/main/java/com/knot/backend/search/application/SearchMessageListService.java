@@ -1,7 +1,9 @@
 package com.knot.backend.search.application;
 
+import com.knot.backend.search.application.SearchAnswerContentPolicy.EvidenceStatus;
 import com.knot.backend.search.application.dto.query.SearchMessageListParameters;
 import com.knot.backend.search.application.dto.result.SearchAnswerNotionResult;
+import com.knot.backend.search.application.dto.result.SearchDocumentListResult;
 import com.knot.backend.search.application.dto.result.SearchEvidenceItemResult;
 import com.knot.backend.search.application.dto.result.SearchMessageListItemResult;
 import com.knot.backend.search.application.dto.result.SearchMessageListResult;
@@ -11,25 +13,69 @@ import com.knot.backend.search.domain.SearchErrorCode;
 import com.knot.backend.search.domain.SearchException;
 import com.knot.backend.search.domain.model.SearchMessage;
 import com.knot.backend.search.domain.model.SearchMessageRole;
+import com.knot.backend.search.domain.model.SearchMessageStatus;
 import com.knot.backend.workspace.domain.repository.WorkspaceMemberRepository;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Isolation;
-import org.springframework.transaction.annotation.Transactional;
 
 @Service
 @RequiredArgsConstructor
-@Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
 public class SearchMessageListService {
 
     private final WorkspaceMemberRepository memberships;
     private final SearchMessageListQuery query;
+    private final SearchHistoryReadTransaction historyRead;
     private final SearchAnswerNotionReader notionReader;
 
     public SearchMessageListResult find(
+            long workspaceId,
+            long memberId,
+            long conversationId,
+            SearchMessageListParameters parameters
+    ) {
+        MessagePage page = historyRead.read(
+                () -> readPage(
+                        workspaceId,
+                        memberId,
+                        conversationId,
+                        parameters
+                )
+        );
+        List<Long> completedAnswerIds = page.messages()
+                .stream()
+                .filter(
+                        message -> message.getRole() == SearchMessageRole.ASSISTANT
+                                && message.getStatus() == SearchMessageStatus.COMPLETED
+                )
+                .map(SearchMessage::getId)
+                .toList();
+        Map<Long, EvidenceStatus> statuses = completedAnswerIds.isEmpty()
+                ? Map.of()
+                : query.findEvidenceStatuses(
+                        workspaceId,
+                        memberId,
+                        conversationId,
+                        completedAnswerIds,
+                        true
+                );
+        return new SearchMessageListResult(
+                conversationId,
+                assembleItems(
+                        page.messages(),
+                        page.evidences(),
+                        page.documentLists(),
+                        statuses,
+                        page.notions()
+                ),
+                page.hasPrevious(),
+                page.previousCursor()
+        );
+    }
+
+    private MessagePage readPage(
             long workspaceId,
             long memberId,
             long conversationId,
@@ -67,27 +113,45 @@ public class SearchMessageListService {
                 conversationId,
                 selected
         );
+        List<Long> answerIds = answerIds(selected);
+        Map<Long, SearchDocumentListResult> documentLists = Map.of();
+        if (!answerIds.isEmpty()) {
+            documentLists = query.findDocumentLists(
+                    workspaceId,
+                    memberId,
+                    conversationId,
+                    answerIds
+            );
+        }
         Map<Long, SearchAnswerNotionResult> notions = notionReader.read(
                 conversationId,
-                answerIds(selected)
+                answerIds
         );
         boolean hasPrevious = hasPrevious(
                 page,
                 parameters.size()
         );
-        return new SearchMessageListResult(
-                conversationId,
-                assembleItems(
-                        selected,
-                        evidences,
-                        notions
-                ),
+        return new MessagePage(
+                selected,
+                evidences,
+                documentLists,
+                notions,
                 hasPrevious,
                 createPreviousCursor(
                         selected,
                         hasPrevious
                 )
         );
+    }
+
+    private record MessagePage(
+            List<SearchMessage> messages,
+            Map<Long, List<SearchEvidenceItemResult>> evidences,
+            Map<Long, SearchDocumentListResult> documentLists,
+            Map<Long, SearchAnswerNotionResult> notions,
+            boolean hasPrevious,
+            String previousCursor
+    ) {
     }
 
     private void validatePathIds(
@@ -148,10 +212,7 @@ public class SearchMessageListService {
             long conversationId,
             List<SearchMessage> selected
     ) {
-        List<Long> answerIds = selected.stream()
-                .filter(message -> message.getRole() == SearchMessageRole.ASSISTANT)
-                .map(SearchMessage::getId)
-                .toList();
+        List<Long> answerIds = answerIds(selected);
         if (answerIds.isEmpty()) {
             return Map.of();
         }
@@ -163,9 +224,18 @@ public class SearchMessageListService {
         );
     }
 
+    private List<Long> answerIds(List<SearchMessage> selected) {
+        return selected.stream()
+                .filter(message -> message.getRole() == SearchMessageRole.ASSISTANT)
+                .map(SearchMessage::getId)
+                .toList();
+    }
+
     private List<SearchMessageListItemResult> assembleItems(
             List<SearchMessage> selected,
             Map<Long, List<SearchEvidenceItemResult>> evidences,
+            Map<Long, SearchDocumentListResult> documentLists,
+            Map<Long, EvidenceStatus> evidenceStatuses,
             Map<Long, SearchAnswerNotionResult> notions
     ) {
         return selected.stream()
@@ -176,6 +246,11 @@ public class SearchMessageListService {
                                 evidenceFor(
                                         message,
                                         evidences
+                                ),
+                                documentLists.get(message.getId()),
+                                evidenceStatuses.getOrDefault(
+                                        message.getId(),
+                                        EvidenceStatus.AVAILABLE
                                 ),
                                 notions.getOrDefault(
                                         message.getId(),
@@ -197,13 +272,6 @@ public class SearchMessageListService {
                 message.getId(),
                 List.of()
         );
-    }
-
-    private List<Long> answerIds(List<SearchMessage> selected) {
-        return selected.stream()
-                .filter(message -> message.getRole() == SearchMessageRole.ASSISTANT)
-                .map(SearchMessage::getId)
-                .toList();
     }
 
     private boolean hasPrevious(

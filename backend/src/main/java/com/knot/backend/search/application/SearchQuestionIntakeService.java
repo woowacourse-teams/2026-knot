@@ -1,6 +1,7 @@
 package com.knot.backend.search.application;
 
 import com.knot.backend.search.application.dto.command.SearchQuestionCommand;
+import com.knot.backend.search.application.dto.query.SearchDocumentListRequest;
 import com.knot.backend.search.application.dto.result.SearchQuestionAcceptedResult;
 import com.knot.backend.search.domain.model.SearchAnswerExecution;
 import com.knot.backend.search.domain.model.SearchConversation;
@@ -57,7 +58,7 @@ public class SearchQuestionIntakeService {
                     command.content()
             );
         }
-        availability.requireAvailable();
+        requireAvailable(command);
         return create(
                 workspaceId,
                 memberId,
@@ -110,11 +111,20 @@ public class SearchQuestionIntakeService {
             );
         }
         requireNoStreamingAnswer(conversationId);
-        availability.requireAvailable();
+        requireAvailable(command);
         return appendQuestion(
                 conversation,
                 command
         );
+    }
+
+    private void requireAvailable(SearchQuestionCommand command) {
+        if (SearchDocumentListRequest.parse(command.content())
+                .isPresent()) {
+            availability.requireWorkerAvailable();
+            return;
+        }
+        availability.requireAvailable();
     }
 
     private void validateConversationId(long conversationId) {

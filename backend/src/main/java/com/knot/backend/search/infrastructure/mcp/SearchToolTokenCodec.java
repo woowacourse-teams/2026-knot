@@ -125,7 +125,7 @@ public class SearchToolTokenCodec implements SearchToolTokens {
     }
 
     public String revision(String content) {
-        return digest(content.getBytes(StandardCharsets.UTF_8));
+        return com.knot.backend.search.domain.model.SearchEvidenceVersion.contentRevision(content);
     }
 
     private String digest(byte[] bytes) {

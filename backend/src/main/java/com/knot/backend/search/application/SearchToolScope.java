@@ -3,6 +3,7 @@ package com.knot.backend.search.application;
 import com.knot.backend.search.application.dto.result.SearchAnswerWorkResult;
 import com.knot.backend.search.domain.SearchToolException;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.UUID;
 
 public record SearchToolScope(
@@ -16,7 +17,8 @@ public record SearchToolScope(
         Instant requestAcceptedAt,
         Instant startedAt,
         Instant expiresAt,
-        Long recordingSessionId
+        Long recordingSessionId,
+        LocalDate dateContext
 ) {
 
     public SearchToolScope(
@@ -42,6 +44,35 @@ public record SearchToolScope(
                 startedAt,
                 expiresAt,
                 recordingSessionId
+        );
+    }
+
+    public SearchToolScope(
+            long workspaceId,
+            long memberId,
+            long conversationId,
+            long questionId,
+            long answerId,
+            UUID token,
+            Instant questionAcceptedAt,
+            Instant requestAcceptedAt,
+            Instant startedAt,
+            Instant expiresAt,
+            Long recordingSessionId
+    ) {
+        this(
+                workspaceId,
+                memberId,
+                conversationId,
+                questionId,
+                answerId,
+                token,
+                questionAcceptedAt,
+                requestAcceptedAt,
+                startedAt,
+                expiresAt,
+                recordingSessionId,
+                null
         );
     }
 
@@ -73,7 +104,8 @@ public record SearchToolScope(
                 requestAcceptedAt,
                 startedAt,
                 expiresAt,
-                recordingId
+                recordingId,
+                dateContext
         );
     }
 
@@ -99,6 +131,23 @@ public record SearchToolScope(
                 startedAt,
                 expiresAt,
                 null
+        );
+    }
+
+    public SearchToolScope withDateContext(LocalDate date) {
+        return new SearchToolScope(
+                workspaceId,
+                memberId,
+                conversationId,
+                questionId,
+                answerId,
+                token,
+                questionAcceptedAt,
+                requestAcceptedAt,
+                startedAt,
+                expiresAt,
+                recordingSessionId,
+                date
         );
     }
 

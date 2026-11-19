@@ -171,6 +171,8 @@ class SearchAnswerNotionSseTest {
                 List.of(),
                 0,
                 null,
+                null,
+                false,
                 notion
         );
     }

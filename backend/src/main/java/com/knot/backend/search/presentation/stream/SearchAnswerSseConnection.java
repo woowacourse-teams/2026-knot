@@ -224,6 +224,17 @@ final class SearchAnswerSseConnection implements Runnable {
     }
 
     private void sendTerminal(SearchAnswerSnapshotResult snapshot) throws IOException {
+        if (snapshot.documentSelection() != null) {
+            send(
+                    "document_selection",
+                    Map.of(
+                            "answerMessageId",
+                            answerId,
+                            "selection",
+                            snapshot.documentSelection()
+                    )
+            );
+        }
         send(
                 "evidence",
                 Map.of(

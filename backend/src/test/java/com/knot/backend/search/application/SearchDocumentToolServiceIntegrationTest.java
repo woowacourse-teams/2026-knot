@@ -1565,8 +1565,9 @@ class SearchDocumentToolServiceIntegrationTest {
                 )
                 .update();
         jdbc.sql("""
-                INSERT INTO search_messages (conversation_id, role, sequence, content, status, created_at)
-                SELECT :c, role, sequence, content, status, CURRENT_TIMESTAMP FROM (VALUES
+                INSERT INTO search_messages (conversation_id, role, sequence, content, status, created_at, answer_kind)
+                SELECT :c, role, sequence, content, status, CURRENT_TIMESTAMP,
+                    CASE WHEN status = 'COMPLETED' THEN 'UNVERIFIED_ANSWER' END FROM (VALUES
                   ('USER',1,'이전 질문','RECEIVED'),('ASSISTANT',2,'완료 답변','COMPLETED'),
                   ('USER',3,'중지 질문','RECEIVED'),('ASSISTANT',4,'부분 답변','STOPPED'),
                   ('USER',5,'실패 질문','RECEIVED'),('ASSISTANT',6,'오류 부분','FAILED'),

@@ -1,7 +1,10 @@
 package com.knot.backend.search.application;
 
+import com.knot.backend.search.application.SearchAnswerContentPolicy.EvidenceStatus;
 import com.knot.backend.search.application.dto.result.SearchAnswerNotionResult;
 import com.knot.backend.search.application.dto.result.SearchAnswerSnapshotResult;
+import com.knot.backend.search.application.dto.result.SearchDocumentListResult;
+import com.knot.backend.search.application.dto.result.SearchDocumentSelection;
 import com.knot.backend.search.application.dto.result.SearchEvidenceItemResult;
 import com.knot.backend.search.application.notion.SearchAnswerNotionReader;
 import com.knot.backend.search.domain.model.SearchAnswerExecution;
@@ -16,20 +19,41 @@ import com.knot.backend.workspace.domain.repository.WorkspaceMemberRepository;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Isolation;
-import org.springframework.transaction.annotation.Transactional;
 
 @Service
 @RequiredArgsConstructor
-@Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
 public class SearchAnswerSnapshotService {
 
     private final SearchRepository repository;
     private final WorkspaceMemberRepository memberships;
     private final SearchMessageListQuery messages;
+    private final SearchHistoryReadTransaction historyRead;
     private final SearchAnswerNotionReader notions;
 
     public SearchAnswerSnapshotResult read(
+            long workspaceId,
+            long memberId,
+            long conversationId,
+            long answerId
+    ) {
+        SearchAnswerSnapshotResult snapshot = historyRead.read(
+                () -> readScoped(
+                        workspaceId,
+                        memberId,
+                        conversationId,
+                        answerId
+                )
+        );
+        return protect(
+                workspaceId,
+                memberId,
+                conversationId,
+                snapshot,
+                true
+        );
+    }
+
+    private SearchAnswerSnapshotResult readScoped(
             long workspaceId,
             long memberId,
             long conversationId,
@@ -69,6 +93,27 @@ public class SearchAnswerSnapshotService {
             long memberId,
             long answerId
     ) {
+        LiveSnapshot snapshot = historyRead.read(
+                () -> readLive(
+                        workspaceId,
+                        memberId,
+                        answerId
+                )
+        );
+        return protect(
+                workspaceId,
+                memberId,
+                snapshot.conversationId(),
+                snapshot.answer(),
+                false
+        );
+    }
+
+    private LiveSnapshot readLive(
+            long workspaceId,
+            long memberId,
+            long answerId
+    ) {
         SearchAnswerExecution execution = repository.findExecution(answerId)
                 .orElseThrow();
         SearchConversation conversation = repository.findConversation(execution.getConversationId())
@@ -80,14 +125,17 @@ public class SearchAnswerSnapshotService {
         );
         SearchMessage answer = repository.findMessage(answerId)
                 .orElseThrow();
-        return readSnapshot(
-                workspaceId,
-                memberId,
+        return new LiveSnapshot(
                 conversation.getId(),
-                answerId,
-                answer,
-                execution,
-                conversation
+                readSnapshot(
+                        workspaceId,
+                        memberId,
+                        conversation.getId(),
+                        answerId,
+                        answer,
+                        execution,
+                        conversation
+                )
         );
     }
 
@@ -110,9 +158,25 @@ public class SearchAnswerSnapshotService {
                         answerId,
                         List.of()
                 );
+        SearchDocumentListResult list = null;
+        if (answer.getStatus() == SearchMessageStatus.COMPLETED) {
+            list = messages.findDocumentLists(
+                    workspaceId,
+                    memberId,
+                    conversationId,
+                    List.of(answerId)
+            )
+                    .get(answerId);
+        }
+        String content = answer.getContent();
+        SearchDocumentSelection selection = null;
+        if (list != null) {
+            content = list.content();
+            selection = list.selectedDocument();
+        }
         return new SearchAnswerSnapshotResult(
                 answerId,
-                answer.getContent(),
+                content,
                 answer.getStatus(),
                 answer.getFailureCode(),
                 execution.getExecutionToken(),
@@ -123,6 +187,8 @@ public class SearchAnswerSnapshotService {
                         .map(receipt -> receipt.getId())
                         .orElse(0L),
                 conversation.getUpdatedAt(),
+                selection,
+                false,
                 notion(
                         answer,
                         conversationId,
@@ -150,6 +216,36 @@ public class SearchAnswerSnapshotService {
                         answerId,
                         SearchAnswerNotionResult.EMPTY
                 );
+    }
+
+    private SearchAnswerSnapshotResult protect(
+            long workspaceId,
+            long memberId,
+            long conversationId,
+            SearchAnswerSnapshotResult snapshot,
+            boolean compareVersions
+    ) {
+        if (snapshot.status() != SearchMessageStatus.COMPLETED) {
+            return snapshot;
+        }
+        EvidenceStatus status = messages.findEvidenceStatuses(
+                workspaceId,
+                memberId,
+                conversationId,
+                List.of(snapshot.answerId()),
+                compareVersions
+        )
+                .getOrDefault(
+                        snapshot.answerId(),
+                        EvidenceStatus.AVAILABLE
+                );
+        return snapshot.withEvidenceStatus(status);
+    }
+
+    private record LiveSnapshot(
+            long conversationId,
+            SearchAnswerSnapshotResult answer
+    ) {
     }
 
     private void validateAnswer(

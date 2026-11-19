@@ -3,6 +3,7 @@ package com.knot.backend.search.application;
 import com.knot.backend.document.domain.model.Document;
 import com.knot.backend.document.domain.model.DocumentStatus;
 import com.knot.backend.document.domain.repository.DocumentRepository;
+import com.knot.backend.search.application.dto.query.SearchDocumentListRequest;
 import com.knot.backend.global.config.SearchWorkerProperties;
 import com.knot.backend.search.application.dto.result.SearchAnswerWorkResult;
 import com.knot.backend.search.application.dto.result.SearchAnswerStopResult;
@@ -12,15 +13,15 @@ import com.knot.backend.search.infrastructure.persistence.SearchQuestionContextS
 import com.knot.backend.search.domain.model.SearchAnswerExecution;
 import com.knot.backend.search.domain.model.SearchConversation;
 import com.knot.backend.search.domain.SearchErrorCode;
+import com.knot.backend.search.domain.SearchAttemptFailure;
 import com.knot.backend.search.domain.SearchException;
 import com.knot.backend.search.domain.model.SearchEvidence;
+import com.knot.backend.search.domain.model.SearchAnswerKind;
 import com.knot.backend.search.domain.model.SearchMessage;
 import com.knot.backend.search.domain.model.SearchMessageStatus;
 import com.knot.backend.search.domain.model.SearchMessageRole;
 import com.knot.backend.search.domain.model.SearchRequestReceipt;
 import com.knot.backend.search.domain.model.SearchExecutionState;
-import com.knot.backend.search.domain.SearchException;
-import com.knot.backend.search.domain.SearchErrorCode;
 import com.knot.backend.search.domain.repository.SearchRepository;
 import com.knot.backend.workspace.domain.repository.WorkspaceRepository;
 import com.knot.backend.workspace.domain.repository.WorkspaceMemberRepository;
@@ -28,6 +29,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -42,6 +44,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class SearchAnswerExecutionService {
 
     private final SearchRepository repository;
+    private final SearchDocumentListService documentLists;
     private final WorkspaceRepository workspaces;
     private final WorkspaceMemberRepository memberships;
     private final DocumentRepository documents;
@@ -280,12 +283,56 @@ public class SearchAnswerExecutionService {
         return true;
     }
 
+    public boolean completeDocumentList(
+            SearchToolScope scope,
+            SearchDocumentListRequest request
+    ) {
+        Optional<SearchAnswerExecution> current = currentExecution(
+                scope.answerId(),
+                scope.token()
+        );
+        if (current.isEmpty()) {
+            return false;
+        }
+        SearchAnswerExecution execution = current.orElseThrow();
+        answer(execution).appendContent(
+                documentLists.prepareAnswer(
+                        scope,
+                        request
+                )
+        );
+        return completeCurrent(
+                execution,
+                List.of(),
+                Set.of(),
+                Map.of()
+        );
+    }
+
     public boolean completeGenerated(
             long answerId,
             UUID token,
             String content,
             List<Long> usedDocumentIds,
             Set<Long> candidateIds
+    ) {
+        return completeGenerated(
+                answerId,
+                token,
+                content,
+                usedDocumentIds,
+                candidateIds,
+                Map.of()
+        );
+    }
+
+    public boolean completeGenerated(
+            long answerId,
+            UUID token,
+            String content,
+            List<Long> usedDocumentIds,
+            Set<Long> candidateIds,
+            Map<Long, String> sourceVersions
     ) {
         // Publish validated text, evidence and terminal state in the same transaction.
         Optional<SearchAnswerExecution> current = currentExecution(
@@ -299,7 +346,8 @@ public class SearchAnswerExecutionService {
         return completeCurrent(
                 current.get(),
                 usedDocumentIds,
-                candidateIds
+                candidateIds,
+                sourceVersions
         );
     }
 
@@ -319,14 +367,16 @@ public class SearchAnswerExecutionService {
         return completeCurrent(
                 current.get(),
                 usedDocumentIds,
-                candidateIds
+                candidateIds,
+                Map.of()
         );
     }
 
     private boolean completeCurrent(
             SearchAnswerExecution execution,
             List<Long> usedDocumentIds,
-            Set<Long> candidateIds
+            Set<Long> candidateIds,
+            Map<Long, String> sourceVersions
     ) {
         validateUsedDocuments(
                 usedDocumentIds,
@@ -344,11 +394,18 @@ public class SearchAnswerExecutionService {
                     SearchEvidence.create(
                             answerId,
                             documentId,
-                            index + 1
+                            index + 1,
+                            sourceVersions.get(documentId)
                     )
             );
         }
-        answer(execution).complete();
+        SearchMessage message = answer(execution);
+        message.complete(
+                answerKind(
+                        message.getContent(),
+                        usedDocumentIds
+                )
+        );
         execution.finish();
         recordTerminalActivity(
                 conversation,
@@ -357,6 +414,21 @@ public class SearchAnswerExecutionService {
         );
         repository.flush();
         return true;
+    }
+
+    private SearchAnswerKind answerKind(
+            String content,
+            List<Long> usedDocumentIds
+    ) {
+        if (!usedDocumentIds.isEmpty()) {
+            return SearchAnswerKind.DOCUMENT_ANSWER;
+        }
+        if (SearchAnswerGuidance.CLARIFY_MEETING.equals(content)
+                || SearchAnswerGuidance.CLARIFY_MEETING_DATE.equals(content)
+                || SearchAnswerGuidance.UNAVAILABLE.equals(content)) {
+            return SearchAnswerKind.SERVER_GUIDANCE;
+        }
+        return SearchAnswerKind.UNVERIFIED_ANSWER;
     }
 
     public boolean fail(
@@ -492,6 +564,16 @@ public class SearchAnswerExecutionService {
                     execution,
                     code,
                     "access_denied",
+                    SearchMessageStatus.FAILED
+            );
+            return;
+        }
+        if (SearchAttemptFailure.NETWORK_ERROR.equals(code)) {
+            answer(execution).failNetwork();
+            finishTerminal(
+                    execution,
+                    code,
+                    "network_error",
                     SearchMessageStatus.FAILED
             );
             return;

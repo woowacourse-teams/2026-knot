@@ -77,24 +77,27 @@ final class SearchAnswerReconnectConnection implements Runnable {
         if (!reservation.isActive()) {
             return;
         }
+        sendSnapshot(initial);
+        sendEvidenceIfChanged(initial);
+        if (!sendTerminal(initial)) {
+            poll();
+        }
+    }
+
+    private void sendSnapshot(SearchAnswerSnapshotResult snapshot) throws IOException {
         send(
                 "snapshot",
                 Map.of(
                         "answerId",
-                        initial.answerId(),
+                        snapshot.answerId(),
                         "content",
-                        initial.content(),
+                        snapshot.content(),
                         "status",
-                        initial.status()
+                        snapshot.status()
                                 .name()
                 )
         );
-        sentContent = initial.content();
-        sendEvidenceIfChanged(initial);
-        if (sendTerminal(initial)) {
-            return;
-        }
-        poll();
+        sentContent = snapshot.content();
     }
 
     private void poll() throws IOException, InterruptedException {
@@ -114,7 +117,12 @@ final class SearchAnswerReconnectConnection implements Runnable {
             if (!reservation.isActive()) {
                 return;
             }
-            sendDelta(snapshot.content());
+            if (snapshot.sourceUnavailable() && !snapshot.content()
+                    .startsWith(sentContent)) {
+                sendSnapshot(snapshot);
+            } else {
+                sendDelta(snapshot.content());
+            }
             sendEvidenceIfChanged(snapshot);
             if (sendTerminal(snapshot)) {
                 return;
@@ -153,7 +161,7 @@ final class SearchAnswerReconnectConnection implements Runnable {
 
     private void sendEvidenceIfChanged(SearchAnswerSnapshotResult snapshot) throws IOException {
         List<SearchEvidenceItemResult> evidence = snapshot.evidences();
-        if (evidence.isEmpty() || evidence.equals(sentEvidence)) {
+        if (!snapshot.sourceUnavailable() && evidence.equals(sentEvidence)) {
             return;
         }
         send(
@@ -171,6 +179,17 @@ final class SearchAnswerReconnectConnection implements Runnable {
     private boolean sendTerminal(SearchAnswerSnapshotResult snapshot) throws IOException {
         if (snapshot.status() == SearchMessageStatus.STREAMING) {
             return false;
+        }
+        if (snapshot.documentSelection() != null) {
+            send(
+                    "document_selection",
+                    Map.of(
+                            "answerId",
+                            snapshot.answerId(),
+                            "selection",
+                            snapshot.documentSelection()
+                    )
+            );
         }
         for (SearchNotionSseEvents.Event event : SearchNotionSseEvents.of(
                 "answerId",

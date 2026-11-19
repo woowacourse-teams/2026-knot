@@ -144,7 +144,7 @@ class SearchMessageListSnapshotIntegrationTest {
         // then
         SearchMessageListItemResult newAnswer = next.items()
                 .getLast();
-        assertThat(newAnswer.content()).isEqualTo("완료 답변");
+        assertThat(newAnswer.content()).isEqualTo("완료 답변\n\n근거 문서의 변경 여부를 확인할 수 없어요.");
         assertThat(newAnswer.status()).isEqualTo(SearchMessageStatus.COMPLETED);
         assertThat(newAnswer.evidences()).extracting(SearchEvidenceItemResult::documentId)
                 .containsExactly(newDocumentId);

@@ -485,6 +485,9 @@ public class SearchLlmClient {
                 "stream",
                 stream
         );
+        if ("openai".equals(properties.getProvider())) {
+            return result;
+        }
         if (!"claude".equals(properties.getProvider())) {
             result.put(
                     "temperature",

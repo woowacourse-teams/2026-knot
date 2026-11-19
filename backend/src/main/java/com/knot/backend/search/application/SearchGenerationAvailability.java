@@ -17,13 +17,17 @@ public class SearchGenerationAvailability {
     private final ObjectProvider<SearchIntentClassifier> classifiers;
 
     public void requireAvailable() {
-        if (!properties.isEnabled()) {
-            throw new SearchException(SearchErrorCode.ANSWER_GENERATION_UNAVAILABLE);
-        }
+        requireWorkerAvailable();
         if (classifiers.getIfAvailable() == null) {
             throw new SearchException(SearchErrorCode.ANSWER_GENERATION_UNAVAILABLE);
         }
         if (retrievers.getIfAvailable() == null || generators.getIfAvailable() == null) {
+            throw new SearchException(SearchErrorCode.ANSWER_GENERATION_UNAVAILABLE);
+        }
+    }
+
+    public void requireWorkerAvailable() {
+        if (!properties.isEnabled()) {
             throw new SearchException(SearchErrorCode.ANSWER_GENERATION_UNAVAILABLE);
         }
     }

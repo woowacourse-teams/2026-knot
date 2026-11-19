@@ -11,6 +11,7 @@ import com.knot.backend.search.application.SearchToolScope;
 import com.knot.backend.search.application.dto.result.SearchDocumentResult;
 import com.knot.backend.search.application.dto.result.SearchRetrievalResult;
 import com.knot.backend.search.application.dto.result.SearchRetrievalResult.Item;
+import com.knot.backend.search.domain.SearchAttemptFailure;
 import com.knot.backend.search.domain.SearchToolException;
 import java.util.List;
 import java.util.Map;
@@ -30,6 +31,7 @@ public class SearchStreamingAnswerGenerator implements SearchAnswerGenerator {
     private final SearchAgentProperties properties;
     private final ObjectMapper mapper;
     private final Optional<SearchSpringAiModel> springAi;
+    private final Optional<SearchLlmClient> openAiFallback;
 
     public SearchStreamingAnswerGenerator(
             SearchLlmClient llm,
@@ -48,6 +50,25 @@ public class SearchStreamingAnswerGenerator implements SearchAnswerGenerator {
         );
     }
 
+    public SearchStreamingAnswerGenerator(
+            SearchLlmClient llm,
+            SearchHistoryQuery history,
+            SearchToolAccess access,
+            SearchAgentProperties properties,
+            ObjectMapper mapper,
+            Optional<SearchSpringAiModel> springAi
+    ) {
+        this(
+                llm,
+                history,
+                access,
+                properties,
+                mapper,
+                springAi,
+                Optional.empty()
+        );
+    }
+
     @Override
     public List<Long> generate(
             SearchToolScope scope,
@@ -55,11 +76,13 @@ public class SearchStreamingAnswerGenerator implements SearchAnswerGenerator {
             List<SearchDocumentResult> documents,
             Consumer<String> onDelta
     ) {
-        return generate(
+        return generateFromRetrieval(
                 scope,
                 question,
-                documents,
-                List.of(),
+                new SearchRetrievalResult(
+                        documents,
+                        0
+                ),
                 onDelta
         );
     }
@@ -71,23 +94,8 @@ public class SearchStreamingAnswerGenerator implements SearchAnswerGenerator {
             SearchRetrievalResult retrieval,
             Consumer<String> onDelta
     ) {
-        return generate(
-                scope,
-                question,
-                retrieval.documents(),
-                retrieval.items(),
-                onDelta
-        );
-    }
-
-    private List<Long> generate(
-            SearchToolScope scope,
-            String question,
-            List<SearchDocumentResult> documents,
-            List<Item> items,
-            Consumer<String> onDelta
-    ) {
         access.validate(scope);
+        List<SearchDocumentResult> documents = retrieval.documents();
         boolean fullDocumentsOnly = !documents.isEmpty()
                 && springAi.filter(model -> model.supports(scope.workspaceId()))
                         .isPresent();
@@ -98,7 +106,7 @@ public class SearchStreamingAnswerGenerator implements SearchAnswerGenerator {
                 question,
                 scope.questionAcceptedAt(),
                 fullDocumentsOnly,
-                items
+                retrieval
         );
         try {
             budget.select(
@@ -110,7 +118,7 @@ public class SearchStreamingAnswerGenerator implements SearchAnswerGenerator {
                 access.validate(scope);
                 onDelta.accept(SearchAnswerGuidance.DOCUMENT_BUDGET_EXHAUSTED);
                 publishCoverage(
-                        items,
+                        retrieval,
                         List.of(),
                         false,
                         onDelta
@@ -130,7 +138,7 @@ public class SearchStreamingAnswerGenerator implements SearchAnswerGenerator {
         }
         List<Map<String, Object>> messages = budget.messages();
         log.info(
-                "Search context budget workspaceId={} answerId={} inputChars={} limitChars={} documents={} selectedDocuments={} history={} selectedHistory={} partial={}",
+                "Search context budget workspaceId={} answerId={} inputChars={} limitChars={} documents={} selectedDocuments={} history={} selectedHistory={} partial={} recoveredSection={}",
                 scope.workspaceId(),
                 scope.answerId(),
                 mapper.writeValueAsString(messages)
@@ -141,97 +149,154 @@ public class SearchStreamingAnswerGenerator implements SearchAnswerGenerator {
                         .size(),
                 previous.size(),
                 budget.historyCount(),
-                budget.partial()
+                budget.partial(),
+                budget.recoveredSection()
         );
         SearchAgentContext context = new SearchAgentContext(
                 properties,
                 mapper
         );
         context.validate(messages);
-        for (int attempt = 0; attempt < 2; attempt++) {
-            StringBuilder validatedText = new StringBuilder();
-            SearchAnswerJsonStream answer = new SearchAnswerJsonStream(
-                    mapper,
-                    validatedText::append
+        ValidatedAnswer answer;
+        try {
+            answer = generateWithFallback(
+                    scope,
+                    messages,
+                    budget.documents(),
+                    fullDocumentsOnly
             );
-            List<Long> ids;
-            try {
-                stream(
-                        scope,
-                        messages,
-                        fullDocumentsOnly,
-                        text -> {
-                            access.validate(scope);
-                            answer.accept(text);
-                        }
-                );
-                access.validate(scope);
-                ids = answer.complete(budget.documents());
-            } catch (RuntimeException exception) {
-                if (ServerErrorLogger.isControlFlow(exception)) {
-                    throw exception;
-                }
-                ServerErrorLogger.recordTaskFailure(
-                        log,
-                        "Search answer phase=validation attempt=" + (attempt + 1),
-                        exception
-                );
-                if (attempt == 0 && retryable(exception)) {
-                    continue;
-                }
-                access.validate(scope);
-                List<SearchDocumentResult> related = budget.documents()
-                        .stream()
-                        .limit(3)
-                        .toList();
-                publishGuidance(
-                        related,
-                        onDelta
-                );
-                publishCoverage(
-                        items,
-                        List.of(),
-                        budget.documentsLimited(),
-                        onDelta
-                );
-                log.info(
-                        "Search answer outcome=guidance workspaceId={} answerId={}",
-                        scope.workspaceId(),
-                        scope.answerId()
-                );
-                return related.stream()
-                        .map(SearchDocumentResult::documentId)
-                        .toList();
+        } catch (RuntimeException exception) {
+            if (ServerErrorLogger.isControlFlow(exception) || SearchAttemptFailure.temporary(exception)
+                    || SearchAttemptFailure.terminalNetwork(exception)) {
+                throw exception;
             }
-            // Publish only once the entire response and every evidence ID have been
-            // validated.
-            // Consumer/persistence errors are handled by the worker, never retried as model
-            // errors.
-            onDelta.accept(validatedText.toString());
+            ServerErrorLogger.recordTaskFailure(
+                    log,
+                    "Search answer phase=validation",
+                    exception
+            );
+            access.validate(scope);
+            List<SearchDocumentResult> related = budget.documents()
+                    .stream()
+                    .limit(3)
+                    .toList();
+            publishGuidance(
+                    related,
+                    onDelta
+            );
             publishCoverage(
-                    items,
-                    ids,
+                    retrieval,
+                    List.of(),
                     budget.documentsLimited(),
                     onDelta
             );
             log.info(
-                    "Search answer outcome=generated workspaceId={} answerId={}",
+                    "Search answer outcome=guidance workspaceId={} answerId={}",
                     scope.workspaceId(),
                     scope.answerId()
             );
-            return ids;
+            return related.stream()
+                    .map(SearchDocumentResult::documentId)
+                    .toList();
         }
-        throw new IllegalStateException("Unreachable answer attempt");
+        onDelta.accept(answer.text());
+        publishCoverage(
+                retrieval,
+                answer.ids(),
+                budget.documentsLimited(),
+                onDelta
+        );
+        log.info(
+                "Search answer outcome=generated workspaceId={} answerId={}",
+                scope.workspaceId(),
+                scope.answerId()
+        );
+        return answer.ids();
+    }
+
+    private ValidatedAnswer generateWithFallback(
+            SearchToolScope scope,
+            List<Map<String, Object>> messages,
+            List<SearchDocumentResult> documents,
+            boolean fullDocumentsOnly
+    ) {
+        try {
+            return validateAttempt(
+                    scope,
+                    documents,
+                    delta -> stream(
+                            scope,
+                            messages,
+                            fullDocumentsOnly,
+                            delta
+                    )
+            );
+        } catch (RuntimeException primary) {
+            if (openAiFallback.isEmpty() || !SearchAttemptFailure.temporary(primary)) {
+                throw primary;
+            }
+            access.validate(scope);
+            log.info(
+                    "Search fallback provider=openai answerId={} failureCode={}",
+                    scope.answerId(),
+                    ServerErrorLogger.safeFailureCode(primary)
+            );
+            try {
+                return validateAttempt(
+                        scope,
+                        documents,
+                        delta -> openAiFallback.get()
+                                .stream(
+                                        scope,
+                                        messages,
+                                        delta
+                                )
+                );
+            } catch (RuntimeException fallback) {
+                if (ServerErrorLogger.isControlFlow(fallback)) {
+                    throw fallback;
+                }
+                throw SearchAttemptFailure.exhaustedFallback(fallback);
+            }
+        }
+    }
+
+    private ValidatedAnswer validateAttempt(
+            SearchToolScope scope,
+            List<SearchDocumentResult> documents,
+            Consumer<Consumer<String>> stream
+    ) {
+        StringBuilder text = new StringBuilder();
+        SearchAnswerJsonStream answer = new SearchAnswerJsonStream(
+                mapper,
+                text::append
+        );
+        stream.accept(content -> {
+            access.validate(scope);
+            answer.accept(content);
+        });
+        access.validate(scope);
+        List<Long> ids = answer.complete(documents);
+        return new ValidatedAnswer(
+                text.toString(),
+                ids
+        );
+    }
+
+    private record ValidatedAnswer(
+            String text,
+            List<Long> ids
+    ) {
     }
 
     private void publishCoverage(
-            List<Item> items,
+            SearchRetrievalResult retrieval,
             List<Long> citedIds,
             boolean documentsLimited,
             Consumer<String> onDelta
     ) {
         StringBuilder guidance = new StringBuilder();
-        for (Item item : items) {
+        for (Item item : retrieval.items()) {
             if (item.documentIds()
                     .stream()
                     .anyMatch(citedIds::contains)) {
@@ -246,6 +311,10 @@ public class SearchStreamingAnswerGenerator implements SearchAnswerGenerator {
                     .append(item.ordinal())
                     .append("번째 항목은 ")
                     .append(description);
+        }
+        if (retrieval.candidateLimited() && !documentsLimited) {
+            guidance.append("\n\n")
+                    .append(SearchAnswerGuidance.CANDIDATE_LIMITED);
         }
         if (documentsLimited) {
             guidance.append("\n\n")
@@ -292,20 +361,5 @@ public class SearchStreamingAnswerGenerator implements SearchAnswerGenerator {
                 .map(document -> "- " + document.title())
                 .collect(java.util.stream.Collectors.joining("\n"));
         onDelta.accept(SearchAnswerGuidance.RELATED_DOCUMENTS + "\n\n" + titles);
-    }
-
-    private boolean retryable(RuntimeException exception) {
-        if (!(exception instanceof SearchToolException tool)) {
-            return false;
-        }
-        return java.util.Set.of(
-                "SEARCH_UPSTREAM_UNAVAILABLE",
-                "SEARCH_TRANSPORT_FAILED",
-                "INCOMPLETE_MODEL_STREAM",
-                "INVALID_MODEL_ANSWER",
-                "INVALID_MODEL_RESPONSE",
-                "MODEL_GENERATION_FAILED"
-        )
-                .contains(tool.getCode());
     }
 }

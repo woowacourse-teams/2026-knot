@@ -11,7 +11,9 @@ interface SearchConversationListJpaRepository extends Repository<SearchConversat
 
     @Query("""
             select new com.knot.backend.search.infrastructure.persistence.SearchConversationListRow(
-                c.id, first.content, latest.content, c.createdAt, c.updatedAt
+                c.id, first.content,
+                case when cast(sql('exists (select 1 from search_hidden_answer_bodies h where h.answer_id=?)', latest.id) as Boolean) = true
+                    then :unavailable else latest.content end, c.createdAt, c.updatedAt
             )
             from SearchConversation c
             join SearchMessage first
@@ -31,6 +33,7 @@ interface SearchConversationListJpaRepository extends Repository<SearchConversat
             boolean afterCursor,
             Instant cursorTime,
             long cursorId,
+            String unavailable,
             Pageable pageable
     );
 }

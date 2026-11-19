@@ -18,6 +18,7 @@ final class SearchSseTiming {
     private final LongSupplier nanoTime;
     private final long startedAt;
     private Duration firstDelta;
+    private Duration firstSnapshot;
     private Duration terminalTime;
     private String terminalEvent;
 
@@ -73,6 +74,9 @@ final class SearchSseTiming {
                 .isBlank()) {
             firstDelta = Duration.ofNanos(receivedAt - startedAt);
         }
+        if (firstSnapshot == null && "snapshot".equals(event)) {
+            firstSnapshot = Duration.ofNanos(receivedAt - startedAt);
+        }
         if (terminalEvent == null && isTerminal(event)) {
             terminalEvent = event;
             terminalTime = Duration.ofNanos(receivedAt - startedAt);
@@ -87,6 +91,10 @@ final class SearchSseTiming {
         return Optional.ofNullable(firstDelta);
     }
 
+    Optional<Duration> firstSnapshot() {
+        return Optional.ofNullable(firstSnapshot);
+    }
+
     Optional<Duration> terminalTime() {
         return Optional.ofNullable(terminalTime);
     }
@@ -97,8 +105,10 @@ final class SearchSseTiming {
 
     void log(String phase) {
         log.info(
-                "search sse fixture phase={} firstDeltaMs={} terminalEvent={} terminalMs={}",
+                "search sse fixture phase={} firstSnapshotMs={} firstDeltaMs={} terminalEvent={} terminalMs={}",
                 phase,
+                firstSnapshot().map(Duration::toMillis)
+                        .orElse(null),
                 firstDelta().map(Duration::toMillis)
                         .orElse(null),
                 terminalEvent,

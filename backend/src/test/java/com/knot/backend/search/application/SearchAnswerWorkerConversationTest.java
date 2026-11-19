@@ -1,10 +1,10 @@
 package com.knot.backend.search.application;
 
-import static org.mockito.ArgumentMatchers.anyLong;
-import com.knot.backend.search.application.notion.SearchNotionReading;
-import com.knot.backend.search.application.dto.query.SearchQuestionContext;
-import com.knot.backend.search.application.notion.SearchNotionAnswerFlow;
 import com.knot.backend.search.application.dto.result.SearchUsePlan;
+import com.knot.backend.search.application.notion.SearchNotionAnswerFlow;
+import com.knot.backend.search.application.dto.query.SearchQuestionContext;
+import com.knot.backend.search.application.notion.SearchNotionReading;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
@@ -119,6 +119,107 @@ class SearchAnswerWorkerConversationTest {
             delta.accept("생성한 답변");
             return List.of();
         });
+    }
+
+    @Test
+    @DisplayName("검색이 재시도를 쓰면 생성의 일시 오류는 주 모델을 다시 호출하지 않는다")
+    void execute_success_sharesSingleRetryAcrossStages() {
+        when(
+                retriever.retrieve(
+                        any(),
+                        any()
+                )
+        ).thenThrow(
+                new SearchToolException(
+                        "SEARCH_TRANSPORT_FAILED",
+                        new java.io.IOException("closed")
+                )
+        )
+                .thenReturn(
+                        new SearchRetrievalResult(
+                                List.of(),
+                                0
+                        )
+                );
+        when(
+                executions.isCurrent(
+                        5,
+                        token
+                )
+        ).thenReturn(true);
+        doThrow(new SearchToolException("SEARCH_UPSTREAM_UNAVAILABLE")).when(generator)
+                .generate(
+                        any(),
+                        any(),
+                        any(),
+                        any()
+                );
+
+        worker.execute(5);
+
+        verify(
+                retriever,
+                times(2)
+        ).retrieve(
+                any(),
+                eq("질문")
+        );
+        verify(
+                generator,
+                times(1)
+        ).generate(
+                any(),
+                any(),
+                any(),
+                any()
+        );
+    }
+
+    @Test
+    @DisplayName("검색이 정상이면 생성의 일시 장애를 한 번 재시도한다")
+    void execute_success_retriesGenerationOnceAfterSuccessfulSearch() {
+        when(
+                executions.isCurrent(
+                        5,
+                        token
+                )
+        ).thenReturn(true);
+        doThrow(new SearchToolException("SEARCH_UPSTREAM_UNAVAILABLE")).doAnswer(call -> {
+            Consumer<String> delta = call.getArgument(3);
+            delta.accept("생성한 답변");
+            return List.of();
+        })
+                .when(generator)
+                .generate(
+                        any(),
+                        any(),
+                        any(),
+                        any()
+                );
+
+        worker.execute(5);
+
+        verify(retriever).retrieve(
+                any(),
+                eq("질문")
+        );
+        verify(
+                generator,
+                times(2)
+        ).generate(
+                any(),
+                any(),
+                any(),
+                any()
+        );
+        verify(executions).completeGenerated(
+                5,
+                token,
+                SearchAnswerGuidance.NO_SEARCH_MATCHES + "생성한 답변",
+                List.of(),
+                Set.of(),
+                java.util.Map.of()
+        );
     }
 
     @Test
@@ -282,7 +383,8 @@ class SearchAnswerWorkerConversationTest {
                 token,
                 SearchAnswerGuidance.RETRIEVAL_UNAVAILABLE + "생성한 답변",
                 List.of(),
-                Set.of()
+                Set.of(),
+                java.util.Map.of()
         );
     }
 
@@ -374,7 +476,8 @@ class SearchAnswerWorkerConversationTest {
                 token,
                 "",
                 List.of(7L),
-                Set.of(7L)
+                Set.of(7L),
+                java.util.Map.of()
         );
     }
 
@@ -390,7 +493,8 @@ class SearchAnswerWorkerConversationTest {
                 token,
                 expected,
                 List.of(),
-                Set.of()
+                Set.of(),
+                java.util.Map.of()
         );
         verify(
                 executions,

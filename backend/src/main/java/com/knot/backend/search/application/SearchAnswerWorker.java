@@ -1,24 +1,31 @@
 package com.knot.backend.search.application;
 
+import com.knot.backend.global.config.SearchAgentProperties;
 import com.knot.backend.global.logging.ServerErrorLogger;
-import com.knot.backend.search.application.dto.result.SearchAnswerWorkResult;
+import com.knot.backend.search.application.dto.query.SearchDocumentListRequest;
 import com.knot.backend.search.application.dto.query.SearchQuestionContext;
+import com.knot.backend.search.application.dto.result.SearchAnswerWorkResult;
 import com.knot.backend.search.application.dto.result.SearchDocumentResult;
 import com.knot.backend.search.application.dto.result.SearchRetrievalResult;
 import com.knot.backend.search.application.dto.result.SearchUsePlan;
 import com.knot.backend.search.application.notion.SearchNotionAnswerFlow;
 import com.knot.backend.search.application.notion.SearchNotionMaterial;
 import com.knot.backend.search.application.notion.SearchNotionReading;
+import com.knot.backend.search.domain.SearchAttemptFailure;
 import com.knot.backend.search.domain.model.SearchIntent;
+import com.knot.backend.search.infrastructure.llm.SearchDateFilter;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
-import com.knot.backend.global.config.SearchAgentProperties;
+import java.time.LocalDate;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicLong;
-import java.util.stream.Collectors;
+import java.util.function.Supplier;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.ObjectProvider;
@@ -71,6 +78,14 @@ public class SearchAnswerWorker {
         AtomicLong persistenceCount = new AtomicLong();
         AtomicLong persistenceNanos = new AtomicLong();
         try {
+            Optional<SearchDocumentListRequest> list = SearchDocumentListRequest.parse(work.question());
+            if (list.isPresent()) {
+                executions.completeDocumentList(
+                        scope,
+                        list.orElseThrow()
+                );
+                return;
+            }
             generate(
                     work,
                     scope,
@@ -108,6 +123,9 @@ public class SearchAnswerWorker {
         }
         if ("SEARCH_ACCESS_DENIED".equals(ServerErrorLogger.safeFailureCode(exception))) {
             return "SEARCH_ACCESS_DENIED";
+        }
+        if (SearchAttemptFailure.terminalNetwork(exception)) {
+            return SearchAttemptFailure.NETWORK_ERROR;
         }
         return "ANSWER_GENERATION_FAILED";
     }
@@ -196,23 +214,17 @@ public class SearchAnswerWorker {
             );
             return;
         }
-        if (contextEnabled && intent.requiresSearch()) {
-            SearchQuestionContext context = previous.orElseGet(
-                    () -> followups.describe(
-                            work.question(),
-                            work.questionAcceptedAt()
-                    )
+        if (intent.requiresSearch()) {
+            Optional<SearchToolScope> resolved = resolveSearchScope(
+                    work,
+                    scope,
+                    previous,
+                    contextEnabled
             );
-            if (!executions.saveQuestionContext(
-                    work.answerId(),
-                    work.token(),
-                    context
-            )) {
+            if (resolved.isEmpty()) {
                 return;
             }
-            if (context.recordingSessionId() != null) {
-                scope = scope.forMeeting(context.recordingSessionId());
-            }
+            scope = resolved.orElseThrow();
         }
         SearchNotionReading notion = SearchNotionReading.none();
         if (plan.usesNotion()) {
@@ -221,16 +233,21 @@ public class SearchAnswerWorker {
                     plan
             );
         }
+        SearchToolScope currentScope = scope;
+        RetryOnce retry = new RetryOnce(currentScope);
         long retrievalStarted = System.nanoTime();
         SearchRetrievalResult retrieval;
         try {
-            retrieval = retrieve(
-                    intent,
-                    scope,
-                    work.question()
+            SearchIntent resolvedIntent = intent;
+            retrieval = retry.run(
+                    () -> retrieve(
+                            resolvedIntent,
+                            currentScope,
+                            work.question()
+                    )
             );
             log.info(
-                    "Search latency phase=document_retrieval workspaceId={} questionId={} answerId={} elapsedMs={} inputChars={} candidates={} excludedDocuments={} outcome=success",
+                    "Search latency phase=document_retrieval workspaceId={} questionId={} answerId={} elapsedMs={} inputChars={} candidates={} excludedDocuments={} candidateLimited={} additionalCandidateChecked={} outcome=success",
                     work.workspaceId(),
                     work.questionId(),
                     work.answerId(),
@@ -239,7 +256,9 @@ public class SearchAnswerWorker {
                             .length(),
                     retrieval.documents()
                             .size(),
-                    retrieval.excludedCount()
+                    retrieval.excludedCount(),
+                    retrieval.candidateLimited(),
+                    retrieval.additionalChecked()
             );
         } catch (RuntimeException exception) {
             log.info(
@@ -253,6 +272,9 @@ public class SearchAnswerWorker {
                     ServerErrorLogger.safeFailureCode(exception)
             );
             if (ServerErrorLogger.isControlFlow(exception)) {
+                throw exception;
+            }
+            if (SearchAttemptFailure.isNetwork(exception)) {
                 throw exception;
             }
             retrieval = SearchRetrievalResult.unavailable();
@@ -270,27 +292,31 @@ public class SearchAnswerWorker {
         if (material.planned()) {
             notionAnswers.answer(
                     work,
-                    scope,
+                    currentScope,
                     retrieval,
                     material,
                     retrievalGuidance(retrieval)
             );
             return;
         }
-        List<SearchDocumentResult> documents = retrieval.documents();
+        SearchRetrievalResult resolvedRetrieval = retrieval;
+        List<SearchDocumentResult> documents = resolvedRetrieval.documents();
         SearchAnswerGenerator generator = generators.getObject();
         List<Long> usedIds;
         StringBuilder content = new StringBuilder();
         long generationStarted = System.nanoTime();
         try {
-            content.append(retrievalGuidance(retrieval));
-            usedIds = generateAnswer(
-                    generator,
-                    scope,
-                    work.question(),
-                    retrieval,
-                    content
-            );
+            usedIds = retry.run(() -> {
+                content.setLength(0);
+                content.append(retrievalGuidance(resolvedRetrieval));
+                return generateAnswer(
+                        generator,
+                        currentScope,
+                        work.question(),
+                        resolvedRetrieval,
+                        content
+                );
+            });
             log.info(
                     "Search latency phase=answer_generation workspaceId={} questionId={} answerId={} elapsedMs={} inputChars={} documentCount={} outcome=success",
                     work.workspaceId(),
@@ -315,9 +341,17 @@ public class SearchAnswerWorker {
             );
             throw exception;
         }
-        Set<Long> candidates = documents.stream()
-                .map(SearchDocumentResult::documentId)
-                .collect(Collectors.toSet());
+        Map<Long, String> sourceVersions = new HashMap<>();
+        Set<Long> candidates = new HashSet<>();
+        for (SearchDocumentResult document : documents) {
+            candidates.add(document.documentId());
+            if (document.sourceVersion() != null) {
+                sourceVersions.putIfAbsent(
+                        document.documentId(),
+                        document.sourceVersion()
+                );
+            }
+        }
         long persistenceStarted = System.nanoTime();
         try {
             executions.completeGenerated(
@@ -325,12 +359,68 @@ public class SearchAnswerWorker {
                     work.token(),
                     content.toString(),
                     usedIds,
-                    candidates
+                    candidates,
+                    sourceVersions
             );
         } finally {
             persistenceCount.incrementAndGet();
             persistenceNanos.addAndGet(System.nanoTime() - persistenceStarted);
         }
+    }
+
+    private Optional<SearchToolScope> resolveSearchScope(
+            SearchAnswerWorkResult work,
+            SearchToolScope scope,
+            Optional<SearchQuestionContext> previous,
+            boolean contextEnabled
+    ) {
+        List<SearchDateFilter> dates = followups.dates(
+                work.question(),
+                scope
+        );
+        if (contextEnabled && (dates.stream()
+                .anyMatch(SearchDateFilter::needsDateContext)
+                || SearchDateFilter.hasYearlessCalendarDate(work.question()))) {
+            LocalDate date = followups.previousMeetingDate(scope);
+            if (date != null) {
+                scope = scope.withDateContext(date);
+                dates = followups.dates(
+                        work.question(),
+                        scope
+                );
+            }
+        }
+        if (dates.stream()
+                .anyMatch(SearchDateFilter::requiresClarification)) {
+            executions.completeGenerated(
+                    work.answerId(),
+                    work.token(),
+                    SearchAnswerGuidance.CLARIFY_MEETING_DATE,
+                    List.of(),
+                    Set.of()
+            );
+            return Optional.empty();
+        }
+        if (contextEnabled) {
+            SearchQuestionContext context = previous.orElse(null);
+            if (context == null) {
+                context = followups.describe(
+                        work.question(),
+                        scope
+                );
+            }
+            if (!executions.saveQuestionContext(
+                    work.answerId(),
+                    work.token(),
+                    context
+            )) {
+                return Optional.empty();
+            }
+            if (context.recordingSessionId() != null) {
+                scope = scope.forMeeting(context.recordingSessionId());
+            }
+        }
+        return Optional.of(scope);
     }
 
     private String retrievalGuidance(SearchRetrievalResult retrieval) {
@@ -355,7 +445,7 @@ public class SearchAnswerWorker {
             StringBuilder content
     ) {
         if (retrieval.items()
-                .isEmpty()) {
+                .isEmpty() && !retrieval.candidateLimited()) {
             return generator.generate(
                     scope,
                     question,
@@ -369,5 +459,37 @@ public class SearchAnswerWorker {
                 retrieval,
                 content::append
         );
+    }
+
+    private final class RetryOnce {
+
+        private final SearchToolScope scope;
+        private boolean used;
+
+        private RetryOnce(SearchToolScope scope) {
+            this.scope = scope;
+        }
+
+        private <T> T run(Supplier<T> operation) {
+            try {
+                return operation.get();
+            } catch (RuntimeException failure) {
+                if (used || !SearchAttemptFailure.temporary(failure) || !clock.instant()
+                        .isBefore(scope.expiresAt())
+                        || !executions.isCurrent(
+                                scope.answerId(),
+                                scope.token()
+                        )) {
+                    throw failure;
+                }
+                used = true;
+                log.info(
+                        "Search automatic retry answerId={} failureCode={}",
+                        scope.answerId(),
+                        ServerErrorLogger.safeFailureCode(failure)
+                );
+                return operation.get();
+            }
+        }
     }
 }

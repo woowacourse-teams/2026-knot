@@ -14,6 +14,8 @@ import com.knot.backend.search.application.SearchDocumentQuery;
 import com.knot.backend.search.application.SearchToolAccess;
 import com.knot.backend.search.application.SearchToolScope;
 import com.knot.backend.search.application.dto.result.SearchDocumentResult;
+import com.knot.backend.search.infrastructure.llm.SearchFastPathDocumentRetriever;
+import com.knot.backend.search.infrastructure.llm.SearchQueryNormalizer;
 import com.knot.backend.search.application.dto.result.SearchRetrievalResult;
 import com.knot.backend.testsupport.TestApplicationProperties;
 import com.knot.backend.testsupport.TestcontainersConfiguration;
@@ -274,6 +276,230 @@ class SearchMeetingIndexSynchronizerIntegrationTest {
                         List.of()
                 )
         );
+    }
+
+    @Test
+    @DisplayName("기존 SQL과 하이브리드 색인이 KST 경계와 문서 접수 상한을 동일하게 적용한다")
+    void retrieve_success_matchesKstBoundariesInBothPaths() throws Exception {
+        DocumentFixtures fixtures = new DocumentFixtures(jdbc);
+        SearchMessageFixtures messages = new SearchMessageFixtures(jdbc);
+        long member = fixtures.saveMember("시각 경계 검증");
+        long workspace = fixtures.saveWorkspace();
+        fixtures.join(
+                workspace,
+                member
+        );
+        long otherWorkspace = fixtures.saveWorkspace();
+        Instant accepted = Instant.parse("2027-01-04T01:00:00Z");
+        Instant cutoff = accepted.minusSeconds(1);
+        Instant afternoon = Instant.parse("2026-11-15T06:00:00Z");
+        long before = datedDocument(
+                messages,
+                workspace,
+                member,
+                afternoon.minusNanos(1_000),
+                cutoff
+        );
+        long exact = datedDocument(
+                messages,
+                workspace,
+                member,
+                afternoon,
+                cutoff
+        );
+        long after = datedDocument(
+                messages,
+                workspace,
+                member,
+                afternoon.plusNanos(1_000),
+                cutoff
+        );
+        datedDocument(
+                messages,
+                workspace,
+                member,
+                afternoon,
+                accepted.plusSeconds(1)
+        );
+        datedDocument(
+                messages,
+                otherWorkspace,
+                member,
+                afternoon,
+                cutoff
+        );
+        long endOfRange = datedDocument(
+                messages,
+                workspace,
+                member,
+                Instant.parse("2026-11-15T14:59:59.999999Z"),
+                cutoff
+        );
+        long followingDay = datedDocument(
+                messages,
+                workspace,
+                member,
+                Instant.parse("2026-11-15T15:00:00Z"),
+                cutoff
+        );
+        long yearEnd = datedDocument(
+                messages,
+                workspace,
+                member,
+                Instant.parse("2026-12-30T05:00:00Z"),
+                cutoff
+        );
+        long newYear = datedDocument(
+                messages,
+                workspace,
+                member,
+                Instant.parse("2027-01-02T14:59:59.999999Z"),
+                cutoff
+        );
+        long afterNewYear = datedDocument(
+                messages,
+                workspace,
+                member,
+                Instant.parse("2027-01-02T15:00:00Z"),
+                cutoff
+        );
+
+        SearchToolScope scope = new SearchToolScope(
+                workspace,
+                member,
+                1,
+                2,
+                3,
+                UUID.randomUUID(),
+                accepted,
+                accepted.plusSeconds(60)
+        );
+        SearchToolAccess access = mock(SearchToolAccess.class);
+        SearchMeetingIndexSource source = new SearchMeetingIndexSource(jdbc);
+        SearchMeetingDocumentIndex index = new SearchMeetingDocumentIndex(
+                directory,
+                embeddings(),
+                "e5-revision"
+        );
+        assertThat(
+                index.reconcile(
+                        workspace,
+                        () -> source.documents(workspace)
+                )
+        ).isTrue();
+        SearchMeetingHybridRetrieval hybrid = new SearchMeetingHybridRetrieval(
+                index,
+                source,
+                query,
+                access,
+                List.of(workspace)
+        );
+        SearchFastPathDocumentRetriever fast = new SearchFastPathDocumentRetriever(
+                query,
+                access,
+                new SearchQueryNormalizer()
+        );
+
+        assertSameDocuments(
+                fast,
+                hybrid,
+                scope,
+                "2026년 11월 15일 오후 3시까지 시작한 회의",
+                before,
+                exact
+        );
+        assertSameDocuments(
+                fast,
+                hybrid,
+                scope,
+                "2026년 11월 15일 오후 3시 이후에 시작한 회의",
+                after,
+                endOfRange
+        );
+        assertSameDocuments(
+                fast,
+                hybrid,
+                scope,
+                "2026년 11월 10일부터 11월 15일까지 열린 회의",
+                before,
+                exact,
+                after,
+                endOfRange
+        );
+        assertSameDocuments(
+                fast,
+                hybrid,
+                scope,
+                "12월 30일부터 1월 2일까지 열린 회의",
+                yearEnd,
+                newYear
+        );
+        assertSameDocuments(
+                fast,
+                hybrid,
+                scope,
+                "2026년 11월 15일 이후에 열린 회의",
+                followingDay,
+                yearEnd,
+                newYear,
+                afterNewYear
+        );
+    }
+
+    private long datedDocument(
+            SearchMessageFixtures messages,
+            long workspace,
+            long member,
+            Instant meeting,
+            Instant creation
+    ) {
+        long id = messages.saveDocument(
+                workspace,
+                member
+        );
+        setMeetingDate(
+                id,
+                meeting
+        );
+        jdbc.sql("UPDATE documents SET created_at = :created WHERE id = :id")
+                .param(
+                        "created",
+                        Timestamp.from(creation)
+                )
+                .param(
+                        "id",
+                        id
+                )
+                .update();
+        return id;
+    }
+
+    private void assertSameDocuments(
+            SearchFastPathDocumentRetriever fast,
+            SearchMeetingHybridRetrieval hybrid,
+            SearchToolScope scope,
+            String question,
+            Long... documents
+    ) {
+        assertThat(
+                fast.retrieve(
+                        scope,
+                        question
+                )
+                        .documents()
+        ).as(question)
+                .extracting(SearchDocumentResult::documentId)
+                .containsExactlyInAnyOrder(documents);
+        assertThat(
+                hybrid.retrieve(
+                        scope,
+                        question
+                )
+                        .orElseThrow()
+                        .documents()
+        ).as(question)
+                .extracting(SearchDocumentResult::documentId)
+                .containsExactlyInAnyOrder(documents);
     }
 
     private void setMeetingDate(

@@ -22,7 +22,9 @@ import com.knot.backend.search.infrastructure.index.SearchMeetingHybridRetrieval
 import com.knot.backend.search.infrastructure.mcp.SearchToolTokenCodec;
 import com.knot.backend.search.domain.SearchException;
 import com.knot.backend.search.domain.SearchErrorCode;
+import java.net.URI;
 import java.net.http.HttpClient;
+import org.springframework.beans.factory.annotation.Value;
 import java.time.Clock;
 import java.util.Optional;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -190,7 +192,11 @@ public class SearchAgentConfig {
             SearchToolAccess access,
             SearchAgentProperties properties,
             ObjectMapper mapper,
-            Optional<SearchSpringAiModel> springAi
+            Optional<SearchSpringAiModel> springAi,
+            SearchAgentHttp http,
+            @Value("${knot.search.openai-fallback.enabled:false}") boolean fallbackEnabled,
+            @Value("${knot.search.openai-fallback.api-key:}") String fallbackKey,
+            @Value("${knot.search.openai-fallback.model}") String fallbackModel
     ) {
         return new SearchStreamingAnswerGenerator(
                 llm,
@@ -198,7 +204,38 @@ public class SearchAgentConfig {
                 access,
                 properties,
                 mapper,
-                springAi
+                springAi,
+                openAiFallback(
+                        http,
+                        fallbackEnabled,
+                        fallbackKey,
+                        fallbackModel
+                )
+        );
+    }
+
+    private Optional<SearchLlmClient> openAiFallback(
+            SearchAgentHttp http,
+            boolean enabled,
+            String key,
+            String model
+    ) {
+        if (!enabled) {
+            return Optional.empty();
+        }
+        if (key.isBlank() || key.indexOf('\r') >= 0 || key.indexOf('\n') >= 0 || model.isBlank()) {
+            throw new SearchException(SearchErrorCode.INVALID_SEARCH_CONFIGURATION);
+        }
+        LlmProperties fallback = new LlmProperties();
+        fallback.setProvider("openai");
+        fallback.setBaseUrl(URI.create("https://api.openai.com"));
+        fallback.setApiToken(key);
+        fallback.setModel(model);
+        return Optional.of(
+                new SearchLlmClient(
+                        http,
+                        fallback
+                )
         );
     }
 

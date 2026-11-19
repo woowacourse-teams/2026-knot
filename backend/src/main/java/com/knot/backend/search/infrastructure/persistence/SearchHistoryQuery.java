@@ -22,6 +22,9 @@ public class SearchHistoryQuery {
                                 SELECT m.role, m.content FROM search_messages m
                                 JOIN search_conversations c ON c.id = m.conversation_id
                                 WHERE c.id = :conversation AND c.workspace_id = :workspace AND c.member_id = :member
+                                  AND EXISTS (SELECT 1 FROM workspace_members w
+                                      WHERE w.workspace_id = c.workspace_id AND w.member_id = c.member_id)
+                                  AND NOT EXISTS (SELECT 1 FROM search_hidden_answer_bodies h WHERE h.answer_id = m.id)
                                   AND m.sequence < (SELECT sequence FROM search_messages WHERE id = :question AND conversation_id = c.id)
                                   AND (m.status IN ('COMPLETED', 'STOPPED') OR
                                     (m.role = 'USER' AND EXISTS (

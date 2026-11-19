@@ -31,6 +31,7 @@ class SearchAnswerSnapshotServiceTest {
             repository,
             memberships,
             messages,
+            new SearchHistoryReadTransaction(),
             mock(SearchAnswerNotionReader.class)
     );
 

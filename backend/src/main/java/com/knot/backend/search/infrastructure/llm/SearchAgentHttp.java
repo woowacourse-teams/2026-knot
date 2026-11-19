@@ -4,6 +4,7 @@ import com.knot.backend.global.logging.ServerErrorLogger;
 
 import com.knot.backend.search.application.SearchToolScope;
 import com.knot.backend.search.domain.SearchToolException;
+import com.knot.backend.search.domain.SearchAttemptFailure;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URI;
@@ -271,13 +272,7 @@ public class SearchAgentHttp implements AutoCloseable {
     }
 
     private SearchToolException statusFailure(int status) {
-        if (status == 429) {
-            return new SearchToolException("SEARCH_RATE_LIMITED");
-        }
-        if (status >= 500) {
-            return new SearchToolException("SEARCH_UPSTREAM_UNAVAILABLE");
-        }
-        return new SearchToolException("SEARCH_REQUEST_REJECTED");
+        return new SearchToolException(SearchAttemptFailure.upstreamStatusCode(status));
     }
 
     private Duration remaining(SearchToolScope scope) {

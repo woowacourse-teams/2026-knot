@@ -50,6 +50,7 @@ class SearchMessageListServiceTest {
         service = new SearchMessageListService(
                 memberships,
                 query,
+                new SearchHistoryReadTransaction(),
                 notionReader
         );
     }

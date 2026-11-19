@@ -1,6 +1,7 @@
 package com.knot.backend.search;
 
 import com.knot.backend.document.DocumentFixtures;
+import com.knot.backend.search.domain.model.SearchEvidenceVersion;
 import org.springframework.jdbc.core.simple.JdbcClient;
 
 public class SearchMessageFixtures {
@@ -53,12 +54,48 @@ public class SearchMessageFixtures {
         );
     }
 
+    public String sourceVersion(long documentId) {
+        return jdbc.sql("SELECT title, topic, content FROM documents WHERE id = :id")
+                .param(
+                        "id",
+                        documentId
+                )
+                .query(
+                        (
+                                row,
+                                index
+                        ) -> SearchEvidenceVersion.fromDocument(
+                                row.getString("title"),
+                                row.getString("topic"),
+                                row.getString("content")
+                        )
+                )
+                .single();
+    }
+
     public void saveEvidence(
             long messageId,
             long documentId,
             int rank
     ) {
-        jdbc.sql("INSERT INTO search_evidences (message_id, document_id, rank) VALUES (:message, :document, :rank)")
+        saveEvidence(
+                messageId,
+                documentId,
+                rank,
+                null
+        );
+    }
+
+    public void saveEvidence(
+            long messageId,
+            long documentId,
+            int rank,
+            String sourceVersion
+    ) {
+        jdbc.sql("""
+                INSERT INTO search_evidences (message_id, document_id, live_document_id, rank, source_version)
+                VALUES (:message, :document, :document, :rank, :version)
+                """)
                 .param(
                         "message",
                         messageId
@@ -70,6 +107,10 @@ public class SearchMessageFixtures {
                 .param(
                         "rank",
                         rank
+                )
+                .param(
+                        "version",
+                        sourceVersion
                 )
                 .update();
     }

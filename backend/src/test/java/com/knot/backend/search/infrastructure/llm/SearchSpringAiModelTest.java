@@ -44,6 +44,34 @@ class SearchSpringAiModelTest {
             NOW.plusSeconds(3)
     );
 
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.CsvSource({"503,SEARCH_UPSTREAM_UNAVAILABLE", "429,SEARCH_RATE_LIMITED"})
+    @DisplayName("Spring AI가 주 공급자의 일시 장애와 요청 제한을 한 요청으로 구분한다")
+    void stream_failure_classifiesProviderStatuses(
+            int status,
+            String code
+    ) throws Exception {
+        try (LlmHttpServer server = new LlmHttpServer()) {
+            server.respond(
+                    status,
+                    "{}"
+            );
+            SearchSpringAiModel model = model(
+                    server,
+                    mock(SearchToolAccess.class)
+            );
+            assertThatThrownBy(
+                    () -> model.stream(
+                            scope,
+                            messages(),
+                            text -> {
+                            }
+                    )
+            ).hasMessage(code);
+            assertThat(server.requestCount()).isOne();
+        }
+    }
+
     @Test
     @DisplayName("Spring AI 스트리밍 요청에 기존 JSON 스키마를 포함하고 정상 종료한 본문을 조립한다")
     void stream_success_preservesSchemaAndFinishContract() throws Exception {
