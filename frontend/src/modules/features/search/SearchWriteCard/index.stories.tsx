@@ -7,7 +7,7 @@ import {
 } from "@api/mock/responses/search";
 import { getRouterPath, PATH_ROUTE } from "@routes/PATH_ROUTE";
 import type { Meta, StoryObj } from "@storybook/react-webpack5";
-import { delay, http, HttpResponse } from "msw";
+import { http, HttpResponse } from "msw";
 import { MemoryRouter, Route, Routes } from "react-router";
 
 import SearchWriteCard from ".";
@@ -18,8 +18,6 @@ const CONVERSATION_PATH = getRouterPath({
 });
 const NOTION_CONNECTION_URL =
   "*/api/v1/workspaces/:workspaceId/search/notion-connection";
-const EXECUTE_URL =
-  "*/api/v1/workspaces/:workspaceId/search/conversations/:conversationId/write-cards/:cardId/execute";
 const FIGMA_URL = "https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=";
 
 /** 노션 연결 응답을 덮는 스토리는 문서 페이지에서 따로 그려요 */
@@ -120,16 +118,10 @@ export const DatabaseFieldsUnchecked: Story = {
   parameters: { design: { type: "figma", url: `${FIGMA_URL}6500-4430` } },
 };
 
-/**
- * [만들기]를 눌러 노션에 만드는 중이에요. 두 버튼을 누를 수 없어요.
- * 새로고침이나 다른 탭처럼 자기 요청 없이 이 카드를 보면 2초 뒤 실행 API로 지금 상태를 받아요. 이 스토리는 그 응답이 끝나지 않는 경우라 실행 중이 그대로 보여요.
- */
+/** [만들기]를 눌러 노션에 만드는 중이에요. 두 버튼을 누를 수 없어요. 다른 탭에서 누른 카드도 끝날 때까지 이 모습이에요. */
 export const Running: Story = {
   args: { card: { ...searchWriteCardResponse, status: "RUNNING" } },
-  parameters: {
-    design: { type: "figma", url: `${FIGMA_URL}6500-4058` },
-    msw: { handlers: { execute: http.post(EXECUTE_URL, () => delay("infinite")) } },
-  },
+  parameters: { design: { type: "figma", url: `${FIGMA_URL}6500-4058` } },
 };
 
 /** 노션에 페이지를 만든 뒤예요. [노션에서 열기]로 만든 페이지를 새 탭으로 열어요. */

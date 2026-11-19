@@ -46,7 +46,6 @@ export default function SearchWriteCard({ card }: SearchWriteCardProps) {
   const titleId = useId();
   const { execute, cancel, isExecuting, isCanceling } = useWriteCardActions({
     cardId: card.id,
-    status: card.status,
   });
   // 실행 응답이 오기 전에도 서버의 실행 중과 같은 모습으로 막아요
   const status = isExecuting ? "RUNNING" : card.status;
