@@ -295,6 +295,17 @@ describe("SearchWriteCard", () => {
     },
   );
 
+  it("[SEARCH-R53] 서버가 실패 이유를 주지 않은 실패 카드도 「만들지 못했어요」를 보여주고 다시 실행할 수 없다", () => {
+    const { region } = renderCard({
+      ...searchWriteCardResponse,
+      status: "FAILED",
+      failureReason: null,
+    });
+
+    expect(within(region).getByText("만들지 못했어요")).toBeInTheDocument();
+    expect(within(region).queryAllByRole("button", { name: /^(취소|만들기)$/ })).toHaveLength(0);
+  });
+
   it.each([
     {
       retryReason: "NOTION_RECONNECT_REQUIRED" as const,

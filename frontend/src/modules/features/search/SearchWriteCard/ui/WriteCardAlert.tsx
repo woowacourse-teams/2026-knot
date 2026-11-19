@@ -5,8 +5,8 @@ import Alert from "@/assets/icons/alert.svg";
 interface WriteCardAlertProps {
   /** 경고 색으로 보여 줄 짧은 제목 */
   title: string;
-  /** 제목 아래 회색 설명 */
-  description: string;
+  /** 제목 아래 회색 설명. 없으면 제목만 보여요 */
+  description?: string;
 }
 
 /** 실패하거나 연결이 필요해 멈춘 카드의 경고 제목과 설명(SEARCH-R52, R53) */
@@ -20,7 +20,7 @@ export default function WriteCardAlert({
         <AlertIcon size={18} />
         <Title>{title}</Title>
       </TitleRow>
-      <Description>{description}</Description>
+      {description && <Description>{description}</Description>}
     </Container>
   );
 }

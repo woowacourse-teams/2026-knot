@@ -131,10 +131,11 @@ export default function SearchWriteCard({ card }: SearchWriteCardProps) {
 
         {status === "CANCELED" && <CanceledStatus>취소됨</CanceledStatus>}
 
-        {status === "FAILED" && failureReason && (
+        {status === "FAILED" && (
           <WriteCardAlert
             title="만들지 못했어요"
-            description={FAILURE_MESSAGE[failureReason]}
+            // 서버가 사유를 주지 않거나 모르는 사유면 제목만 보여요
+            description={failureReason ? FAILURE_MESSAGE[failureReason] : undefined}
           />
         )}
       </Footer>
