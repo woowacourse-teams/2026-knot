@@ -29,6 +29,9 @@ const message = (
   status,
   createdAt: `2026-10-05T01:00:${String(id).padStart(2, "0")}Z`,
   evidences: [],
+  notionEvidences: [],
+  notionNotice: null,
+  writeCard: null,
 });
 
 /** 이미 저장돼 있던 턴 하나 */
