@@ -4,6 +4,8 @@ import com.knot.backend.search.application.SearchAnswerGenerator;
 import com.knot.backend.search.application.SearchDocumentQuery;
 import com.knot.backend.search.application.SearchDocumentRetriever;
 import com.knot.backend.search.application.SearchIntentClassifier;
+import com.knot.backend.search.application.notion.SearchNotionAnswerGenerator;
+import com.knot.backend.search.infrastructure.llm.SearchNotionStreamingAnswerGenerator;
 import com.knot.backend.search.infrastructure.llm.SearchQwenIntentClassifier;
 import com.knot.backend.search.application.SearchToolAccess;
 import com.knot.backend.search.infrastructure.llm.SearchAgentHttp;
@@ -197,6 +199,23 @@ public class SearchAgentConfig {
                 properties,
                 mapper,
                 springAi
+        );
+    }
+
+    @Bean
+    public SearchNotionAnswerGenerator searchNotionAnswerGenerator(
+            SearchLlmClient llm,
+            SearchHistoryQuery history,
+            SearchToolAccess access,
+            SearchAgentProperties properties,
+            ObjectMapper mapper
+    ) {
+        return new SearchNotionStreamingAnswerGenerator(
+                llm,
+                history,
+                access,
+                properties,
+                mapper
         );
     }
 }
