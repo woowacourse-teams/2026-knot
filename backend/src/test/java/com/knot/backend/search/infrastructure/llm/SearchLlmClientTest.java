@@ -180,6 +180,23 @@ class SearchLlmClientTest {
                             .path("intent")
                             .path("enum")
             ).hasSize(5);
+            assertThat(
+                    body.path("response_format")
+                            .path("json_schema")
+                            .path("schema")
+                            .path("required")
+            ).hasSize(2);
+            assertThat(
+                    body.path("response_format")
+                            .path("json_schema")
+                            .path("schema")
+                            .path("properties")
+                            .path("tools")
+                            .path("items")
+                            .path("properties")
+                            .path("tool")
+                            .path("enum")
+            ).hasSize(2);
             assertThat(server.requestCount()).isEqualTo(1);
         }
     }
