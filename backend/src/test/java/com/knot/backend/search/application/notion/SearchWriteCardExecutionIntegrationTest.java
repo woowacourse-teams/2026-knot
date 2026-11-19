@@ -1,5 +1,8 @@
 package com.knot.backend.search.application.notion;
 
+import java.time.Duration;
+import com.knot.backend.search.infrastructure.SearchWriteCardRecoveryScheduler;
+import com.knot.backend.global.config.SearchNotionProperties;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
@@ -62,6 +65,10 @@ class SearchWriteCardExecutionIntegrationTest {
     private SearchWriteCardRepository cards;
     @Autowired
     private SearchNotionAnswerRepository answers;
+    @Autowired
+    private SearchWriteCardRecoveryScheduler recovery;
+    @Autowired
+    private SearchNotionProperties properties;
     @MockitoBean
     private SearchNotionClient notion;
     private SearchNotionFixtures notionFixtures;
@@ -205,5 +212,73 @@ class SearchWriteCardExecutionIntegrationTest {
         assertThat(result.failureReason()).isEqualTo(SearchWriteCardFailureReason.NOTION_NO_RESPONSE);
         verifyNoInteractions(notion);
         assertThat(notionFixtures.createdPages()).isZero();
+    }
+
+    @Test
+    @DisplayName("주기 정리는 회수 기준보다 오래 실행 중인 카드만 무응답 실패로 바꾸고 아직 기준 안인 실행 중 카드는 그대로 둔다")
+    void recoverAbandoned_onlyStaleRunningCards() {
+        // given
+        long otherConversation = new SearchFixtures(jdbc).saveConversation(
+                workspaceId,
+                memberId,
+                "다른 회의록도 만들어 줘",
+                "확인해 주세요"
+        );
+        SearchWriteCard live = notionFixtures.pageCard(
+                new SearchWriteCardOrigin(
+                        new SearchMessageFixtures(jdbc).messageId(
+                                otherConversation,
+                                2
+                        ),
+                        otherConversation,
+                        workspaceId,
+                        memberId
+                ),
+                card.getSourceDocumentId()
+        );
+        Duration abandonedAfter = properties.runningCardAbandonedAfter();
+        markRunning(
+                card.getId(),
+                abandonedAfter.plusSeconds(1)
+        );
+        markRunning(
+                live.getId(),
+                abandonedAfter.minusSeconds(10)
+        );
+
+        // when
+        recovery.recoverAbandoned();
+
+        // then
+        assertThat(abandonedAfter).isEqualTo(Duration.ofSeconds(61));
+        SearchWriteCard abandoned = cards.findById(card.getId())
+                .orElseThrow();
+        assertThat(abandoned.getStatus()).isEqualTo(SearchWriteCardStatus.FAILED);
+        assertThat(abandoned.getFailureReason()).isEqualTo(SearchWriteCardFailureReason.NOTION_NO_RESPONSE);
+        assertThat(
+                cards.findById(live.getId())
+                        .orElseThrow()
+                        .getStatus()
+        ).isEqualTo(SearchWriteCardStatus.RUNNING);
+        verifyNoInteractions(notion);
+    }
+
+    private void markRunning(
+            long cardId,
+            Duration age
+    ) {
+        jdbc.sql("UPDATE search_write_cards SET status = 'RUNNING', updated_at = :updatedAt WHERE id = :id")
+                .param(
+                        "updatedAt",
+                        Timestamp.from(
+                                Instant.now()
+                                        .minus(age)
+                        )
+                )
+                .param(
+                        "id",
+                        cardId
+                )
+                .update();
     }
 }
