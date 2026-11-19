@@ -211,7 +211,8 @@ class SearchAnswerWorkerConversationTest {
                 token,
                 SearchAnswerGuidance.NO_SEARCH_MATCHES + "생성한 답변",
                 List.of(),
-                Set.of()
+                Set.of(),
+                java.util.Map.of()
         );
     }
 
@@ -285,7 +286,8 @@ class SearchAnswerWorkerConversationTest {
                 token,
                 SearchAnswerGuidance.RETRIEVAL_UNAVAILABLE + "생성한 답변",
                 List.of(),
-                Set.of()
+                Set.of(),
+                java.util.Map.of()
         );
     }
 
@@ -377,7 +379,8 @@ class SearchAnswerWorkerConversationTest {
                 token,
                 "",
                 List.of(7L),
-                Set.of(7L)
+                Set.of(7L),
+                java.util.Map.of()
         );
     }
 
@@ -393,7 +396,8 @@ class SearchAnswerWorkerConversationTest {
                 token,
                 expected,
                 List.of(),
-                Set.of()
+                Set.of(),
+                java.util.Map.of()
         );
         verify(
                 executions,

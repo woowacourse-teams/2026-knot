@@ -16,6 +16,7 @@ import com.knot.backend.search.domain.SearchErrorCode;
 import com.knot.backend.search.domain.SearchAttemptFailure;
 import com.knot.backend.search.domain.SearchException;
 import com.knot.backend.search.domain.model.SearchEvidence;
+import com.knot.backend.search.domain.model.SearchAnswerKind;
 import com.knot.backend.search.domain.model.SearchMessage;
 import com.knot.backend.search.domain.model.SearchMessageStatus;
 import com.knot.backend.search.domain.model.SearchMessageRole;
@@ -28,6 +29,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -302,7 +304,8 @@ public class SearchAnswerExecutionService {
         return completeCurrent(
                 execution,
                 List.of(),
-                Set.of()
+                Set.of(),
+                Map.of()
         );
     }
 
@@ -312,6 +315,24 @@ public class SearchAnswerExecutionService {
             String content,
             List<Long> usedDocumentIds,
             Set<Long> candidateIds
+    ) {
+        return completeGenerated(
+                answerId,
+                token,
+                content,
+                usedDocumentIds,
+                candidateIds,
+                Map.of()
+        );
+    }
+
+    public boolean completeGenerated(
+            long answerId,
+            UUID token,
+            String content,
+            List<Long> usedDocumentIds,
+            Set<Long> candidateIds,
+            Map<Long, String> sourceVersions
     ) {
         // Publish validated text, evidence and terminal state in the same transaction.
         Optional<SearchAnswerExecution> current = currentExecution(
@@ -325,7 +346,8 @@ public class SearchAnswerExecutionService {
         return completeCurrent(
                 current.get(),
                 usedDocumentIds,
-                candidateIds
+                candidateIds,
+                sourceVersions
         );
     }
 
@@ -345,14 +367,16 @@ public class SearchAnswerExecutionService {
         return completeCurrent(
                 current.get(),
                 usedDocumentIds,
-                candidateIds
+                candidateIds,
+                Map.of()
         );
     }
 
     private boolean completeCurrent(
             SearchAnswerExecution execution,
             List<Long> usedDocumentIds,
-            Set<Long> candidateIds
+            Set<Long> candidateIds,
+            Map<Long, String> sourceVersions
     ) {
         validateUsedDocuments(
                 usedDocumentIds,
@@ -370,11 +394,18 @@ public class SearchAnswerExecutionService {
                     SearchEvidence.create(
                             answerId,
                             documentId,
-                            index + 1
+                            index + 1,
+                            sourceVersions.get(documentId)
                     )
             );
         }
-        answer(execution).complete();
+        SearchMessage message = answer(execution);
+        message.complete(
+                answerKind(
+                        message.getContent(),
+                        usedDocumentIds
+                )
+        );
         execution.finish();
         recordTerminalActivity(
                 conversation,
@@ -383,6 +414,21 @@ public class SearchAnswerExecutionService {
         );
         repository.flush();
         return true;
+    }
+
+    private SearchAnswerKind answerKind(
+            String content,
+            List<Long> usedDocumentIds
+    ) {
+        if (!usedDocumentIds.isEmpty()) {
+            return SearchAnswerKind.DOCUMENT_ANSWER;
+        }
+        if (SearchAnswerGuidance.CLARIFY_MEETING.equals(content)
+                || SearchAnswerGuidance.CLARIFY_MEETING_DATE.equals(content)
+                || SearchAnswerGuidance.UNAVAILABLE.equals(content)) {
+            return SearchAnswerKind.SERVER_GUIDANCE;
+        }
+        return SearchAnswerKind.UNVERIFIED_ANSWER;
     }
 
     public boolean fail(

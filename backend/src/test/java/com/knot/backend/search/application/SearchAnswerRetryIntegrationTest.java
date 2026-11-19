@@ -793,7 +793,9 @@ class SearchAnswerRetryIntegrationTest {
                         document
                 )
                 .update();
-        jdbc.sql("INSERT INTO search_evidences (message_id, document_id, rank) VALUES (:message, :document, 1)")
+        jdbc.sql(
+                "INSERT INTO search_evidences (message_id, document_id, live_document_id, rank) VALUES (:message, :document, :document, 1)"
+        )
                 .param(
                         "message",
                         first.answerMessageId()

@@ -43,6 +43,10 @@ public class SearchMessage {
     @Column(name = "failure_code", length = 50)
     private String failureCode;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "answer_kind", length = 30)
+    private SearchAnswerKind answerKind;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
@@ -117,11 +121,16 @@ public class SearchMessage {
     }
 
     public void complete() {
+        complete(SearchAnswerKind.UNVERIFIED_ANSWER);
+    }
+
+    public void complete(SearchAnswerKind kind) {
         requireStreamingAnswer();
         if (content.isBlank()) {
             throw new SearchException(SearchErrorCode.INVALID_SEARCH_STATE);
         }
         status = SearchMessageStatus.COMPLETED;
+        answerKind = kind;
     }
 
     public void fail(String code) {
@@ -140,7 +149,7 @@ public class SearchMessage {
         }
         content = guidance;
         failureCode = null;
-        status = SearchMessageStatus.COMPLETED;
+        complete(SearchAnswerKind.SERVER_GUIDANCE);
     }
 
     public boolean isRetryable() {
