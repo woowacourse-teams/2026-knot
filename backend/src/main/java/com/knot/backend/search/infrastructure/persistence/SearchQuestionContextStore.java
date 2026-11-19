@@ -17,7 +17,8 @@ public class SearchQuestionContextStore {
     public Optional<SearchQuestionContext> findPreviousEvidenceContext(SearchToolScope scope) {
         return jdbc.sql("""
                 SELECT COALESCE(ctx.search_text, prior_question.content) AS search_text,
-                       ctx.recorded_from, ctx.recorded_before,
+                       CASE WHEN COUNT(*) = COUNT(r.id) THEN ctx.recorded_from END AS recorded_from,
+                       CASE WHEN COUNT(*) = COUNT(r.id) THEN ctx.recorded_before END AS recorded_before,
                        CASE WHEN COUNT(*) = COUNT(r.id) AND COUNT(DISTINCT r.id) = 1 THEN MIN(r.id) END AS recording_id
                 FROM search_messages current_question
                 JOIN search_conversations c ON c.id = current_question.conversation_id

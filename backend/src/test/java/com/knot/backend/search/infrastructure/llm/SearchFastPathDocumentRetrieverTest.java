@@ -5,6 +5,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -169,6 +170,36 @@ class SearchFastPathDocumentRetrieverTest {
                         .recordedFrom()
         ).isEqualTo(Instant.parse("2026-10-16T15:00:00Z"));
         assertThat(result.documents()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("항목별 검색에서 회의가 열린 날짜만 시간 범위로 전달한다")
+    void retrieve_success_limitsOnlyMeetingDateItem() {
+        String question = "1. 10월 16일에 열린 회의의 결정\n2. 10월 17일 배포 예정일을 논의한 회의";
+
+        retriever.retrieve(
+                scope,
+                question
+        );
+
+        ArgumentCaptor<SearchDocumentParameters> parameters = ArgumentCaptor.forClass(SearchDocumentParameters.class);
+        verify(
+                query,
+                times(2)
+        ).searchPage(
+                eq(scope),
+                parameters.capture(),
+                isNull()
+        );
+        SearchDocumentParameters meeting = parameters.getAllValues()
+                .getFirst();
+        SearchDocumentParameters release = parameters.getAllValues()
+                .getLast();
+        assertThat(meeting.recordedFrom()).isEqualTo(Instant.parse("2026-10-15T15:00:00Z"));
+        assertThat(meeting.recordedBefore()).isEqualTo(Instant.parse("2026-10-16T15:00:00Z"));
+        assertThat(release.recordedFrom()).isNull();
+        assertThat(release.recordedBefore()).isNull();
+        assertThat(release.query()).contains("10월 17일 배포");
     }
 
     private SearchDocumentRecord document(

@@ -1,6 +1,7 @@
 package com.knot.backend.search.application;
 
 public final class SearchAnswerGuidance {
+    public static final String CLARIFY_MEETING_DATE = "어느 날짜나 기간에 열린 회의인지 알려주세요.";
     public static final String CLARIFY_MEETING = "어느 회의를 말씀하시는지 회의 제목이나 날짜를 알려주세요.";
     public static final String UNAVAILABLE = "질문은 대화에 남겨 두었어요. 지금은 답변을 정리하기 어려워요. 잠시 뒤 다시 질문해 주시면 이어서 도와드릴게요.";
     public static final String RELATED_DOCUMENTS = "관련 기록을 아래에 모았어요. 지금은 내용을 종합하기 어려워요. 문서를 살펴보거나 질문을 조금 더 구체적으로 이어서 해주세요.";

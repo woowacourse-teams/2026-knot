@@ -1,15 +1,17 @@
 package com.knot.backend.search.application;
 
+import com.knot.backend.global.config.SearchAgentProperties;
 import com.knot.backend.global.logging.ServerErrorLogger;
 import com.knot.backend.search.application.dto.result.SearchAnswerWorkResult;
 import com.knot.backend.search.application.dto.query.SearchQuestionContext;
 import com.knot.backend.search.application.dto.result.SearchDocumentResult;
 import com.knot.backend.search.application.dto.result.SearchRetrievalResult;
 import com.knot.backend.search.domain.model.SearchIntent;
+import com.knot.backend.search.infrastructure.llm.SearchDateFilter;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
-import com.knot.backend.global.config.SearchAgentProperties;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -188,23 +190,17 @@ public class SearchAnswerWorker {
             );
             return;
         }
-        if (contextEnabled && intent.requiresSearch()) {
-            SearchQuestionContext context = previous.orElseGet(
-                    () -> followups.describe(
-                            work.question(),
-                            work.questionAcceptedAt()
-                    )
+        if (intent.requiresSearch()) {
+            Optional<SearchToolScope> resolved = resolveSearchScope(
+                    work,
+                    scope,
+                    previous,
+                    contextEnabled
             );
-            if (!executions.saveQuestionContext(
-                    work.answerId(),
-                    work.token(),
-                    context
-            )) {
+            if (resolved.isEmpty()) {
                 return;
             }
-            if (context.recordingSessionId() != null) {
-                scope = scope.forMeeting(context.recordingSessionId());
-            }
+            scope = resolved.orElseThrow();
         }
         long retrievalStarted = System.nanoTime();
         SearchRetrievalResult retrieval;
@@ -304,6 +300,61 @@ public class SearchAnswerWorker {
             persistenceCount.incrementAndGet();
             persistenceNanos.addAndGet(System.nanoTime() - persistenceStarted);
         }
+    }
+
+    private Optional<SearchToolScope> resolveSearchScope(
+            SearchAnswerWorkResult work,
+            SearchToolScope scope,
+            Optional<SearchQuestionContext> previous,
+            boolean contextEnabled
+    ) {
+        List<SearchDateFilter> dates = followups.dates(
+                work.question(),
+                scope
+        );
+        if (contextEnabled && (dates.stream()
+                .anyMatch(SearchDateFilter::needsDateContext)
+                || SearchDateFilter.hasYearlessCalendarDate(work.question()))) {
+            LocalDate date = followups.previousMeetingDate(scope);
+            if (date != null) {
+                scope = scope.withDateContext(date);
+                dates = followups.dates(
+                        work.question(),
+                        scope
+                );
+            }
+        }
+        if (dates.stream()
+                .anyMatch(SearchDateFilter::requiresClarification)) {
+            executions.completeGenerated(
+                    work.answerId(),
+                    work.token(),
+                    SearchAnswerGuidance.CLARIFY_MEETING_DATE,
+                    List.of(),
+                    Set.of()
+            );
+            return Optional.empty();
+        }
+        if (contextEnabled) {
+            SearchQuestionContext context = previous.orElse(null);
+            if (context == null) {
+                context = followups.describe(
+                        work.question(),
+                        scope
+                );
+            }
+            if (!executions.saveQuestionContext(
+                    work.answerId(),
+                    work.token(),
+                    context
+            )) {
+                return Optional.empty();
+            }
+            if (context.recordingSessionId() != null) {
+                scope = scope.forMeeting(context.recordingSessionId());
+            }
+        }
+        return Optional.of(scope);
     }
 
     private String retrievalGuidance(SearchRetrievalResult retrieval) {

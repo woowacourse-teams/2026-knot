@@ -8,7 +8,13 @@ import com.knot.backend.search.application.dto.query.SearchDocumentParameters;
 import com.knot.backend.search.application.dto.result.SearchDocumentRecord;
 import com.knot.backend.search.application.dto.result.SearchDocumentResult;
 import com.knot.backend.search.application.dto.result.SearchRetrievalResult;
+import com.knot.backend.search.application.dto.result.SearchRetrievalResult.Item;
+import com.knot.backend.search.application.dto.result.SearchRetrievalResult.ItemStatus;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import lombok.RequiredArgsConstructor;
 
 @RequiredArgsConstructor
@@ -25,70 +31,127 @@ public class SearchFastPathDocumentRetriever implements SearchDocumentRetriever 
             String question
     ) {
         access.validate(scope);
-        if (scope.recordingSessionId() != null) {
-            SearchDocumentParameters meeting = new SearchDocumentParameters(
-                    null,
-                    null,
-                    null,
-                    null,
-                    null,
-                    CANDIDATE_LIMIT
-            );
-            return new SearchRetrievalResult(
-                    documents(
-                            query.listPage(
-                                    scope,
-                                    meeting,
-                                    null
-                            )
-                                    .stream()
-                                    .limit(CANDIDATE_LIMIT)
-                                    .toList()
-                    ),
-                    0
+        List<String> items = SearchDateFilter.splitItems(question);
+        List<SearchDateFilter> dates = items.stream()
+                .map(
+                        item -> SearchDateFilter.parseMeetingDate(
+                                item,
+                                scope.questionAcceptedAt(),
+                                scope.dateContext()
+                        )
+                )
+                .toList();
+        if (dates.stream()
+                .anyMatch(date -> date != null && date.requiresClarification())) {
+            return SearchRetrievalResult.skipped();
+        }
+        if (items.size() > 1 && dates.stream()
+                .anyMatch(date -> date != null)) {
+            return retrieveDatedItems(
+                    scope,
+                    items,
+                    dates
             );
         }
-        SearchDateFilter date = SearchDateFilter.parse(
+        SearchDateFilter date = null;
+        if (items.size() == 1) {
+            date = dates.getFirst();
+        }
+        return retrieveItem(
+                scope,
                 question,
-                scope.questionAcceptedAt()
+                date,
+                CANDIDATE_LIMIT
         );
+    }
+
+    private SearchRetrievalResult retrieveDatedItems(
+            SearchToolScope scope,
+            List<String> items,
+            List<SearchDateFilter> dates
+    ) {
+        Map<Long, SearchDocumentResult> documents = new LinkedHashMap<>();
+        List<Item> coverage = new ArrayList<>();
+        for (int index = 0; index < items.size(); index++) {
+            SearchRetrievalResult found = retrieveItem(
+                    scope,
+                    items.get(index),
+                    dates.get(index),
+                    3
+            );
+            List<Long> ids = new ArrayList<>();
+            for (SearchDocumentResult document : found.documents()) {
+                if (documents.containsKey(document.documentId()) || documents.size() < CANDIDATE_LIMIT) {
+                    documents.putIfAbsent(
+                            document.documentId(),
+                            document
+                    );
+                    ids.add(document.documentId());
+                }
+            }
+            ItemStatus status = ItemStatus.MATCHED;
+            if (ids.isEmpty()) {
+                status = ItemStatus.NO_MATCH;
+                if (!found.documents()
+                        .isEmpty()) {
+                    status = ItemStatus.EXCLUDED;
+                }
+            }
+            coverage.add(
+                    new Item(
+                            index + 1,
+                            status,
+                            ids
+                    )
+            );
+        }
+        return new SearchRetrievalResult(
+                List.copyOf(documents.values()),
+                0,
+                SearchRetrievalResult.Status.SEARCHED,
+                coverage
+        );
+    }
+
+    private SearchRetrievalResult retrieveItem(
+            SearchToolScope scope,
+            String question,
+            SearchDateFilter date,
+            int limit
+    ) {
         String queryText = question;
         if (date != null) {
             queryText = date.query();
         }
+        if (scope.recordingSessionId() != null && date == null) {
+            queryText = "";
+        }
         String normalizedQuery = normalizer.normalize(queryText);
-        if (normalizedQuery.isBlank() && date == null) {
+        if (normalizedQuery.isBlank() && date == null && scope.recordingSessionId() == null) {
             return SearchRetrievalResult.skipped();
         }
         SearchDocumentParameters parameters = parameters(
                 normalizedQuery,
-                date
-        );
-        List<SearchDocumentRecord> records = findRecords(
-                scope,
-                normalizedQuery,
-                parameters
+                date,
+                limit
         );
         return new SearchRetrievalResult(
-                documents(records),
+                documents(
+                        findRecords(
+                                scope,
+                                normalizedQuery,
+                                parameters
+                        )
+                ),
                 0
         );
     }
 
     private SearchDocumentParameters parameters(
             String query,
-            SearchDateFilter date
+            SearchDateFilter date,
+            int limit
     ) {
-        if (date == null) {
-            return new SearchDocumentParameters(
-                    query,
-                    null,
-                    null,
-                    null,
-                    null,
-                    CANDIDATE_LIMIT
-            );
-        }
         String search = query;
         if (search.isBlank()) {
             search = null;
@@ -96,11 +159,25 @@ public class SearchFastPathDocumentRetriever implements SearchDocumentRetriever 
         return new SearchDocumentParameters(
                 search,
                 null,
-                date.from(),
-                date.before(),
+                lowerBound(date),
+                upperBound(date),
                 null,
-                CANDIDATE_LIMIT
+                limit
         );
+    }
+
+    private Instant lowerBound(SearchDateFilter date) {
+        if (date == null) {
+            return null;
+        }
+        return date.from();
+    }
+
+    private Instant upperBound(SearchDateFilter date) {
+        if (date == null) {
+            return null;
+        }
+        return date.before();
     }
 
     private List<SearchDocumentRecord> findRecords(
