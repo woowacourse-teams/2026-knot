@@ -1,5 +1,6 @@
 package com.knot.backend.search.application.notion;
 
+import org.springframework.context.ApplicationContext;
 import java.time.Duration;
 import com.knot.backend.search.infrastructure.SearchWriteCardRecoveryScheduler;
 import com.knot.backend.global.config.SearchNotionProperties;
@@ -66,9 +67,11 @@ class SearchWriteCardExecutionIntegrationTest {
     @Autowired
     private SearchNotionAnswerRepository answers;
     @Autowired
-    private SearchWriteCardRecoveryScheduler recovery;
+    private SearchWriteCardTransitionService transitions;
     @Autowired
     private SearchNotionProperties properties;
+    @Autowired
+    private ApplicationContext context;
     @MockitoBean
     private SearchNotionClient notion;
     private SearchNotionFixtures notionFixtures;
@@ -215,6 +218,13 @@ class SearchWriteCardExecutionIntegrationTest {
     }
 
     @Test
+    @DisplayName("테스트 설정에서는 주기 정리 스케줄러를 띄우지 않는다")
+    void recoveryScheduler_disabledInTests() {
+        // when & then
+        assertThat(context.getBeansOfType(SearchWriteCardRecoveryScheduler.class)).isEmpty();
+    }
+
+    @Test
     @DisplayName("주기 정리는 회수 기준보다 오래 실행 중인 카드만 무응답 실패로 바꾸고 아직 기준 안인 실행 중 카드는 그대로 둔다")
     void recoverAbandoned_onlyStaleRunningCards() {
         // given
@@ -247,7 +257,10 @@ class SearchWriteCardExecutionIntegrationTest {
         );
 
         // when
-        recovery.recoverAbandoned();
+        new SearchWriteCardRecoveryScheduler(
+                transitions,
+                properties
+        ).recoverAbandoned();
 
         // then
         assertThat(abandonedAfter).isEqualTo(Duration.ofSeconds(61));

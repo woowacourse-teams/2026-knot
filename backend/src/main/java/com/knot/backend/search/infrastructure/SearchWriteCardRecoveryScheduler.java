@@ -5,6 +5,7 @@ import com.knot.backend.global.logging.ServerErrorLogger;
 import com.knot.backend.search.application.notion.SearchWriteCardTransitionService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
@@ -17,6 +18,7 @@ import org.springframework.stereotype.Component;
 @EnableScheduling
 @Slf4j
 @RequiredArgsConstructor
+@ConditionalOnProperty(prefix = "knot.search.notion", name = "running-card-recovery-enabled", havingValue = "true")
 public class SearchWriteCardRecoveryScheduler {
 
     private final SearchWriteCardTransitionService transitions;
