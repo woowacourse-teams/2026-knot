@@ -442,6 +442,74 @@ class SearchNotionConnectionAcceptanceTest {
     }
 
     @Test
+    @DisplayName("연결 시작은 state를 callback 경로에만 보내는 HttpOnly 쿠키로도 내려 준다")
+    void startAuthorization_stateCookie() throws Exception {
+        // when
+        MvcResult result = mvc.perform(
+                authorization(
+                        memberId,
+                        "{\"agreed\":true}",
+                        csrf()
+                )
+        )
+                .andExpect(status().isOk())
+                .andReturn();
+
+        // then
+        String url = json.readTree(
+                result.getResponse()
+                        .getContentAsString()
+        )
+                .path("authorizationUrl")
+                .asString();
+        assertThat(
+                result.getResponse()
+                        .getHeaders("Set-Cookie")
+        ).anySatisfy(
+                cookie -> assertThat(cookie).contains(
+                        SearchNotionConnectionController.STATE_COOKIE + "=" + state(url),
+                        "Path=" + CALLBACK,
+                        "HttpOnly",
+                        "SameSite=Lax"
+                )
+        );
+    }
+
+    @Test
+    @DisplayName("연결을 시작한 브라우저의 state 쿠키가 없거나 다르면 노션 토큰을 교환하지 않고 FAILED로 보낸다")
+    void callback_otherBrowser() throws Exception {
+        // given
+        String state = state(startAuthorization(memberId));
+
+        // when & then
+        mvc.perform(
+                get(CALLBACK).param(
+                        "state",
+                        state
+                )
+                        .param(
+                                "code",
+                                "code-a"
+                        )
+                        .cookie(
+                                new Cookie(
+                                        SearchNotionConnectionController.STATE_COOKIE,
+                                        "other-state"
+                                )
+                        )
+        )
+                .andExpect(status().isFound())
+                .andExpect(
+                        header().string(
+                                "Location",
+                                "/workspace/" + workspaceId + "/apps?notionConnection=FAILED"
+                        )
+                );
+        assertThat(connections.findByWorkspaceId(workspaceId)).isEmpty();
+        assertThat(notion.calls()).isZero();
+    }
+
+    @Test
     @DisplayName("state가 만료됐거나 연결을 시작한 Member가 이제 멤버가 아니면 FAILED로 보낸다")
     void callback_expiredStateOrLeftMember() throws Exception {
         // given
@@ -836,7 +904,8 @@ class SearchNotionConnectionAcceptanceTest {
                         state,
                         code,
                         null,
-                        null
+                        null,
+                        state
                 )
         )
                 .outcome();
@@ -848,6 +917,14 @@ class SearchNotionConnectionAcceptanceTest {
     ) throws Exception {
         MockHttpServletRequestBuilder request = get(CALLBACK);
         params.forEach(request::param);
+        if (params.containsKey("state")) {
+            request.cookie(
+                    new Cookie(
+                            SearchNotionConnectionController.STATE_COOKIE,
+                            params.get("state")
+                    )
+            );
+        }
         mvc.perform(request)
                 .andExpect(status().isFound())
                 .andExpect(

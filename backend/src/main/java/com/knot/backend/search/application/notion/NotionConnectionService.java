@@ -67,7 +67,7 @@ public class NotionConnectionService {
      * 연결이 없거나 만료일 때만 노션 동의 화면 주소를 만든다. state는 해시로, PKCE verifier는 암호화해 저장한다.
      */
     @Transactional
-    public String startAuthorization(
+    public NotionAuthorizationStart startAuthorization(
             long workspaceId,
             long memberId
     ) {
@@ -96,9 +96,12 @@ public class NotionConnectionService {
                         properties.getAuthorizationStateTtl()
                 )
         );
-        return authorizationUrl(
-                state,
-                verifier
+        return new NotionAuthorizationStart(
+                authorizationUrl(
+                        state,
+                        verifier
+                ),
+                state
         );
     }
 

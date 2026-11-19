@@ -77,6 +77,11 @@ public class NotionConnectionCallbackService {
             NotionAuthorizationState state,
             NotionConnectionCallback callback
     ) {
+        if (!callback.state()
+                .equals(callback.browserState())) {
+            // 다른 브라우저가 동의 화면 주소를 열면 그 사람의 노션이 시작한 Member의 Workspace에 붙지 않게 막는다.
+            return NotionConnectionOutcome.FAILED;
+        }
         if (state.isExpired(now()) || isForeignIssuer(callback.issuer())) {
             return NotionConnectionOutcome.FAILED;
         }
