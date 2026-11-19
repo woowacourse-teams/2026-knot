@@ -98,7 +98,7 @@ const agreeAndConnect = async (card: Locator, buttonName: string) => {
 };
 
 test.describe("연결된 앱 화면", () => {
-  test("[SEARCH-057][SEARCH-R29,SEARCH-R30] 보이는 범위 안내에 동의해야 노션 동의 화면으로 넘어가고, 돌아오면 연결된 노션과 연결한 사람이 보인다", async ({
+  test("[SEARCH-057, SEARCH-R29, SEARCH-R30] 보이는 범위 안내에 동의해야 노션 동의 화면으로 넘어가고, 돌아오면 연결된 노션과 연결한 사람이 보인다", async ({
     page,
   }) => {
     await setScenario({ page, scenario: "notConnected" });
@@ -136,7 +136,7 @@ test.describe("연결된 앱 화면", () => {
     ).toBeVisible();
   });
 
-  test("[SEARCH-057][SEARCH-R29] 사이드바 아래 「연결된 앱」으로 연결된 앱 화면에 들어가고 GNB에 지금 위치를 보여 준다", async ({
+  test("[SEARCH-057, SEARCH-R29] 사이드바 아래 「연결된 앱」으로 연결된 앱 화면에 들어가고 GNB에 지금 위치를 보여 준다", async ({
     page,
   }) => {
     await page.goto(`/workspace/${WORKSPACE_ID}`);
@@ -156,7 +156,7 @@ test.describe("연결된 앱 화면", () => {
     ).toContainText("연결된 앱");
   });
 
-  test("[SEARCH-058][SEARCH-R29] 다른 멤버가 연결했어도 연결된 노션과 연결한 사람이 보이고 따로 연결할 버튼이 없다", async ({
+  test("[SEARCH-058, SEARCH-R29] 다른 멤버가 연결했어도 연결된 노션과 연결한 사람이 보이고 따로 연결할 버튼이 없다", async ({
     page,
   }) => {
     await setScenario({ page, scenario: "connectedByOther" });
@@ -175,7 +175,7 @@ test.describe("연결된 앱 화면", () => {
     ).toHaveCount(0);
   });
 
-  test("[SEARCH-059][SEARCH-R30] 노션 게스트라 막혀 돌아오면 연결되지 않고 멤버만 연결할 수 있다고 안내한다", async ({
+  test("[SEARCH-059, SEARCH-R30] 노션 게스트라 막혀 돌아오면 연결되지 않고 멤버만 연결할 수 있다고 안내한다", async ({
     page,
   }) => {
     await setScenario({ page, scenario: "notConnected" });
@@ -195,7 +195,7 @@ test.describe("연결된 앱 화면", () => {
     await expect(page).toHaveURL(APPS_PATH);
   });
 
-  test("[SEARCH-061][SEARCH-R30,SEARCH-R33] 연결돼 있는 동안 [연결]이 없고, 끊은 뒤에는 [연결]로 새로 연결한다", async ({
+  test("[SEARCH-061, SEARCH-R30, SEARCH-R33] 연결돼 있는 동안 [연결]이 없고, 끊은 뒤에는 [연결]로 새로 연결한다", async ({
     page,
   }) => {
     const visitedUrls = await blockNotionAuthorization(page);
@@ -215,7 +215,7 @@ test.describe("연결된 앱 화면", () => {
     expect(visitedUrls).toEqual([AUTHORIZATION_URL]);
   });
 
-  test("[SEARCH-061][SEARCH-R30] 옛 화면에서 [연결]을 눌렀는데 그사이 다른 멤버가 연결했으면 연결된 카드로 바뀐다", async ({
+  test("[SEARCH-061, SEARCH-R30] 옛 화면에서 [연결]을 눌렀는데 그사이 다른 멤버가 연결했으면 연결된 카드로 바뀐다", async ({
     page,
   }) => {
     await setScenario({ page, scenario: "alreadyConnected" });
@@ -233,7 +233,7 @@ test.describe("연결된 앱 화면", () => {
     expect(visitedUrls).toEqual([]);
   });
 
-  test("[SEARCH-062][SEARCH-R33] 연결한 사람과 소유자만 [연결 끊기]가 있고, 끊으면 연결되지 않은 상태로 보인다", async ({
+  test("[SEARCH-062, SEARCH-R33] 연결한 사람과 소유자만 [연결 끊기]가 있고, 끊으면 연결되지 않은 상태로 보인다", async ({
     page,
   }) => {
     await setScenario({ page, scenario: "connectedByOther" });
@@ -256,7 +256,7 @@ test.describe("연결된 앱 화면", () => {
     ).toHaveCount(0);
   });
 
-  test("[SEARCH-063][SEARCH-R33] 연결한 사람이 남아 있으면 연결이 보이고, 서버가 연결을 끊었으면 다른 멤버에게 [연결]이 보인다", async ({
+  test("[SEARCH-063, SEARCH-R33] 연결한 사람이 남아 있으면 연결이 보이고, 서버가 연결을 끊었으면 다른 멤버에게 [연결]이 보인다", async ({
     page,
   }) => {
     await setScenario({ page, scenario: "connectedByOther" });
@@ -274,7 +274,7 @@ test.describe("연결된 앱 화면", () => {
     ).toBeVisible();
   });
 
-  test("[SEARCH-064][SEARCH-R34] 만료되면 연결한 사람이 아닌 멤버에게도 [다시 연결]이 있고, 같은 안내에 동의해야 노션으로 넘어가며 돌아오면 연결한 사람이 바뀐다", async ({
+  test("[SEARCH-064, SEARCH-R34] 만료되면 연결한 사람이 아닌 멤버에게도 [다시 연결]이 있고, 같은 안내에 동의해야 노션으로 넘어가며 돌아오면 연결한 사람이 바뀐다", async ({
     page,
   }) => {
     await setScenario({ page, scenario: "expired" });
@@ -304,7 +304,7 @@ test.describe("연결된 앱 화면", () => {
     );
   });
 
-  test("[SEARCH-064][SEARCH-R34] 만료된 연결을 연결한 사람과 소유자에게는 [연결 끊기]와 [다시 연결]이 함께 있다", async ({
+  test("[SEARCH-064, SEARCH-R34] 만료된 연결을 연결한 사람과 소유자에게는 [연결 끊기]와 [다시 연결]이 함께 있다", async ({
     page,
   }) => {
     await setScenario({ page, scenario: "expiredOwner" });
