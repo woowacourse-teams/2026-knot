@@ -5,6 +5,7 @@ import com.knot.backend.recording.application.RecordingAudioCleanupStateService;
 import com.knot.backend.document.application.DocumentArchivalService;
 import com.knot.backend.recording.domain.model.RecordingSession;
 import com.knot.backend.recording.domain.repository.RecordingSessionRepository;
+import com.knot.backend.search.application.notion.NotionConnectionDepartureService;
 import com.knot.backend.workspace.application.dto.result.WorkspaceOwnershipTransferCandidateResult;
 import com.knot.backend.workspace.domain.model.Workspace;
 import com.knot.backend.workspace.domain.WorkspaceErrorCode;
@@ -31,6 +32,7 @@ public class WorkspaceLeaveService {
     private final DocumentArchivalService documentArchivalService;
     private final Clock clock;
     private final RecordingAudioCleanupStateService audioCleanup;
+    private final NotionConnectionDepartureService notionConnections;
 
     @Transactional
     public void leave(
@@ -308,6 +310,13 @@ public class WorkspaceLeaveService {
         log.runStep(
                 "flush_memberships",
                 workspaceMemberRepository::flush
+        );
+        log.runStep(
+                "disconnect_notion",
+                () -> notionConnections.disconnectAfterDeparture(
+                        workspaceId,
+                        memberId
+                )
         );
         log.runStep(
                 "schedule_audio_cleanup",
