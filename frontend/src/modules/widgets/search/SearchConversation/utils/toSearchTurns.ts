@@ -14,7 +14,7 @@ import type { SearchTurn } from "../types/searchTurn";
  *
  * @example
  * toSearchTurns([userMessage, assistantMessage]);
- * // [{ key: "1", questionId: 1, question: userMessage.content, answer: { id, content, status, evidences } }]
+ * // [{ key: "1", questionId: 1, question: userMessage.content, answer: { id, content, status, evidences, ... } }]
  */
 export const toSearchTurns = (messages: SearchMessage[]) => {
   const turns: SearchTurn[] = [];
@@ -35,8 +35,25 @@ export const toSearchTurns = (messages: SearchMessage[]) => {
     // 열린 턴이 없거나 이미 답변이 있는 턴이면 버립니다
     if (!openedTurn || openedTurn.answer !== null) continue;
 
-    const { id, content, status, evidences } = message;
-    openedTurn.answer = { id, content, status, evidences };
+    const {
+      id,
+      content,
+      status,
+      evidences,
+      notionEvidences,
+      notionNotice,
+      writeCard,
+    } = message;
+    openedTurn.answer = {
+      id,
+      content,
+      status,
+      evidences,
+      notionEvidences,
+      notionNotice,
+      writeCard,
+      stage: null,
+    };
   }
 
   return turns;

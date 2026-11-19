@@ -1,4 +1,7 @@
-import type { SearchMessage } from "@/shared/types/searchAnswer";
+import type {
+  SearchAnswerStage,
+  SearchMessage,
+} from "@/shared/types/searchAnswer";
 
 /** 턴의 답변. 저장된 답변 메시지와 생성 중인 답변을 같은 모양으로 담아요 */
 export interface SearchTurnAnswer {
@@ -12,6 +15,18 @@ export interface SearchTurnAnswer {
 
   /** 근거 문서. 최대 3개, 관련도 순이에요 */
   evidences: SearchMessage["evidences"];
+
+  /** 답에 쓴 노션 페이지. 서버가 준 순서 그대로예요 */
+  notionEvidences: SearchMessage["notionEvidences"];
+
+  /** 노션을 읽지 못해 회의 문서만으로 답한 사유. 해당 없으면 `null`이에요 */
+  notionNotice: SearchMessage["notionNotice"];
+
+  /** 이 답변에 붙은 쓰기 확인 카드. 없으면 `null`이에요 */
+  writeCard: SearchMessage["writeCard"];
+
+  /** 생성 중인 답변의 진행 단계. 저장된 답변이거나 progress를 받기 전이면 `null`이에요 */
+  stage: SearchAnswerStage | null;
 }
 
 /** 화면에 그려지는 대화 단위. 질문 하나와 그에 대한 답변 하나를 묶어요 */
