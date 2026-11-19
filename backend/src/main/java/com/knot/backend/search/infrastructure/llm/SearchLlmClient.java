@@ -74,10 +74,15 @@ public class SearchLlmClient {
                                 "string",
                                 "enum",
                                 labels
-                        )
+                        ),
+                        "tools",
+                        SearchIntentResponse.toolsSchema()
                 ),
                 "required",
-                List.of("intent"),
+                List.of(
+                        "intent",
+                        "tools"
+                ),
                 "additionalProperties",
                 false
         );
