@@ -14,7 +14,10 @@ describe("cancelSearchWriteCardApi", () => {
     });
 
     expect(card).toEqual(
-      new SearchWriteCardDto({ ...searchWriteCardResponse, status: "CANCELED" }),
+      new SearchWriteCardDto({
+        ...searchWriteCardResponse,
+        status: "CANCELED",
+      }),
     );
   });
 });

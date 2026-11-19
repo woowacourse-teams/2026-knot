@@ -775,7 +775,9 @@ export class SearchMessageDto {
       (evidence) => new SearchNotionEvidenceDto(evidence),
     );
     this.notionNotice = raw.notionNotice ?? null;
-    this.writeCard = raw.writeCard ? new SearchWriteCardDto(raw.writeCard) : null;
+    this.writeCard = raw.writeCard
+      ? new SearchWriteCardDto(raw.writeCard)
+      : null;
   }
 }
 

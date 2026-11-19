@@ -6,8 +6,7 @@ import { startSearchNotionConnectionApi } from "@api/fetch/api/v1/workspaces/[wo
 import { searchKeys } from "@api/queryKey/search";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
-interface StartSearchNotionConnectionMutationVariables
-  extends PostSearchNotionConnectionAuthorizationRequestInput {
+interface StartSearchNotionConnectionMutationVariables extends PostSearchNotionConnectionAuthorizationRequestInput {
   workspaceId: number;
 }
 

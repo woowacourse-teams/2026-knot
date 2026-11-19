@@ -18,10 +18,7 @@ export interface SearchNotionEvidenceItem {
 
 /** 노션을 읽지 못해 회의 문서만으로 답한 사유 */
 export type SearchNotionNoticeReason =
-  | "NOT_CONNECTED"
-  | "PAGE_NOT_FOUND"
-  | "READ_FAILED"
-  | "CONNECTION_EXPIRED";
+  "NOT_CONNECTED" | "PAGE_NOT_FOUND" | "READ_FAILED" | "CONNECTION_EXPIRED";
 
 /** 쓰기 확인 카드. 실행과 취소 응답, write_card 이벤트의 card, 메시지 조회의 writeCard가 같은 모양이에요 */
 export interface SearchWriteCard {

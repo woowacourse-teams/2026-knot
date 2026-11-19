@@ -7,8 +7,7 @@ import { httpClient } from "@api/httpClient";
 
 export const WORKSPACE_SEARCH_NOTION_CONNECTION_AUTHORIZATION_API_PATH = (
   workspaceId: number,
-) =>
-  `/api/v1/workspaces/${workspaceId}/search/notion-connection/authorization`;
+) => `/api/v1/workspaces/${workspaceId}/search/notion-connection/authorization`;
 
 interface StartSearchNotionConnectionApiParams {
   workspaceId: number;

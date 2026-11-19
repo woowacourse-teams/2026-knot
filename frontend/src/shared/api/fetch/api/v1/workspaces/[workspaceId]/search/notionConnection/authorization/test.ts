@@ -35,14 +35,20 @@ describe("startSearchNotionConnectionApi", () => {
     mockServer.use(
       http.post(AUTHORIZATION_PATH, () =>
         HttpResponse.json(
-          { code: "NOTION_CONNECTION_ALREADY_CONNECTED", message: "이미 연결됨" },
+          {
+            code: "NOTION_CONNECTION_ALREADY_CONNECTED",
+            message: "이미 연결됨",
+          },
           { status: 409 },
         ),
       ),
     );
 
     await expect(
-      startSearchNotionConnectionApi({ workspaceId: 1, body: { agreed: true } }),
+      startSearchNotionConnectionApi({
+        workspaceId: 1,
+        body: { agreed: true },
+      }),
     ).rejects.toMatchObject({
       type: "conflict",
       code: "NOTION_CONNECTION_ALREADY_CONNECTED",
