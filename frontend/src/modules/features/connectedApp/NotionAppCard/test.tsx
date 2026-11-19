@@ -54,6 +54,7 @@ const APPS_PATH = getRouterPath({
 });
 
 const CONSENT_TITLE = "노션을 연결하기 전에 확인해 주세요";
+const GUEST_NOTICE = "노션 워크스페이스의 멤버만 연결할 수 있어요";
 const EXPIRED_NOTICE = "노션 연결이 만료됐어요";
 
 /** 노션 연결 조회가 이 응답을 돌려주게 해요 */
@@ -346,6 +347,74 @@ describe("NotionAppCard", () => {
       expect(
         within(card).getByRole("button", { name: "다시 연결" }),
       ).toBeInTheDocument();
+    });
+  });
+
+  describe("노션 동의 화면에서 돌아왔을 때", () => {
+    it("연결이 끝났으면 「노션을 연결했어요」를 알리고 주소에서 결과를 지운다", async () => {
+      const { router, card } = renderCard(
+        `${APPS_PATH}?notionConnection=CONNECTED`,
+      );
+
+      expect(await screen.findByText("노션을 연결했어요")).toBeInTheDocument();
+      expect(await within(card).findByText("연결됨")).toBeInTheDocument();
+      await waitFor(() => expect(router.state.location.search).toBe(""));
+    });
+
+    it("노션 게스트라 막혔으면 멤버만 연결할 수 있다고 안내하고 [연결]을 둔다", async () => {
+      mockConnection(NOT_CONNECTED);
+      const { router, card } = renderCard(
+        `${APPS_PATH}?notionConnection=NOTION_GUEST_NOT_ALLOWED`,
+      );
+
+      expect(await within(card).findByText(GUEST_NOTICE)).toBeInTheDocument();
+      expect(
+        within(card).getByText(
+          "노션에서 멤버로 바꿔 달라고 요청하거나, 노션 멤버인 다른 Knot 멤버가 연결해 주세요.",
+        ),
+      ).toBeInTheDocument();
+      expect(
+        within(card).getByRole("button", { name: "연결" }),
+      ).toBeInTheDocument();
+      await waitFor(() => expect(router.state.location.search).toBe(""));
+    });
+
+    it("만료에서 다시 연결하다 노션 게스트라 막혔으면 만료 안내 대신 게스트 안내와 [다시 연결]을 둔다", async () => {
+      mockConnection({
+        ...searchNotionConnectionResponse,
+        status: "EXPIRED",
+        canDisconnect: false,
+      });
+      const { card } = renderCard(
+        `${APPS_PATH}?notionConnection=NOTION_GUEST_NOT_ALLOWED`,
+      );
+
+      expect(await within(card).findByText(GUEST_NOTICE)).toBeInTheDocument();
+      expect(within(card).queryByText(EXPIRED_NOTICE)).not.toBeInTheDocument();
+      expect(
+        within(card).getByRole("button", { name: "다시 연결" }),
+      ).toBeInTheDocument();
+    });
+
+    it("알림 모습이 없는 결과는 새 안내 없이 연결 상태만 새로 보여 주고 주소에서 지운다", async () => {
+      const { router, card } = renderCard(
+        `${APPS_PATH}?notionConnection=CANCELLED`,
+      );
+
+      expect(await within(card).findByText("연결됨")).toBeInTheDocument();
+      await waitFor(() => expect(router.state.location.search).toBe(""));
+      expect(screen.queryByText("노션을 연결했어요")).not.toBeInTheDocument();
+      expect(within(card).queryByText(GUEST_NOTICE)).not.toBeInTheDocument();
+    });
+
+    it("모르는 결과는 무시한다", async () => {
+      const { router, card } = renderCard(
+        `${APPS_PATH}?notionConnection=UNKNOWN`,
+      );
+
+      expect(await within(card).findByText("연결됨")).toBeInTheDocument();
+      expect(router.state.location.search).toBe("?notionConnection=UNKNOWN");
+      expect(screen.queryByText("노션을 연결했어요")).not.toBeInTheDocument();
     });
   });
 

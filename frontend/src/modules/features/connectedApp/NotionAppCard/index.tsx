@@ -10,6 +10,7 @@ import { useParams } from "react-router";
 import ChevronDownIcon from "@/assets/icons/chevronDown.svg";
 import NotionLogo from "@/assets/logos/notion.svg";
 
+import { useNotionConnectionResult } from "./model/useNotionConnectionResult";
 import CardNotice from "./ui/CardNotice";
 import NotionAbilityList from "./ui/NotionAbilityList";
 import NotionConnectionInfo from "./ui/NotionConnectionInfo";
@@ -29,6 +30,7 @@ const STATUS_LABELS = {
  * - 만료: 멤버 누구나 [다시 연결]을 눌러요. 연결한 사람과 소유자에게는 [연결 끊기]도 있어요
  *
  * [연결]과 [다시 연결]은 보이는 범위 안내와 동의를 거쳐 노션 동의 화면으로 넘어가요.
+ * 노션 동의 화면에서 돌아오면 결과를 알리고, 노션 게스트라 막혔으면 만료 안내 대신 게스트 안내를 보여 줘요.
  * 노션이 하는 일은 기본으로 접어 두고 「자세히 보기」로 펼쳐요.
  * 불러오는 중이거나 불러오지 못하면 상태 칩과 버튼 없이 머리만 보여요.
  */
@@ -38,10 +40,14 @@ export default function NotionAppCard() {
   const { data: connection } = useSearchNotionConnectionQuery({ workspaceId });
   const { mutate: disconnect, isPending: isDisconnecting } =
     useDisconnectSearchNotionConnectionMutation();
+  const { isGuestBlocked } = useNotionConnectionResult({ workspaceId });
   const { open } = useDialog();
   const [isDetailOpen, setIsDetailOpen] = useState(false);
 
   const status = connection?.status;
+  // 연결 상태를 받기 전과 그사이 연결된 경우에는 게스트 안내를 두지 않아요
+  const isGuestNoticeShown =
+    isGuestBlocked && (status === "NOT_CONNECTED" || status === "EXPIRED");
 
   const handleConnectClick = () =>
     open(({ close }) => (
@@ -87,11 +93,18 @@ export default function NotionAppCard() {
 
       {isDetailOpen && <NotionAbilityList />}
 
-      {status === "EXPIRED" && (
+      {isGuestNoticeShown ? (
         <CardNotice
-          title="노션 연결이 만료됐어요"
-          description="다시 연결하기 전에는 탐색이 노션을 읽고 쓰지 못해요."
+          title="노션 워크스페이스의 멤버만 연결할 수 있어요"
+          description="노션에서 멤버로 바꿔 달라고 요청하거나, 노션 멤버인 다른 Knot 멤버가 연결해 주세요."
         />
+      ) : (
+        status === "EXPIRED" && (
+          <CardNotice
+            title="노션 연결이 만료됐어요"
+            description="다시 연결하기 전에는 탐색이 노션을 읽고 쓰지 못해요."
+          />
+        )
       )}
 
       {status === "CONNECTED" && connection?.connectedBy && (
@@ -107,7 +120,7 @@ export default function NotionAppCard() {
         <Foot>
           <Divider />
           <Actions>
-            {status === "NOT_CONNECTED" && (
+            {status === "NOT_CONNECTED" && !isGuestNoticeShown && (
               <Hint>한 사람이 연결하면 멤버 모두가 써요.</Hint>
             )}
             <Buttons>
