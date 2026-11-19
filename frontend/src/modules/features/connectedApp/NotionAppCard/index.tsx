@@ -1,3 +1,4 @@
+import useDisconnectSearchNotionConnectionMutation from "@api/mutations/useDisconnectSearchNotionConnectionMutation";
 import useSearchNotionConnectionQuery from "@api/queries/useSearchNotionConnectionQuery";
 import styled from "@emotion/styled";
 import Button from "@primitives/ui/Button";
@@ -32,12 +33,19 @@ export default function NotionAppCard() {
   const titleId = useId();
   const workspaceId = Number(useParams().workspaceId);
   const { data: connection } = useSearchNotionConnectionQuery({ workspaceId });
+  const { mutate: disconnect, isPending: isDisconnecting } =
+    useDisconnectSearchNotionConnectionMutation();
   const [isDetailOpen, setIsDetailOpen] = useState(false);
 
   const status = connection?.status;
 
   const disconnectButton = connection?.canDisconnect && (
-    <DisconnectButton size="sm" variant="outline">
+    <DisconnectButton
+      size="sm"
+      variant="outline"
+      isLoading={isDisconnecting}
+      onClick={() => disconnect({ workspaceId })}
+    >
       연결 끊기
     </DisconnectButton>
   );

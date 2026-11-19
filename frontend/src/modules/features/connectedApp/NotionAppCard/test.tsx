@@ -15,7 +15,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import { createMemoryRouter, Outlet, RouterProvider } from "react-router";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import NotionAppCard from ".";
 
@@ -143,6 +143,30 @@ describe("NotionAppCard", () => {
       ).toBeInTheDocument();
     });
 
+    it("[연결 끊기]를 누르면 연결을 끊고 연결 전 카드로 바뀐다", async () => {
+      let connection: SearchNotionConnection = searchNotionConnectionResponse;
+      const deleteRequest = vi.fn();
+      mockServer.use(
+        http.get(CONNECTION_REQUEST, () => HttpResponse.json(connection)),
+        http.delete(CONNECTION_REQUEST, () => {
+          deleteRequest();
+          connection = NOT_CONNECTED;
+
+          return new HttpResponse(null, { status: 204 });
+        }),
+      );
+      const { card } = renderCard();
+
+      fireEvent.click(
+        await within(card).findByRole("button", { name: "연결 끊기" }),
+      );
+
+      expect(await within(card).findByText("연결 전")).toBeInTheDocument();
+      expect(deleteRequest).toHaveBeenCalledTimes(1);
+      expect(
+        within(card).getByRole("button", { name: "연결" }),
+      ).toBeInTheDocument();
+    });
   });
 
   describe("연결 전", () => {
