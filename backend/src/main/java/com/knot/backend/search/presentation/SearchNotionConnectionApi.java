@@ -14,10 +14,12 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import io.swagger.v3.oas.annotations.security.SecurityRequirements;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 
-@Tag(name = "탐색 노션 연결", description = "Workspace 노션 연결 조회, 연결 시작, 끊기")
+@Tag(name = "탐색 노션 연결", description = "Workspace 노션 연결 조회, 연결 시작, 끊기와 노션 동의 화면 콜백")
 public interface SearchNotionConnectionApi {
 
     @SecurityRequirement(name = ACCESS_TOKEN_COOKIE)
@@ -57,5 +59,17 @@ public interface SearchNotionConnectionApi {
     void disconnect(
             @Parameter(description = "Workspace ID") Long workspaceId,
             @Parameter(hidden = true) AuthenticatedMember authenticatedMember
+    );
+
+    @SecurityRequirements
+    @Operation(summary = "노션 동의 화면 콜백", description = "노션이 브라우저를 돌려보내는 주소입니다. 화면 코드는 부르지 않습니다. "
+            + "로그인 쿠키 없이 state 하나로 처리하고 연결된 앱 화면으로 302를 보냅니다. 결과는 notionConnection 쿼리 하나로 전합니다"
+            + "(CONNECTED, NOTION_CONNECTION_ALREADY_CONNECTED, CANCELLED, FAILED). state를 찾지 못하면 쿼리 없이 기본 화면으로 보냅니다.")
+    @ApiResponses({@ApiResponse(responseCode = "302", description = "연결된 앱 화면으로 이동")})
+    ResponseEntity<Void> callback(
+            @Parameter(description = "연결 시작 때 보낸 state") String state,
+            @Parameter(description = "노션이 준 authorization code") String code,
+            @Parameter(description = "노션이 준 OAuth 오류 값(access_denied 등)") String error,
+            @Parameter(description = "노션 authorization server issuer") String iss
     );
 }
