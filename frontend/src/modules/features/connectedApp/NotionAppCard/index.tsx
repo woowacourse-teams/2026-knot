@@ -3,6 +3,7 @@ import useSearchNotionConnectionQuery from "@api/queries/useSearchNotionConnecti
 import styled from "@emotion/styled";
 import Button from "@primitives/ui/Button";
 import Divider from "@primitives/ui/Divider";
+import { useDialog } from "@provider/context/dialogContext";
 import { useId, useState } from "react";
 import { useParams } from "react-router";
 
@@ -12,6 +13,7 @@ import NotionLogo from "@/assets/logos/notion.svg";
 import CardNotice from "./ui/CardNotice";
 import NotionAbilityList from "./ui/NotionAbilityList";
 import NotionConnectionInfo from "./ui/NotionConnectionInfo";
+import NotionConsentDialog from "./ui/NotionConsentDialog";
 
 const STATUS_LABELS = {
   NOT_CONNECTED: "연결 전",
@@ -26,6 +28,7 @@ const STATUS_LABELS = {
  * - 연결됨: 연결된 노션과 연결한 사람, 보이는 범위를 보여 줘요. 연결한 사람과 소유자에게만 [연결 끊기]가 있어요
  * - 만료: 멤버 누구나 [다시 연결]을 눌러요. 연결한 사람과 소유자에게는 [연결 끊기]도 있어요
  *
+ * [연결]과 [다시 연결]은 보이는 범위 안내와 동의를 거쳐 노션 동의 화면으로 넘어가요.
  * 노션이 하는 일은 기본으로 접어 두고 「자세히 보기」로 펼쳐요.
  * 불러오는 중이거나 불러오지 못하면 상태 칩과 버튼 없이 머리만 보여요.
  */
@@ -35,9 +38,15 @@ export default function NotionAppCard() {
   const { data: connection } = useSearchNotionConnectionQuery({ workspaceId });
   const { mutate: disconnect, isPending: isDisconnecting } =
     useDisconnectSearchNotionConnectionMutation();
+  const { open } = useDialog();
   const [isDetailOpen, setIsDetailOpen] = useState(false);
 
   const status = connection?.status;
+
+  const handleConnectClick = () =>
+    open(({ close }) => (
+      <NotionConsentDialog workspaceId={workspaceId} onClose={close} />
+    ));
 
   const disconnectButton = connection?.canDisconnect && (
     <DisconnectButton
@@ -104,10 +113,14 @@ export default function NotionAppCard() {
             <Buttons>
               {disconnectButton}
               {status === "NOT_CONNECTED" && (
-                <Button size="sm">연결</Button>
+                <Button size="sm" onClick={handleConnectClick}>
+                  연결
+                </Button>
               )}
               {status === "EXPIRED" && (
-                <Button size="sm">다시 연결</Button>
+                <Button size="sm" onClick={handleConnectClick}>
+                  다시 연결
+                </Button>
               )}
             </Buttons>
           </Actions>

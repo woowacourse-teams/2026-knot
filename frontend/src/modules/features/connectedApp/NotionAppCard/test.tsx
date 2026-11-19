@@ -1,7 +1,9 @@
 import {
   GetSearchNotionConnectionResponseDto,
+  PostSearchNotionConnectionAuthorizationResponseDto,
 } from "@api/dto/search";
 import {
+  searchNotionConnectionAuthorizationResponse,
   searchNotionConnectionResponse,
 } from "@api/mock/responses/search";
 import { mockServer } from "@api/mock/server";
@@ -12,20 +14,32 @@ import { ToastProvider } from "@provider/context/toastContext";
 import { theme } from "@provider/themeProvider";
 import { getRouterPath, PATH_ROUTE } from "@routes/PATH_ROUTE";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import { createMemoryRouter, Outlet, RouterProvider } from "react-router";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import NotionAppCard from ".";
 
 // 경로 파라미터에 무엇이 와도 잡도록 fetch 상수 대신 패턴을 적어요
 const CONNECTION_REQUEST =
   "*/api/v1/workspaces/:workspaceId/search/notion-connection";
+const AUTHORIZATION_REQUEST = `${CONNECTION_REQUEST}/authorization`;
 
 const expected = new GetSearchNotionConnectionResponseDto(
   searchNotionConnectionResponse,
 );
+const expectedAuthorization =
+  new PostSearchNotionConnectionAuthorizationResponseDto(
+    searchNotionConnectionAuthorizationResponse,
+  );
+
 const NOT_CONNECTED = {
   status: "NOT_CONNECTED",
   notionWorkspaceName: null,
@@ -39,6 +53,7 @@ const APPS_PATH = getRouterPath({
   params: { workspaceId: "1" },
 });
 
+const CONSENT_TITLE = "노션을 연결하기 전에 확인해 주세요";
 const EXPIRED_NOTICE = "노션 연결이 만료됐어요";
 
 /** 노션 연결 조회가 이 응답을 돌려주게 해요 */
@@ -46,6 +61,28 @@ const mockConnection = (connection: SearchNotionConnection) =>
   mockServer.use(
     http.get(CONNECTION_REQUEST, () => HttpResponse.json(connection)),
   );
+
+// jsdom은 다른 주소로 이동하지 못해요. 보내려는 주소를 받아 두는 가짜 location으로 바꿔요.
+// 요청 주소를 만들 때 지금 주소를 읽으므로 읽기는 원래 값을 돌려줘요
+const stubLocation = () => {
+  const visitedUrls: string[] = [];
+  const currentHref = window.location.href;
+  vi.stubGlobal("location", {
+    ...window.location,
+    get href() {
+      return currentHref;
+    },
+    set href(url: string) {
+      visitedUrls.push(url);
+    },
+  });
+
+  return visitedUrls;
+};
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 const renderCard = (path = APPS_PATH) => {
   const queryClient = new QueryClient({
@@ -183,10 +220,101 @@ describe("NotionAppCard", () => {
       ).not.toBeInTheDocument();
     });
 
+    it("[연결]을 누르면 보이는 범위 안내를 띄우고, [취소]면 연결을 시작하지 않고 닫는다", async () => {
+      mockConnection(NOT_CONNECTED);
+      const startRequest = vi.fn();
+      mockServer.use(
+        http.post(AUTHORIZATION_REQUEST, () => {
+          startRequest();
+
+          return HttpResponse.json(searchNotionConnectionAuthorizationResponse);
+        }),
+      );
+      const { card } = renderCard();
+
+      fireEvent.click(await within(card).findByRole("button", { name: "연결" }));
+      const dialog = screen.getByRole("dialog", { name: CONSENT_TITLE });
+      expect(
+        within(dialog).getByText(
+          "이 워크스페이스 멤버 모두에게 탐색 답변으로 보일 수 있어요.",
+          { exact: false },
+        ),
+      ).toBeInTheDocument();
+
+      fireEvent.click(within(dialog).getByRole("button", { name: "취소" }));
+
+      await waitFor(() =>
+        expect(
+          screen.queryByRole("dialog", { name: CONSENT_TITLE }),
+        ).not.toBeInTheDocument(),
+      );
+      expect(startRequest).not.toHaveBeenCalled();
+    });
+
+    it("[동의하고 연결]을 누르면 동의를 보내고 받은 노션 동의 화면 주소로 이동한다", async () => {
+      mockConnection(NOT_CONNECTED);
+      const startBody = vi.fn();
+      mockServer.use(
+        http.post(AUTHORIZATION_REQUEST, async ({ request }) => {
+          startBody(await request.json());
+
+          return HttpResponse.json(searchNotionConnectionAuthorizationResponse);
+        }),
+      );
+      const { card } = renderCard();
+      const visitedUrls = stubLocation();
+
+      fireEvent.click(await within(card).findByRole("button", { name: "연결" }));
+      fireEvent.click(
+        within(screen.getByRole("dialog", { name: CONSENT_TITLE })).getByRole(
+          "button",
+          { name: "동의하고 연결" },
+        ),
+      );
+
+      await waitFor(() =>
+        expect(visitedUrls).toEqual([expectedAuthorization.authorizationUrl]),
+      );
+      expect(startBody).toHaveBeenCalledWith({ agreed: true });
+    });
+
+    it("그사이 다른 멤버가 연결해 연결 시작이 409로 거절되면 안내를 닫고 연결된 카드를 보여 준다", async () => {
+      let connection: SearchNotionConnection = NOT_CONNECTED;
+      mockServer.use(
+        http.get(CONNECTION_REQUEST, () => HttpResponse.json(connection)),
+        http.post(AUTHORIZATION_REQUEST, () => {
+          connection = { ...searchNotionConnectionResponse, canDisconnect: false };
+
+          return HttpResponse.json(
+            { code: "NOTION_CONNECTION_ALREADY_CONNECTED" },
+            { status: 409 },
+          );
+        }),
+      );
+      const { card } = renderCard();
+      const visitedUrls = stubLocation();
+
+      fireEvent.click(await within(card).findByRole("button", { name: "연결" }));
+      fireEvent.click(
+        within(screen.getByRole("dialog", { name: CONSENT_TITLE })).getByRole(
+          "button",
+          { name: "동의하고 연결" },
+        ),
+      );
+
+      expect(await within(card).findByText("연결됨")).toBeInTheDocument();
+      expect(
+        screen.queryByRole("dialog", { name: CONSENT_TITLE }),
+      ).not.toBeInTheDocument();
+      expect(
+        within(card).queryByRole("button", { name: "연결" }),
+      ).not.toBeInTheDocument();
+      expect(visitedUrls).toEqual([]);
+    });
   });
 
   describe("만료", () => {
-    it("다른 멤버에게는 만료 안내와 [다시 연결]만 보여 준다", async () => {
+    it("다른 멤버에게는 만료 안내와 [다시 연결]만 보여 주고, 누르면 같은 보이는 범위 안내를 띄운다", async () => {
       mockConnection({
         ...searchNotionConnectionResponse,
         status: "EXPIRED",
@@ -199,8 +327,11 @@ describe("NotionAppCard", () => {
       expect(
         within(card).queryByRole("button", { name: "연결 끊기" }),
       ).not.toBeInTheDocument();
+
+      fireEvent.click(within(card).getByRole("button", { name: "다시 연결" }));
+
       expect(
-        within(card).getByRole("button", { name: "다시 연결" }),
+        screen.getByRole("dialog", { name: CONSENT_TITLE }),
       ).toBeInTheDocument();
     });
 
