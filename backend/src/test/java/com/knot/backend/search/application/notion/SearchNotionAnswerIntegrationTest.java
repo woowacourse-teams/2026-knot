@@ -361,7 +361,7 @@ class SearchNotionAnswerIntegrationTest {
     @ParameterizedTest
     @EnumSource(value = SearchNotionWriteSkip.class, names = {"LOCATION_MISSING", "NOT_CONNECTED", "CONNECTION_EXPIRED",
             "MEETING_NOT_FOUND", "LOCATION_NOT_FOUND", "LOCATION_FAILED"})
-    @DisplayName("카드를 만들지 않는 만들기 요청은 초안 없이 안내 답글로 완료하고 연결 사유만 노션 안내로 저장한다")
+    @DisplayName("카드를 만들지 않는 만들기 요청은 초안 없이 안내 답글로 완료하고 연결이 없거나 만료여도 노션 안내는 저장하지 않는다")
     void execute_success_writeSkippedWithGuidance(SearchNotionWriteSkip skip) {
         String location = "회의록";
         if (skip == SearchNotionWriteSkip.LOCATION_MISSING) {
@@ -397,14 +397,7 @@ class SearchNotionAnswerIntegrationTest {
         assertThat(content()).isEqualTo(skip.guidance());
         assertThat(count("search_write_cards")).isZero();
         assertThat(count("search_evidences")).isZero();
-        assertThat(
-                jdbc.sql("SELECT reason FROM search_notion_notices")
-                        .query(String.class)
-                        .optional()
-        ).isEqualTo(
-                skip.notice()
-                        .map(Enum::name)
-        );
+        assertThat(count("search_notion_notices")).isZero();
         verifyNoInteractions(
                 generator,
                 notionGenerator
