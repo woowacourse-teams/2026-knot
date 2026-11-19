@@ -7,6 +7,7 @@ import { setupWorker } from "msw/browser";
 import { handlers } from "./handlers";
 import { devAuthHandlers } from "./handlers/dev";
 import { deploymentCompatibilityHandlers } from "./handlers/dev/deploymentCompatibility";
+import { notionConnectionHandlers } from "./handlers/dev/notionConnection";
 import {
   applyMockScenarioFromQuery,
   CURRENT_RECORDING_SCENARIOS,
@@ -26,6 +27,7 @@ export const mockWorker = setupWorker(
   ...searchNotionHandlers,
   ...searchChatHandlers,
   ...deploymentCompatibilityHandlers,
+  ...notionConnectionHandlers,
   ...devScenarioHandlers,
   ...handlers,
 );
