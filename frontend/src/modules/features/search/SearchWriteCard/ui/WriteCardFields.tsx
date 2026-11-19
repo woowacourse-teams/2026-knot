@@ -71,6 +71,7 @@ const List = styled.dl`
   display: flex;
   flex-direction: column;
   gap: 0.875rem; /* 14px */
+  margin: 0;
 `;
 
 const Row = styled.div`
