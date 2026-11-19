@@ -32,9 +32,23 @@ public class SearchAnswerJsonStream {
     }
 
     public List<Long> complete(List<SearchDocumentResult> documents) {
+        return complete(
+                documents,
+                0,
+                false
+        ).usedDocumentIds();
+    }
+
+    public SearchAnswerResponse complete(
+            List<SearchDocumentResult> documents,
+            int notionPageCount,
+            boolean draftRequested
+    ) {
         SearchAnswerResponse response = SearchAnswerResponse.parse(
                 json.toString(),
                 documents,
+                notionPageCount,
+                draftRequested,
                 mapper
         );
         if (!answerClosed || !response.answer()
@@ -42,7 +56,7 @@ public class SearchAnswerJsonStream {
             throw new SearchToolException("INVALID_MODEL_ANSWER");
         }
         emitClarification(response);
-        return response.usedDocumentIds();
+        return response;
     }
 
     private void emitClarification(SearchAnswerResponse response) {

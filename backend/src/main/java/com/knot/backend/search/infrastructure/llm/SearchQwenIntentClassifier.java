@@ -6,7 +6,7 @@ import com.knot.backend.global.config.SearchAgentProperties;
 import com.knot.backend.search.application.SearchIntentClassifier;
 import com.knot.backend.search.application.SearchToolAccess;
 import com.knot.backend.search.application.SearchToolScope;
-import com.knot.backend.search.domain.model.SearchIntent;
+import com.knot.backend.search.application.dto.result.SearchUsePlan;
 import java.util.List;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
@@ -23,7 +23,7 @@ public class SearchQwenIntentClassifier implements SearchIntentClassifier {
     private final ObjectMapper mapper;
 
     @Override
-    public SearchIntent classify(
+    public SearchUsePlan classify(
             SearchToolScope scope,
             String question
     ) {

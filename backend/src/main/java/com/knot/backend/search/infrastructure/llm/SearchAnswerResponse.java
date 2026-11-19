@@ -14,11 +14,23 @@ import tools.jackson.databind.DeserializationFeature;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
+/**
+ * notionEvidenceIndexes에 넘긴 노션 페이지 목록의 0부터 센 위치를 답변 AI가 낸 순서대로 담는다. 초안을 받지 않았거나
+ * 값이 없으면 notionDraft와 notionDraftIssue를 null로 둔다.
+ */
 public record SearchAnswerResponse(
         String answer,
         List<Long> usedDocumentIds,
-        String clarificationQuestion
+        String clarificationQuestion,
+        List<Integer> notionEvidenceIndexes,
+        Draft notionDraft,
+        String notionDraftIssue
 ) {
+    public static final List<String> DRAFT_ISSUES = List.of(
+            "MULTIPLE_MEETINGS",
+            "MULTIPLE_PAGES",
+            "MEETING_NOT_FOUND"
+    );
     private static final Set<String> FIELDS = Set.of(
             "status",
             "decisionState",
@@ -49,11 +61,36 @@ public record SearchAnswerResponse(
             List<SearchDocumentResult> documents,
             ObjectMapper mapper
     ) {
+        return parse(
+                json,
+                documents,
+                0,
+                false,
+                mapper
+        );
+    }
+
+    /**
+     * notionPageCount가 0이고 초안을 받지 않으면 기존 다섯 칸 형식과 같다.
+     */
+    public static SearchAnswerResponse parse(
+            String json,
+            List<SearchDocumentResult> documents,
+            int notionPageCount,
+            boolean draftRequested,
+            ObjectMapper mapper
+    ) {
         JsonNode response = read(
                 json,
                 mapper
         );
-        validateFields(response);
+        validateFields(
+                response,
+                fields(
+                        notionPageCount,
+                        draftRequested
+                )
+        );
         String status = response.path("status")
                 .asString();
         validateValue(
@@ -64,9 +101,11 @@ public record SearchAnswerResponse(
                 response.path("decisionState"),
                 DECISIONS
         );
+        String issue = draftIssue(response.path("notionDraftIssue"));
         validateAnswer(
                 response,
-                status
+                status,
+                issue
         );
         validateClarification(
                 response,
@@ -76,18 +115,154 @@ public record SearchAnswerResponse(
                 response.path("evidenceIds"),
                 documents
         );
+        List<Integer> notionIds = notionIds(
+                response.path("notionEvidenceIds"),
+                notionPageCount
+        );
         validateEvidenceStatus(
                 response,
                 status,
-                ids
+                ids,
+                notionIds
+        );
+        Draft draft = draft(
+                response.path("notionDraft"),
+                documents
+        );
+        validateDraft(
+                draft,
+                issue,
+                status
         );
         return new SearchAnswerResponse(
                 response.path("answer")
                         .asString(),
                 ids,
                 response.path("clarificationQuestion")
-                        .asString(null)
+                        .asString(null),
+                notionIds,
+                draft,
+                issue
         );
+    }
+
+    private static Set<String> fields(
+            int notionPageCount,
+            boolean draftRequested
+    ) {
+        Set<String> fields = new HashSet<>(FIELDS);
+        if (notionPageCount > 0) {
+            fields.add("notionEvidenceIds");
+        }
+        if (draftRequested) {
+            fields.add("notionDraft");
+            fields.add("notionDraftIssue");
+        }
+        return fields;
+    }
+
+    private static List<Integer> notionIds(
+            JsonNode ids,
+            int notionPageCount
+    ) {
+        if (ids.isMissingNode()) {
+            return List.of();
+        }
+        if (!ids.isArray()) {
+            throw invalid();
+        }
+        List<Integer> result = new ArrayList<>();
+        for (JsonNode id : ids) {
+            int index = notionIndex(
+                    id,
+                    notionPageCount
+            );
+            if (result.contains(index)) {
+                throw invalid();
+            }
+            result.add(index);
+        }
+        return List.copyOf(result);
+    }
+
+    private static int notionIndex(
+            JsonNode id,
+            int notionPageCount
+    ) {
+        if (!id.isString() || !id.asString()
+                .matches("N[1-9][0-9]{0,8}")) {
+            throw invalid();
+        }
+        int number = Integer.parseInt(
+                id.asString()
+                        .substring(1)
+        );
+        if (number > notionPageCount) {
+            throw invalid();
+        }
+        return number - 1;
+    }
+
+    private static String draftIssue(JsonNode issue) {
+        if (issue.isMissingNode() || issue.isNull()) {
+            return null;
+        }
+        if (!issue.isString() || !DRAFT_ISSUES.contains(issue.asString())) {
+            throw invalid();
+        }
+        return issue.asString();
+    }
+
+    private static Draft draft(
+            JsonNode draft,
+            List<SearchDocumentResult> documents
+    ) {
+        if (draft.isMissingNode() || draft.isNull()) {
+            return null;
+        }
+        if (!draft.isObject() || draft.size() != 3) {
+            throw invalid();
+        }
+        JsonNode title = draft.path("title");
+        JsonNode body = draft.path("body");
+        if (!title.isString() || title.asString()
+                .isBlank() || !body.isString()) {
+            throw invalid();
+        }
+        return new Draft(
+                title.asString()
+                        .strip(),
+                body.asString(),
+                draftDocumentId(
+                        draft.path("evidenceId"),
+                        documents
+                )
+        );
+    }
+
+    private static long draftDocumentId(
+            JsonNode evidenceId,
+            List<SearchDocumentResult> documents
+    ) {
+        for (SearchDocumentResult document : documents) {
+            if (("E" + document.documentId()).equals(evidenceId.asString(""))) {
+                return document.documentId();
+            }
+        }
+        throw invalid();
+    }
+
+    private static void validateDraft(
+            Draft draft,
+            String issue,
+            String status
+    ) {
+        if (draft == null) {
+            return;
+        }
+        if (issue != null || "NEEDS_CLARIFICATION".equals(status)) {
+            throw invalid();
+        }
     }
 
     private static JsonNode read(
@@ -104,11 +279,14 @@ public record SearchAnswerResponse(
         }
     }
 
-    private static void validateFields(JsonNode response) {
-        if (response == null || !response.isObject() || response.size() != FIELDS.size()) {
+    private static void validateFields(
+            JsonNode response,
+            Set<String> fields
+    ) {
+        if (response == null || !response.isObject() || response.size() != fields.size()) {
             throw invalid();
         }
-        for (String field : FIELDS) {
+        for (String field : fields) {
             if (!response.has(field)) {
                 throw invalid();
             }
@@ -126,13 +304,15 @@ public record SearchAnswerResponse(
 
     private static void validateAnswer(
             JsonNode response,
-            String status
+            String status,
+            String issue
     ) {
         JsonNode answer = response.path("answer");
         if (!answer.isString()) {
             throw invalid();
         }
-        if (!"NEEDS_CLARIFICATION".equals(status) && answer.asString()
+        // 초안을 쓰지 못한 사유가 있으면 서버가 안내를 붙이므로 다른 질문이 없을 때 답글을 비울 수 있다.
+        if (!"NEEDS_CLARIFICATION".equals(status) && issue == null && answer.asString()
                 .isBlank()) {
             throw invalid();
         }
@@ -182,13 +362,15 @@ public record SearchAnswerResponse(
     private static void validateEvidenceStatus(
             JsonNode response,
             String status,
-            List<Long> ids
+            List<Long> ids,
+            List<Integer> notionIds
     ) {
         if ("GENERAL".equals(status)) {
             validateGeneral(
                     response,
                     ids
             );
+            validateNoNotionEvidence(notionIds);
             return;
         }
         if ("NOT_FOUND".equals(status)) {
@@ -196,9 +378,16 @@ public record SearchAnswerResponse(
                     response,
                     ids
             );
+            validateNoNotionEvidence(notionIds);
             return;
         }
-        if (!"NEEDS_CLARIFICATION".equals(status) && ids.isEmpty()) {
+        if (!"NEEDS_CLARIFICATION".equals(status) && ids.isEmpty() && notionIds.isEmpty()) {
+            throw invalid();
+        }
+    }
+
+    private static void validateNoNotionEvidence(List<Integer> notionIds) {
+        if (!notionIds.isEmpty()) {
             throw invalid();
         }
     }
@@ -261,5 +450,12 @@ public record SearchAnswerResponse(
                 "INVALID_MODEL_ANSWER",
                 cause
         );
+    }
+
+    public record Draft(
+            String title,
+            String body,
+            long documentId
+    ) {
     }
 }

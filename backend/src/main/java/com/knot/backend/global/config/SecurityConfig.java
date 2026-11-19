@@ -175,6 +175,11 @@ public class SecurityConfig {
                                     "/api/v1/invitations/*"
                             )
                             .permitAll()
+                            .requestMatchers(
+                                    HttpMethod.GET,
+                                    "/api/v1/search/notion-connection/callback"
+                            )
+                            .permitAll()
                             .anyRequest()
                             .authenticated();
                 })

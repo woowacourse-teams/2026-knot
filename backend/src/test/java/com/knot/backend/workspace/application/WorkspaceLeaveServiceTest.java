@@ -14,6 +14,7 @@ import com.knot.backend.document.application.DocumentArchivalService;
 import com.knot.backend.recording.domain.model.RecordingSession;
 import com.knot.backend.recording.domain.repository.RecordingSessionRepository;
 import com.knot.backend.recording.domain.model.RecordingStatus;
+import com.knot.backend.search.application.notion.NotionConnectionDepartureService;
 import com.knot.backend.workspace.application.dto.result.WorkspaceOwnershipTransferCandidateResult;
 import com.knot.backend.workspace.domain.model.Workspace;
 import com.knot.backend.workspace.domain.WorkspaceErrorCode;
@@ -48,6 +49,7 @@ class WorkspaceLeaveServiceTest {
     );
     private final RecordingSessionRepository recordingSessionRepository = mock(RecordingSessionRepository.class);
     private final DocumentArchivalService documentArchivalService = mock(DocumentArchivalService.class);
+    private final NotionConnectionDepartureService notionConnections = mock(NotionConnectionDepartureService.class);
     private final WorkspaceLeaveService service = new WorkspaceLeaveService(
             workspaceRepository,
             workspaceMemberRepository,
@@ -58,7 +60,8 @@ class WorkspaceLeaveServiceTest {
                     NOW,
                     ZoneOffset.UTC
             ),
-            mock(com.knot.backend.recording.application.RecordingAudioCleanupStateService.class)
+            mock(com.knot.backend.recording.application.RecordingAudioCleanupStateService.class),
+            notionConnections
     );
 
     @DisplayName("다른 멤버가 남는 탈퇴는 멤버십을 저장하고 탈퇴자의 진행 녹음만 폐기한 뒤 문서를 보관한다")
@@ -101,7 +104,8 @@ class WorkspaceLeaveServiceTest {
                 workspaceRepository,
                 workspaceMemberRepository,
                 recordingSessionRepository,
-                documentArchivalService
+                documentArchivalService,
+                notionConnections
         );
         order.verify(workspaceRepository)
                 .findByIdForUpdate(1L);
@@ -113,6 +117,11 @@ class WorkspaceLeaveServiceTest {
                 .save(recording);
         order.verify(workspaceMemberRepository)
                 .flush();
+        order.verify(notionConnections)
+                .disconnectAfterDeparture(
+                        1L,
+                        2L
+                );
         order.verify(documentArchivalService)
                 .archiveAfterMemberDeparture(
                         1L,
@@ -227,7 +236,8 @@ class WorkspaceLeaveServiceTest {
         ).save(any(WorkspaceMember.class));
         verifyNoInteractions(
                 recordingSessionRepository,
-                documentArchivalService
+                documentArchivalService,
+                notionConnections
         );
     }
 
@@ -400,6 +410,10 @@ class WorkspaceLeaveServiceTest {
                         2L,
                         LEFT_AT
                 );
+        verify(notionConnections).disconnectAfterDeparture(
+                1L,
+                2L
+        );
     }
 
     @DisplayName("보관 실패를 전파해 소유권 승계와 OWNER 탈퇴가 함께 롤백되도록 한다")

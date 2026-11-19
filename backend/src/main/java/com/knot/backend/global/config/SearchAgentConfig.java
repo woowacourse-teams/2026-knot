@@ -4,6 +4,8 @@ import com.knot.backend.search.application.SearchAnswerGenerator;
 import com.knot.backend.search.application.SearchDocumentQuery;
 import com.knot.backend.search.application.SearchDocumentRetriever;
 import com.knot.backend.search.application.SearchIntentClassifier;
+import com.knot.backend.search.application.notion.SearchNotionAnswerGenerator;
+import com.knot.backend.search.infrastructure.llm.SearchNotionStreamingAnswerGenerator;
 import com.knot.backend.search.infrastructure.llm.SearchQwenIntentClassifier;
 import com.knot.backend.search.application.SearchToolAccess;
 import com.knot.backend.search.infrastructure.llm.SearchAgentHttp;
@@ -233,6 +235,33 @@ public class SearchAgentConfig {
                 new SearchLlmClient(
                         http,
                         fallback
+                )
+        );
+    }
+
+    @Bean
+    public SearchNotionAnswerGenerator searchNotionAnswerGenerator(
+            SearchLlmClient llm,
+            SearchHistoryQuery history,
+            SearchToolAccess access,
+            SearchAgentProperties properties,
+            ObjectMapper mapper,
+            SearchAgentHttp http,
+            @Value("${knot.search.openai-fallback.enabled:false}") boolean fallbackEnabled,
+            @Value("${knot.search.openai-fallback.api-key:}") String fallbackKey,
+            @Value("${knot.search.openai-fallback.model}") String fallbackModel
+    ) {
+        return new SearchNotionStreamingAnswerGenerator(
+                llm,
+                history,
+                access,
+                properties,
+                mapper,
+                openAiFallback(
+                        http,
+                        fallbackEnabled,
+                        fallbackKey,
+                        fallbackModel
                 )
         );
     }

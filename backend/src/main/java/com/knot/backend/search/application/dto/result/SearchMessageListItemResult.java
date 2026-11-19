@@ -17,7 +17,8 @@ public record SearchMessageListItemResult(
         boolean retryable,
         Instant createdAt,
         List<SearchEvidenceItemResult> evidences,
-        SearchDocumentSelection documentSelection
+        SearchDocumentSelection documentSelection,
+        SearchAnswerNotionResult notion
 ) {
 
     public SearchMessageListItemResult {
@@ -44,7 +45,8 @@ public record SearchMessageListItemResult(
                 message,
                 evidences,
                 documentList,
-                EvidenceStatus.AVAILABLE
+                EvidenceStatus.AVAILABLE,
+                SearchAnswerNotionResult.EMPTY
         );
     }
 
@@ -52,7 +54,8 @@ public record SearchMessageListItemResult(
             SearchMessage message,
             List<SearchEvidenceItemResult> evidences,
             SearchDocumentListResult documentList,
-            EvidenceStatus evidenceStatus
+            EvidenceStatus evidenceStatus,
+            SearchAnswerNotionResult notion
     ) {
         String content = SearchAnswerContentPolicy.content(
                 message.getContent(),
@@ -75,7 +78,8 @@ public record SearchMessageListItemResult(
                         evidences,
                         evidenceStatus
                 ),
-                selection
+                selection,
+                notion
         );
     }
 }

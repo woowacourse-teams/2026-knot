@@ -1273,7 +1273,8 @@ class SearchDocumentToolServiceIntegrationTest {
                     new SearchFollowupContextResolver(
                             new SearchQuestionContextStore(jdbc),
                             access
-                    )
+                    ),
+                    org.mockito.Mockito.mock(com.knot.backend.search.application.notion.SearchNotionAnswerFlow.class)
             );
             SearchQuestionAcceptedResult accepted = intake.acceptFirst(
                     workspaceId,

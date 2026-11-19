@@ -1,5 +1,10 @@
 package com.knot.backend.search.application;
 
+import com.knot.backend.search.application.dto.result.SearchUsePlan;
+import com.knot.backend.search.application.notion.SearchNotionAnswerFlow;
+import com.knot.backend.search.application.dto.query.SearchQuestionContext;
+import com.knot.backend.search.application.notion.SearchNotionReading;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
@@ -52,7 +57,8 @@ class SearchAnswerWorkerConversationTest {
                 Clock.systemUTC(),
                 new SearchAgentProperties(),
                 beans.getBeanProvider(SearchIntentClassifier.class),
-                mock(SearchFollowupContextResolver.class)
+                mock(SearchFollowupContextResolver.class),
+                mock(SearchNotionAnswerFlow.class)
         );
         when(executions.claim(5)).thenReturn(
                 Optional.of(
@@ -74,7 +80,7 @@ class SearchAnswerWorkerConversationTest {
                         any(),
                         any()
                 )
-        ).thenReturn(SearchIntent.MEETING_SEARCH);
+        ).thenReturn(SearchUsePlan.of(SearchIntent.MEETING_SEARCH));
         when(
                 retriever.retrieve(
                         any(),
@@ -216,6 +222,97 @@ class SearchAnswerWorkerConversationTest {
         );
     }
 
+    @Test
+    @DisplayName("짧은 후속 질문이라도 노션 도구가 계획되면 회의를 묻지 않고 노션 읽기를 시작한다")
+    void execute_success_shortReferenceWithNotionPlan() {
+        // given
+        SearchAgentProperties properties = new SearchAgentProperties();
+        properties.setFollowupContextEnabled(true);
+        SearchFollowupContextResolver followups = mock(SearchFollowupContextResolver.class);
+        SearchNotionAnswerFlow notionFlow = mock(SearchNotionAnswerFlow.class);
+        SearchUsePlan plan = new SearchUsePlan(
+                SearchIntent.MEETING_SEARCH,
+                Optional.of("출시 계획"),
+                Optional.empty()
+        );
+        when(followups.isShortReference(any())).thenReturn(true);
+        when(followups.previousEvidenceContext(any())).thenReturn(Optional.empty());
+        when(
+                followups.describe(
+                        any(),
+                        any()
+                )
+        ).thenReturn(
+                new SearchQuestionContext(
+                        "왜?",
+                        null,
+                        null,
+                        null
+                )
+        );
+        when(
+                executions.saveQuestionContext(
+                        eq(5L),
+                        eq(token),
+                        any()
+                )
+        ).thenReturn(true);
+        when(
+                classifier.classify(
+                        any(),
+                        any()
+                )
+        ).thenReturn(plan);
+        when(
+                notionFlow.start(
+                        any(),
+                        eq(plan)
+                )
+        ).thenReturn(SearchNotionReading.none());
+        StaticListableBeanFactory beans = new StaticListableBeanFactory();
+        beans.addBean(
+                "retriever",
+                retriever
+        );
+        beans.addBean(
+                "generator",
+                generator
+        );
+        beans.addBean(
+                "classifier",
+                classifier
+        );
+        SearchAnswerWorker followupWorker = new SearchAnswerWorker(
+                executions,
+                beans.getBeanProvider(SearchDocumentRetriever.class),
+                beans.getBeanProvider(SearchAnswerGenerator.class),
+                Clock.systemUTC(),
+                properties,
+                beans.getBeanProvider(SearchIntentClassifier.class),
+                followups,
+                notionFlow
+        );
+
+        // when
+        followupWorker.execute(5);
+
+        // then
+        verify(notionFlow).start(
+                any(),
+                eq(plan)
+        );
+        verify(
+                executions,
+                never()
+        ).completeGenerated(
+                anyLong(),
+                any(),
+                eq(SearchAnswerGuidance.CLARIFY_MEETING),
+                any(),
+                any()
+        );
+    }
+
     @ParameterizedTest
     @EnumSource(value = SearchIntent.class, names = "MEETING_SEARCH", mode = EnumSource.Mode.EXCLUDE)
     @DisplayName("일반 질문은 고정 범위 거부 대신 문서 없이 대화 답변을 생성한다")
@@ -225,7 +322,7 @@ class SearchAnswerWorkerConversationTest {
                         any(),
                         any()
                 )
-        ).thenReturn(intent);
+        ).thenReturn(SearchUsePlan.of(intent));
         worker.execute(5);
         verifyNoInteractions(retriever);
         verifyGeneratedAnswer("생성한 답변");

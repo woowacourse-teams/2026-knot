@@ -1,5 +1,6 @@
 package com.knot.backend.search.infrastructure.llm;
 
+import com.knot.backend.search.application.dto.result.SearchUsePlan;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doAnswer;
@@ -149,7 +150,7 @@ class SearchLiveCitationAcceptanceTest {
                         any(),
                         any()
                 )
-        ).thenReturn(SearchIntent.MEETING_SEARCH);
+        ).thenReturn(SearchUsePlan.of(SearchIntent.MEETING_SEARCH));
 
         SearchDocumentResult alerts = document(
                 session,

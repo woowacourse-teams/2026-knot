@@ -2,10 +2,12 @@ package com.knot.backend.search.application;
 
 import com.knot.backend.search.application.SearchAnswerContentPolicy.EvidenceStatus;
 import com.knot.backend.search.application.dto.query.SearchMessageListParameters;
+import com.knot.backend.search.application.dto.result.SearchAnswerNotionResult;
 import com.knot.backend.search.application.dto.result.SearchDocumentListResult;
 import com.knot.backend.search.application.dto.result.SearchEvidenceItemResult;
 import com.knot.backend.search.application.dto.result.SearchMessageListItemResult;
 import com.knot.backend.search.application.dto.result.SearchMessageListResult;
+import com.knot.backend.search.application.notion.SearchAnswerNotionReader;
 import com.knot.backend.search.domain.model.SearchConversation;
 import com.knot.backend.search.domain.SearchErrorCode;
 import com.knot.backend.search.domain.SearchException;
@@ -26,6 +28,7 @@ public class SearchMessageListService {
     private final WorkspaceMemberRepository memberships;
     private final SearchMessageListQuery query;
     private final SearchHistoryReadTransaction historyRead;
+    private final SearchAnswerNotionReader notionReader;
 
     public SearchMessageListResult find(
             long workspaceId,
@@ -64,7 +67,8 @@ public class SearchMessageListService {
                         page.messages(),
                         page.evidences(),
                         page.documentLists(),
-                        statuses
+                        statuses,
+                        page.notions()
                 ),
                 page.hasPrevious(),
                 page.previousCursor()
@@ -119,6 +123,10 @@ public class SearchMessageListService {
                     answerIds
             );
         }
+        Map<Long, SearchAnswerNotionResult> notions = notionReader.read(
+                conversationId,
+                answerIds
+        );
         boolean hasPrevious = hasPrevious(
                 page,
                 parameters.size()
@@ -127,6 +135,7 @@ public class SearchMessageListService {
                 selected,
                 evidences,
                 documentLists,
+                notions,
                 hasPrevious,
                 createPreviousCursor(
                         selected,
@@ -139,6 +148,7 @@ public class SearchMessageListService {
             List<SearchMessage> messages,
             Map<Long, List<SearchEvidenceItemResult>> evidences,
             Map<Long, SearchDocumentListResult> documentLists,
+            Map<Long, SearchAnswerNotionResult> notions,
             boolean hasPrevious,
             String previousCursor
     ) {
@@ -225,7 +235,8 @@ public class SearchMessageListService {
             List<SearchMessage> selected,
             Map<Long, List<SearchEvidenceItemResult>> evidences,
             Map<Long, SearchDocumentListResult> documentLists,
-            Map<Long, EvidenceStatus> evidenceStatuses
+            Map<Long, EvidenceStatus> evidenceStatuses,
+            Map<Long, SearchAnswerNotionResult> notions
     ) {
         return selected.stream()
                 .sorted(Comparator.comparingInt(SearchMessage::getSequence))
@@ -240,6 +251,10 @@ public class SearchMessageListService {
                                 evidenceStatuses.getOrDefault(
                                         message.getId(),
                                         EvidenceStatus.AVAILABLE
+                                ),
+                                notions.getOrDefault(
+                                        message.getId(),
+                                        SearchAnswerNotionResult.EMPTY
                                 )
                         )
                 )

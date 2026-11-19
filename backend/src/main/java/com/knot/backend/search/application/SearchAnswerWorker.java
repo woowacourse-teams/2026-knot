@@ -7,6 +7,10 @@ import com.knot.backend.search.application.dto.query.SearchQuestionContext;
 import com.knot.backend.search.application.dto.result.SearchAnswerWorkResult;
 import com.knot.backend.search.application.dto.result.SearchDocumentResult;
 import com.knot.backend.search.application.dto.result.SearchRetrievalResult;
+import com.knot.backend.search.application.dto.result.SearchUsePlan;
+import com.knot.backend.search.application.notion.SearchNotionAnswerFlow;
+import com.knot.backend.search.application.notion.SearchNotionMaterial;
+import com.knot.backend.search.application.notion.SearchNotionReading;
 import com.knot.backend.search.domain.SearchAttemptFailure;
 import com.knot.backend.search.domain.model.SearchIntent;
 import com.knot.backend.search.infrastructure.llm.SearchDateFilter;
@@ -40,6 +44,7 @@ public class SearchAnswerWorker {
     private final SearchAgentProperties agentProperties;
     private final ObjectProvider<SearchIntentClassifier> classifiers;
     private final SearchFollowupContextResolver followups;
+    private final SearchNotionAnswerFlow notionAnswers;
 
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public void execute(long answerId) {
@@ -154,14 +159,16 @@ public class SearchAnswerWorker {
         }
         long classificationStarted = System.nanoTime();
         SearchIntent intent;
+        SearchUsePlan plan = SearchUsePlan.of(SearchIntent.MEETING_SEARCH);
         try {
             intent = SearchIntent.MEETING_SEARCH;
             if (previous.isEmpty()) {
-                intent = classifiers.getObject()
+                plan = classifiers.getObject()
                         .classify(
                                 scope,
                                 work.question()
                         );
+                intent = plan.intent();
             }
             log.info(
                     "Search latency phase=intent_classification workspaceId={} questionId={} answerId={} elapsedMs={} inputChars={} outcome=success intent={}",
@@ -195,8 +202,9 @@ public class SearchAnswerWorker {
             }
             intent = SearchIntent.MEETING_SEARCH;
         }
-        if (shortReference && intent.requiresSearch() && previous.map(SearchQuestionContext::recordingSessionId)
-                .isEmpty()) {
+        if (shortReference && intent.requiresSearch() && !plan.usesNotion()
+                && previous.map(SearchQuestionContext::recordingSessionId)
+                        .isEmpty()) {
             executions.completeGenerated(
                     work.answerId(),
                     work.token(),
@@ -217,6 +225,13 @@ public class SearchAnswerWorker {
                 return;
             }
             scope = resolved.orElseThrow();
+        }
+        SearchNotionReading notion = SearchNotionReading.none();
+        if (plan.usesNotion()) {
+            notion = notionAnswers.start(
+                    work,
+                    plan
+            );
         }
         SearchToolScope currentScope = scope;
         RetryOnce retry = new RetryOnce(currentScope);
@@ -264,6 +279,8 @@ public class SearchAnswerWorker {
             }
             retrieval = SearchRetrievalResult.unavailable();
         }
+        // 노션 읽기가 모두 끝난 뒤에 작성 중(GENERATING)으로 바꾼다(SEARCH-R38).
+        SearchNotionMaterial material = notion.await();
         if (!executions.recordRetrieval(
                 work.answerId(),
                 work.token(),
@@ -273,6 +290,20 @@ public class SearchAnswerWorker {
             return;
         }
         SearchRetrievalResult resolvedRetrieval = retrieval;
+        if (material.planned()) {
+            // 노션 자료가 있는 답변도 기존 답변과 같은 한 번 다시 부르기를 쓴다.
+            retry.run(() -> {
+                notionAnswers.answer(
+                        work,
+                        currentScope,
+                        resolvedRetrieval,
+                        material,
+                        retrievalGuidance(resolvedRetrieval)
+                );
+                return null;
+            });
+            return;
+        }
         List<SearchDocumentResult> documents = resolvedRetrieval.documents();
         SearchAnswerGenerator generator = generators.getObject();
         List<Long> usedIds;

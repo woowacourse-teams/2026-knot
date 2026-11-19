@@ -20,7 +20,8 @@ public record SearchAnswerSnapshotResult(
         long receiptId,
         Instant contentUpdatedAt,
         SearchDocumentSelection documentSelection,
-        boolean sourceUnavailable
+        boolean sourceUnavailable,
+        SearchAnswerNotionResult notion
 ) {
     public SearchAnswerSnapshotResult withEvidenceStatus(EvidenceStatus evidenceStatus) {
         if (evidenceStatus == EvidenceStatus.AVAILABLE) {
@@ -45,7 +46,8 @@ public record SearchAnswerSnapshotResult(
                 receiptId,
                 contentUpdatedAt,
                 hidden ? null : documentSelection,
-                hidden
+                hidden,
+                notion
         );
     }
 
@@ -73,7 +75,8 @@ public record SearchAnswerSnapshotResult(
                 receiptId,
                 contentUpdatedAt,
                 null,
-                false
+                false,
+                SearchAnswerNotionResult.EMPTY
         );
     }
 

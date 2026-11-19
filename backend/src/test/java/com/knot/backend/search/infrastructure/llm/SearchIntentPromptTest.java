@@ -36,4 +36,16 @@ class SearchIntentPromptTest {
                 )
                 .contains("\"Knot에서 문서 검색을 어떻게 실행해요?\" SERVICE_GUIDE");
     }
+
+    @Test
+    @DisplayName("노션 페이지 만들기 요청은 범위 밖이 아니라 회의 검색과 만들기 도구로 계획한다")
+    void systemPrompt_plansNotionToolsInsteadOfOutOfScope() {
+        String prompt = SearchIntentPrompt.system();
+
+        assertThat(prompt).contains("Return only JSON: {\"intent\":\"LABEL\",\"tools\":[]}")
+                .contains("so this request is never OUT_OF_SCOPE")
+                .contains("\"오늘 회의록 노션 회의록 DB에 만들어 줘\" MEETING_SEARCH with")
+                .contains("[{\"tool\":\"NOTION_PAGE_CREATE\",\"query\":\"회의록 DB\"}]")
+                .contains("[{\"tool\":\"NOTION_PAGE_READ\",\"query\":\"기획서 출시일\"}]");
+    }
 }
