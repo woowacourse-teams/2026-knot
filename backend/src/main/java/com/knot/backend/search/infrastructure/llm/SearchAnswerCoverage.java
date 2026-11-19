@@ -1,28 +1,27 @@
 package com.knot.backend.search.infrastructure.llm;
 
 import com.knot.backend.search.application.SearchAnswerGuidance;
+import com.knot.backend.search.application.dto.result.SearchRetrievalResult;
 import com.knot.backend.search.application.dto.result.SearchRetrievalResult.Item;
 import java.util.List;
 import java.util.function.Consumer;
 
 /**
- * 회의 검색 항목마다 답변이 근거를 확인하지 못한 범위를 답글 끝에 밝힌다(SEARCH-R3). 노션을 읽지 못한
- * 사유(SEARCH-R39)와는 따로 둔다. shortcut:
- * SearchStreamingAnswerGenerator.publishCoverage와 같은 문장을 노션 답변용으로 따로 두었다, 열린 탐색
- * PR(#1157, #1158)이 머지되면 하나로 합친다.
+ * 회의 검색 항목마다 답변이 근거를 확인하지 못한 범위를 답글 끝에 밝힌다(SEARCH-R3). 회의 문서 답변과 노션 자료가 있는 답변이
+ * 함께 쓰고, 노션을 읽지 못한 사유(SEARCH-R39)와는 따로 둔다.
  */
 final class SearchAnswerCoverage {
 
     private SearchAnswerCoverage() {}
 
     static void publish(
-            List<Item> items,
+            SearchRetrievalResult retrieval,
             List<Long> citedIds,
             boolean documentsLimited,
             Consumer<String> onDelta
     ) {
         StringBuilder guidance = new StringBuilder();
-        for (Item item : items) {
+        for (Item item : retrieval.items()) {
             if (item.documentIds()
                     .stream()
                     .anyMatch(citedIds::contains)) {
@@ -32,6 +31,10 @@ final class SearchAnswerCoverage {
                     .append(item.ordinal())
                     .append("번째 항목은 ")
                     .append(description(item));
+        }
+        if (retrieval.candidateLimited() && !documentsLimited) {
+            guidance.append("\n\n")
+                    .append(SearchAnswerGuidance.CANDIDATE_LIMITED);
         }
         if (documentsLimited) {
             guidance.append("\n\n")

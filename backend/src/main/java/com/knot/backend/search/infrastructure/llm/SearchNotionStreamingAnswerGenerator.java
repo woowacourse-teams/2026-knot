@@ -85,7 +85,7 @@ public class SearchNotionStreamingAnswerGenerator implements SearchNotionAnswerG
             access.validate(scope);
             onDelta.accept(SearchAnswerGuidance.DOCUMENT_BUDGET_EXHAUSTED);
             SearchAnswerCoverage.publish(
-                    retrieval.items(),
+                    retrieval,
                     List.of(),
                     false,
                     onDelta
@@ -159,7 +159,7 @@ public class SearchNotionStreamingAnswerGenerator implements SearchNotionAnswerG
                         onDelta
                 );
                 SearchAnswerCoverage.publish(
-                        retrieval.items(),
+                        retrieval,
                         List.of(),
                         budget.documentsLimited(),
                         onDelta
@@ -168,7 +168,7 @@ public class SearchNotionStreamingAnswerGenerator implements SearchNotionAnswerG
             }
             onDelta.accept(validatedText.toString());
             SearchAnswerCoverage.publish(
-                    retrieval.items(),
+                    retrieval,
                     response.usedDocumentIds(),
                     budget.documentsLimited(),
                     onDelta
