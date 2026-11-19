@@ -2,6 +2,7 @@ import {
   GetSearchMessagesResponseDto,
   SearchStreamAcceptedDto,
   SearchStreamDeltaDto,
+  SearchStreamProgressDto,
 } from "@api/dto/search";
 import {
   searchMessagesResponse,
@@ -49,7 +50,8 @@ const answersWithEvidence = answers.filter(
   ({ evidences }) => evidences.length > 0,
 );
 
-const SEARCHING_TEXT = "답변을 준비하고 있어요…";
+const SEARCHING_TEXT = "찾는 중";
+const GENERATING_TEXT = "작성 중";
 const FAILED_TEXT = "지금은 답변을 정리하기 어려워요. 질문을 조금 더 구체적으로 이어서 해주시면 도와드릴게요.";
 const PARTIAL_ANSWER = "끊기기 전까지 받은 답";
 
@@ -225,7 +227,7 @@ describe("SearchConversation", () => {
     expect(screen.queryByText(SEARCHING_TEXT)).not.toBeInTheDocument();
   });
 
-  it("접수된 뒤 답변 텍스트가 오기 전에는 답변 자리에 진행 문구를 보여준다 (SEARCH-R6, Figma Search/Answer 작성 중)", async () => {
+  it("접수된 뒤 답변 텍스트가 오기 전, 진행 단계를 받기 전에도 답변 자리에 「찾는 중」을 보여준다 (SEARCH-R38, Figma 진행 표시)", async () => {
     const { accept } = streamAnswer({
       conversationId: Number(CONVERSATION_ID),
       question: "이어서 보낸 질문",
@@ -522,5 +524,40 @@ describe("SearchConversation", () => {
     expect(router.state.location.search).toBe(`?messageId=${secondAnswer.id}`);
     expect(firstButton).toHaveAttribute("aria-pressed", "false");
     expect(secondButton).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("진행 단계가 작성 중으로 바뀌면 「찾는 중」 대신 「작성 중」을 보여주고, 「쓰는 중」은 보여주지 않는다 (SEARCH-R38)", async () => {
+    const { accept } = streamAnswer({
+      conversationId: Number(CONVERSATION_ID),
+      question: "이어서 보낸 질문",
+      text: "",
+    });
+    accept(Number(CONVERSATION_ID));
+    renderConversation();
+    await screen.findByText(questions[0].content);
+    const lastTurn = () => {
+      const turns = screen.getAllByRole("article");
+      return turns[turns.length - 1];
+    };
+
+    const { controller, applyEvent } = useSearchAnswerStore.getState();
+    if (!controller) throw new Error("받고 있는 답변이 없어요");
+    act(() => {
+      applyEvent(controller, {
+        event: "progress",
+        data: new SearchStreamProgressDto({ stage: "SEARCHING" }),
+      });
+    });
+    expect(within(lastTurn()).getByText(SEARCHING_TEXT)).toBeInTheDocument();
+
+    act(() => {
+      applyEvent(controller, {
+        event: "progress",
+        data: new SearchStreamProgressDto({ stage: "GENERATING" }),
+      });
+    });
+    expect(within(lastTurn()).getByText(GENERATING_TEXT)).toBeInTheDocument();
+    expect(within(lastTurn()).queryByText(SEARCHING_TEXT)).not.toBeInTheDocument();
+    expect(screen.queryByText(/쓰는 중/)).not.toBeInTheDocument();
   });
 });
