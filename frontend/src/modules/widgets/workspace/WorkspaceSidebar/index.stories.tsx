@@ -16,6 +16,10 @@ const HOME_PATH = getRouterPath({
 });
 // 기본 응답의 첫 문서(가장 최근 문서)를 지금 보는 문서로 열어요
 const [openedDocument] = documentsResponse.items;
+const APPS_PATH = getRouterPath({
+  routeKey: "APPS",
+  params: { workspaceId: String(WORKSPACE_ID) },
+});
 const DOCUMENT_PATH = getRouterPath({
   routeKey: "DOCUMENT",
   params: {
@@ -33,6 +37,7 @@ const DOCUMENT_PATH = getRouterPath({
  * - 이름을 누르면 다른 워크스페이스로 옮겨 가거나 새로 만들 수 있는 메뉴가 열려요. 메뉴의 동작은 「Workspace/WorkspaceSwitcher」에 있어요.
  * - 「문서」 아래에는 워크스페이스의 문서가 폴더별로 나와요. 폴더를 누르면 펼치고, 문서를 누르면 그 문서 보기로 가요.
  *   지금 보는 문서의 폴더만 펼친 채로 시작해요.
+ * - 맨 아래의 「연결된 앱」을 누르면 탐색이 읽고 쓰는 앱(지금은 노션)을 연결하는 화면으로 가요. 그 화면에서는 배경으로 표시해요.
  * - 휴대폰(767 이하)에서만 맨 아래에 「피드백」이 있어요. 휴대폰 상단 메뉴에는 피드백 메뉴가 없어서 여기서 피드백 패널을 화면 아래 시트로 열어요.
  *   패널의 동작은 「Feedback/FeedbackPanel」에 있어요.
  */
@@ -52,6 +57,11 @@ const meta = {
         name: "문서/사이드바·원문 열림 (Sidebar/Docs)",
         type: "figma",
         url: "https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=2017-36145",
+      },
+      {
+        name: "노션 연결 흐름 4단계 (사이드바 아래 「연결된 앱」)",
+        type: "figma",
+        url: "https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=6513-4649",
       },
     ],
   },
@@ -81,6 +91,7 @@ const meta = {
                 }
               >
                 <Route path={PATH_ROUTE.WORKSPACE_HOME} />
+                <Route path={PATH_ROUTE.APPS} />
                 <Route
                   path={PATH_ROUTE.DOCUMENT}
                   element={<p>문서 보기 화면이에요.</p>}
@@ -104,6 +115,11 @@ export const Default: Story = {};
 /** 문서 보기 화면에서 사이드바를 연 모습이에요. 지금 보는 「스프린트 회고」가 든 「주간 회의」 폴더가 펼쳐져 있고, 그 문서 행이 배경으로 표시돼요. */
 export const DocumentOpened: Story = {
   parameters: { initialPath: DOCUMENT_PATH },
+};
+
+/** 연결된 앱 화면에서 사이드바를 연 모습이에요. 맨 아래 「연결된 앱」이 배경으로 표시돼요 */
+export const AppsOpened: Story = {
+  parameters: { initialPath: APPS_PATH },
 };
 
 /** 휴대폰에서 맨 아래 「피드백」을 눌러 피드백 패널을 시트로 연 모습이에요. 흐린 바깥이나 ESC로 닫혀요 */
