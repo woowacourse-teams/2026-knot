@@ -2,7 +2,11 @@ import { MEDIA_QUERY } from "@constants/breakpoint";
 import styled from "@emotion/styled";
 import DocumentTree from "@features/document/DocumentTree";
 import WorkspaceSwitcher from "@features/workspace/WorkspaceSwitcher";
+import Divider from "@primitives/ui/Divider";
+import LinkTo from "@primitives/ui/LinkTo";
 import { useDialog } from "@provider/context/dialogContext";
+import { getRouterPath, PATH_ROUTE } from "@routes/PATH_ROUTE";
+import { useMatch, useParams } from "react-router";
 
 import FeedbackIcon from "@/assets/icons/feedback.svg";
 
@@ -13,10 +17,14 @@ import FeedbackSheet from "./ui/FeedbackSheet";
  *
  * 맨 위의 워크스페이스 이름(`WorkspaceSwitcher`)을 누르면 다른 워크스페이스로 옮겨 가거나 새로 만들 수 있어요.
  *
+ * 아래에는 탐색이 읽고 쓰는 앱을 연결하는 「연결된 앱」 화면으로 가는 메뉴를 둬요(SEARCH-R29).
+ *
  * 휴대폰에서는 GNB에 피드백 메뉴가 없어서, 맨 아래 「피드백」으로 피드백 패널을 아래 시트로 열어요(FEEDBACK-R2).
  */
 export default function WorkspaceSidebar() {
   const { open } = useDialog();
+  const { workspaceId = "" } = useParams();
+  const isAppsScreen = useMatch(PATH_ROUTE.APPS) !== null;
 
   return (
     <Container aria-label="워크스페이스 사이드바">
@@ -24,13 +32,22 @@ export default function WorkspaceSidebar() {
 
       <DocumentTree />
 
-      <FeedbackButton
-        type="button"
-        onClick={() => open(({ close }) => <FeedbackSheet onClose={close} />)}
-      >
-        <FeedbackIcon size={18} />
-        피드백
-      </FeedbackButton>
+      <Bottom>
+        <Divider />
+        <AppsLink
+          href={getRouterPath({ routeKey: "APPS", params: { workspaceId } })}
+          aria-current={isAppsScreen ? "page" : undefined}
+        >
+          연결된 앱
+        </AppsLink>
+        <FeedbackButton
+          type="button"
+          onClick={() => open(({ close }) => <FeedbackSheet onClose={close} />)}
+        >
+          <FeedbackIcon size={18} />
+          피드백
+        </FeedbackButton>
+      </Bottom>
     </Container>
   );
 }
@@ -54,13 +71,40 @@ const Container = styled.aside`
   }
 `;
 
-/** 휴대폰에서만 보여요. 문서 목록이 짧아도 사이드바 맨 아래에 붙어요 */
+/** 문서 목록이 짧아도 사이드바 맨 아래에 붙어요. 피그마 사이드바: 구분선과 메뉴 사이 12px */
+const Bottom = styled.div`
+  display: flex;
+  flex-shrink: 0;
+  flex-direction: column;
+  gap: 0.75rem; /* 12px */
+  margin-top: auto;
+`;
+
+/** 피그마 Item / 연결된 앱: 안쪽 8px 10px, 모서리 8px. 지금 화면이면 Neutral/100 배경이에요 */
+const AppsLink = styled(LinkTo)`
+  padding: 0.5rem 0.625rem; /* 8px 10px */
+  border-radius: 0.5rem; /* 8px */
+  color: ${({ theme }) => theme.neutral[900]};
+  ${({ theme }) => theme.text.caption02};
+  transition: background-color 0.2s ease-in;
+
+  &:hover,
+  &[aria-current="page"] {
+    background-color: ${({ theme }) => theme.neutral[100]};
+  }
+
+  &:focus-visible {
+    outline: 2px solid ${({ theme }) => theme.sub.accent[500]};
+    outline-offset: -2px;
+  }
+`;
+
+/** 휴대폰에서만 보여요 */
 const FeedbackButton = styled.button`
   display: none;
   flex-shrink: 0;
   align-items: center;
   gap: 0.625rem; /* 10px */
-  margin-top: auto;
   padding: 0.625rem 0.75rem; /* 10px 12px */
   border-radius: 0.5rem; /* 8px */
   color: ${({ theme }) => theme.neutral[900]};

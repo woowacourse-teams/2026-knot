@@ -36,7 +36,12 @@ const HOME_PATH = getRouterPath({
   params: { workspaceId: String(WORKSPACE_ID) },
 });
 
-const renderSidebar = () => {
+const APPS_PATH = getRouterPath({
+  routeKey: "APPS",
+  params: { workspaceId: String(WORKSPACE_ID) },
+});
+
+const renderSidebar = (initialPath = HOME_PATH) => {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
@@ -53,10 +58,11 @@ const renderSidebar = () => {
         ),
         children: [
           { path: PATH_ROUTE.WORKSPACE_HOME, element: <WorkspaceSidebar /> },
+          { path: PATH_ROUTE.APPS, element: <WorkspaceSidebar /> },
         ],
       },
     ],
-    { initialEntries: [HOME_PATH] },
+    { initialEntries: [initialPath] },
   );
 
   render(
@@ -67,12 +73,17 @@ const renderSidebar = () => {
     </ThemeProvider>,
   );
 
-  return screen.getByRole("complementary", { name: "워크스페이스 사이드바" });
+  return {
+    router,
+    sidebar: screen.getByRole("complementary", {
+      name: "워크스페이스 사이드바",
+    }),
+  };
 };
 
 describe("WorkspaceSidebar", () => {
   it("워크스페이스 이름이 적힌 메뉴 버튼과 문서 목록을 보여 준다", async () => {
-    const sidebar = renderSidebar();
+    const { sidebar } = renderSidebar();
 
     expect(
       await within(sidebar).findByText(expectedWorkspace.name),
@@ -104,7 +115,7 @@ describe("WorkspaceSidebar", () => {
       ),
     );
 
-    const sidebar = renderSidebar();
+    const { sidebar } = renderSidebar();
 
     expect(
       within(await within(sidebar).findByRole("alert")).getByText(
@@ -116,6 +127,23 @@ describe("WorkspaceSidebar", () => {
     ).toBeInTheDocument();
   });
 
+  it("[SEARCH-R29] 아래의 「연결된 앱」을 누르면 연결된 앱 화면으로 가고, 그 화면에서는 지금 화면으로 표시한다", async () => {
+    const { router, sidebar } = renderSidebar();
+    const appsLink = within(sidebar).getByRole("link", { name: "연결된 앱" });
+    expect(appsLink).not.toHaveAttribute("aria-current");
+
+    fireEvent.click(appsLink);
+
+    await waitFor(() =>
+      expect(router.state.location.pathname).toBe(APPS_PATH),
+    );
+    // 화면이 바뀌며 사이드바를 새로 그려서 다시 찾아요
+    expect(screen.getByRole("link", { name: "연결된 앱" })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+  });
+
   describe("휴대폰의 「피드백」", () => {
     // 「피드백」은 휴대폰에서만 보이는데, 테스트 화면은 미디어 쿼리를 읽지 않아 숨겨진 채로 있어요.
     // 숨긴 요소는 접근성 이름이 비어 역할로 찾지 못해, 글자로 찾아요
@@ -123,7 +151,7 @@ describe("WorkspaceSidebar", () => {
       within(sidebar).getByText("피드백", { selector: "button" });
 
     const openFeedbackSheet = () => {
-      const sidebar = renderSidebar();
+      const { sidebar } = renderSidebar();
       const feedbackButton = getFeedbackButton(sidebar);
       // 브라우저는 누른 버튼에 포커스를 주지만 jsdom은 주지 않아 직접 옮겨요
       feedbackButton.focus();
