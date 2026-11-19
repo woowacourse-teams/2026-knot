@@ -12,6 +12,7 @@ const WORKSPACE_LAYOUT_PATHS = [
   PATH_ROUTE.RECORDING_DOCUMENT,
   PATH_ROUTE.DOCUMENTS,
   PATH_ROUTE.DOCUMENT,
+  PATH_ROUTE.APPS,
 ];
 
 /** 워크스페이스 레이아웃 안의 경로면 그 워크스페이스 id, 아니면 null이에요 */
