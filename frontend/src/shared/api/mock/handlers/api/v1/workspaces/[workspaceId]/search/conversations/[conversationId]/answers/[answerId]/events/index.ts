@@ -16,16 +16,29 @@ interface ToAnswerEventsFramesParams extends SearchAnswerEventsStream {
   answerId: number;
 }
 
-/** 서버처럼 저장된 본문(snapshot) → 나머지 조각 → 근거 → 완료 순서로, 답변 ID를 `answerId`라고 보내요 */
+/**
+ * 서버처럼 저장된 본문(snapshot) → 나머지 조각 → 근거 → 완료 순서로, 답변 ID를 `answerId`라고 보내요.
+ * 노션 이벤트는 첫 질문 mock처럼 값이 있을 때만 근거 뒤에 보내요
+ */
 const toAnswerEventsFrames = ({
   answerId,
   content,
   deltas,
   evidences,
+  notionEvidences,
+  notionNotice,
+  writeCard,
 }: ToAnswerEventsFramesParams) => [
   toFrame("snapshot", { answerId, content, status: "STREAMING" }),
   ...deltas.map((text) => toFrame("delta", { answerId, text })),
   toFrame("evidence", { answerId, items: evidences }),
+  ...(notionEvidences
+    ? [toFrame("notion_evidence", { answerId, items: notionEvidences })]
+    : []),
+  ...(notionNotice
+    ? [toFrame("notion_notice", { answerId, reason: notionNotice })]
+    : []),
+  ...(writeCard ? [toFrame("write_card", { answerId, card: writeCard })] : []),
   toFrame("completed", { answerId, status: "COMPLETED" }),
 ];
 

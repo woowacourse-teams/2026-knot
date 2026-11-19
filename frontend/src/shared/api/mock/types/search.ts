@@ -120,6 +120,12 @@ export interface SearchAnswerEventsStream {
   deltas: string[];
   /** evidence 이벤트의 items. 최대 3개 */
   evidences: SearchEvidenceItem[];
+  /** notion_evidence 이벤트의 items. 없으면 이 이벤트를 보내지 않아요 */
+  notionEvidences?: SearchNotionEvidenceItem[];
+  /** notion_notice 이벤트의 사유. 없으면 이 이벤트를 보내지 않아요 */
+  notionNotice?: SearchNotionNoticeReason;
+  /** write_card 이벤트의 card(지금 상태). 없으면 이 이벤트를 보내지 않아요 */
+  writeCard?: SearchWriteCard;
 }
 
 /** 탐색 메시지 하나 */
