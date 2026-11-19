@@ -72,6 +72,36 @@ public enum SearchErrorCode implements ErrorCode {
             ErrorCategory.NOT_FOUND,
             "CONVERSATION_NOT_FOUND",
             "탐색 대화를 찾을 수 없습니다"
+    ),
+    NOTION_CONNECTION_ALREADY_CONNECTED(
+            ErrorCategory.CONFLICT,
+            "NOTION_CONNECTION_ALREADY_CONNECTED",
+            "이미 노션이 연결돼 있습니다"
+    ),
+    NOTION_CONNECTION_DISCONNECT_DENIED(
+            ErrorCategory.FORBIDDEN,
+            "NOTION_CONNECTION_DISCONNECT_DENIED",
+            "노션 연결을 끊을 수 없습니다"
+    ),
+    NOTION_CONNECTION_NOT_FOUND(
+            ErrorCategory.NOT_FOUND,
+            "NOTION_CONNECTION_NOT_FOUND",
+            "끊을 노션 연결이 없습니다"
+    ),
+    WRITE_CARD_NOT_FOUND(
+            ErrorCategory.NOT_FOUND,
+            "WRITE_CARD_NOT_FOUND",
+            "쓰기 확인 카드를 찾을 수 없습니다"
+    ),
+    WRITE_CARD_NOT_EXECUTABLE(
+            ErrorCategory.CONFLICT,
+            "WRITE_CARD_NOT_EXECUTABLE",
+            "실행할 수 없는 쓰기 확인 카드입니다"
+    ),
+    WRITE_CARD_NOT_PENDING(
+            ErrorCategory.CONFLICT,
+            "WRITE_CARD_NOT_PENDING",
+            "대기 중인 쓰기 확인 카드가 아닙니다"
     );
 
     private final ErrorCategory category;
