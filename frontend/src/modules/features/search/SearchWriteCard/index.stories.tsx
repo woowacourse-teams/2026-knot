@@ -99,7 +99,11 @@ export const ExistingPage: Story = {
     card: {
       ...searchWriteCardResponse,
       existingPages: [
-        { url: searchWriteCardCreatedPageUrl, createdAt: "2026-11-13T05:00:00Z" },
+        {
+          url: searchWriteCardCreatedPageUrl,
+          title: searchWriteCardResponse.title,
+          createdAt: "2026-11-13T05:00:00Z",
+        },
       ],
     },
   },

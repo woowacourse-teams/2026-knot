@@ -183,6 +183,7 @@ export class SearchWriteCardSourceDocumentDto {
 /** 이미 만든 페이지 이력 하나의 서버 응답 모양 */
 export interface SearchWriteCardExistingPageRaw {
   url: string;
+  title: string;
   createdAt: string;
 }
 
@@ -190,11 +191,14 @@ export interface SearchWriteCardExistingPageRaw {
 export class SearchWriteCardExistingPageDto {
   /** 만든 노션 페이지 주소(절대 URL) */
   url: string;
+  /** 그 페이지를 만들 때 쓴 카드 제목. 노션에서 나중에 바꾼 제목은 반영하지 않아요 */
+  title: string;
   /** 만든 시각(ISO 8601) */
   createdAt: string;
 
   constructor(raw: SearchWriteCardExistingPageRaw) {
     this.url = raw.url;
+    this.title = raw.title;
     this.createdAt = raw.createdAt;
   }
 }

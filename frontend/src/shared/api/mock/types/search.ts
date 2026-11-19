@@ -48,7 +48,7 @@ export interface SearchWriteCard {
     | "NOTION_NO_RESPONSE"
     | null;
   /** 최근에 만든 것부터 */
-  existingPages: { url: string; createdAt: string }[];
+  existingPages: { url: string; title: string; createdAt: string }[];
 }
 
 /** 노션 연결 조회 응답 */

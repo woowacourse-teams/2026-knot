@@ -78,8 +78,8 @@ const CARD_SCENARIOS: Record<
     initial: {
       ...searchWriteCardResponse,
       existingPages: [
-        { url: "https://www.notion.so/knot-team/weekly-recent", createdAt: "2026-11-13T05:00:00Z" },
-        { url: "https://www.notion.so/knot-team/weekly-older", createdAt: "2026-11-06T05:00:00Z" },
+        { url: "https://www.notion.so/knot-team/weekly-recent", title: "11월 13일 주간 회의", createdAt: "2026-11-13T05:00:00Z" },
+        { url: "https://www.notion.so/knot-team/weekly-older", title: "11월 6일 주간 회의", createdAt: "2026-11-06T05:00:00Z" },
       ],
     },
     results: [done],

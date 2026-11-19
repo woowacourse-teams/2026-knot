@@ -1,12 +1,11 @@
 import styled from "@emotion/styled";
 import Button from "@primitives/ui/Button";
-import { formatDate } from "@utils/formatDate";
 
 interface ExistingPageNoticeProps {
   /** 이미 만든 노션 페이지 주소 */
   url: string;
-  /** 만든 시각(ISO 8601) */
-  createdAt: string;
+  /** 그 페이지를 만들 때 쓴 제목 */
+  title: string;
 }
 
 /**
@@ -16,7 +15,7 @@ interface ExistingPageNoticeProps {
  */
 export default function ExistingPageNotice({
   url,
-  createdAt,
+  title,
 }: ExistingPageNoticeProps) {
   const handleOpenClick = () => {
     window.open(url, "_blank", "noopener,noreferrer");
@@ -26,7 +25,7 @@ export default function ExistingPageNotice({
     <Container>
       <Texts>
         <Title>이미 만든 페이지가 있어요</Title>
-        <CreatedAt>{formatDate(createdAt)}</CreatedAt>
+        <PageTitle>{title}</PageTitle>
       </Texts>
       <Button size="sm" variant="outline" onClick={handleOpenClick}>
         노션에서 열기
@@ -58,7 +57,7 @@ const Title = styled.p`
   color: ${({ theme }) => theme.neutral[900]};
 `;
 
-const CreatedAt = styled.p`
+const PageTitle = styled.p`
   ${({ theme }) => theme.text.caption02};
   color: ${({ theme }) => theme.neutral[500]};
 `;

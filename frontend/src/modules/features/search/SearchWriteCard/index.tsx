@@ -70,8 +70,8 @@ export default function SearchWriteCard({ card }: SearchWriteCardProps) {
       </Content>
 
       {(status === "PENDING" || status === "RUNNING") &&
-        existingPages.map(({ url, createdAt }) => (
-          <ExistingPageNotice key={url} url={url} createdAt={createdAt} />
+        existingPages.map(({ url, title }) => (
+          <ExistingPageNotice key={url} url={url} title={title} />
         ))}
 
       <Footer aria-live="polite">

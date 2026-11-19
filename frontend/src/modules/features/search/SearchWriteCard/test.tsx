@@ -365,12 +365,16 @@ describe("SearchWriteCard", () => {
   it("[SEARCH-R51] 같은 대화에서 이미 만든 페이지가 있으면 최근 것부터 안내와 [노션에서 열기]를 보여주고, 만들기는 막지 않는다", () => {
     const open = vi.spyOn(window, "open").mockReturnValue(null);
     const existingPages = [
-      { url: "https://www.notion.so/knot-team/recent", createdAt: "2026-11-13T05:00:00Z" },
-      { url: "https://www.notion.so/knot-team/older", createdAt: "2026-11-06T05:00:00Z" },
+      { url: "https://www.notion.so/knot-team/recent", title: "11월 13일 주간 회의록", createdAt: "2026-11-13T05:00:00Z" },
+      { url: "https://www.notion.so/knot-team/older", title: "11월 6일 주간 회의록", createdAt: "2026-11-06T05:00:00Z" },
     ];
     const { region } = renderCard({ ...searchWriteCardResponse, existingPages });
+    const expected = new SearchWriteCardDto({ ...searchWriteCardResponse, existingPages });
 
     expect(within(region).getAllByText("이미 만든 페이지가 있어요")).toHaveLength(2);
+    for (const { title } of expected.existingPages) {
+      expect(within(region).getByText(title)).toBeInTheDocument();
+    }
     const openButtons = within(region).getAllByRole("button", { name: "노션에서 열기" });
     fireEvent.click(openButtons[0]);
     fireEvent.click(openButtons[1]);
