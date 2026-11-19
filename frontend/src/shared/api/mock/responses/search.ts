@@ -4,7 +4,10 @@ import type {
   SearchAnswerStream,
   SearchConversations,
   SearchMessages,
+  SearchNotionConnection,
+  SearchNotionConnectionAuthorization,
   SearchQuestionAnswerStream,
+  SearchWriteCard,
 } from "@api/mock/types/search";
 
 /**
@@ -126,6 +129,9 @@ export const searchMessagesResponse = {
       status: "RECEIVED",
       createdAt: "2026-10-05T01:00:00Z",
       evidences: [],
+      notionEvidences: [],
+      notionNotice: null,
+      writeCard: null,
     },
     {
       id: 2,
@@ -149,6 +155,9 @@ export const searchMessagesResponse = {
           rank: 2,
         },
       ],
+      notionEvidences: [],
+      notionNotice: null,
+      writeCard: null,
     },
     {
       id: 3,
@@ -158,6 +167,9 @@ export const searchMessagesResponse = {
       status: "RECEIVED",
       createdAt: "2026-10-05T01:01:00Z",
       evidences: [],
+      notionEvidences: [],
+      notionNotice: null,
+      writeCard: null,
     },
     {
       id: 4,
@@ -187,6 +199,9 @@ export const searchMessagesResponse = {
           rank: 3,
         },
       ],
+      notionEvidences: [],
+      notionNotice: null,
+      writeCard: null,
     },
     {
       id: 5,
@@ -196,6 +211,9 @@ export const searchMessagesResponse = {
       status: "RECEIVED",
       createdAt: "2026-10-05T01:02:00Z",
       evidences: [],
+      notionEvidences: [],
+      notionNotice: null,
+      writeCard: null,
     },
     {
       id: 6,
@@ -206,6 +224,9 @@ export const searchMessagesResponse = {
       status: "COMPLETED",
       createdAt: "2026-10-05T01:02:05Z",
       evidences: [],
+      notionEvidences: [],
+      notionNotice: null,
+      writeCard: null,
     },
   ],
   hasPrevious: false,
@@ -242,3 +263,45 @@ export const searchConversationsResponse = {
   ],
   nextCursor: null,
 } satisfies SearchConversations;
+
+/**
+ * 노션 페이지 만들기 확인 카드의 대기 상태예요. 회의록 DB 아래에 만들어 DB 칸이 함께 와요.
+ * 실행 핸들러는 이 카드를 실행됨(DONE)으로, 취소 핸들러는 취소됨(CANCELED)으로 바꿔 돌려줘요
+ */
+export const searchWriteCardResponse = {
+  id: 31,
+  type: "NOTION_PAGE_CREATE",
+  status: "PENDING",
+  location: { name: "회의록", path: "팀 위키 / 회의록", kind: "DATABASE" },
+  title: "11월 13일 주간 회의",
+  body: "## 결정\n- 출시일은 12월 3일로 정했어요.\n- QA는 11월 마지막 주에 해요.\n\n## 할 일\n- 도넛: 배포 체크리스트 정리\n- 유월: QA 일정 공유",
+  databaseFields: [
+    { name: "이름", value: "11월 13일 주간 회의" },
+    { name: "날짜", value: "2026-11-13" },
+  ],
+  sourceDocument: { documentId: 204, title: "주간 회의" },
+  executable: true,
+  createdPageUrl: null,
+  retryReason: null,
+  failureReason: null,
+  existingPages: [],
+} satisfies SearchWriteCard;
+
+/** 실행이 끝나 노션 페이지를 만든 뒤의 주소예요 */
+export const searchWriteCardCreatedPageUrl =
+  "https://www.notion.so/knot-team/11-13-31";
+
+/** 노션이 연결된 워크스페이스의 노션 연결 조회 응답이에요. 연결한 사람이 보는 경우라 끊을 수 있어요 */
+export const searchNotionConnectionResponse = {
+  status: "CONNECTED",
+  notionWorkspaceName: "Knot 팀",
+  notionWorkspaceIcon: "🪢",
+  connectedBy: { memberId: 1, nickname: "도넛" },
+  canDisconnect: true,
+} satisfies SearchNotionConnection;
+
+/** 노션 연결 시작 응답이에요. 실제 서버는 노션 동의 화면 주소를 줘요 */
+export const searchNotionConnectionAuthorizationResponse = {
+  authorizationUrl:
+    "https://api.notion.com/v1/oauth/authorize?client_id=knot&response_type=code&owner=user",
+} satisfies SearchNotionConnectionAuthorization;

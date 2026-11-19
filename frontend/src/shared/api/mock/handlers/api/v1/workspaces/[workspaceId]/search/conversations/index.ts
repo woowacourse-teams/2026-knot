@@ -24,19 +24,28 @@ const encoder = new TextEncoder();
 const toFrame = (event: string, data: object) =>
   `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
 
-/** accepted 뒤에 오는 프레임. 첫 질문·후속 질문·재시도가 같은 순서로 보내요 */
+/** accepted 뒤에 오는 프레임. 첫 질문·후속 질문·재시도가 같은 순서로 보내요. 노션 이벤트는 값이 있을 때만 보내요 */
 const toAnswerBodyFrames = ({
   answerMessageId,
   stages,
   deltas,
   evidences,
-}: Pick<
-  SearchAnswerStream,
-  "answerMessageId" | "stages" | "deltas" | "evidences"
->) => [
+  notionEvidences,
+  notionNotice,
+  writeCard,
+}: Omit<SearchAnswerStream, "conversationId" | "questionMessageId">) => [
   ...stages.map((stage) => toFrame("progress", { stage })),
   ...deltas.map((text) => toFrame("delta", { answerMessageId, text })),
   toFrame("evidence", { answerMessageId, items: evidences }),
+  ...(notionEvidences
+    ? [toFrame("notion_evidence", { answerMessageId, items: notionEvidences })]
+    : []),
+  ...(notionNotice
+    ? [toFrame("notion_notice", { answerMessageId, reason: notionNotice })]
+    : []),
+  ...(writeCard
+    ? [toFrame("write_card", { answerMessageId, card: writeCard })]
+    : []),
   toFrame("completed", { answerMessageId, status: "COMPLETED" }),
 ];
 
