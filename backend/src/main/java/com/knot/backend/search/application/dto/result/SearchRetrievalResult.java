@@ -8,8 +8,26 @@ public record SearchRetrievalResult(
         List<SearchDocumentResult> documents,
         int excludedCount,
         Status status,
-        List<Item> items
+        List<Item> items,
+        boolean candidateLimited,
+        boolean additionalChecked
 ) {
+    public SearchRetrievalResult(
+            List<SearchDocumentResult> documents,
+            int excludedCount,
+            Status status,
+            List<Item> items
+    ) {
+        this(
+                documents,
+                excludedCount,
+                status,
+                items,
+                false,
+                false
+        );
+    }
+
     public SearchRetrievalResult(
             List<SearchDocumentResult> documents,
             int excludedCount

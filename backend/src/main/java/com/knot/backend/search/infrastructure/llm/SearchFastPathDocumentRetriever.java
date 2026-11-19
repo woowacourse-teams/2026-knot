@@ -1,5 +1,6 @@
 package com.knot.backend.search.infrastructure.llm;
 
+import com.knot.backend.global.logging.ServerErrorLogger;
 import com.knot.backend.search.application.SearchDocumentQuery;
 import com.knot.backend.search.application.SearchDocumentRetriever;
 import com.knot.backend.search.application.SearchToolAccess;
@@ -15,11 +16,14 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Pattern;
 import lombok.RequiredArgsConstructor;
 
 @RequiredArgsConstructor
 public class SearchFastPathDocumentRetriever implements SearchDocumentRetriever {
     private static final int CANDIDATE_LIMIT = 20;
+    private static final int PER_ITEM_LIMIT = 3;
+    private static final Pattern DOCUMENT_REFERENCE = Pattern.compile("문서\\s*#?\\s*\\d");
 
     private final SearchDocumentQuery query;
     private final SearchToolAccess access;
@@ -61,7 +65,8 @@ public class SearchFastPathDocumentRetriever implements SearchDocumentRetriever 
                 scope,
                 question,
                 date,
-                CANDIDATE_LIMIT
+                CANDIDATE_LIMIT,
+                true
         );
     }
 
@@ -72,13 +77,27 @@ public class SearchFastPathDocumentRetriever implements SearchDocumentRetriever 
     ) {
         Map<Long, SearchDocumentResult> documents = new LinkedHashMap<>();
         List<Item> coverage = new ArrayList<>();
+        boolean limited = false;
+        boolean checked = false;
         for (int index = 0; index < items.size(); index++) {
-            SearchRetrievalResult found = retrieveItem(
+            SearchRetrievalResult found = retrieveDatedItem(
                     scope,
                     items.get(index),
                     dates.get(index),
-                    3
+                    !checked
             );
+            limited |= found.candidateLimited();
+            checked |= found.additionalChecked();
+            if (found.status() == SearchRetrievalResult.Status.UNAVAILABLE) {
+                coverage.add(
+                        new Item(
+                                index + 1,
+                                ItemStatus.UNAVAILABLE,
+                                List.of()
+                        )
+                );
+                continue;
+            }
             List<Long> ids = new ArrayList<>();
             for (SearchDocumentResult document : found.documents()) {
                 if (documents.containsKey(document.documentId()) || documents.size() < CANDIDATE_LIMIT) {
@@ -87,7 +106,9 @@ public class SearchFastPathDocumentRetriever implements SearchDocumentRetriever 
                             document
                     );
                     ids.add(document.documentId());
+                    continue;
                 }
+                limited = true;
             }
             ItemStatus status = ItemStatus.MATCHED;
             if (ids.isEmpty()) {
@@ -105,19 +126,49 @@ public class SearchFastPathDocumentRetriever implements SearchDocumentRetriever 
                     )
             );
         }
+        if (coverage.stream()
+                .allMatch(item -> item.status() == ItemStatus.UNAVAILABLE)) {
+            return SearchRetrievalResult.unavailable();
+        }
         return new SearchRetrievalResult(
                 List.copyOf(documents.values()),
                 0,
                 SearchRetrievalResult.Status.SEARCHED,
-                coverage
+                coverage,
+                limited,
+                checked
         );
+    }
+
+    private SearchRetrievalResult retrieveDatedItem(
+            SearchToolScope scope,
+            String item,
+            SearchDateFilter date,
+            boolean checkAllowed
+    ) {
+        try {
+            access.validate(scope);
+            return retrieveItem(
+                    scope,
+                    item,
+                    date,
+                    PER_ITEM_LIMIT,
+                    checkAllowed
+            );
+        } catch (RuntimeException exception) {
+            if (ServerErrorLogger.isControlFlow(exception)) {
+                throw exception;
+            }
+            return SearchRetrievalResult.unavailable();
+        }
     }
 
     private SearchRetrievalResult retrieveItem(
             SearchToolScope scope,
             String question,
             SearchDateFilter date,
-            int limit
+            int limit,
+            boolean checkAllowed
     ) {
         String queryText = question;
         if (date != null) {
@@ -135,15 +186,44 @@ public class SearchFastPathDocumentRetriever implements SearchDocumentRetriever 
                 date,
                 limit
         );
-        return new SearchRetrievalResult(
+        List<SearchDocumentRecord> records = findRecords(
+                scope,
+                normalizedQuery,
+                parameters
+        );
+        if (records.size() <= limit) {
+            return new SearchRetrievalResult(
+                    documents(records),
+                    0
+            );
+        }
+        List<SearchDocumentResult> primary = new ArrayList<>(
                 documents(
-                        findRecords(
-                                scope,
-                                normalizedQuery,
-                                parameters
+                        records.subList(
+                                0,
+                                limit
                         )
-                ),
-                0
+                )
+        );
+        SearchEvidenceRelevance relevance = new SearchEvidenceRelevance(question);
+        boolean checked = checkAllowed && (date != null || scope.recordingSessionId() != null)
+                && !DOCUMENT_REFERENCE.matcher(question)
+                        .find()
+                && relevance.needsCandidate(primary);
+        if (checked) {
+            SearchDocumentResult candidate = SearchDocumentResult.from(records.get(limit));
+            if (relevance.matches(candidate)) {
+                primary.removeLast();
+                primary.addFirst(candidate);
+            }
+        }
+        return new SearchRetrievalResult(
+                primary,
+                0,
+                SearchRetrievalResult.Status.SEARCHED,
+                List.of(),
+                true,
+                checked
         );
     }
 

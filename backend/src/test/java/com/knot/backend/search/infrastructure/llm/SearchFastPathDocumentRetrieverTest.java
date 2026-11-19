@@ -46,6 +46,188 @@ class SearchFastPathDocumentRetrieverTest {
     );
 
     @Test
+    @DisplayName("명시한 문서 ID의 범위를 Fast Path 추가 후보로 넓히지 않는다")
+    void retrieve_success_keepsExplicitDocumentReferenceOutOfAdditionalCheck() {
+        List<SearchDocumentRecord> records = new java.util.ArrayList<>(
+                java.util.stream.LongStream.rangeClosed(
+                        1,
+                        20
+                )
+                        .mapToObj(
+                                id -> document(
+                                        id,
+                                        "홍보 회의"
+                                )
+                        )
+                        .toList()
+        );
+        records.add(
+                new SearchDocumentRecord(
+                        21,
+                        "홍보 회의",
+                        "홍보",
+                        "검수 승인 전에는 외부 공개 보류.",
+                        DocumentStatus.DRAFT,
+                        scope.requestAcceptedAt(),
+                        scope.requestAcceptedAt(),
+                        null,
+                        1
+                )
+        );
+        when(
+                query.searchPage(
+                        eq(scope),
+                        any(SearchDocumentParameters.class),
+                        isNull()
+                )
+        ).thenReturn(records);
+
+        SearchRetrievalResult result = retriever.retrieve(
+                scope,
+                "10월 12일에 열린 문서 #42의 외부 공개 보류 조건은?"
+        );
+
+        assertThat(result.documents()).hasSize(20)
+                .noneMatch(document -> document.documentId() == 21L);
+        assertThat(result.additionalChecked()).isFalse();
+    }
+
+    @Test
+    @DisplayName("전체 결정을 요청하면 후보 상한만 표시하고 추가 후보를 사용하지 않는다")
+    void retrieve_success_keepsCandidateCapForBroadRequest() {
+        List<SearchDocumentRecord> records = java.util.stream.LongStream.rangeClosed(
+                1,
+                21
+        )
+                .mapToObj(
+                        id -> document(
+                                id,
+                                "배포 회의"
+                        )
+                )
+                .toList();
+        when(
+                query.searchPage(
+                        eq(scope),
+                        any(SearchDocumentParameters.class),
+                        isNull()
+                )
+        ).thenReturn(records);
+
+        SearchRetrievalResult result = retriever.retrieve(
+                scope,
+                "최근 배포 회의 결정 전부 알려줘"
+        );
+
+        assertThat(result.documents()).hasSize(20)
+                .noneMatch(document -> document.documentId() == 21L);
+        assertThat(result.candidateLimited()).isTrue();
+        assertThat(result.additionalChecked()).isFalse();
+        assertThat(result.excludedCount()).isZero();
+    }
+
+    @Test
+    @DisplayName("비교의 한쪽 조회가 실패해도 읽을 수 있는 항목을 보존한다")
+    void retrieve_success_preservesDatedItemWhenOtherItemFails() {
+        when(
+                query.searchPage(
+                        eq(scope),
+                        any(SearchDocumentParameters.class),
+                        isNull()
+                )
+        ).thenAnswer(call -> {
+            SearchDocumentParameters parameters = call.getArgument(1);
+            if (parameters.query()
+                    .contains("배포")) {
+                return List.of(
+                        document(
+                                41,
+                                "배포 회의"
+                        )
+                );
+            }
+            throw new IllegalStateException("조회 실패");
+        });
+
+        SearchRetrievalResult result = retriever.retrieve(
+                scope,
+                "1. 10월 12일 배포 회의의 조건은?\n2. 10월 13일 홍보 회의의 조건은?"
+        );
+
+        assertThat(result.documents()).extracting(value -> value.documentId())
+                .containsExactly(41L);
+        assertThat(result.items()).extracting(SearchRetrievalResult.Item::status)
+                .containsExactly(
+                        SearchRetrievalResult.ItemStatus.MATCHED,
+                        SearchRetrievalResult.ItemStatus.UNAVAILABLE
+                );
+    }
+
+    @Test
+    @DisplayName("SQL 후보 상한 뒤 한 건은 해당 항목의 조건을 보충할 때만 사용한다")
+    void retrieve_success_recoversNextDatedSqlCandidate() {
+        when(
+                query.searchPage(
+                        eq(scope),
+                        any(SearchDocumentParameters.class),
+                        isNull()
+                )
+        ).thenAnswer(call -> {
+            SearchDocumentParameters parameters = call.getArgument(1);
+            if (parameters.query()
+                    .contains("배포")) {
+                return List.of(
+                        document(
+                                41,
+                                "배포 회의"
+                        )
+                );
+            }
+            return List.of(
+                    document(
+                            51,
+                            "홍보 개요"
+                    ),
+                    document(
+                            52,
+                            "홍보 개요"
+                    ),
+                    document(
+                            53,
+                            "홍보 개요"
+                    ),
+                    new SearchDocumentRecord(
+                            54,
+                            "홍보 회의",
+                            "홍보",
+                            "검수 승인 전에는 외부 공개 보류.",
+                            DocumentStatus.DRAFT,
+                            scope.requestAcceptedAt(),
+                            scope.requestAcceptedAt(),
+                            null,
+                            1
+                    )
+            );
+        });
+
+        SearchRetrievalResult result = retriever.retrieve(
+                scope,
+                "1. 10월 12일 배포 일정은?\n2. 10월 13일 홍보 회의에서 외부 공개를 보류한 조건은?"
+        );
+
+        assertThat(result.documents()).extracting(value -> value.documentId())
+                .startsWith(41L)
+                .contains(54L)
+                .hasSize(4);
+        assertThat(
+                result.items()
+                        .getLast()
+                        .documentIds()
+        ).contains(54L)
+                .hasSize(3);
+    }
+
+    @Test
     @DisplayName("Fast Path는 정규화한 검색어로 Workspace 문서를 찾는다")
     void retrieve_success_normalizesQueryAndMapsDocuments() {
         // given

@@ -9,6 +9,7 @@ public final class SearchAnswerGuidance {
     public static final String RETRIEVAL_UNAVAILABLE = "지금은 회의 기록을 조회하기 어려워 팀의 결정은 확인할 수 없어요. 확인된 기록이 아닌 일반적인 설명으로 이어갈게요.\n\n";
     public static final String NO_SEARCH_MATCHES = "검색한 범위에서 관련 회의 기록을 찾지 못했어요.\n\n";
     public static final String RETRIEVAL_LIMITED = "검색 결과 중 일부 기록을 확인하지 못했어요.\n\n";
+    public static final String CANDIDATE_LIMITED = "검색에서 확인한 회의 범위로 답했어요. 더 확인하려면 기간이나 회의명을 좁혀 주세요.";
     public static final String DOCUMENT_BUDGET_LIMITED = "입력 한도 때문에 일부 기록만 확인했어요. 회의나 기간을 좁히면 더 구체적으로 확인할 수 있어요.";
     public static final String DOCUMENT_BUDGET_EXHAUSTED = "자료가 입력 한도를 넘어 회의 기록을 확인하지 못했어요. 회의나 기간을 좁혀 다시 질문해 주세요.";
 

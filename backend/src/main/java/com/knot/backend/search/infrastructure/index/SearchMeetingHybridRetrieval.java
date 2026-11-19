@@ -1,5 +1,6 @@
 package com.knot.backend.search.infrastructure.index;
 
+import com.knot.backend.global.logging.ServerErrorLogger;
 import com.knot.backend.search.application.SearchDocumentQuery;
 import com.knot.backend.search.application.SearchToolAccess;
 import com.knot.backend.search.application.SearchToolScope;
@@ -7,10 +8,13 @@ import com.knot.backend.search.application.dto.result.SearchDocumentResult;
 import com.knot.backend.search.application.dto.result.SearchRetrievalResult;
 import com.knot.backend.search.application.dto.result.SearchRetrievalResult.Item;
 import com.knot.backend.search.application.dto.result.SearchRetrievalResult.ItemStatus;
+import com.knot.backend.search.infrastructure.llm.SearchEvidenceRelevance;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -84,47 +88,169 @@ public final class SearchMeetingHybridRetrieval {
         if (items.size() > 1) {
             itemLimit = PER_ITEM_LIMIT;
         }
-        Set<Long> ranked = new LinkedHashSet<>();
         List<Optional<List<Long>>> matches = new ArrayList<>();
         for (SearchMeetingSearchItem item : items) {
-            Optional<List<Long>> itemMatches = searchItem(
-                    scope,
-                    item,
-                    itemLimit
+            matches.add(
+                    searchItem(
+                            scope,
+                            item,
+                            itemLimit + 1
+                    )
             );
-            matches.add(itemMatches);
-            itemMatches.ifPresent(ranked::addAll);
         }
         if (matches.stream()
                 .noneMatch(Optional::isPresent)) {
             return Optional.empty();
         }
+        int primaryLimit = itemLimit;
+        List<Optional<List<Long>>> primary = new ArrayList<>(
+                matches.stream()
+                        .map(
+                                match -> match.map(
+                                        ids -> ids.stream()
+                                                .limit(primaryLimit)
+                                                .toList()
+                                )
+                        )
+                        .toList()
+        );
+        Set<Long> ranked = orderedIds(primary);
         access.validate(scope);
-        List<SearchDocumentResult> current = ranked.stream()
+        Map<Long, SearchDocumentResult> current = new LinkedHashMap<>();
+        ranked.stream()
                 .limit(TOTAL_LIMIT)
-                .map(
+                .forEach(
                         id -> documents.find(
                                 scope,
                                 id
                         )
-                )
-                .flatMap(Optional::stream)
-                .map(SearchDocumentResult::from)
+                                .map(SearchDocumentResult::from)
+                                .ifPresent(
+                                        document -> current.put(
+                                                id,
+                                                document
+                                        )
+                                )
+                );
+        int excluded = Math.min(
+                ranked.size(),
+                TOTAL_LIMIT
+        ) - current.size();
+        boolean limited = ranked.size() > TOTAL_LIMIT || matches.stream()
+                .anyMatch(
+                        match -> match.isPresent() && match.orElseThrow()
+                                .size() > primaryLimit
+                );
+        boolean checked = checkAdditionalCandidate(
+                scope,
+                items,
+                matches,
+                primary,
+                current,
+                primaryLimit
+        );
+        List<SearchDocumentResult> selected = orderedIds(primary).stream()
+                .limit(TOTAL_LIMIT)
+                .filter(current::containsKey)
+                .map(current::get)
                 .toList();
         return Optional.of(
                 new SearchRetrievalResult(
-                        current,
-                        Math.min(
-                                ranked.size(),
-                                TOTAL_LIMIT
-                        ) - current.size(),
+                        selected,
+                        excluded,
                         SearchRetrievalResult.Status.SEARCHED,
                         itemResults(
-                                matches,
-                                current
-                        )
+                                primary,
+                                selected
+                        ),
+                        limited,
+                        checked
                 )
         );
+    }
+
+    private Set<Long> orderedIds(List<Optional<List<Long>>> matches) {
+        Set<Long> ranked = new LinkedHashSet<>();
+        matches.forEach(match -> match.ifPresent(ranked::addAll));
+        return ranked;
+    }
+
+    private boolean checkAdditionalCandidate(
+            SearchToolScope scope,
+            List<SearchMeetingSearchItem> items,
+            List<Optional<List<Long>>> matches,
+            List<Optional<List<Long>>> primary,
+            Map<Long, SearchDocumentResult> current,
+            int limit
+    ) {
+        for (int position = 0; position < matches.size(); position++) {
+            List<Long> ids = matches.get(position)
+                    .orElse(List.of());
+            if (ids.size() <= limit) {
+                continue;
+            }
+            List<Long> primaryIds = primary.get(position)
+                    .orElseThrow();
+            SearchEvidenceRelevance relevance = new SearchEvidenceRelevance(
+                    items.get(position)
+                            .question()
+            );
+            List<SearchDocumentResult> available = primaryIds.stream()
+                    .filter(current::containsKey)
+                    .map(current::get)
+                    .toList();
+            if (!relevance.needsCandidate(available)) {
+                continue;
+            }
+            long nextId = ids.get(limit);
+            SearchDocumentResult candidate = current.get(nextId);
+            if (candidate == null) {
+                candidate = readAdditionalCandidate(
+                        scope,
+                        nextId
+                ).orElse(null);
+            }
+            if (candidate != null && relevance.matches(candidate)) {
+                List<Long> replacement = new ArrayList<>(primaryIds);
+                replacement.removeLast();
+                replacement.addFirst(nextId);
+                primary.set(
+                        position,
+                        Optional.of(replacement)
+                );
+                current.putIfAbsent(
+                        nextId,
+                        candidate
+                );
+            }
+            return true;
+        }
+        return false;
+    }
+
+    private Optional<SearchDocumentResult> readAdditionalCandidate(
+            SearchToolScope scope,
+            long documentId
+    ) {
+        access.validate(scope);
+        try {
+            return documents.find(
+                    scope,
+                    documentId
+            )
+                    .map(SearchDocumentResult::from);
+        } catch (RuntimeException exception) {
+            if (ServerErrorLogger.isControlFlow(exception)) {
+                throw exception;
+            }
+            log.warn(
+                    "Additional search candidate unavailable workspaceId={} errorType={}",
+                    scope.workspaceId(),
+                    exception.getClass()
+                            .getSimpleName()
+            );
+            return Optional.empty();
+        }
     }
 
     private Optional<List<Long>> searchItem(

@@ -211,7 +211,7 @@ public class SearchAnswerWorker {
                     work.question()
             );
             log.info(
-                    "Search latency phase=document_retrieval workspaceId={} questionId={} answerId={} elapsedMs={} inputChars={} candidates={} excludedDocuments={} outcome=success",
+                    "Search latency phase=document_retrieval workspaceId={} questionId={} answerId={} elapsedMs={} inputChars={} candidates={} excludedDocuments={} candidateLimited={} additionalCandidateChecked={} outcome=success",
                     work.workspaceId(),
                     work.questionId(),
                     work.answerId(),
@@ -220,7 +220,9 @@ public class SearchAnswerWorker {
                             .length(),
                     retrieval.documents()
                             .size(),
-                    retrieval.excludedCount()
+                    retrieval.excludedCount(),
+                    retrieval.candidateLimited(),
+                    retrieval.additionalChecked()
             );
         } catch (RuntimeException exception) {
             log.info(
@@ -379,7 +381,7 @@ public class SearchAnswerWorker {
             StringBuilder content
     ) {
         if (retrieval.items()
-                .isEmpty()) {
+                .isEmpty() && !retrieval.candidateLimited()) {
             return generator.generate(
                     scope,
                     question,
