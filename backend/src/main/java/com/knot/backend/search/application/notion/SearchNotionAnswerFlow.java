@@ -61,10 +61,8 @@ public class SearchNotionAnswerFlow {
                             .guidance(),
                     List.of(),
                     Set.of(),
-                    SearchNotionOutcome.notice(
-                            skip.get()
-                                    .notice()
-                    )
+                    // 노션 안내는 노션을 읽지 못해 회의 문서만으로 답한 사유라, 연결 안내는 답글이 맡는다(SEARCH-R39, R47).
+                    SearchNotionOutcome.notice(Optional.empty())
             );
             return;
         }
