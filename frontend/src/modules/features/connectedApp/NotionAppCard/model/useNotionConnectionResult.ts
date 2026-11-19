@@ -38,14 +38,14 @@ export const useNotionConnectionResult = ({
   const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
   const { show } = useToast();
-  const [isGuestBlocked, setIsGuestBlocked] = useState(false);
   const result = searchParams.get(RESULT_PARAM);
+  // 노션은 페이지를 새로 불러오며 돌려보내므로 처음 그릴 때의 주소만 보면 돼요
+  const [isGuestBlocked] = useState(() => result === "NOTION_GUEST_NOT_ALLOWED");
 
   useEffect(() => {
     if (!isConnectionResult(result)) return;
 
     if (result === "CONNECTED") show(TOAST_MESSAGES.NOTION_CONNECTED);
-    if (result === "NOTION_GUEST_NOT_ALLOWED") setIsGuestBlocked(true);
 
     void queryClient.invalidateQueries({
       queryKey: searchKeys.notionConnection(workspaceId),
