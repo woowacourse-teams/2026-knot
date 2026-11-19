@@ -156,4 +156,9 @@ export const TOAST_MESSAGES = {
     variant: "error",
     message: "이 워크스페이스에 더 이상 들어갈 수 없어요.",
   },
+  /** 노션 동의 화면에서 연결을 마치고 연결된 앱 화면으로 돌아왔을 때(SEARCH-R30). Figma 6513:4859 */
+  NOTION_CONNECTED: {
+    variant: "success",
+    message: "노션을 연결했어요",
+  },
 } as const satisfies Record<string, Parameters<ToastControls["show"]>[0]>;

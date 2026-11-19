@@ -9,6 +9,63 @@ export interface SearchEvidenceItem {
   rank: number;
 }
 
+/** 답변에 쓴 노션 페이지. 메시지 조회의 notionEvidences[]와 notion_evidence 이벤트의 items[]가 같은 모양이에요 */
+export interface SearchNotionEvidenceItem {
+  title: string;
+  /** 노션 페이지 주소 */
+  url: string;
+}
+
+/** 노션을 읽지 못해 회의 문서만으로 답한 사유 */
+export type SearchNotionNoticeReason =
+  "NOT_CONNECTED" | "PAGE_NOT_FOUND" | "READ_FAILED" | "CONNECTION_EXPIRED";
+
+/** 쓰기 확인 카드. 실행과 취소 응답, write_card 이벤트의 card, 메시지 조회의 writeCard가 같은 모양이에요 */
+export interface SearchWriteCard {
+  id: number;
+  type: "NOTION_PAGE_CREATE";
+  status: "PENDING" | "RUNNING" | "DONE" | "CANCELED" | "FAILED";
+  location: { name: string; path: string; kind: "PAGE" | "DATABASE" };
+  title: string;
+  body: string;
+  /** 일반 페이지 아래면 null */
+  databaseFields: { name: string; value: string }[] | null;
+  sourceDocument: { documentId: number; title: string };
+  /** DB 속성을 확인하지 못한 카드는 false */
+  executable: boolean;
+  /** DONE일 때만 값이 있어요 */
+  createdPageUrl: string | null;
+  retryReason:
+    | "NOTION_RECONNECT_REQUIRED"
+    | "NOTION_CONNECTION_REQUIRED"
+    | "NOTION_RATE_LIMITED"
+    | "DATABASE_FIELDS_CHANGED"
+    | null;
+  failureReason:
+    | "LOCATION_PERMISSION_LOST"
+    | "NOTION_CONNECTION_CHANGED"
+    | "BODY_TOO_LONG"
+    | "NOTION_NO_RESPONSE"
+    | null;
+  /** 최근에 만든 것부터 */
+  existingPages: { url: string; title: string; createdAt: string }[];
+}
+
+/** 노션 연결 조회 응답 */
+export interface SearchNotionConnection {
+  status: "NOT_CONNECTED" | "CONNECTED" | "EXPIRED";
+  notionWorkspaceName: string | null;
+  /** 이모지 또는 이미지 주소 */
+  notionWorkspaceIcon: string | null;
+  connectedBy: { memberId: number; nickname: string } | null;
+  canDisconnect: boolean;
+}
+
+/** 노션 연결 시작 응답 */
+export interface SearchNotionConnectionAuthorization {
+  authorizationUrl: string;
+}
+
 /** 탐색 SSE 스트림 한 번이 흘려보낼 값들. 핸들러가 이 값으로 프레임을 만들어요 */
 export interface SearchAnswerStream {
   conversationId: number;
@@ -20,6 +77,12 @@ export interface SearchAnswerStream {
   deltas: string[];
   /** evidence 이벤트의 items. 최대 3개 */
   evidences: SearchEvidenceItem[];
+  /** notion_evidence 이벤트의 items. 없으면 이 이벤트를 보내지 않아요 */
+  notionEvidences?: SearchNotionEvidenceItem[];
+  /** notion_notice 이벤트의 사유. 없으면 이 이벤트를 보내지 않아요 */
+  notionNotice?: SearchNotionNoticeReason;
+  /** write_card 이벤트의 card. 없으면 이 이벤트를 보내지 않아요 */
+  writeCard?: SearchWriteCard;
 }
 
 /** 후속 질문 SSE 스트림의 값들. 대화 ID는 요청 경로에서 받아 채워요 */
@@ -57,6 +120,12 @@ export interface SearchAnswerEventsStream {
   deltas: string[];
   /** evidence 이벤트의 items. 최대 3개 */
   evidences: SearchEvidenceItem[];
+  /** notion_evidence 이벤트의 items. 없으면 이 이벤트를 보내지 않아요 */
+  notionEvidences?: SearchNotionEvidenceItem[];
+  /** notion_notice 이벤트의 사유. 없으면 이 이벤트를 보내지 않아요 */
+  notionNotice?: SearchNotionNoticeReason;
+  /** write_card 이벤트의 card(지금 상태). 없으면 이 이벤트를 보내지 않아요 */
+  writeCard?: SearchWriteCard;
 }
 
 /** 탐색 메시지 하나 */
@@ -69,6 +138,12 @@ export interface SearchMessage {
   createdAt: string;
   /** 질문(USER)은 빈 배열이에요 */
   evidences: SearchEvidenceItem[];
+  /** 없거나 질문(USER)이면 빈 배열이에요 */
+  notionEvidences: SearchNotionEvidenceItem[];
+  /** 해당 없으면 null이에요 */
+  notionNotice: SearchNotionNoticeReason | null;
+  /** 카드가 없으면 null이에요 */
+  writeCard: SearchWriteCard | null;
 }
 
 /** 탐색 메시지 조회 응답 */

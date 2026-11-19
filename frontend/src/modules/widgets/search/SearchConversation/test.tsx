@@ -1,10 +1,17 @@
 import {
   GetSearchMessagesResponseDto,
+  SearchNotionEvidenceDto,
   SearchStreamAcceptedDto,
   SearchStreamDeltaDto,
+  SearchStreamProgressDto,
+  SearchStreamWriteCardDto,
 } from "@api/dto/search";
+import type { SearchMessage } from "@api/mock/types/search";
 import {
   searchMessagesResponse,
+  searchNotionEvidencesResponse,
+  searchWriteCardCreatedPageUrl,
+  searchWriteCardResponse,
 } from "@api/mock/responses/search";
 import { mockServer } from "@api/mock/server";
 import { ThemeProvider } from "@emotion/react";
@@ -17,7 +24,6 @@ import {
   fireEvent,
   render,
   screen,
-  waitFor,
   within,
 } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
@@ -39,6 +45,14 @@ const CONVERSATION_PATH = getRouterPath({
 
 const MESSAGES_PATH =
   "*/api/v1/workspaces/:workspaceId/search/conversations/:conversationId/messages";
+const EXECUTE_PATH =
+  "*/api/v1/workspaces/:workspaceId/search/conversations/:conversationId/write-cards/:cardId/execute";
+const WRITE_CARD_NAME = "노션 페이지 만들기";
+const doneWriteCard = {
+  ...searchWriteCardResponse,
+  status: "DONE" as const,
+  createdPageUrl: searchWriteCardCreatedPageUrl,
+};
 
 const { items: messages } = new GetSearchMessagesResponseDto(
   searchMessagesResponse,
@@ -49,9 +63,30 @@ const answersWithEvidence = answers.filter(
   ({ evidences }) => evidences.length > 0,
 );
 
-const SEARCHING_TEXT = "답변을 준비하고 있어요…";
+const SEARCHING_TEXT = "찾는 중";
+const GENERATING_TEXT = "작성 중";
+const APPS_SCREEN_TEXT = "연결된 앱 화면";
 const FAILED_TEXT = "지금은 답변을 정리하기 어려워요. 질문을 조금 더 구체적으로 이어서 해주시면 도와드릴게요.";
 const PARTIAL_ANSWER = "끊기기 전까지 받은 답";
+
+/** 이번 테스트에서만 첫 턴의 답변을 넘긴 값으로 덮어 조회되게 바꿔요 */
+const respondWithFirstAnswer = (patch: Partial<SearchMessage>) => {
+  const [question, answer, ...rest] = searchMessagesResponse.items;
+  mockServer.use(
+    http.get(MESSAGES_PATH, ({ params }) =>
+      HttpResponse.json({
+        ...searchMessagesResponse,
+        conversationId: Number(params.conversationId),
+        items: [question, { ...answer, ...patch }, ...rest],
+      }),
+    ),
+  );
+};
+
+/** 테스트 화면이 받는 노션 근거. mock 응답을 응답 DTO로 바꾼 값이에요 */
+const notionEvidences = searchNotionEvidencesResponse.map(
+  (notionEvidence) => new SearchNotionEvidenceDto(notionEvidence),
+);
 
 /** 이번 테스트에서만 첫 턴의 답변을 일부 글자만 받고 실패한 답변으로 조회되게 바꿔요 */
 const respondWithFailedFirstAnswer = () => {
@@ -126,6 +161,7 @@ const renderConversation = (initialPath = CONVERSATION_PATH) => {
     [
       { path: PATH_ROUTE.CHAT, element: <SearchConversation /> },
       { path: PATH_ROUTE.CHAT_SESSION, element: <SearchConversation /> },
+      { path: PATH_ROUTE.APPS, element: <p>{APPS_SCREEN_TEXT}</p> },
     ],
     { initialEntries: [initialPath] },
   );
@@ -225,7 +261,7 @@ describe("SearchConversation", () => {
     expect(screen.queryByText(SEARCHING_TEXT)).not.toBeInTheDocument();
   });
 
-  it("접수된 뒤 답변 텍스트가 오기 전에는 답변 자리에 진행 문구를 보여준다 (SEARCH-R6, Figma Search/Answer 작성 중)", async () => {
+  it("접수된 뒤 답변 텍스트가 오기 전, 진행 단계를 받기 전에도 답변 자리에 「찾는 중」을 보여준다 (SEARCH-R38, Figma 진행 표시)", async () => {
     const { accept } = streamAnswer({
       conversationId: Number(CONVERSATION_ID),
       question: "이어서 보낸 질문",
@@ -522,5 +558,282 @@ describe("SearchConversation", () => {
     expect(router.state.location.search).toBe(`?messageId=${secondAnswer.id}`);
     expect(firstButton).toHaveAttribute("aria-pressed", "false");
     expect(secondButton).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("진행 단계가 작성 중으로 바뀌면 「찾는 중」 대신 「작성 중」을 보여주고, 「쓰는 중」은 보여주지 않는다 (SEARCH-R38)", async () => {
+    const { accept } = streamAnswer({
+      conversationId: Number(CONVERSATION_ID),
+      question: "이어서 보낸 질문",
+      text: "",
+    });
+    accept(Number(CONVERSATION_ID));
+    renderConversation();
+    await screen.findByText(questions[0].content);
+    const lastTurn = () => {
+      const turns = screen.getAllByRole("article");
+      return turns[turns.length - 1];
+    };
+
+    const { controller, applyEvent } = useSearchAnswerStore.getState();
+    if (!controller) throw new Error("받고 있는 답변이 없어요");
+    act(() => {
+      applyEvent(controller, {
+        event: "progress",
+        data: new SearchStreamProgressDto({ stage: "SEARCHING" }),
+      });
+    });
+    expect(within(lastTurn()).getByText(SEARCHING_TEXT)).toBeInTheDocument();
+
+    act(() => {
+      applyEvent(controller, {
+        event: "progress",
+        data: new SearchStreamProgressDto({ stage: "GENERATING" }),
+      });
+    });
+    expect(within(lastTurn()).getByText(GENERATING_TEXT)).toBeInTheDocument();
+    expect(within(lastTurn()).queryByText(SEARCHING_TEXT)).not.toBeInTheDocument();
+    expect(screen.queryByText(/쓰는 중/)).not.toBeInTheDocument();
+  });
+
+  it("답에 쓴 노션 페이지는 '기록 N개에서 찾았어요' 옆에 페이지마다 노션 버튼으로 보여주고, 누르면 그 페이지를 새 탭으로 연다 (SEARCH-R37)", async () => {
+    const usedNotionEvidences = notionEvidences.slice(0, 3);
+    respondWithFirstAnswer({
+      notionEvidences: searchNotionEvidencesResponse.slice(0, 3),
+    });
+    renderConversation();
+
+    await screen.findByText(questions[0].content);
+    const [firstTurn] = screen.getAllByRole("article");
+    const links = within(firstTurn).getAllByRole("link");
+
+    expect(
+      within(firstTurn).getByRole("button", {
+        name: evidenceButtonName(answers[0].evidences.length),
+      }),
+    ).toBeInTheDocument();
+    expect(links.map((link) => link.textContent)).toEqual(
+      usedNotionEvidences.map(({ title }) => title),
+    );
+    links.forEach((link, index) => {
+      expect(link).toHaveAttribute("href", usedNotionEvidences[index].url);
+      expect(link).toHaveAttribute("target", "_blank");
+    });
+  });
+
+  it("회의 문서 근거 없이 노션 근거만 있는 답변은 노션 버튼만 보여준다 (SEARCH-R37)", async () => {
+    respondWithFirstAnswer({
+      evidences: [],
+      notionEvidences: searchNotionEvidencesResponse.slice(0, 1),
+    });
+    renderConversation();
+
+    await screen.findByText(questions[0].content);
+    const [firstTurn] = screen.getAllByRole("article");
+
+    expect(
+      within(firstTurn).getByRole("link", { name: notionEvidences[0].title }),
+    ).toBeInTheDocument();
+    expect(
+      within(firstTurn).queryByRole("button", { name: /에서 찾았어요$/ }),
+    ).not.toBeInTheDocument();
+  });
+
+  it.each([
+    {
+      reason: "NOT_CONNECTED" as const,
+      text: "회의 문서만으로 답했어요. 노션을 연결하면 노션 내용도 함께 찾아요.",
+      button: "노션 연결",
+    },
+    {
+      reason: "PAGE_NOT_FOUND" as const,
+      text: "노션에서는 맞는 페이지를 찾지 못해 회의 문서만으로 답했어요.",
+      button: null,
+    },
+    {
+      reason: "READ_FAILED" as const,
+      text: "노션을 읽지 못해 회의 문서만으로 답했어요.",
+      button: null,
+    },
+    {
+      reason: "CONNECTION_EXPIRED" as const,
+      text: "노션 연결이 만료돼 회의 문서만으로 답했어요.",
+      button: "다시 연결",
+    },
+  ])(
+    "노션을 읽지 못한 사유가 $reason이면 답변 아래에 「$text」를 보여준다 (SEARCH-R39)",
+    async ({ reason, text, button }) => {
+      respondWithFirstAnswer({ notionNotice: reason });
+      renderConversation();
+
+      await screen.findByText(questions[0].content);
+      const [firstTurn] = screen.getAllByRole("article");
+
+      expect(within(firstTurn).getByText(text)).toBeInTheDocument();
+      expect(
+        within(firstTurn).queryAllByRole("button", {
+          name: /^(노션 연결|다시 연결)$/,
+        }).map((element) => element.textContent),
+      ).toEqual(button ? [button] : []);
+    },
+  );
+
+  it("모르는 노션 안내 사유가 오면 안내 없이 답변만 보여준다 (SEARCH-R39)", async () => {
+    const [question, answer, ...rest] = searchMessagesResponse.items;
+    mockServer.use(
+      http.get(MESSAGES_PATH, ({ params }) =>
+        HttpResponse.json({
+          ...searchMessagesResponse,
+          conversationId: Number(params.conversationId),
+          items: [question, { ...answer, notionNotice: "NEW_REASON" }, ...rest],
+        }),
+      ),
+    );
+    renderConversation();
+
+    await screen.findByText(questions[0].content);
+    const [firstTurn] = screen.getAllByRole("article");
+
+    expect(within(firstTurn).getByText(/작성자를 ‘탈퇴한 사용자’로 표시해요/)).toBeInTheDocument();
+    expect(within(firstTurn).queryByText(/회의 문서만으로 답했어요/)).not.toBeInTheDocument();
+  });
+
+  it.each(["노션 연결", "다시 연결"])(
+    "노션 안내의 [%s]을 누르면 연결된 앱 화면으로 간다 (SEARCH-R39, SEARCH-R34)",
+    async (button) => {
+      respondWithFirstAnswer({
+        notionNotice:
+          button === "노션 연결" ? "NOT_CONNECTED" : "CONNECTION_EXPIRED",
+      });
+      const { router } = renderConversation();
+
+      await act(async () => {
+        fireEvent.click(await screen.findByRole("button", { name: button }));
+      });
+
+      expect(router.state.location.pathname).toBe(
+        getRouterPath({ routeKey: "APPS", params: { workspaceId: WORKSPACE_ID } }),
+      );
+      expect(screen.getByText(APPS_SCREEN_TEXT)).toBeInTheDocument();
+    },
+  );
+
+  it("답변에 붙은 쓰기 확인 카드를 그 답변 안에 보여준다 (SEARCH-R40, SEARCH-R42)", async () => {
+    respondWithFirstAnswer({ writeCard: searchWriteCardResponse });
+    renderConversation();
+
+    await screen.findByText(questions[0].content);
+    const [firstTurn] = screen.getAllByRole("article");
+
+    expect(
+      within(firstTurn).getByRole("region", { name: WRITE_CARD_NAME }),
+    ).toBeInTheDocument();
+  });
+
+  it("[만들기]를 누르면 끝난 뒤 대화 메시지를 다시 받아 카드를 「만들었어요」로 바꿔 보여준다 (SEARCH-R50)", async () => {
+    let savedCard: SearchMessage["writeCard"] = searchWriteCardResponse;
+    const [question, answer, ...rest] = searchMessagesResponse.items;
+    mockServer.use(
+      http.get(MESSAGES_PATH, ({ params }) =>
+        HttpResponse.json({
+          ...searchMessagesResponse,
+          conversationId: Number(params.conversationId),
+          items: [question, { ...answer, writeCard: savedCard }, ...rest],
+        }),
+      ),
+      http.post(EXECUTE_PATH, () => {
+        savedCard = doneWriteCard;
+        return HttpResponse.json(doneWriteCard);
+      }),
+    );
+    renderConversation();
+
+    fireEvent.click(await screen.findByRole("button", { name: "만들기" }));
+
+    expect(await screen.findByText("만들었어요")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "만들기" })).not.toBeInTheDocument();
+  });
+
+  it("저장소가 아직 들고 있는 답변의 카드도 실행한 뒤 다시 받은 카드 상태로 보여준다 (SEARCH-R50)", async () => {
+    const savedAnswer = {
+      ...searchMessagesResponse.items[1],
+      id: 1002,
+      sequence: 8,
+      content: "흘러드는 답",
+    };
+    let savedCard: SearchMessage["writeCard"] = searchWriteCardResponse;
+    mockServer.use(
+      http.get(MESSAGES_PATH, ({ params }) =>
+        HttpResponse.json({
+          ...searchMessagesResponse,
+          conversationId: Number(params.conversationId),
+          items: [
+            ...searchMessagesResponse.items,
+            { ...searchMessagesResponse.items[0], id: 1001, sequence: 7, content: "만들어 줘" },
+            { ...savedAnswer, writeCard: savedCard },
+          ],
+        }),
+      ),
+      http.post(EXECUTE_PATH, () => {
+        savedCard = doneWriteCard;
+        return HttpResponse.json(doneWriteCard);
+      }),
+    );
+    const { accept } = streamAnswer({
+      conversationId: Number(CONVERSATION_ID),
+      question: "만들어 줘",
+      text: "흘러드는 답",
+    });
+    accept(Number(CONVERSATION_ID));
+    const { controller, applyEvent, settle } = useSearchAnswerStore.getState();
+    if (!controller) throw new Error("받고 있는 답변이 없어요");
+    act(() => {
+      applyEvent(controller, {
+        event: "write_card",
+        data: new SearchStreamWriteCardDto({
+          answerMessageId: 1002,
+          card: searchWriteCardResponse,
+        }),
+      });
+      settle(controller, "COMPLETED");
+    });
+    renderConversation();
+
+    fireEvent.click(await screen.findByRole("button", { name: "만들기" }));
+
+    expect(await screen.findByText("만들었어요")).toBeInTheDocument();
+    expect(screen.getAllByRole("region", { name: WRITE_CARD_NAME })).toHaveLength(1);
+  });
+
+  it("다른 탭에서 실행 중인 카드는 끝날 때까지 대화 메시지를 다시 받아 끝 상태로 바꿔 보여준다 (SEARCH-R50)", async () => {
+    let requestCount = 0;
+    const [question, answer, ...rest] = searchMessagesResponse.items;
+    mockServer.use(
+      http.get(MESSAGES_PATH, ({ params }) => {
+        requestCount += 1;
+        return HttpResponse.json({
+          ...searchMessagesResponse,
+          conversationId: Number(params.conversationId),
+          items: [
+            question,
+            {
+              ...answer,
+              writeCard:
+                requestCount === 1
+                  ? { ...searchWriteCardResponse, status: "RUNNING" }
+                  : doneWriteCard,
+            },
+            ...rest,
+          ],
+        });
+      }),
+    );
+    renderConversation();
+
+    expect(
+      await screen.findByText("노션에 페이지를 만드는 중이에요."),
+    ).toBeInTheDocument();
+    expect(
+      await screen.findByText("만들었어요", undefined, { timeout: 4000 }),
+    ).toBeInTheDocument();
   });
 });

@@ -147,6 +147,7 @@ const renderGnb = (initialPath = HOME_PATH) => {
         PATH_ROUTE.RECORDING,
         PATH_ROUTE.RECORDING_DOCUMENTS,
         PATH_ROUTE.RECORDING_DOCUMENT,
+        PATH_ROUTE.APPS,
       ].map((path) => ({ path, element: null })),
     },
   ]);
@@ -473,6 +474,22 @@ describe("WorkspaceGnb 위치 표시", () => {
 
     const location = await findLocation(otherWorkspace.name);
     expect(location).toHaveTextContent(`${otherWorkspace.name}홈`);
+  });
+
+  it("[SEARCH-R29] 연결된 앱 화면에서는 워크스페이스 이름 뒤에 연결된 앱을 보여주고 탭은 고르지 않는다", async () => {
+    const { homeButton, exploreButton, documentsButton } = renderGnb(
+      getRouterPath({
+        routeKey: "APPS",
+        params: { workspaceId: WORKSPACE_ID },
+      }),
+    );
+
+    const location = await findLocation(expectedWorkspace.name);
+
+    expect(location).toHaveTextContent(`${expectedWorkspace.name}연결된 앱`);
+    for (const tab of [homeButton, exploreButton, documentsButton]) {
+      expect(tab).not.toHaveAttribute("aria-current");
+    }
   });
 
   it("[WS-QA-059] 문서 하나를 보는 화면에서는 워크스페이스 이름 › 문서 › 문서 제목을 보여준다", async () => {

@@ -2,10 +2,16 @@ import {
   SearchStreamAcceptedDto,
   SearchStreamDeltaDto,
   SearchStreamFailedDto,
+  SearchStreamNotionEvidenceDto,
   SearchStreamSnapshotDto,
+  SearchStreamWriteCardDto,
 } from "@api/dto/search";
 import { SearchAnswerFailedError } from "@api/fetch/api/v1/workspaces/[workspaceId]/search/conversations";
-import { searchAnswerStreamResponse } from "@api/mock/responses/search";
+import {
+  searchAnswerStreamResponse,
+  searchNotionAnswerStreamResponse,
+  searchWriteCardResponse,
+} from "@api/mock/responses/search";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { useSearchAnswerStore } from ".";
@@ -88,6 +94,33 @@ describe("searchAnswerStore", () => {
     expect(state.failedCode).toBe(failed.code);
     expect(state.text).toBe("");
     expect(state.evidences).toEqual([]);
+  });
+
+  it("[SEARCH-R5] accepted 뒤에 실패하면 받은 노션 근거와 쓰기 확인 카드도 지운다", () => {
+    const controller = startQuestion();
+    const { applyEvent } = useSearchAnswerStore.getState();
+    applyEvent(controller, accepted);
+    applyEvent(controller, {
+      event: "notion_evidence",
+      data: new SearchStreamNotionEvidenceDto({
+        answerMessageId,
+        items: searchNotionAnswerStreamResponse.notionEvidences,
+      }),
+    });
+    applyEvent(controller, {
+      event: "write_card",
+      data: new SearchStreamWriteCardDto({
+        answerMessageId,
+        card: searchWriteCardResponse,
+      }),
+    });
+
+    useSearchAnswerStore.getState().fail(controller, new Error("실패"));
+
+    const state = useSearchAnswerStore.getState();
+    expect(state.notionEvidences).toEqual([]);
+    expect(state.notionNotice).toBeNull();
+    expect(state.writeCard).toBeNull();
   });
 
   it("[SEARCH-R8] 끊은 뒤 새 질문을 보내면 이전 요청의 늦은 이벤트·결과는 새 답변을 바꾸지 않는다", () => {

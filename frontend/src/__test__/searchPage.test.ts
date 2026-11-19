@@ -68,7 +68,7 @@ test("[SEARCH-R1,SEARCH-R2,SEARCH-R3] 일반 대화는 출처 버튼 없이 정�
     new SearchStreamDeltaDto({ answerMessageId: searchGeneralAnswerStreamResponse.answerMessageId, text }).text,
   ).join("");
   await expect(page.getByRole("article").last().getByRole("paragraph")).toHaveText(expected);
-  await expect(page.getByText("답변을 준비하고 있어요…")).toHaveCount(0);
+  await expect(page.getByRole("status").filter({ hasText: /^(찾는 중|작성 중)$/ })).toHaveCount(0);
   await expect(page.getByRole("button", { name: /기록 .*개에서 찾았어요/ })).toHaveCount(0);
   await expect(page.getByText(GUIDANCE)).toHaveCount(0);
 });

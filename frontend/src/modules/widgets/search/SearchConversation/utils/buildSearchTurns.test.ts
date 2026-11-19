@@ -1,4 +1,13 @@
-import type { SearchEvidenceDto, SearchMessageDto } from "@api/dto/search";
+import {
+  type SearchEvidenceDto,
+  type SearchMessageDto,
+  SearchNotionEvidenceDto,
+  SearchWriteCardDto,
+} from "@api/dto/search";
+import {
+  searchNotionAnswerStreamResponse,
+  searchWriteCardResponse,
+} from "@api/mock/responses/search";
 import { describe, expect, it } from "vitest";
 
 import { buildSearchTurns } from "./buildSearchTurns";
@@ -29,6 +38,9 @@ const message = (
   status,
   createdAt: `2026-10-05T01:00:${String(id).padStart(2, "0")}Z`,
   evidences: [],
+  notionEvidences: [],
+  notionNotice: null,
+  writeCard: null,
 });
 
 /** 이미 저장돼 있던 턴 하나 */
@@ -47,7 +59,18 @@ const IDLE_ANSWER: AnswerState = {
   answerMessageId: null,
   text: "",
   evidences: [],
+  notionEvidences: [],
+  notionNotice: null,
+  writeCard: null,
+  stage: null,
 };
+
+const pendingCard = new SearchWriteCardDto(searchWriteCardResponse);
+const doneCard = new SearchWriteCardDto({
+  ...searchWriteCardResponse,
+  status: "DONE",
+  createdPageUrl: "https://www.notion.so/knot-team/created",
+});
 
 /** 지금 대화에서 질문을 보내 접수를 기다리는 저장소 상태 */
 const sendingAnswer = (conversationId: number | null): AnswerState => ({
@@ -134,7 +157,67 @@ describe("buildSearchTurns", () => {
       content: "흘러드는 답",
       status: "STREAMING",
       evidences: [evidence],
+      notionEvidences: [],
+      notionNotice: null,
+      writeCard: null,
+      stage: null,
     });
+  });
+
+  it("생성 중인 턴의 답변은 저장소의 노션 근거, 노션 안내, 쓰기 확인 카드, 진행 단계로 채운다 (SEARCH-R37, SEARCH-R38, SEARCH-R39, SEARCH-R40)", () => {
+    const notionEvidences = searchNotionAnswerStreamResponse.notionEvidences.map(
+      (notionEvidence) => new SearchNotionEvidenceDto(notionEvidence),
+    );
+
+    const turns = buildSearchTurns({
+      messages: savedMessages,
+      answer: {
+        ...streamingAnswer,
+        notionEvidences,
+        notionNotice: "READ_FAILED",
+        writeCard: pendingCard,
+        stage: "GENERATING",
+      },
+      conversationId: CONVERSATION_ID,
+    });
+
+    expect(turns[turns.length - 1].answer).toMatchObject({
+      notionEvidences,
+      notionNotice: "READ_FAILED",
+      writeCard: pendingCard,
+      stage: "GENERATING",
+    });
+  });
+
+  it("저장소가 들고 있는 답변의 카드가 조회 결과에도 있으면 조회한 카드를 쓴다. 실행과 취소 뒤 다시 조회한 카드가 더 새롭다 (SEARCH-R50)", () => {
+    const turns = buildSearchTurns({
+      messages: [
+        ...savedMessages,
+        message(QUESTION_MESSAGE_ID, "USER", "방금 보낸 질문"),
+        {
+          ...message(ANSWER_MESSAGE_ID, "ASSISTANT", "흘러드는 답"),
+          writeCard: doneCard,
+        },
+      ],
+      answer: { ...streamingAnswer, status: "COMPLETED", writeCard: pendingCard },
+      conversationId: CONVERSATION_ID,
+    });
+
+    expect(turns[turns.length - 1].answer?.writeCard).toBe(doneCard);
+  });
+
+  it("조회 결과의 그 답변에 카드가 아직 없으면 저장소의 카드를 쓴다 (SEARCH-R40)", () => {
+    const turns = buildSearchTurns({
+      messages: [
+        ...savedMessages,
+        message(QUESTION_MESSAGE_ID, "USER", "방금 보낸 질문"),
+        message(ANSWER_MESSAGE_ID, "ASSISTANT", "저장된 데까지의 답", "STREAMING"),
+      ],
+      answer: { ...streamingAnswer, writeCard: pendingCard },
+      conversationId: CONVERSATION_ID,
+    });
+
+    expect(turns[turns.length - 1].answer?.writeCard).toBe(pendingCard);
   });
 
   it("조회 결과에 생성 중인 질문·답변이 이미 있으면 빼고 저장소의 턴 하나만 맨 뒤에 둔다 (근거 없음)", () => {

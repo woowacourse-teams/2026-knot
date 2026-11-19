@@ -32,6 +32,10 @@ import { workspaceSearchAnswerEventsHandlers } from "./api/v1/workspaces/[worksp
 import { workspaceSearchConversationMessagesHandlers } from "./api/v1/workspaces/[workspaceId]/search/conversations/[conversationId]/messages";
 import { workspaceSearchConversationQuestionsHandlers } from "./api/v1/workspaces/[workspaceId]/search/conversations/[conversationId]/questions";
 import { workspaceSearchAnswerRetryHandlers } from "./api/v1/workspaces/[workspaceId]/search/conversations/[conversationId]/questions/[questionId]/retry";
+import { workspaceSearchWriteCardCancelHandlers } from "./api/v1/workspaces/[workspaceId]/search/conversations/[conversationId]/writeCards/[cardId]/cancel";
+import { workspaceSearchWriteCardExecuteHandlers } from "./api/v1/workspaces/[workspaceId]/search/conversations/[conversationId]/writeCards/[cardId]/execute";
+import { workspaceSearchNotionConnectionHandlers } from "./api/v1/workspaces/[workspaceId]/search/notionConnection";
+import { workspaceSearchNotionConnectionAuthorizationHandlers } from "./api/v1/workspaces/[workspaceId]/search/notionConnection/authorization";
 import { recordingAudioChunksHandlers } from "./api/v1/workspaces/[workspaceId]/recordings/[recordingId]/audioChunks";
 import { recordingAudioChunkCompleteHandlers } from "./api/v1/workspaces/[workspaceId]/recordings/[recordingId]/audioChunks/[sequence]/complete";
 import { recordingAudioSaveHandlers } from "./api/v1/workspaces/[workspaceId]/recordings/[recordingId]/audioSave";
@@ -108,6 +112,10 @@ export const handlers = [
   ...workspaceSearchConversationsHandlers,
   ...workspaceSearchConversationQuestionsHandlers,
   ...workspaceSearchAnswerRetryHandlers,
+  ...workspaceSearchWriteCardExecuteHandlers,
+  ...workspaceSearchWriteCardCancelHandlers,
+  ...workspaceSearchNotionConnectionHandlers,
+  ...workspaceSearchNotionConnectionAuthorizationHandlers,
   ...workspaceSearchAnswerEventsHandlers,
   ...workspaceSearchConversationMessagesHandlers,
 ];

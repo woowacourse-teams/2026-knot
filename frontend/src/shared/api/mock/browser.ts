@@ -1,4 +1,5 @@
 import { searchChatHandlers } from "./handlers/dev/searchChat";
+import { searchNotionHandlers } from "./handlers/dev/searchNotion";
 import { recordingDemoHandlers } from "./handlers/dev/recordingDemo";
 import { focusManager } from "@tanstack/react-query";
 import { setupWorker } from "msw/browser";
@@ -6,6 +7,7 @@ import { setupWorker } from "msw/browser";
 import { handlers } from "./handlers";
 import { devAuthHandlers } from "./handlers/dev";
 import { deploymentCompatibilityHandlers } from "./handlers/dev/deploymentCompatibility";
+import { notionConnectionHandlers } from "./handlers/dev/notionConnection";
 import {
   applyMockScenarioFromQuery,
   CURRENT_RECORDING_SCENARIOS,
@@ -22,8 +24,10 @@ import {
 export const mockWorker = setupWorker(
   ...recordingDemoHandlers,
   ...devAuthHandlers,
+  ...searchNotionHandlers,
   ...searchChatHandlers,
   ...deploymentCompatibilityHandlers,
+  ...notionConnectionHandlers,
   ...devScenarioHandlers,
   ...handlers,
 );

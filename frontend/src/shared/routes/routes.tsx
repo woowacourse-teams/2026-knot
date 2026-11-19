@@ -11,6 +11,7 @@ import OnboardingPage from "@pages/onboarding";
 import OnboardingCompletePage from "@pages/onboarding/complete";
 import WorkspacePage from "@pages/workspace";
 import WorkspaceHomePage from "@pages/workspace/[workspaceId]";
+import AppsPage from "@pages/workspace/[workspaceId]/apps";
 import ChatPage from "@pages/workspace/[workspaceId]/chat";
 import DocumentsPage from "@pages/workspace/[workspaceId]/documents";
 import DocumentPage from "@pages/workspace/[workspaceId]/documents/[documentId]";
@@ -183,6 +184,10 @@ const screenRoutes: RouteObject[] = [
       {
         path: PATH_ROUTE.DOCUMENT,
         element: <DocumentPage />,
+      },
+      {
+        path: PATH_ROUTE.APPS,
+        element: <AppsPage />,
       },
     ],
   },

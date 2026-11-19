@@ -8,14 +8,18 @@ import {
   SearchStreamEvidenceDto,
   SearchStreamExcludedDocumentsDto,
   SearchStreamFailedDto,
+  SearchStreamNotionEvidenceDto,
+  SearchStreamNotionNoticeDto,
   SearchStreamProgressDto,
   SearchStreamStoppedDto,
+  SearchStreamWriteCardDto,
 } from "@api/dto/search";
 import { createSearchQuestionApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/search/conversations/[conversationId]/questions";
 import {
   searchAnswerStreamResponse,
   searchConversationsResponse,
   searchQuestionAnswerStreamResponse,
+  searchWriteCardResponse,
 } from "@api/mock/responses/search";
 import { mockServer } from "@api/mock/server";
 import { SseRequestError } from "@api/sse/requestSseStream";
@@ -256,6 +260,40 @@ describe("createSearchConversationApi", () => {
       },
       { event: "evidence", data: new SearchStreamEvidenceDto(evidence) },
       { event: "stopped", data: new SearchStreamStoppedDto(stopped) },
+    ]);
+  });
+
+  it("[SEARCH-R37,SEARCH-R39,SEARCH-R40] notion_evidence, notion_notice, write_card를 각각 받는다", async () => {
+    const notionEvidence = {
+      answerMessageId: ANSWER_MESSAGE_ID,
+      items: [{ title: "출시 계획", url: "https://www.notion.so/knot/launch" }],
+    };
+    const notionNotice = {
+      answerMessageId: ANSWER_MESSAGE_ID,
+      reason: "CONNECTION_EXPIRED",
+    } as const;
+    const writeCard = {
+      answerMessageId: ANSWER_MESSAGE_ID,
+      card: searchWriteCardResponse,
+    };
+    respondWithSseChunks([
+      toFrame("notion_evidence", notionEvidence),
+      toFrame("notion_notice", notionNotice),
+      toFrame("write_card", writeCard),
+    ]);
+
+    const events = await readAllSearchEvents();
+
+    expect(events).toEqual([
+      {
+        event: "notion_evidence",
+        data: new SearchStreamNotionEvidenceDto(notionEvidence),
+      },
+      {
+        event: "notion_notice",
+        data: new SearchStreamNotionNoticeDto(notionNotice),
+      },
+      { event: "write_card", data: new SearchStreamWriteCardDto(writeCard) },
     ]);
   });
 

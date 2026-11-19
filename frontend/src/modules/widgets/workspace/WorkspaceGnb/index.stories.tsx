@@ -44,6 +44,10 @@ const RECORDING_PATH = getRouterPath({
   routeKey: "RECORDING",
   params: { workspaceId: WORKSPACE_ID },
 });
+const APPS_PATH = getRouterPath({
+  routeKey: "APPS",
+  params: { workspaceId: WORKSPACE_ID },
+});
 // 문서 탭 「녹음별」 탭의 녹음 행으로 여는 녹음 문서 화면. 위치 표시가 녹음 제목을 보여 주도록 mock에 있는 녹음을 열어요
 const RECORDING_DOCUMENT_PATH = getRouterPath({
   routeKey: "RECORDING_DOCUMENT",
@@ -89,6 +93,7 @@ const FIGMA_LOADING_AND_LONG_NAME = {
  * **위치 표시**
  * - 보여 주기만 하고 눌러도 아무 일도 없어요. 다른 워크스페이스로 옮기려면 사이드바 위쪽의 워크스페이스 이름을 눌러요.
  * - 녹음 화면과 녹음 직후 문서 확인 화면은 탭이 아니라서 아이콘과 워크스페이스 이름만 보여요.
+ * - 연결된 앱 화면도 탭이 아니지만 `워크스페이스 이름 › 연결된 앱`으로 어느 화면인지 알려 줘요.
  * - 이름은 200px까지, 문서 제목은 남은 자리만큼 한 줄로 보이고 넘치면 말줄임해요.
  * - 1024 미만(태블릿)에서는 탭 이름과 문서 제목을 빼고 아이콘과 이름만 보여요. 767 이하(모바일)에서는 왼쪽 자리가 모자라 숨겨요.
  * - 워크스페이스 이름이나 문서 제목을 불러오는 동안에는 그 자리를 회색 덩어리로 채우고 아이콘은 기본 모양으로 둬요.
@@ -262,6 +267,17 @@ export const OnRecordingDocumentViewerScreen: Story = {
 /** 녹음 화면에서 보이는 모양이에요. 내비 필에 채워진 탭이 없고, 위치 표시에는 아이콘과 워크스페이스 이름만 있어요. */
 export const OnRecordingScreen: Story = {
   parameters: { initialPath: RECORDING_PATH },
+};
+
+/** 사이드바 아래 「연결된 앱」으로 연 화면에서 보이는 모양이에요. 내비 필에 채워진 탭이 없고, 위치 표시가 `워크스페이스 이름 › 연결된 앱`이에요. */
+export const OnAppsScreen: Story = {
+  parameters: {
+    initialPath: APPS_PATH,
+    design: {
+      type: "figma",
+      url: "https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=6513-4348",
+    },
+  },
 };
 
 /** 워크스페이스 이름과 문서 제목을 불러오는 동안이에요. 그 자리를 회색 덩어리로 채우고 아이콘은 기본 모양으로 둬요. */

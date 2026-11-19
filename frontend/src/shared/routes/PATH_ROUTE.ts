@@ -35,6 +35,9 @@ export const PATH_ROUTE = {
   DOCUMENTS_BY_TOPIC: "/workspace/:workspaceId/documents/topics",
   DOCUMENT: "/workspace/:workspaceId/documents/:documentId",
 
+  // 연결된 앱. 탐색이 읽고 쓰는 노션 연결을 보고 연결하거나 끊어요(SEARCH-R29~R34). 노션 동의 화면에서 돌아오는 곳이기도 해요
+  APPS: "/workspace/:workspaceId/apps",
+
   INVITE: "/invite/:token",
 
   JOIN_ERROR: "/join-error",

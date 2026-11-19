@@ -20,6 +20,9 @@ const useSearchAnswerState = () =>
       stage: state.stage,
       excludedDocumentCount: state.excludedDocumentCount,
       failedCode: state.failedCode,
+      notionEvidences: state.notionEvidences,
+      notionNotice: state.notionNotice,
+      writeCard: state.writeCard,
     })),
   );
 
