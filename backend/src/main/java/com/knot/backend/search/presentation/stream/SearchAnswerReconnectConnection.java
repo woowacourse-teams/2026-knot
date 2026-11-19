@@ -172,6 +172,16 @@ final class SearchAnswerReconnectConnection implements Runnable {
         if (snapshot.status() == SearchMessageStatus.STREAMING) {
             return false;
         }
+        for (SearchNotionSseEvents.Event event : SearchNotionSseEvents.of(
+                "answerId",
+                initial.answerId(),
+                snapshot.notion()
+        )) {
+            send(
+                    event.name(),
+                    event.data()
+            );
+        }
         if (snapshot.status() == SearchMessageStatus.FAILED) {
             send(
                     "failed",

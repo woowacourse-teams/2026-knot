@@ -16,8 +16,36 @@ public record SearchAnswerSnapshotResult(
         Integer excludedCount,
         List<SearchEvidenceItemResult> evidences,
         long receiptId,
-        Instant contentUpdatedAt
+        Instant contentUpdatedAt,
+        SearchAnswerNotionResult notion
 ) {
+    public SearchAnswerSnapshotResult(
+            long answerId,
+            String content,
+            SearchMessageStatus status,
+            String failureCode,
+            UUID executionToken,
+            SearchProgressStage stage,
+            Integer excludedCount,
+            List<SearchEvidenceItemResult> evidences,
+            long receiptId,
+            Instant contentUpdatedAt
+    ) {
+        this(
+                answerId,
+                content,
+                status,
+                failureCode,
+                executionToken,
+                stage,
+                excludedCount,
+                evidences,
+                receiptId,
+                contentUpdatedAt,
+                SearchAnswerNotionResult.EMPTY
+        );
+    }
+
     public SearchAnswerSnapshotResult(
             long answerId,
             String content,

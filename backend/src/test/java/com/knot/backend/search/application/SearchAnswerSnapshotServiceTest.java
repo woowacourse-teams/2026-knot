@@ -6,6 +6,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import com.knot.backend.search.application.dto.result.SearchAnswerSnapshotResult;
+import com.knot.backend.search.application.notion.SearchAnswerNotionReader;
 import com.knot.backend.search.domain.model.SearchAnswerExecution;
 import com.knot.backend.search.domain.model.SearchConversation;
 import com.knot.backend.search.domain.SearchException;
@@ -29,7 +30,8 @@ class SearchAnswerSnapshotServiceTest {
     private final SearchAnswerSnapshotService service = new SearchAnswerSnapshotService(
             repository,
             memberships,
-            messages
+            messages,
+            mock(SearchAnswerNotionReader.class)
     );
 
     @BeforeEach

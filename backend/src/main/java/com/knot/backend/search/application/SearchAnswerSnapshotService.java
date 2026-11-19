@@ -1,11 +1,14 @@
 package com.knot.backend.search.application;
 
+import com.knot.backend.search.application.dto.result.SearchAnswerNotionResult;
 import com.knot.backend.search.application.dto.result.SearchAnswerSnapshotResult;
 import com.knot.backend.search.application.dto.result.SearchEvidenceItemResult;
+import com.knot.backend.search.application.notion.SearchAnswerNotionReader;
 import com.knot.backend.search.domain.model.SearchAnswerExecution;
 import com.knot.backend.search.domain.model.SearchConversation;
 import com.knot.backend.search.domain.model.SearchMessage;
 import com.knot.backend.search.domain.model.SearchMessageRole;
+import com.knot.backend.search.domain.model.SearchMessageStatus;
 import com.knot.backend.search.domain.repository.SearchRepository;
 import com.knot.backend.search.domain.SearchErrorCode;
 import com.knot.backend.search.domain.SearchException;
@@ -24,6 +27,7 @@ public class SearchAnswerSnapshotService {
     private final SearchRepository repository;
     private final WorkspaceMemberRepository memberships;
     private final SearchMessageListQuery messages;
+    private final SearchAnswerNotionReader notions;
 
     public SearchAnswerSnapshotResult read(
             long workspaceId,
@@ -118,8 +122,34 @@ public class SearchAnswerSnapshotService {
                 repository.findLatestReceipt(answerId)
                         .map(receipt -> receipt.getId())
                         .orElse(0L),
-                conversation.getUpdatedAt()
+                conversation.getUpdatedAt(),
+                notion(
+                        answer,
+                        conversationId,
+                        answerId
+                )
         );
+    }
+
+    /**
+     * 노션 이벤트는 끝 이벤트와 함께 보내므로 생성 중인 답변은 읽지 않는다.
+     */
+    private SearchAnswerNotionResult notion(
+            SearchMessage answer,
+            long conversationId,
+            long answerId
+    ) {
+        if (answer.getStatus() == SearchMessageStatus.STREAMING) {
+            return SearchAnswerNotionResult.EMPTY;
+        }
+        return notions.read(
+                conversationId,
+                List.of(answerId)
+        )
+                .getOrDefault(
+                        answerId,
+                        SearchAnswerNotionResult.EMPTY
+                );
     }
 
     private void validateAnswer(
