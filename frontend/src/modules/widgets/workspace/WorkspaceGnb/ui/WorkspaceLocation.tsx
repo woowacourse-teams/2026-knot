@@ -18,6 +18,7 @@ const TAB_NAMES = ["홈", "탐색", "문서"];
  * GNB 왼쪽 패널 버튼 옆에서 지금 있는 워크스페이스와 탭을 알려 주는 위치 표시(WS-R15).
  *
  * 워크스페이스 아이콘과 이름 뒤에 지금 탭 이름을 `›`로 이어요. 문서 하나를 보는 화면에서는 `문서 › 문서 제목`, 녹음 문서 화면에서는 `문서 › 녹음 제목`이에요.
+ * 연결된 앱 화면은 탭이 아니지만 `연결된 앱`을 이어요(SEARCH-R29).
  * 녹음처럼 탭이 아닌 화면과 1024 미만에서는 아이콘과 워크스페이스 이름만 보여요.
  * 767 이하에서는 GNB 왼쪽에 자리가 없어 위치 표시를 숨겨요.
  * 보여 주기만 하고 눌러도 아무 일도 없어요. 워크스페이스 전환은 사이드바 위쪽 이름에서 해요(WS-07).
@@ -32,6 +33,7 @@ export default function WorkspaceLocation() {
   const isDocumentScreen = params.documentId !== undefined;
   const isRecordingDocumentScreen =
     useMatch(PATH_ROUTE.RECORDING_DOCUMENT) !== null;
+  const isAppsScreen = useMatch(PATH_ROUTE.APPS) !== null;
   const { activeTabIndex } = useWorkspaceNav();
   const { data: workspace } = useWorkspaceQuery({ workspaceId });
   const { data: documentDetail, isError: isDocumentError } = useDocumentQuery({
@@ -46,8 +48,8 @@ export default function WorkspaceLocation() {
       isEnabled: isRecordingDocumentScreen,
     });
 
-  // 녹음처럼 탭이 아닌 화면은 자리가 -1이라 탭 이름이 없어요
-  const tabName = TAB_NAMES[activeTabIndex];
+  // 녹음처럼 탭이 아닌 화면은 자리가 -1이라 탭 이름이 없어요. 연결된 앱은 탭이 아니어도 화면 이름을 보여 줘요
+  const tabName = isAppsScreen ? "연결된 앱" : TAB_NAMES[activeTabIndex];
   // 문서 하나나 녹음 문서를 보는 화면의 제목이에요. 아직 불러오는 중이면 undefined예요
   const screenTitle = isDocumentScreen
     ? documentDetail?.title
