@@ -6,10 +6,16 @@ import {
   SearchStreamDeltaDto,
   SearchStreamEvidenceDto,
   SearchStreamFailedDto,
+  SearchStreamNotionEvidenceDto,
+  SearchStreamNotionNoticeDto,
   SearchStreamSnapshotDto,
   SearchStreamStoppedDto,
+  SearchStreamWriteCardDto,
 } from "@api/dto/search";
-import { searchAnswerEventsStreamResponse } from "@api/mock/responses/search";
+import {
+  searchAnswerEventsStreamResponse,
+  searchWriteCardResponse,
+} from "@api/mock/responses/search";
 import { mockServer } from "@api/mock/server";
 import { SseRequestError } from "@api/sse/requestSseStream";
 
@@ -110,6 +116,32 @@ describe("getSearchAnswerEventsApi", () => {
           answerMessageId: ANSWER_ID,
           status: "STOPPED",
         }),
+      },
+    ]);
+  });
+
+  it("[SEARCH-R37,SEARCH-R39,SEARCH-R42] 노션 근거, 노션 안내, 쓰기 확인 카드도 answerMessageId로 바꿔 낸다", async () => {
+    const items = [{ title: "출시 계획", url: "https://www.notion.so/knot/launch" }];
+    respondWithFrames([
+      { event: "notion_evidence", data: { answerId: ANSWER_ID, items } },
+      { event: "notion_notice", data: { answerId: ANSWER_ID, reason: "READ_FAILED" } },
+      { event: "write_card", data: { answerId: ANSWER_ID, card: searchWriteCardResponse } },
+    ]);
+
+    const events = await readAllEvents();
+
+    expect(events).toEqual([
+      {
+        event: "notion_evidence",
+        data: new SearchStreamNotionEvidenceDto({ answerMessageId: ANSWER_ID, items }),
+      },
+      {
+        event: "notion_notice",
+        data: new SearchStreamNotionNoticeDto({ answerMessageId: ANSWER_ID, reason: "READ_FAILED" }),
+      },
+      {
+        event: "write_card",
+        data: new SearchStreamWriteCardDto({ answerMessageId: ANSWER_ID, card: searchWriteCardResponse }),
       },
     ]);
   });
