@@ -115,6 +115,9 @@ const IDLE_STATE: SearchAnswerState = {
   stage: null,
   excludedDocumentCount: 0,
   failedCode: null,
+  notionEvidences: [],
+  notionNotice: null,
+  writeCard: null,
   controller: null,
   entry: "dock",
 };
@@ -192,6 +195,9 @@ export const useSearchAnswerStore = create<
         status: "FAILED",
         text: "",
         evidences: [],
+        notionEvidences: [],
+        notionNotice: null,
+        writeCard: null,
         failedCode:
           error instanceof SearchAnswerFailedError ? error.code : null,
         controller: null,

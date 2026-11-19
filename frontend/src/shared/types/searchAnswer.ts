@@ -25,6 +25,24 @@ export type SearchAnswerEvidence = Extract<
   { event: "evidence" }
 >["data"]["items"][number];
 
+/** 스트림으로 도착한 답변의 노션 근거 하나. 답에 쓴 노션 페이지의 제목과 주소예요 */
+export type SearchAnswerNotionEvidence = Extract<
+  SearchAnswerStreamEvent,
+  { event: "notion_evidence" }
+>["data"]["items"][number];
+
+/** 노션을 읽지 못해 회의 문서만으로 답한 사유 */
+export type SearchAnswerNotionNotice = Extract<
+  SearchAnswerStreamEvent,
+  { event: "notion_notice" }
+>["data"]["reason"];
+
+/** 스트림으로 도착한 답변의 쓰기 확인 카드 */
+export type SearchAnswerWriteCard = Extract<
+  SearchAnswerStreamEvent,
+  { event: "write_card" }
+>["data"]["card"];
+
 /**
  * 도착 중인 답변의 상태.
  *
@@ -70,6 +88,15 @@ export interface SearchAnswer {
 
   /** 답변 실패 오류 코드. `failed` 이벤트로 실패했을 때만 값이 있어요 */
   failedCode: string | null;
+
+  /** 답에 쓴 노션 페이지 */
+  notionEvidences: SearchAnswerNotionEvidence[];
+
+  /** 노션을 읽지 못해 회의 문서만으로 답한 사유. 해당 없으면 `null`이에요 */
+  notionNotice: SearchAnswerNotionNotice | null;
+
+  /** 이 답변에 붙은 쓰기 확인 카드. 한 답변에 최대 하나이고, 없으면 `null`이에요 */
+  writeCard: SearchAnswerWriteCard | null;
 }
 
 /** 질문을 보낸 곳. 독의 입력창(`dock`) 또는 탐색 튜토리얼의 질문 종류 카드(`tutorial`)예요. 사용 기록에 남겨요 */

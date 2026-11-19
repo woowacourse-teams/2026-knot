@@ -4,10 +4,17 @@ import {
   SearchStreamDeltaDto,
   SearchStreamEvidenceDto,
   SearchStreamExcludedDocumentsDto,
+  SearchStreamNotionEvidenceDto,
+  SearchStreamNotionNoticeDto,
   SearchStreamProgressDto,
   SearchStreamSnapshotDto,
+  SearchStreamWriteCardDto,
 } from "@api/dto/search";
-import { searchAnswerStreamResponse } from "@api/mock/responses/search";
+import {
+  searchAnswerStreamResponse,
+  searchNotionAnswerStreamResponse,
+  searchWriteCardResponse,
+} from "@api/mock/responses/search";
 import { describe, expect, it } from "vitest";
 
 import type { SearchAnswer } from "@/shared/types/searchAnswer";
@@ -28,6 +35,9 @@ const sendingAnswer: SearchAnswer = {
   stage: null,
   excludedDocumentCount: 0,
   failedCode: null,
+  notionEvidences: [],
+  notionNotice: null,
+  writeCard: null,
 };
 
 const streamingAnswer: SearchAnswer = {
@@ -120,6 +130,81 @@ describe("reduceSearchStreamEvent", () => {
     expect(reduceSearchStreamEvent(streamingAnswer, { event: "evidence", data: evidence })).toBe(
       streamingAnswer,
     );
+  });
+
+  it("[SEARCH-R37] notion_evidence의 노션 근거를 담는다", () => {
+    const notionEvidence = new SearchStreamNotionEvidenceDto({
+      answerMessageId,
+      items: searchNotionAnswerStreamResponse.notionEvidences,
+    });
+
+    expect(
+      reduceSearchStreamEvent(streamingAnswer, {
+        event: "notion_evidence",
+        data: notionEvidence,
+      }).notionEvidences,
+    ).toEqual(notionEvidence.items);
+  });
+
+  it("[SEARCH-R39] notion_notice의 노션을 읽지 못한 사유를 담는다", () => {
+    const notionNotice = new SearchStreamNotionNoticeDto({
+      answerMessageId,
+      reason: "CONNECTION_EXPIRED",
+    });
+
+    expect(
+      reduceSearchStreamEvent(streamingAnswer, {
+        event: "notion_notice",
+        data: notionNotice,
+      }).notionNotice,
+    ).toBe(notionNotice.reason);
+  });
+
+  it("[SEARCH-R40] write_card의 쓰기 확인 카드를 담는다", () => {
+    const writeCard = new SearchStreamWriteCardDto({
+      answerMessageId,
+      card: searchWriteCardResponse,
+    });
+
+    expect(
+      reduceSearchStreamEvent(streamingAnswer, {
+        event: "write_card",
+        data: writeCard,
+      }).writeCard,
+    ).toEqual(writeCard.card);
+  });
+
+  it("[SEARCH-R37, SEARCH-R39, SEARCH-R40] 다른 답변 메시지의 노션 근거, 안내, 카드는 담지 않는다", () => {
+    const otherAnswerMessageId = answerMessageId + 1;
+    const events = [
+      {
+        event: "notion_evidence" as const,
+        data: new SearchStreamNotionEvidenceDto({
+          answerMessageId: otherAnswerMessageId,
+          items: searchNotionAnswerStreamResponse.notionEvidences,
+        }),
+      },
+      {
+        event: "notion_notice" as const,
+        data: new SearchStreamNotionNoticeDto({
+          answerMessageId: otherAnswerMessageId,
+          reason: "NOT_CONNECTED",
+        }),
+      },
+      {
+        event: "write_card" as const,
+        data: new SearchStreamWriteCardDto({
+          answerMessageId: otherAnswerMessageId,
+          card: searchWriteCardResponse,
+        }),
+      },
+    ];
+
+    for (const event of events) {
+      expect(reduceSearchStreamEvent(streamingAnswer, event)).toBe(
+        streamingAnswer,
+      );
+    }
   });
 
   it("[SEARCH-R9] excluded_documents의 빠진 문서 수를 담는다", () => {
