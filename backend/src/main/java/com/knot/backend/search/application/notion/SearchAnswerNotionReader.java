@@ -69,13 +69,32 @@ public class SearchAnswerNotionReader {
     }
 
     public SearchWriteCardResult card(SearchWriteCard card) {
+        List<SearchCreatedNotionPage> history = cards.findCreatedPages(
+                card.getConversationId(),
+                card.getSourceDocumentId()
+        );
         return SearchWriteCardResult.from(
                 card,
-                cards.findCreatedPages(
-                        card.getConversationId(),
-                        card.getSourceDocumentId()
-                )
+                history,
+                cardTitles(history)
         );
+    }
+
+    /**
+     * 만든 페이지 이력마다 그 페이지를 만든 카드의 제목을 찾는다.
+     */
+    private Map<Long, String> cardTitles(List<SearchCreatedNotionPage> history) {
+        List<Long> cardIds = history.stream()
+                .map(SearchCreatedNotionPage::getWriteCardId)
+                .toList();
+        return cards.findByIds(cardIds)
+                .stream()
+                .collect(
+                        Collectors.toMap(
+                                SearchWriteCard::getId,
+                                SearchWriteCard::getTitle
+                        )
+                );
     }
 
     private Map<Long, List<SearchNotionEvidenceItemResult>> evidences(Collection<Long> answerIds) {
@@ -108,8 +127,9 @@ public class SearchAnswerNotionReader {
         if (found.isEmpty()) {
             return Map.of();
         }
-        Map<Long, List<SearchCreatedNotionPage>> history = cards.findCreatedPages(conversationId)
-                .stream()
+        List<SearchCreatedNotionPage> created = cards.findCreatedPages(conversationId);
+        Map<Long, String> titles = cardTitles(created);
+        Map<Long, List<SearchCreatedNotionPage>> history = created.stream()
                 .collect(Collectors.groupingBy(SearchCreatedNotionPage::getSourceDocumentId));
         return found.stream()
                 .collect(
@@ -120,7 +140,8 @@ public class SearchAnswerNotionReader {
                                         history.getOrDefault(
                                                 card.getSourceDocumentId(),
                                                 List.of()
-                                        )
+                                        ),
+                                        titles
                                 )
                         )
                 );

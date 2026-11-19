@@ -10,6 +10,7 @@ import com.knot.backend.search.domain.model.notion.SearchWriteCardStatus;
 import com.knot.backend.search.domain.model.notion.SearchWriteCardType;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 쓰기 확인 카드의 지금 상태. 노션 페이지 ID와 카드에 기록한 노션 워크스페이스 같은 내부 값은 싣지 않는다(SEARCH-R48).
@@ -40,7 +41,8 @@ public record SearchWriteCardResult(
      */
     public static SearchWriteCardResult from(
             SearchWriteCard card,
-            List<SearchCreatedNotionPage> history
+            List<SearchCreatedNotionPage> history,
+            Map<Long, String> cardTitles
     ) {
         return new SearchWriteCardResult(
                 card.getId(),
@@ -63,6 +65,7 @@ public record SearchWriteCardResult(
                         .map(
                                 page -> new ExistingPage(
                                         page.getUrl(),
+                                        cardTitles.get(page.getWriteCardId()),
                                         page.getCreatedAt()
                                 )
                         )
@@ -70,8 +73,12 @@ public record SearchWriteCardResult(
         );
     }
 
+    /**
+     * title은 그 페이지를 만들 때 쓴 카드의 제목이다.
+     */
     public record ExistingPage(
             String url,
+            String title,
             Instant createdAt
     ) {
     }

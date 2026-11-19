@@ -14,6 +14,8 @@ public interface SearchWriteCardRepository {
 
     Optional<SearchWriteCard> findByIdForUpdate(long cardId);
 
+    List<SearchWriteCard> findByIds(Collection<Long> cardIds);
+
     List<SearchWriteCard> findByAnswerMessageIds(Collection<Long> answerMessageIds);
 
     List<SearchWriteCard> findPendingByConversationIdForUpdate(long conversationId);

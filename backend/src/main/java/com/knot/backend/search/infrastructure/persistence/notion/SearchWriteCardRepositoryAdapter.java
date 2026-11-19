@@ -33,6 +33,14 @@ public class SearchWriteCardRepositoryAdapter implements SearchWriteCardReposito
     }
 
     @Override
+    public List<SearchWriteCard> findByIds(Collection<Long> cardIds) {
+        if (cardIds.isEmpty()) {
+            return List.of();
+        }
+        return cards.findAllById(cardIds);
+    }
+
+    @Override
     public List<SearchWriteCard> findByAnswerMessageIds(Collection<Long> answerMessageIds) {
         if (answerMessageIds.isEmpty()) {
             return List.of();

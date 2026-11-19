@@ -56,6 +56,7 @@ public record SearchWriteCardResponse(
                         .map(
                                 page -> new WriteCardExistingPage(
                                         page.url(),
+                                        page.title(),
                                         page.createdAt()
                                 )
                         )
@@ -98,6 +99,7 @@ public record SearchWriteCardResponse(
 
     public record WriteCardExistingPage(
             @Schema(description = "만든 노션 페이지 주소", requiredMode = REQUIRED) String url,
+            @Schema(description = "그 페이지를 만들 때 쓴 카드 제목", requiredMode = REQUIRED) String title,
             @Schema(requiredMode = REQUIRED) Instant createdAt
     ) {
     }

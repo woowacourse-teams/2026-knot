@@ -641,6 +641,7 @@ class SearchWriteCardAcceptanceTest {
                 .andExpect(jsonPath("$.items[3].writeCard.status").value("PENDING"))
                 .andExpect(jsonPath("$.items[3].writeCard.existingPages.length()").value(1))
                 .andExpect(jsonPath("$.items[3].writeCard.existingPages[0].url").value(CREATED_URL))
+                .andExpect(jsonPath("$.items[3].writeCard.existingPages[0].title").value(first.getTitle()))
                 .andExpect(jsonPath("$.items[3].writeCard.existingPages[0].createdAt").exists());
     }
 
