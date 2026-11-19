@@ -1,4 +1,5 @@
 import styled from "@emotion/styled";
+import SearchWriteCard from "@features/search/SearchWriteCard";
 import useOpenedEvidenceMessage from "@hooks/domain/search/useOpenedEvidenceMessage";
 import ChatBubble from "@primitives/ui/ChatBubble";
 import EvidenceButton from "@primitives/ui/EvidenceButton";
@@ -20,6 +21,7 @@ interface SearchTurnProps {
  * 텍스트가 흐르기 시작하면 텍스트가 그 자리를 이어받아요.
  * 답변에 근거가 있으면 그 아래 「기록 N개에서 찾았어요」 버튼으로 찾은 기록을 열어요.
  * 답에 쓴 노션 페이지는 그 옆에 페이지마다 노션 버튼으로 두고, 넘치면 다음 줄로 이어요(SEARCH-R37).
+ * 쓰기 요청의 답변이면 답글 아래에 쓰기 확인 카드를 둬요(SEARCH-R40).
  * 노션을 읽지 못해 회의 문서만으로 답했으면 맨 아래에 그 사유를 알려요(SEARCH-R39).
  * 이전 실패 답변은 검증되지 않은 글자 대신 대화를 이어갈 수 있는 안내 문단으로 보여줘요(SEARCH-R5).
  */
@@ -54,6 +56,8 @@ export default function SearchTurn({ turn }: SearchTurnProps) {
           {paragraphs.map((paragraph, index) => (
             <Paragraph key={index}>{paragraph}</Paragraph>
           ))}
+
+          {answer.writeCard && <SearchWriteCard card={answer.writeCard} />}
 
           {(evidenceCount > 0 || notionEvidences.length > 0) && (
             <EvidenceRow>

@@ -4,11 +4,14 @@ import {
   SearchStreamAcceptedDto,
   SearchStreamDeltaDto,
   SearchStreamProgressDto,
+  SearchStreamWriteCardDto,
 } from "@api/dto/search";
 import type { SearchMessage } from "@api/mock/types/search";
 import {
   searchMessagesResponse,
   searchNotionEvidencesResponse,
+  searchWriteCardCreatedPageUrl,
+  searchWriteCardResponse,
 } from "@api/mock/responses/search";
 import { mockServer } from "@api/mock/server";
 import { ThemeProvider } from "@emotion/react";
@@ -43,6 +46,14 @@ const CONVERSATION_PATH = getRouterPath({
 
 const MESSAGES_PATH =
   "*/api/v1/workspaces/:workspaceId/search/conversations/:conversationId/messages";
+const EXECUTE_PATH =
+  "*/api/v1/workspaces/:workspaceId/search/conversations/:conversationId/write-cards/:cardId/execute";
+const WRITE_CARD_NAME = "노션 페이지 만들기";
+const doneWriteCard = {
+  ...searchWriteCardResponse,
+  status: "DONE" as const,
+  createdPageUrl: searchWriteCardCreatedPageUrl,
+};
 
 const { items: messages } = new GetSearchMessagesResponseDto(
   searchMessagesResponse,
@@ -686,4 +697,91 @@ describe("SearchConversation", () => {
       expect(screen.getByText(APPS_SCREEN_TEXT)).toBeInTheDocument();
     },
   );
+
+  it("답변에 붙은 쓰기 확인 카드를 그 답변 안에 보여준다 (SEARCH-R40, SEARCH-R42)", async () => {
+    respondWithFirstAnswer({ writeCard: searchWriteCardResponse });
+    renderConversation();
+
+    await screen.findByText(questions[0].content);
+    const [firstTurn] = screen.getAllByRole("article");
+
+    expect(
+      within(firstTurn).getByRole("region", { name: WRITE_CARD_NAME }),
+    ).toBeInTheDocument();
+  });
+
+  it("[만들기]를 누르면 끝난 뒤 대화 메시지를 다시 받아 카드를 「만들었어요」로 바꿔 보여준다 (SEARCH-R50)", async () => {
+    let savedCard: SearchMessage["writeCard"] = searchWriteCardResponse;
+    const [question, answer, ...rest] = searchMessagesResponse.items;
+    mockServer.use(
+      http.get(MESSAGES_PATH, ({ params }) =>
+        HttpResponse.json({
+          ...searchMessagesResponse,
+          conversationId: Number(params.conversationId),
+          items: [question, { ...answer, writeCard: savedCard }, ...rest],
+        }),
+      ),
+      http.post(EXECUTE_PATH, () => {
+        savedCard = doneWriteCard;
+        return HttpResponse.json(doneWriteCard);
+      }),
+    );
+    renderConversation();
+
+    fireEvent.click(await screen.findByRole("button", { name: "만들기" }));
+
+    expect(await screen.findByText("만들었어요")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "만들기" })).not.toBeInTheDocument();
+  });
+
+  it("저장소가 아직 들고 있는 답변의 카드도 실행한 뒤 다시 받은 카드 상태로 보여준다 (SEARCH-R50)", async () => {
+    const savedAnswer = {
+      ...searchMessagesResponse.items[1],
+      id: 1002,
+      sequence: 8,
+      content: "흘러드는 답",
+    };
+    let savedCard: SearchMessage["writeCard"] = searchWriteCardResponse;
+    mockServer.use(
+      http.get(MESSAGES_PATH, ({ params }) =>
+        HttpResponse.json({
+          ...searchMessagesResponse,
+          conversationId: Number(params.conversationId),
+          items: [
+            ...searchMessagesResponse.items,
+            { ...searchMessagesResponse.items[0], id: 1001, sequence: 7, content: "만들어 줘" },
+            { ...savedAnswer, writeCard: savedCard },
+          ],
+        }),
+      ),
+      http.post(EXECUTE_PATH, () => {
+        savedCard = doneWriteCard;
+        return HttpResponse.json(doneWriteCard);
+      }),
+    );
+    const { accept } = streamAnswer({
+      conversationId: Number(CONVERSATION_ID),
+      question: "만들어 줘",
+      text: "흘러드는 답",
+    });
+    accept(Number(CONVERSATION_ID));
+    const { controller, applyEvent, settle } = useSearchAnswerStore.getState();
+    if (!controller) throw new Error("받고 있는 답변이 없어요");
+    act(() => {
+      applyEvent(controller, {
+        event: "write_card",
+        data: new SearchStreamWriteCardDto({
+          answerMessageId: 1002,
+          card: searchWriteCardResponse,
+        }),
+      });
+      settle(controller, "COMPLETED");
+    });
+    renderConversation();
+
+    fireEvent.click(await screen.findByRole("button", { name: "만들기" }));
+
+    expect(await screen.findByText("만들었어요")).toBeInTheDocument();
+    expect(screen.getAllByRole("region", { name: WRITE_CARD_NAME })).toHaveLength(1);
+  });
 });
