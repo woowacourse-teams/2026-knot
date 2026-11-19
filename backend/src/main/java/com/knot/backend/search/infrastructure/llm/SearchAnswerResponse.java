@@ -15,8 +15,8 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * notionEvidenceIndexes는 넘긴 노션 페이지 목록의 0부터 센 위치를 답변 AI가 낸 순서대로 담는다.
- * notionDraft와 notionDraftIssue는 초안을 받지 않았거나 값이 없으면 null이다.
+ * notionEvidenceIndexes에 넘긴 노션 페이지 목록의 0부터 센 위치를 답변 AI가 낸 순서대로 담는다. 초안을 받지 않았거나
+ * 값이 없으면 notionDraft와 notionDraftIssue를 null로 둔다.
  */
 public record SearchAnswerResponse(
         String answer,
