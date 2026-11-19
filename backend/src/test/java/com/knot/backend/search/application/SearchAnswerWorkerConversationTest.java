@@ -1,5 +1,8 @@
 package com.knot.backend.search.application;
 
+import static org.mockito.ArgumentMatchers.anyLong;
+import com.knot.backend.search.application.notion.SearchNotionReading;
+import com.knot.backend.search.application.dto.query.SearchQuestionContext;
 import com.knot.backend.search.application.notion.SearchNotionAnswerFlow;
 import com.knot.backend.search.application.dto.result.SearchUsePlan;
 import static org.mockito.ArgumentMatchers.any;
@@ -116,6 +119,97 @@ class SearchAnswerWorkerConversationTest {
             delta.accept("생성한 답변");
             return List.of();
         });
+    }
+
+    @Test
+    @DisplayName("짧은 후속 질문이라도 노션 도구가 계획되면 회의를 묻지 않고 노션 읽기를 시작한다")
+    void execute_success_shortReferenceWithNotionPlan() {
+        // given
+        SearchAgentProperties properties = new SearchAgentProperties();
+        properties.setFollowupContextEnabled(true);
+        SearchFollowupContextResolver followups = mock(SearchFollowupContextResolver.class);
+        SearchNotionAnswerFlow notionFlow = mock(SearchNotionAnswerFlow.class);
+        SearchUsePlan plan = new SearchUsePlan(
+                SearchIntent.MEETING_SEARCH,
+                Optional.of("출시 계획"),
+                Optional.empty()
+        );
+        when(followups.isShortReference(any())).thenReturn(true);
+        when(followups.previousEvidenceContext(any())).thenReturn(Optional.empty());
+        when(
+                followups.describe(
+                        any(),
+                        any()
+                )
+        ).thenReturn(
+                new SearchQuestionContext(
+                        "왜?",
+                        null,
+                        null,
+                        null
+                )
+        );
+        when(
+                executions.saveQuestionContext(
+                        eq(5L),
+                        eq(token),
+                        any()
+                )
+        ).thenReturn(true);
+        when(
+                classifier.classify(
+                        any(),
+                        any()
+                )
+        ).thenReturn(plan);
+        when(
+                notionFlow.start(
+                        any(),
+                        eq(plan)
+                )
+        ).thenReturn(SearchNotionReading.none());
+        StaticListableBeanFactory beans = new StaticListableBeanFactory();
+        beans.addBean(
+                "retriever",
+                retriever
+        );
+        beans.addBean(
+                "generator",
+                generator
+        );
+        beans.addBean(
+                "classifier",
+                classifier
+        );
+        SearchAnswerWorker followupWorker = new SearchAnswerWorker(
+                executions,
+                beans.getBeanProvider(SearchDocumentRetriever.class),
+                beans.getBeanProvider(SearchAnswerGenerator.class),
+                Clock.systemUTC(),
+                properties,
+                beans.getBeanProvider(SearchIntentClassifier.class),
+                followups,
+                notionFlow
+        );
+
+        // when
+        followupWorker.execute(5);
+
+        // then
+        verify(notionFlow).start(
+                any(),
+                eq(plan)
+        );
+        verify(
+                executions,
+                never()
+        ).completeGenerated(
+                anyLong(),
+                any(),
+                eq(SearchAnswerGuidance.CLARIFY_MEETING),
+                any(),
+                any()
+        );
     }
 
     @ParameterizedTest

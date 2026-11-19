@@ -184,8 +184,9 @@ public class SearchAnswerWorker {
             }
             intent = SearchIntent.MEETING_SEARCH;
         }
-        if (shortReference && intent.requiresSearch() && previous.map(SearchQuestionContext::recordingSessionId)
-                .isEmpty()) {
+        if (shortReference && intent.requiresSearch() && !plan.usesNotion()
+                && previous.map(SearchQuestionContext::recordingSessionId)
+                        .isEmpty()) {
             executions.completeGenerated(
                     work.answerId(),
                     work.token(),
