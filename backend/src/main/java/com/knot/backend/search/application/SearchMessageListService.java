@@ -1,9 +1,11 @@
 package com.knot.backend.search.application;
 
 import com.knot.backend.search.application.dto.query.SearchMessageListParameters;
+import com.knot.backend.search.application.dto.result.SearchAnswerNotionResult;
 import com.knot.backend.search.application.dto.result.SearchEvidenceItemResult;
 import com.knot.backend.search.application.dto.result.SearchMessageListItemResult;
 import com.knot.backend.search.application.dto.result.SearchMessageListResult;
+import com.knot.backend.search.application.notion.SearchAnswerNotionReader;
 import com.knot.backend.search.domain.model.SearchConversation;
 import com.knot.backend.search.domain.SearchErrorCode;
 import com.knot.backend.search.domain.SearchException;
@@ -25,6 +27,7 @@ public class SearchMessageListService {
 
     private final WorkspaceMemberRepository memberships;
     private final SearchMessageListQuery query;
+    private final SearchAnswerNotionReader notionReader;
 
     public SearchMessageListResult find(
             long workspaceId,
@@ -64,6 +67,10 @@ public class SearchMessageListService {
                 conversationId,
                 selected
         );
+        Map<Long, SearchAnswerNotionResult> notions = notionReader.read(
+                conversationId,
+                answerIds(selected)
+        );
         boolean hasPrevious = hasPrevious(
                 page,
                 parameters.size()
@@ -72,7 +79,8 @@ public class SearchMessageListService {
                 conversationId,
                 assembleItems(
                         selected,
-                        evidences
+                        evidences,
+                        notions
                 ),
                 hasPrevious,
                 createPreviousCursor(
@@ -157,7 +165,8 @@ public class SearchMessageListService {
 
     private List<SearchMessageListItemResult> assembleItems(
             List<SearchMessage> selected,
-            Map<Long, List<SearchEvidenceItemResult>> evidences
+            Map<Long, List<SearchEvidenceItemResult>> evidences,
+            Map<Long, SearchAnswerNotionResult> notions
     ) {
         return selected.stream()
                 .sorted(Comparator.comparingInt(SearchMessage::getSequence))
@@ -167,6 +176,10 @@ public class SearchMessageListService {
                                 evidenceFor(
                                         message,
                                         evidences
+                                ),
+                                notions.getOrDefault(
+                                        message.getId(),
+                                        SearchAnswerNotionResult.EMPTY
                                 )
                         )
                 )
@@ -184,6 +197,13 @@ public class SearchMessageListService {
                 message.getId(),
                 List.of()
         );
+    }
+
+    private List<Long> answerIds(List<SearchMessage> selected) {
+        return selected.stream()
+                .filter(message -> message.getRole() == SearchMessageRole.ASSISTANT)
+                .map(SearchMessage::getId)
+                .toList();
     }
 
     private boolean hasPrevious(

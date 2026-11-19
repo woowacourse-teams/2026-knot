@@ -13,7 +13,8 @@ public record SearchMessageListItemResult(
         String content,
         SearchMessageStatus status,
         Instant createdAt,
-        List<SearchEvidenceItemResult> evidences
+        List<SearchEvidenceItemResult> evidences,
+        SearchAnswerNotionResult notion
 ) {
 
     public SearchMessageListItemResult {
@@ -22,7 +23,8 @@ public record SearchMessageListItemResult(
 
     public static SearchMessageListItemResult from(
             SearchMessage message,
-            List<SearchEvidenceItemResult> evidences
+            List<SearchEvidenceItemResult> evidences,
+            SearchAnswerNotionResult notion
     ) {
         return new SearchMessageListItemResult(
                 message.getId(),
@@ -31,7 +33,8 @@ public record SearchMessageListItemResult(
                 message.getContent(),
                 message.getStatus(),
                 message.getCreatedAt(),
-                evidences
+                evidences,
+                notion
         );
     }
 }

@@ -13,6 +13,7 @@ import com.knot.backend.search.application.dto.query.SearchMessageListParameters
 import com.knot.backend.search.application.dto.result.SearchEvidenceItemResult;
 import com.knot.backend.search.application.dto.result.SearchMessageListItemResult;
 import com.knot.backend.search.application.dto.result.SearchMessageListResult;
+import com.knot.backend.search.application.notion.SearchAnswerNotionReader;
 import com.knot.backend.search.domain.model.SearchConversation;
 import com.knot.backend.search.domain.SearchErrorCode;
 import com.knot.backend.search.domain.SearchException;
@@ -40,13 +41,16 @@ class SearchMessageListServiceTest {
     private WorkspaceMemberRepository memberships;
     @Mock
     private SearchMessageListQuery query;
+    @Mock
+    private SearchAnswerNotionReader notionReader;
     private SearchMessageListService service;
 
     @BeforeEach
     void setUp() {
         service = new SearchMessageListService(
                 memberships,
-                query
+                query,
+                notionReader
         );
     }
 
