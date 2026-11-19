@@ -658,7 +658,10 @@ class SearchWriteCardAcceptanceTest {
                 )
         );
         long answer = accepted.answerMessageId();
-        jdbc.sql("UPDATE search_messages SET content = '확인해 주세요', status = 'COMPLETED' WHERE id = :id")
+        // 회의 근거가 없는 노션 답변은 완료 때 UNVERIFIED_ANSWER로 남는다(근거 없는 회의 답변처럼 본문을 가리지 않는다).
+        jdbc.sql(
+                "UPDATE search_messages SET content = '확인해 주세요', status = 'COMPLETED', answer_kind = 'UNVERIFIED_ANSWER' WHERE id = :id"
+        )
                 .param(
                         "id",
                         answer
