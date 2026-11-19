@@ -55,6 +55,7 @@ const answersWithEvidence = answers.filter(
 
 const SEARCHING_TEXT = "찾는 중";
 const GENERATING_TEXT = "작성 중";
+const APPS_SCREEN_TEXT = "연결된 앱 화면";
 const FAILED_TEXT = "지금은 답변을 정리하기 어려워요. 질문을 조금 더 구체적으로 이어서 해주시면 도와드릴게요.";
 const PARTIAL_ANSWER = "끊기기 전까지 받은 답";
 
@@ -150,6 +151,7 @@ const renderConversation = (initialPath = CONVERSATION_PATH) => {
     [
       { path: PATH_ROUTE.CHAT, element: <SearchConversation /> },
       { path: PATH_ROUTE.CHAT_SESSION, element: <SearchConversation /> },
+      { path: PATH_ROUTE.APPS, element: <p>{APPS_SCREEN_TEXT}</p> },
     ],
     { initialEntries: [initialPath] },
   );
@@ -625,4 +627,63 @@ describe("SearchConversation", () => {
       within(firstTurn).queryByRole("button", { name: /에서 찾았어요$/ }),
     ).not.toBeInTheDocument();
   });
+
+  it.each([
+    {
+      reason: "NOT_CONNECTED" as const,
+      text: "회의 문서만으로 답했어요. 노션을 연결하면 노션 내용도 함께 찾아요.",
+      button: "노션 연결",
+    },
+    {
+      reason: "PAGE_NOT_FOUND" as const,
+      text: "노션에서는 맞는 페이지를 찾지 못해 회의 문서만으로 답했어요.",
+      button: null,
+    },
+    {
+      reason: "READ_FAILED" as const,
+      text: "노션을 읽지 못해 회의 문서만으로 답했어요.",
+      button: null,
+    },
+    {
+      reason: "CONNECTION_EXPIRED" as const,
+      text: "노션 연결이 만료돼 회의 문서만으로 답했어요.",
+      button: "다시 연결",
+    },
+  ])(
+    "노션을 읽지 못한 사유가 $reason이면 답변 아래에 「$text」를 보여준다 (SEARCH-R39)",
+    async ({ reason, text, button }) => {
+      respondWithFirstAnswer({ notionNotice: reason });
+      renderConversation();
+
+      await screen.findByText(questions[0].content);
+      const [firstTurn] = screen.getAllByRole("article");
+
+      expect(within(firstTurn).getByText(text)).toBeInTheDocument();
+      expect(
+        within(firstTurn).queryAllByRole("button", {
+          name: /^(노션 연결|다시 연결)$/,
+        }).map((element) => element.textContent),
+      ).toEqual(button ? [button] : []);
+    },
+  );
+
+  it.each(["노션 연결", "다시 연결"])(
+    "노션 안내의 [%s]을 누르면 연결된 앱 화면으로 간다 (SEARCH-R39, SEARCH-R34)",
+    async (button) => {
+      respondWithFirstAnswer({
+        notionNotice:
+          button === "노션 연결" ? "NOT_CONNECTED" : "CONNECTION_EXPIRED",
+      });
+      const { router } = renderConversation();
+
+      await act(async () => {
+        fireEvent.click(await screen.findByRole("button", { name: button }));
+      });
+
+      expect(router.state.location.pathname).toBe(
+        getRouterPath({ routeKey: "APPS", params: { workspaceId: WORKSPACE_ID } }),
+      );
+      expect(screen.getByText(APPS_SCREEN_TEXT)).toBeInTheDocument();
+    },
+  );
 });
