@@ -16,8 +16,36 @@ public record SearchAnswerSnapshotResult(
         Integer excludedCount,
         List<SearchEvidenceItemResult> evidences,
         long receiptId,
-        Instant contentUpdatedAt
+        Instant contentUpdatedAt,
+        SearchDocumentSelection documentSelection
 ) {
+    public SearchAnswerSnapshotResult(
+            long answerId,
+            String content,
+            SearchMessageStatus status,
+            String failureCode,
+            UUID executionToken,
+            SearchProgressStage stage,
+            Integer excludedCount,
+            List<SearchEvidenceItemResult> evidences,
+            long receiptId,
+            Instant contentUpdatedAt
+    ) {
+        this(
+                answerId,
+                content,
+                status,
+                failureCode,
+                executionToken,
+                stage,
+                excludedCount,
+                evidences,
+                receiptId,
+                contentUpdatedAt,
+                null
+        );
+    }
+
     public SearchAnswerSnapshotResult(
             long answerId,
             String content,

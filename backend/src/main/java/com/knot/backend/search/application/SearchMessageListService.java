@@ -1,6 +1,7 @@
 package com.knot.backend.search.application;
 
 import com.knot.backend.search.application.dto.query.SearchMessageListParameters;
+import com.knot.backend.search.application.dto.result.SearchDocumentListResult;
 import com.knot.backend.search.application.dto.result.SearchEvidenceItemResult;
 import com.knot.backend.search.application.dto.result.SearchMessageListItemResult;
 import com.knot.backend.search.application.dto.result.SearchMessageListResult;
@@ -64,6 +65,16 @@ public class SearchMessageListService {
                 conversationId,
                 selected
         );
+        List<Long> answerIds = answerIds(selected);
+        Map<Long, SearchDocumentListResult> documentLists = Map.of();
+        if (!answerIds.isEmpty()) {
+            documentLists = query.findDocumentLists(
+                    workspaceId,
+                    memberId,
+                    conversationId,
+                    answerIds
+            );
+        }
         boolean hasPrevious = hasPrevious(
                 page,
                 parameters.size()
@@ -72,7 +83,8 @@ public class SearchMessageListService {
                 conversationId,
                 assembleItems(
                         selected,
-                        evidences
+                        evidences,
+                        documentLists
                 ),
                 hasPrevious,
                 createPreviousCursor(
@@ -140,10 +152,7 @@ public class SearchMessageListService {
             long conversationId,
             List<SearchMessage> selected
     ) {
-        List<Long> answerIds = selected.stream()
-                .filter(message -> message.getRole() == SearchMessageRole.ASSISTANT)
-                .map(SearchMessage::getId)
-                .toList();
+        List<Long> answerIds = answerIds(selected);
         if (answerIds.isEmpty()) {
             return Map.of();
         }
@@ -155,9 +164,17 @@ public class SearchMessageListService {
         );
     }
 
+    private List<Long> answerIds(List<SearchMessage> selected) {
+        return selected.stream()
+                .filter(message -> message.getRole() == SearchMessageRole.ASSISTANT)
+                .map(SearchMessage::getId)
+                .toList();
+    }
+
     private List<SearchMessageListItemResult> assembleItems(
             List<SearchMessage> selected,
-            Map<Long, List<SearchEvidenceItemResult>> evidences
+            Map<Long, List<SearchEvidenceItemResult>> evidences,
+            Map<Long, SearchDocumentListResult> documentLists
     ) {
         return selected.stream()
                 .sorted(Comparator.comparingInt(SearchMessage::getSequence))
@@ -167,7 +184,8 @@ public class SearchMessageListService {
                                 evidenceFor(
                                         message,
                                         evidences
-                                )
+                                ),
+                                documentLists.get(message.getId())
                         )
                 )
                 .toList();

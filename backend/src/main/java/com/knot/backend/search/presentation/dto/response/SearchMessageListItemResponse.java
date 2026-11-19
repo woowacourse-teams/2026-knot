@@ -3,6 +3,8 @@ package com.knot.backend.search.presentation.dto.response;
 import static io.swagger.v3.oas.annotations.media.Schema.RequiredMode.REQUIRED;
 
 import com.knot.backend.search.application.dto.result.SearchMessageListItemResult;
+import com.knot.backend.search.application.dto.result.SearchDocumentSelection;
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.knot.backend.search.domain.model.SearchMessageRole;
 import com.knot.backend.search.domain.model.SearchMessageStatus;
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -17,7 +19,8 @@ public record SearchMessageListItemResponse(
         @Schema(requiredMode = REQUIRED) SearchMessageStatus status,
         @Schema(requiredMode = REQUIRED) boolean retryable,
         @Schema(requiredMode = REQUIRED) Instant createdAt,
-        @Schema(description = "Document 카드. rank 오름차순 최대 3개, USER는 빈 배열", requiredMode = REQUIRED) List<SearchEvidenceItemResponse> evidences
+        @Schema(description = "답변에 실제 사용한 문서. rank 오름차순 최대 3개", requiredMode = REQUIRED) List<SearchEvidenceItemResponse> evidences,
+        @JsonInclude(JsonInclude.Include.NON_NULL) SearchDocumentSelection documentSelection
 ) {
 
     public static SearchMessageListItemResponse from(SearchMessageListItemResult result) {
@@ -32,7 +35,8 @@ public record SearchMessageListItemResponse(
                 result.evidences()
                         .stream()
                         .map(SearchEvidenceItemResponse::from)
-                        .toList()
+                        .toList(),
+                result.documentSelection()
         );
     }
 }

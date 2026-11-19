@@ -32,7 +32,7 @@ import org.springframework.jdbc.core.simple.JdbcClient;
 
 @Tag("integration")
 @DataJpaTest(properties = "spring.jpa.properties.hibernate.generate_statistics=true")
-@Import({TestcontainersConfiguration.class, SearchMessageListQueryAdapter.class})
+@Import({TestcontainersConfiguration.class, SearchMessageListQueryAdapter.class, SearchDocumentListStore.class})
 class SearchMessageListQueryIntegrationTest {
 
     @Autowired

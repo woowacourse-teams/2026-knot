@@ -214,6 +214,327 @@ class SearchFollowupQuestionAcceptanceTest {
     }
 
     @Test
+    @DisplayName("첫 목록에서 회의 시작일과 문서 생성일을 구분하고 새 검색은 새 목록을 만든다")
+    void ask_success_documentListDistinguishesRecency() throws Exception {
+        SearchMessageFixtures documents = new SearchMessageFixtures(jdbc);
+        saveListFixture(
+                documents,
+                "최근회의"
+        );
+        saveListFixture(
+                documents,
+                "최근작성"
+        );
+        jdbc.sql("""
+                UPDATE recording_sessions
+                SET started_at = started_at - INTERVAL '1 day'
+                WHERE id = (SELECT recording_session_id FROM documents WHERE title = '최근작성')
+                """)
+                .update();
+        jdbc.sql("UPDATE documents SET created_at = created_at + INTERVAL '1 minute' WHERE title = '최근작성'")
+                .update();
+        SearchSseTiming timing = new SearchSseTiming(json);
+        String root = "/api/v1/workspaces/" + workspace + "/search/conversations";
+        HttpResponse<InputStream> response = client.send(
+                post(
+                        root,
+                        body(
+                                UUID.randomUUID(),
+                                "최근 회의 문서 보여줘"
+                        ),
+                        true,
+                        true
+                ),
+                HttpResponse.BodyHandlers.ofInputStream()
+        );
+        assertThat(response.statusCode()).isEqualTo(200);
+        try (BufferedReader stream = reader(response.body())) {
+            JsonNode receipt = accepted(stream);
+            conversation = receipt.path("conversationId")
+                    .asLong();
+            worker.execute(
+                    receipt.path("answerMessageId")
+                            .asLong()
+            );
+            assertThat(timing.readToEnd(stream)).contains(
+                    "1. 최근회의",
+                    "2. 최근작성"
+            );
+            assertThat(timing.firstDelta()).isPresent();
+            timing.log("list-first-conversation");
+        }
+        assertThat(
+                listTurn(
+                        "가장 최근 문서 보여줘",
+                        UUID.randomUUID(),
+                        "list-new-search"
+                )
+        ).contains(
+                "1. 최근작성",
+                "2. 최근회의"
+        );
+        assertThat(
+                listTurn(
+                        "3번 열어줘",
+                        UUID.randomUUID(),
+                        "list-outside-displayed"
+                )
+        ).contains("목록에 표시된 문서 번호를 알려 주세요.")
+                .doesNotContain("event:document_selection");
+        assertThat(
+                listTurn(
+                        "3번이나 4번 열어줘",
+                        UUID.randomUUID(),
+                        "list-ambiguous"
+                )
+        ).contains("번호 하나를 알려 주세요")
+                .doesNotContain("event:document_selection");
+        verifyNoInteractions(
+                classifier,
+                generator,
+                retriever
+        );
+    }
+
+    @Test
+    @DisplayName("워크스페이스 접근이 취소되면 목록 후속 요청·이력·SSE에서 제목을 보여주지 않는다")
+    void ask_failure_documentListAccessRevoked() throws Exception {
+        saveListFixture(
+                new SearchMessageFixtures(jdbc),
+                "권한을 잃은 문서 제목"
+        );
+        assertThat(
+                listTurn(
+                        "최근 회의 문서 보여줘",
+                        UUID.randomUUID(),
+                        "list-before-revoke"
+                )
+        ).contains("권한을 잃은 문서 제목");
+        long answerId = jdbc.sql("SELECT MAX(id) FROM search_messages WHERE role = 'ASSISTANT'")
+                .query(Long.class)
+                .single();
+        fixtures.leave(
+                workspace,
+                member
+        );
+        assertError(
+                post(
+                        path(),
+                        body(
+                                UUID.randomUUID(),
+                                "3번 열어줘"
+                        ),
+                        true,
+                        true
+                ),
+                403,
+                "SEARCH_ACCESS_DENIED"
+        );
+        for (String suffix : List.of(
+                "/messages",
+                "/answers/" + answerId + "/events"
+        )) {
+            HttpResponse<String> response = client.send(
+                    HttpRequest.newBuilder(uri(base() + suffix))
+                            .header(
+                                    "Cookie",
+                                    cookies
+                            )
+                            .GET()
+                            .build(),
+                    HttpResponse.BodyHandlers.ofString()
+            );
+            assertThat(response.statusCode()).isEqualTo(403);
+            assertThat(response.body()).contains("SEARCH_ACCESS_DENIED")
+                    .doesNotContain("권한을 잃은 문서 제목");
+        }
+    }
+
+    @Test
+    @DisplayName("새 문서가 추가된 뒤에도 번호를 이어가며 재열기에서 삭제된 제목을 숨긴다")
+    void ask_success_documentListContinuationAndReopen() throws Exception {
+        SearchMessageFixtures documents = new SearchMessageFixtures(jdbc);
+        for (int ordinal = 1; ordinal <= 12; ordinal++) {
+            saveListFixture(
+                    documents,
+                    "목록문서-" + ordinal
+            );
+        }
+        long selected = jdbc.sql("SELECT id FROM documents WHERE title = '목록문서-10'")
+                .query(Long.class)
+                .single();
+        assertThat(
+                listTurn(
+                        "최근 회의 문서 보여줘",
+                        UUID.randomUUID(),
+                        "list-first"
+                )
+        ).contains(
+                "1. 목록문서-12",
+                "10. 목록문서-3"
+        )
+                .doesNotContain("11. 목록문서-2");
+        saveListFixture(
+                documents,
+                "신규문서"
+        );
+        UUID nextRequest = UUID.randomUUID();
+        String next = listTurn(
+                "더 보여줘",
+                nextRequest,
+                "list-more"
+        );
+        assertThat(next).contains(
+                "11. 목록문서-2",
+                "12. 목록문서-1"
+        )
+                .doesNotContain("신규문서");
+        assertThat(
+                listTurn(
+                        "더 보여줘",
+                        nextRequest,
+                        "list-replay"
+                )
+        ).contains("11. 목록문서-2");
+        assertThat(
+                jdbc.sql("SELECT COUNT(*) FROM search_document_list_answers")
+                        .query(Long.class)
+                        .single()
+        ).isEqualTo(2);
+        assertThat(
+                listTurn(
+                        "3번 열어줘",
+                        UUID.randomUUID(),
+                        "list-select"
+                )
+        ).contains(
+                "event:document_selection",
+                "\"documentId\":" + selected,
+                "\"ordinal\":3",
+                "\"items\":[]"
+        );
+        verifyNoInteractions(
+                classifier,
+                generator,
+                retriever
+        );
+
+        long selectionAnswer = jdbc.sql("SELECT MAX(id) FROM search_messages WHERE role = 'ASSISTANT'")
+                .query(Long.class)
+                .single();
+        assertThat(
+                jdbc.sql("SELECT content FROM search_messages WHERE id = :answer")
+                        .param(
+                                "answer",
+                                selectionAnswer
+                        )
+                        .query(String.class)
+                        .single()
+        ).isEqualTo("목록에서 선택한 문서를 확인했어요.");
+        assertThat(getListSurface(base() + "/messages")).contains(
+                "\"documentSelection\"",
+                "목록문서-10"
+        );
+        assertThat(getListSurface(base() + "/answers/" + selectionAnswer + "/events")).contains(
+                "event:document_selection",
+                "\"documentId\":" + selected
+        );
+        jdbc.sql("DELETE FROM documents WHERE id = :document")
+                .param(
+                        "document",
+                        selected
+                )
+                .update();
+        assertThat(getListSurface(base() + "/messages")).contains("4. 목록문서-9")
+                .doesNotContain("목록문서-10");
+        String reconnect = getListSurface(base() + "/answers/" + selectionAnswer + "/events");
+        assertThat(reconnect).contains(
+                "event:snapshot",
+                "현재 이 문서를 열 수 없어요"
+        )
+                .doesNotContain(
+                        "목록문서-10",
+                        "event:document_selection"
+                );
+        assertThat(
+                listTurn(
+                        "3번 열어줘",
+                        UUID.randomUUID(),
+                        "list-select-unavailable"
+                )
+        ).contains("현재 이 문서를 열 수 없어요")
+                .doesNotContain(
+                        "목록문서-10",
+                        "event:document_selection"
+                );
+        assertThat(
+                jdbc.sql("SELECT COUNT(*) FROM search_document_list_answers WHERE selection")
+                        .query(Long.class)
+                        .single()
+        ).isEqualTo(1);
+    }
+
+    private void saveListFixture(
+            SearchMessageFixtures documents,
+            String title
+    ) {
+        long id = documents.saveDocument(
+                workspace,
+                member
+        );
+        jdbc.sql("UPDATE documents SET title = :title WHERE id = :id")
+                .param(
+                        "title",
+                        title
+                )
+                .param(
+                        "id",
+                        id
+                )
+                .update();
+    }
+
+    private String listTurn(
+            String question,
+            UUID requestId,
+            String label
+    ) throws Exception {
+        SearchSseTiming timing = new SearchSseTiming(json);
+        try (BufferedReader stream = reader(
+                connect(
+                        body(
+                                requestId,
+                                question
+                        )
+                ).body()
+        )) {
+            long answer = accepted(stream).path("answerMessageId")
+                    .asLong();
+            worker.execute(answer);
+            String result = timing.readToEnd(stream);
+            assertThat(timing.firstDelta()).isPresent();
+            assertThat(timing.terminalEvent()).contains("completed");
+            timing.log(label);
+            return result;
+        }
+    }
+
+    private String getListSurface(String path) throws Exception {
+        HttpResponse<String> response = client.send(
+                HttpRequest.newBuilder(uri(path))
+                        .header(
+                                "Cookie",
+                                cookies
+                        )
+                        .GET()
+                        .build(),
+                HttpResponse.BodyHandlers.ofString()
+        );
+        assertThat(response.statusCode()).isEqualTo(200);
+        return response.body();
+    }
+
+    @Test
     @DisplayName("후속 POST는 accepted를 먼저 보내고 생성 완료와 같은 ID 재접수를 복구한다")
     void ask_success_sseAndReplay() throws Exception {
         // given
