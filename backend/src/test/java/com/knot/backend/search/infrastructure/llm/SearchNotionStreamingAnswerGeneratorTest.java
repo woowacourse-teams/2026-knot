@@ -1,5 +1,7 @@
 package com.knot.backend.search.infrastructure.llm;
 
+import java.util.stream.IntStream;
+import com.knot.backend.global.config.SearchNotionProperties;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -267,6 +269,45 @@ class SearchNotionStreamingAnswerGeneratorTest {
                 mapper.writeValueAsString(sent.get())
                         .length()
         ).isLessThanOrEqualTo(20000);
+    }
+
+    @Test
+    @DisplayName("기본 설정이면 검색 한 번의 기본 페이지 수만큼 자른 노션 페이지를 하나도 빼지 않고 넘긴다")
+    void generate_success_keepsDefaultSearchPages() {
+        SearchNotionProperties notion = new SearchNotionProperties();
+        List<SearchNotionPage> pages = IntStream.rangeClosed(
+                1,
+                notion.getSearchPageSize()
+        )
+                .mapToObj(
+                        index -> new SearchNotionPage(
+                                "page-" + index,
+                                "팀 위키 페이지 " + index,
+                                "https://www.notion.so/team-wiki-page-" + index,
+                                "가".repeat(notion.getPageContentCharacterLimit())
+                        )
+                )
+                .toList();
+        respond(
+                "{\"status\":\"ANSWERED\",\"decisionState\":\"NOT_APPLICABLE\",\"answer\":\"답변\","
+                        + "\"evidenceIds\":[],\"notionEvidenceIds\":[],\"clarificationQuestion\":null,"
+                        + "\"notionDraft\":null,\"notionDraftIssue\":null}"
+        );
+        generator.generate(
+                scope,
+                "질문",
+                retrieval(),
+                pages,
+                true,
+                text -> {
+                }
+        );
+        JsonNode user = mapper.readTree(
+                (String) sent.get()
+                        .getLast()
+                        .get("content")
+        );
+        assertThat(user.path("notionPages")).hasSize(notion.getSearchPageSize());
     }
 
     private void respond(String json) {

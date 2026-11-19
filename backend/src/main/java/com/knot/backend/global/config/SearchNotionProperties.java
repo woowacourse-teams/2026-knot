@@ -27,7 +27,8 @@ public class SearchNotionProperties {
     private Duration readTimeout = Duration.ofSeconds(8);
     private Duration locationTimeout = Duration.ofSeconds(8);
     private int searchPageSize = 10;
-    private int pageContentCharacterLimit = 8000;
+    // 검색 한 번의 기본 페이지 수(10)를 모두 답변 입력 한도(48000자)의 절반 안에 담는 길이다.
+    private int pageContentCharacterLimit = 2000;
     private Duration createTimeout = Duration.ofSeconds(10);
     private Duration rateLimitMaxWait = Duration.ofSeconds(10);
 }
