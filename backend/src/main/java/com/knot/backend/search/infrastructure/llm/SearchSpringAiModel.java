@@ -4,14 +4,18 @@ import com.knot.backend.global.config.LlmProperties;
 import com.knot.backend.global.config.SearchAgentProperties;
 import com.knot.backend.search.application.SearchToolAccess;
 import com.knot.backend.search.application.SearchToolScope;
+import com.knot.backend.search.domain.SearchAttemptFailure;
 import com.knot.backend.search.domain.SearchScopeExpiredException;
 import com.knot.backend.search.domain.SearchToolException;
+import com.openai.errors.OpenAIIoException;
+import com.openai.errors.OpenAIServiceException;
 import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
@@ -146,12 +150,22 @@ public final class SearchSpringAiModel {
                                 });
                     })
                     .blockLast(remaining);
-        } catch (IllegalStateException exception) {
+        } catch (RuntimeException exception) {
             access.validate(scope);
-            throw new SearchToolException(
-                    "SEARCH_TRANSPORT_FAILED",
-                    exception
-            );
+            Throwable cause = exception;
+            while (cause instanceof CompletionException && cause.getCause() != null) {
+                cause = cause.getCause();
+            }
+            if (cause instanceof OpenAIServiceException serviceError) {
+                throw new SearchToolException(SearchAttemptFailure.upstreamStatusCode(serviceError.statusCode()));
+            }
+            if (cause instanceof OpenAIIoException || cause instanceof IllegalStateException) {
+                throw new SearchToolException(
+                        "SEARCH_TRANSPORT_FAILED",
+                        cause
+                );
+            }
+            throw exception;
         }
         if (!stopped.get() || bytes.get() == 0) {
             throw new SearchToolException("INCOMPLETE_MODEL_STREAM");

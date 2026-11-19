@@ -2,10 +2,11 @@ package com.knot.backend.search.application;
 
 import com.knot.backend.global.config.SearchAgentProperties;
 import com.knot.backend.global.logging.ServerErrorLogger;
-import com.knot.backend.search.application.dto.result.SearchAnswerWorkResult;
 import com.knot.backend.search.application.dto.query.SearchQuestionContext;
+import com.knot.backend.search.application.dto.result.SearchAnswerWorkResult;
 import com.knot.backend.search.application.dto.result.SearchDocumentResult;
 import com.knot.backend.search.application.dto.result.SearchRetrievalResult;
+import com.knot.backend.search.domain.SearchAttemptFailure;
 import com.knot.backend.search.domain.model.SearchIntent;
 import com.knot.backend.search.infrastructure.llm.SearchDateFilter;
 import java.time.Clock;
@@ -16,6 +17,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -105,6 +107,9 @@ public class SearchAnswerWorker {
         }
         if ("SEARCH_ACCESS_DENIED".equals(ServerErrorLogger.safeFailureCode(exception))) {
             return "SEARCH_ACCESS_DENIED";
+        }
+        if (SearchAttemptFailure.terminalNetwork(exception)) {
+            return SearchAttemptFailure.NETWORK_ERROR;
         }
         return "ANSWER_GENERATION_FAILED";
     }
@@ -202,13 +207,18 @@ public class SearchAnswerWorker {
             }
             scope = resolved.orElseThrow();
         }
+        SearchToolScope currentScope = scope;
+        RetryOnce retry = new RetryOnce(currentScope);
         long retrievalStarted = System.nanoTime();
         SearchRetrievalResult retrieval;
         try {
-            retrieval = retrieve(
-                    intent,
-                    scope,
-                    work.question()
+            SearchIntent resolvedIntent = intent;
+            retrieval = retry.run(
+                    () -> retrieve(
+                            resolvedIntent,
+                            currentScope,
+                            work.question()
+                    )
             );
             log.info(
                     "Search latency phase=document_retrieval workspaceId={} questionId={} answerId={} elapsedMs={} inputChars={} candidates={} excludedDocuments={} candidateLimited={} additionalCandidateChecked={} outcome=success",
@@ -238,6 +248,9 @@ public class SearchAnswerWorker {
             if (ServerErrorLogger.isControlFlow(exception)) {
                 throw exception;
             }
+            if (SearchAttemptFailure.isNetwork(exception)) {
+                throw exception;
+            }
             retrieval = SearchRetrievalResult.unavailable();
         }
         if (!executions.recordRetrieval(
@@ -248,20 +261,24 @@ public class SearchAnswerWorker {
         )) {
             return;
         }
-        List<SearchDocumentResult> documents = retrieval.documents();
+        SearchRetrievalResult resolvedRetrieval = retrieval;
+        List<SearchDocumentResult> documents = resolvedRetrieval.documents();
         SearchAnswerGenerator generator = generators.getObject();
         List<Long> usedIds;
         StringBuilder content = new StringBuilder();
         long generationStarted = System.nanoTime();
         try {
-            content.append(retrievalGuidance(retrieval));
-            usedIds = generateAnswer(
-                    generator,
-                    scope,
-                    work.question(),
-                    retrieval,
-                    content
-            );
+            usedIds = retry.run(() -> {
+                content.setLength(0);
+                content.append(retrievalGuidance(resolvedRetrieval));
+                return generateAnswer(
+                        generator,
+                        currentScope,
+                        work.question(),
+                        resolvedRetrieval,
+                        content
+                );
+            });
             log.info(
                     "Search latency phase=answer_generation workspaceId={} questionId={} answerId={} elapsedMs={} inputChars={} documentCount={} outcome=success",
                     work.workspaceId(),
@@ -395,5 +412,37 @@ public class SearchAnswerWorker {
                 retrieval,
                 content::append
         );
+    }
+
+    private final class RetryOnce {
+
+        private final SearchToolScope scope;
+        private boolean used;
+
+        private RetryOnce(SearchToolScope scope) {
+            this.scope = scope;
+        }
+
+        private <T> T run(Supplier<T> operation) {
+            try {
+                return operation.get();
+            } catch (RuntimeException failure) {
+                if (used || !SearchAttemptFailure.temporary(failure) || !clock.instant()
+                        .isBefore(scope.expiresAt())
+                        || !executions.isCurrent(
+                                scope.answerId(),
+                                scope.token()
+                        )) {
+                    throw failure;
+                }
+                used = true;
+                log.info(
+                        "Search automatic retry answerId={} failureCode={}",
+                        scope.answerId(),
+                        ServerErrorLogger.safeFailureCode(failure)
+                );
+                return operation.get();
+            }
+        }
     }
 }

@@ -115,6 +115,106 @@ class SearchAnswerWorkerConversationTest {
         });
     }
 
+    @Test
+    @DisplayName("검색이 재시도를 쓰면 생성의 일시 오류는 주 모델을 다시 호출하지 않는다")
+    void execute_success_sharesSingleRetryAcrossStages() {
+        when(
+                retriever.retrieve(
+                        any(),
+                        any()
+                )
+        ).thenThrow(
+                new SearchToolException(
+                        "SEARCH_TRANSPORT_FAILED",
+                        new java.io.IOException("closed")
+                )
+        )
+                .thenReturn(
+                        new SearchRetrievalResult(
+                                List.of(),
+                                0
+                        )
+                );
+        when(
+                executions.isCurrent(
+                        5,
+                        token
+                )
+        ).thenReturn(true);
+        doThrow(new SearchToolException("SEARCH_UPSTREAM_UNAVAILABLE")).when(generator)
+                .generate(
+                        any(),
+                        any(),
+                        any(),
+                        any()
+                );
+
+        worker.execute(5);
+
+        verify(
+                retriever,
+                times(2)
+        ).retrieve(
+                any(),
+                eq("질문")
+        );
+        verify(
+                generator,
+                times(1)
+        ).generate(
+                any(),
+                any(),
+                any(),
+                any()
+        );
+    }
+
+    @Test
+    @DisplayName("검색이 정상이면 생성의 일시 장애를 한 번 재시도한다")
+    void execute_success_retriesGenerationOnceAfterSuccessfulSearch() {
+        when(
+                executions.isCurrent(
+                        5,
+                        token
+                )
+        ).thenReturn(true);
+        doThrow(new SearchToolException("SEARCH_UPSTREAM_UNAVAILABLE")).doAnswer(call -> {
+            Consumer<String> delta = call.getArgument(3);
+            delta.accept("생성한 답변");
+            return List.of();
+        })
+                .when(generator)
+                .generate(
+                        any(),
+                        any(),
+                        any(),
+                        any()
+                );
+
+        worker.execute(5);
+
+        verify(retriever).retrieve(
+                any(),
+                eq("질문")
+        );
+        verify(
+                generator,
+                times(2)
+        ).generate(
+                any(),
+                any(),
+                any(),
+                any()
+        );
+        verify(executions).completeGenerated(
+                5,
+                token,
+                SearchAnswerGuidance.NO_SEARCH_MATCHES + "생성한 답변",
+                List.of(),
+                Set.of()
+        );
+    }
+
     @ParameterizedTest
     @EnumSource(value = SearchIntent.class, names = "MEETING_SEARCH", mode = EnumSource.Mode.EXCLUDE)
     @DisplayName("일반 질문은 고정 범위 거부 대신 문서 없이 대화 답변을 생성한다")

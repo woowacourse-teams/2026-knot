@@ -21,6 +21,13 @@ import com.knot.backend.search.SearchMessageFixtures;
 import com.knot.backend.global.config.JwtProperties;
 import com.knot.backend.global.config.SearchWorkerProperties;
 import com.knot.backend.global.config.SearchAgentProperties;
+import com.knot.backend.global.config.LlmProperties;
+import com.knot.backend.search.infrastructure.llm.SearchAgentHttp;
+import com.knot.backend.search.infrastructure.llm.SearchLlmClient;
+import com.knot.backend.search.infrastructure.llm.SearchStreamingAnswerGenerator;
+import com.knot.backend.search.infrastructure.llm.SearchTransportCancellation;
+import com.knot.backend.search.infrastructure.persistence.SearchHistoryQuery;
+import com.knot.backend.testsupport.LlmHttpServer;
 import com.knot.backend.search.application.SearchAnswerWorker;
 import com.knot.backend.search.application.SearchQuestionIntakeService;
 import com.knot.backend.search.application.SearchAnswerExecutionService;
@@ -70,6 +77,7 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.context.annotation.Import;
@@ -97,6 +105,8 @@ class SearchAnswerRetryAcceptanceTest {
 
     @LocalServerPort
     private int port;
+    @Value("${knot.search.openai-fallback.model}")
+    private String openAiFallbackModel;
     @Autowired
     private JdbcClient jdbc;
     @Autowired
@@ -115,6 +125,8 @@ class SearchAnswerRetryAcceptanceTest {
     private SearchDocumentQuery documentQuery;
     @Autowired
     private SearchToolAccess toolAccess;
+    @Autowired
+    private SearchHistoryQuery searchHistory;
     @MockitoSpyBean
     private Clock clock;
     @MockitoSpyBean
@@ -560,7 +572,7 @@ class SearchAnswerRetryAcceptanceTest {
         );
         // Historical FAILED fixture: new technical errors now store completed guidance
         // instead.
-        jdbc.sql("UPDATE search_messages SET status='FAILED', failure_code='ANSWER_GENERATION_FAILED' WHERE id=:id")
+        jdbc.sql("UPDATE search_messages SET status='FAILED', failure_code='SEARCH_NETWORK_ERROR' WHERE id=:id")
                 .param(
                         "id",
                         work.answerId()
@@ -982,6 +994,211 @@ class SearchAnswerRetryAcceptanceTest {
                     )
             ).containsExactly(nextDay);
         }
+    }
+
+    @Test
+    @DisplayName("최초·후속·수동 재시도 모두 주 모델 첫 503에서 OpenAI로 전환하고 첫 Delta를 보낸다")
+    void retry_success_measuresOpenAiFallbackAcrossTurns() throws Exception {
+        prepareMidnightSearch();
+        long document = timedDocument(
+                Instant.parse("2026-11-15T03:00:00Z"),
+                FIRST_AT.minusSeconds(1)
+        );
+        try (LlmHttpServer primary = new LlmHttpServer();
+                LlmHttpServer openAi = new LlmHttpServer();
+                SearchTransportCancellation cancellation = new SearchTransportCancellation(
+                        toolAccess,
+                        Duration.ofMillis(15)
+                );
+                SearchAgentHttp transport = new SearchAgentHttp(
+                        client,
+                        json,
+                        clock,
+                        65_536,
+                        cancellation
+                )) {
+            primary.respond(
+                    503,
+                    "unavailable"
+            );
+            var answer = json.createObjectNode();
+            answer.put(
+                    "status",
+                    "ANSWERED"
+            );
+            answer.put(
+                    "decisionState",
+                    "DECIDED"
+            );
+            answer.put(
+                    "answer",
+                    "검증된 대체 답변"
+            );
+            answer.putArray("evidenceIds")
+                    .add("E" + document);
+            answer.putNull("clarificationQuestion");
+            String frame = json.writeValueAsString(
+                    Map.of(
+                            "choices",
+                            List.of(
+                                    Map.of(
+                                            "delta",
+                                            Map.of(
+                                                    "content",
+                                                    answer.toString()
+                                            ),
+                                            "finish_reason",
+                                            "stop"
+                                    )
+                            )
+                    )
+            );
+            openAi.respond(
+                    200,
+                    "data: " + frame + "\n\ndata: [DONE]\n\n"
+            );
+            SearchStreamingAnswerGenerator fallbackGenerator = new SearchStreamingAnswerGenerator(
+                    stubModel(
+                            transport,
+                            primary,
+                            "lm-studio",
+                            "primary"
+                    ),
+                    searchHistory,
+                    toolAccess,
+                    agentProperties,
+                    json,
+                    java.util.Optional.empty(),
+                    java.util.Optional.of(
+                            stubModel(
+                                    transport,
+                                    openAi,
+                                    "openai",
+                                    openAiFallbackModel
+                            )
+                    )
+            );
+            doAnswer(
+                    call -> fallbackGenerator.generate(
+                            call.getArgument(0),
+                            call.getArgument(1),
+                            call.getArgument(2),
+                            call.getArgument(3)
+                    )
+            ).when(generator)
+                    .generate(
+                            any(),
+                            any(),
+                            any(),
+                            any()
+                    );
+
+            SearchQuestionAcceptedResult original;
+            long started = System.nanoTime();
+            try (BufferedReader stream = openRelativeQuestion()) {
+                original = acceptFirstQuestion(stream);
+                assertThat(
+                        executeAndMeasure(
+                                original.answerMessageId(),
+                                stream,
+                                started,
+                                "openai-first"
+                        )
+                ).containsExactly(document);
+            }
+
+            started = System.nanoTime();
+            try (BufferedReader stream = openQuestion(
+                    conversationsPath() + "/" + original.conversationId() + "/questions",
+                    RELATIVE_QUESTION
+            )) {
+                SearchQuestionAcceptedResult followup = acceptFirstQuestion(stream);
+                assertThat(
+                        executeAndMeasure(
+                                followup.answerMessageId(),
+                                stream,
+                                started,
+                                "openai-followup"
+                        )
+                ).containsExactly(document);
+            }
+
+            try (BufferedReader stream = openRelativeQuestion()) {
+                first = acceptFirstQuestion(stream);
+                SearchAnswerWorkResult work = executions.claim(first.answerMessageId())
+                        .orElseThrow();
+                executions.append(
+                        work.answerId(),
+                        work.token(),
+                        "검증 전 본문"
+                );
+                assertThat(
+                        executions.fail(
+                                work.answerId(),
+                                work.token(),
+                                "SEARCH_NETWORK_ERROR"
+                        )
+                ).isTrue();
+                assertThat(
+                        stream.lines()
+                                .collect(Collectors.joining("\n"))
+                ).contains(
+                        "event:failed",
+                        "SEARCH_NETWORK_ERROR"
+                )
+                        .doesNotContain("검증 전 본문");
+            }
+            String request = body(UUID.randomUUID());
+            started = System.nanoTime();
+            try (BufferedReader stream = reader(connect(request).body())) {
+                assertAccepted(accepted(stream));
+                assertThat(
+                        executeAndMeasure(
+                                first.answerMessageId(),
+                                stream,
+                                started,
+                                "openai-manual-retry"
+                        )
+                ).containsExactly(document);
+            }
+
+            assertThat(primary.requestCount()).isEqualTo(3);
+            assertThat(openAi.requestCount()).isEqualTo(3);
+            assertThat(openAi.requestBody()).contains(
+                    "gpt-6-luna",
+                    "json_schema",
+                    "E" + document
+            )
+                    .doesNotContain(
+                            "chat_template_kwargs",
+                            "reasoning",
+                            "검증 전 본문"
+                    );
+            assertThat(
+                    json.readTree(primary.requestBody())
+                            .path("messages")
+            ).isEqualTo(
+                    json.readTree(openAi.requestBody())
+                            .path("messages")
+            );
+        }
+    }
+
+    private SearchLlmClient stubModel(
+            SearchAgentHttp transport,
+            LlmHttpServer server,
+            String provider,
+            String model
+    ) {
+        LlmProperties properties = new LlmProperties();
+        properties.setBaseUrl(server.baseUrl());
+        properties.setApiToken("fixture");
+        properties.setProvider(provider);
+        properties.setModel(model);
+        return new SearchLlmClient(
+                transport,
+                properties
+        );
     }
 
     @Test

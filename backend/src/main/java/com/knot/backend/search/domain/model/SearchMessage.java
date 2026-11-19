@@ -12,6 +12,7 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.time.Instant;
+import com.knot.backend.search.domain.SearchAttemptFailure;
 import lombok.Getter;
 
 @Getter
@@ -140,6 +141,15 @@ public class SearchMessage {
         content = guidance;
         failureCode = null;
         status = SearchMessageStatus.COMPLETED;
+    }
+
+    public boolean isRetryable() {
+        return status == SearchMessageStatus.FAILED && SearchAttemptFailure.NETWORK_ERROR.equals(failureCode);
+    }
+
+    public void failNetwork() {
+        fail(SearchAttemptFailure.NETWORK_ERROR);
+        content = "";
     }
 
     public void retry() {

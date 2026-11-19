@@ -5,7 +5,6 @@ import com.knot.backend.search.domain.model.SearchAnswerExecution;
 import com.knot.backend.search.domain.model.SearchConversation;
 import com.knot.backend.search.domain.model.SearchMessage;
 import com.knot.backend.search.domain.model.SearchMessageRole;
-import com.knot.backend.search.domain.model.SearchMessageStatus;
 import com.knot.backend.search.domain.model.SearchExecutionState;
 import com.knot.backend.search.domain.repository.SearchRepository;
 import com.knot.backend.search.domain.model.SearchRequestReceipt;
@@ -76,7 +75,7 @@ public class SearchAnswerRetryService {
         if (repository.existsStreamingAnswer(conversationId)) {
             throw new SearchException(SearchErrorCode.ANSWER_ALREADY_IN_PROGRESS);
         }
-        if (answer.getStatus() != SearchMessageStatus.FAILED) {
+        if (!answer.isRetryable()) {
             throw new SearchException(SearchErrorCode.ANSWER_NOT_FAILED);
         }
         availability.requireAvailable();

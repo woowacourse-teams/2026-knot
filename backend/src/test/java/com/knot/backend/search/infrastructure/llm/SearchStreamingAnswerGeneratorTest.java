@@ -32,18 +32,12 @@ import tools.jackson.databind.JsonNode;
 class SearchStreamingAnswerGeneratorTest {
 
     @Test
-    @DisplayName("잘못된 형식은 한 번 복구하고 검증 전 글자는 화면에 전달하지 않는다")
-    void generate_success_repairsBeforePublishing() {
+    @DisplayName("잘못된 JSON을 재호출하지 않고 검증 전 본문을 게시하지 않는다")
+    void generate_success_invalidJsonDoesNotRetry() {
         List<String> deltas = new ArrayList<>();
-        java.util.concurrent.atomic.AtomicInteger attempts = new java.util.concurrent.atomic.AtomicInteger();
         doAnswer(call -> {
-            assertThat(deltas).isEmpty();
             Consumer<String> consumer = call.getArgument(2);
-            if (attempts.incrementAndGet() == 1) {
-                consumer.accept("{\"answer\":\"검증되지 않은 내용\"}");
-                return null;
-            }
-            consumer.accept(response(List.of("E1")));
+            consumer.accept("{\"answer\":\"검증되지 않은 내용\"}");
             return null;
         }).when(llm)
                 .stream(
@@ -51,21 +45,26 @@ class SearchStreamingAnswerGeneratorTest {
                         any(),
                         any()
                 );
-        assertThat(
-                generator.generate(
-                        scope,
-                        "질문",
-                        documents(),
-                        deltas::add
-                )
-        ).containsExactly(1L);
+
+        generator.generate(
+                scope,
+                "질문",
+                documents(),
+                deltas::add
+        );
+
+        verify(llm).stream(
+                eq(scope),
+                any(),
+                any()
+        );
         assertThat(
                 String.join(
                         "",
                         deltas
                 )
-        ).isEqualTo("세 회의의 변화");
-        assertThat(attempts.get()).isEqualTo(2);
+        ).contains("관련 기록")
+                .doesNotContain("검증되지 않은 내용");
     }
 
     @org.junit.jupiter.params.ParameterizedTest
@@ -108,31 +107,150 @@ class SearchStreamingAnswerGeneratorTest {
     }
 
     @Test
-    @DisplayName("일시적인 공급자 오류는 한 번만 복구한다")
-    void generate_success_retriesTransientOnce() {
-        java.util.concurrent.atomic.AtomicInteger attempts = new java.util.concurrent.atomic.AtomicInteger();
-        doAnswer(call -> {
-            if (attempts.incrementAndGet() == 1)
-                throw new SearchToolException("SEARCH_UPSTREAM_UNAVAILABLE");
-            Consumer<String> consumer = call.getArgument(2);
-            consumer.accept(response(List.of("E1")));
-            return null;
-        }).when(llm)
+    @DisplayName("OpenAI 설정이 없으면 주 모델 일시 장애를 공유 한도로 전달한다")
+    void generate_failure_leavesSameProviderRetryToWorker() {
+        SearchToolException unavailable = new SearchToolException("SEARCH_UPSTREAM_UNAVAILABLE");
+        org.mockito.Mockito.doThrow(unavailable)
+                .when(llm)
                 .stream(
                         eq(scope),
                         any(),
                         any()
                 );
-        assertThat(
-                generator.generate(
+        org.assertj.core.api.Assertions.assertThatThrownBy(
+                () -> generator.generate(
                         scope,
                         "질문",
                         documents(),
                         text -> {
                         }
                 )
+        )
+                .isSameAs(unavailable);
+        verify(llm).stream(
+                eq(scope),
+                any(),
+                any()
+        );
+    }
+
+    @Test
+    @DisplayName("첫 공급자 장애에서 같은 근거를 쓰는 OpenAI로 바로 전환한다")
+    void generate_success_switchesToOpenAiOnFirstTemporaryFailure() {
+        SearchLlmClient fallback = mock(SearchLlmClient.class);
+        SearchStreamingAnswerGenerator withFallback = new SearchStreamingAnswerGenerator(
+                llm,
+                history,
+                access,
+                new SearchAgentProperties(),
+                mapper,
+                java.util.Optional.empty(),
+                java.util.Optional.of(fallback)
+        );
+        org.mockito.Mockito.doThrow(new SearchToolException("SEARCH_UPSTREAM_UNAVAILABLE"))
+                .when(llm)
+                .stream(
+                        eq(scope),
+                        any(),
+                        any()
+                );
+        doAnswer(call -> {
+            Consumer<String> output = call.getArgument(2);
+            output.accept(response(List.of("E1")));
+            return null;
+        }).when(fallback)
+                .stream(
+                        eq(scope),
+                        any(),
+                        any()
+                );
+
+        List<String> deltas = new ArrayList<>();
+        assertThat(
+                withFallback.generate(
+                        scope,
+                        "질문",
+                        documents(),
+                        deltas::add
+                )
         ).containsExactly(1L);
-        assertThat(attempts.get()).isEqualTo(2);
+
+        var input = org.mockito.ArgumentCaptor.forClass(List.class);
+        verify(llm).stream(
+                eq(scope),
+                input.capture(),
+                any()
+        );
+        verify(fallback).stream(
+                eq(scope),
+                eq(input.getValue()),
+                any()
+        );
+        assertThat(deltas).containsExactly("세 회의의 변화");
+    }
+
+    @Test
+    @DisplayName("OpenAI까지 연결이 끊기면 네트워크 오류를 전달하며 주 모델 재시도 대상에서 제외한다")
+    void generate_failure_doesNotRepeatAfterOpenAiFailure() {
+        SearchLlmClient fallback = mock(SearchLlmClient.class);
+        SearchStreamingAnswerGenerator withFallback = new SearchStreamingAnswerGenerator(
+                llm,
+                history,
+                access,
+                new SearchAgentProperties(),
+                mapper,
+                java.util.Optional.empty(),
+                java.util.Optional.of(fallback)
+        );
+        org.mockito.Mockito.doThrow(new SearchToolException("SEARCH_UPSTREAM_UNAVAILABLE"))
+                .when(llm)
+                .stream(
+                        eq(scope),
+                        any(),
+                        any()
+                );
+        org.mockito.Mockito.doThrow(
+                new SearchToolException(
+                        "SEARCH_TRANSPORT_FAILED",
+                        new java.io.IOException("closed")
+                )
+        )
+                .when(fallback)
+                .stream(
+                        eq(scope),
+                        any(),
+                        any()
+                );
+        List<String> deltas = new ArrayList<>();
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(
+                () -> withFallback.generate(
+                        scope,
+                        "질문",
+                        documents(),
+                        deltas::add
+                )
+        )
+                .isInstanceOfSatisfying(
+                        SearchToolException.class,
+                        failure -> {
+                            assertThat(com.knot.backend.search.domain.SearchAttemptFailure.temporary(failure))
+                                    .isFalse();
+                            assertThat(com.knot.backend.search.domain.SearchAttemptFailure.terminalNetwork(failure))
+                                    .isTrue();
+                        }
+                );
+        verify(llm).stream(
+                eq(scope),
+                any(),
+                any()
+        );
+        verify(fallback).stream(
+                eq(scope),
+                any(),
+                any()
+        );
+        assertThat(deltas).isEmpty();
     }
 
     @Test
@@ -328,7 +446,7 @@ class SearchStreamingAnswerGeneratorTest {
         ).startsWith(com.knot.backend.search.application.SearchAnswerGuidance.RELATED_DOCUMENTS);
         verify(
                 llm,
-                org.mockito.Mockito.times(2)
+                org.mockito.Mockito.times(1)
         ).stream(
                 eq(scope),
                 any(),
@@ -475,7 +593,7 @@ class SearchStreamingAnswerGeneratorTest {
                 .doesNotContain("부분 답변");
         verify(
                 llm,
-                org.mockito.Mockito.times(2)
+                org.mockito.Mockito.times(1)
         ).stream(
                 eq(scope),
                 any(),
