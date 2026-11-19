@@ -272,6 +272,61 @@ class SearchNotionStreamingAnswerGeneratorTest {
     }
 
     @Test
+    @DisplayName("노션과 함께 답해도 회의 검색 항목 가운데 근거를 확인하지 못한 항목의 확인 범위를 답글 끝에 밝힌다")
+    void generate_success_meetingCoverage() {
+        // given
+        SearchRetrievalResult retrieval = new SearchRetrievalResult(
+                retrieval().documents(),
+                0,
+                SearchRetrievalResult.Status.SEARCHED,
+                List.of(
+                        new SearchRetrievalResult.Item(
+                                1,
+                                SearchRetrievalResult.ItemStatus.MATCHED,
+                                List.of(7L)
+                        ),
+                        new SearchRetrievalResult.Item(
+                                2,
+                                SearchRetrievalResult.ItemStatus.NO_MATCH,
+                                List.of()
+                        )
+                )
+        );
+        respond(
+                "{\"status\":\"ANSWERED\",\"decisionState\":\"NOT_APPLICABLE\",\"answer\":\"출시일은 12월 8일이에요.\","
+                        + "\"evidenceIds\":[\"E7\"],\"notionEvidenceIds\":[\"N1\"],\"clarificationQuestion\":null}"
+        );
+        List<String> deltas = new ArrayList<>();
+
+        // when
+        generator.generate(
+                scope,
+                "출시일과 담당자 알려 줘",
+                retrieval,
+                List.of(
+                        new SearchNotionPage(
+                                "p1",
+                                "출시 계획",
+                                "https://notion.so/p1",
+                                "출시일 12월 8일"
+                        )
+                ),
+                false,
+                deltas::add
+        );
+
+        // then
+        assertThat(
+                String.join(
+                        "",
+                        deltas
+                )
+        ).startsWith("출시일은 12월 8일이에요.")
+                .endsWith("\n\n요청의 2번째 항목은 검색한 범위에서 관련 기록을 찾지 못했어요.")
+                .doesNotContain("요청의 1번째 항목");
+    }
+
+    @Test
     @DisplayName("기본 설정이면 검색 한 번의 기본 페이지 수만큼 자른 노션 페이지를 하나도 빼지 않고 넘긴다")
     void generate_success_keepsDefaultSearchPages() {
         SearchNotionProperties notion = new SearchNotionProperties();
