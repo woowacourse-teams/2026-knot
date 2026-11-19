@@ -6,6 +6,7 @@ import type {
   SearchMessages,
   SearchNotionConnection,
   SearchNotionConnectionAuthorization,
+  SearchNotionEvidenceItem,
   SearchQuestionAnswerStream,
   SearchWriteCard,
 } from "@api/mock/types/search";
@@ -305,3 +306,86 @@ export const searchNotionConnectionAuthorizationResponse = {
   authorizationUrl:
     "https://api.notion.com/v1/oauth/authorize?client_id=knot&response_type=code&owner=user",
 } satisfies SearchNotionConnectionAuthorization;
+
+/**
+ * 답에 쓴 노션 페이지 다섯 개예요(SEARCH-R37). 앞에서부터 잘라 1건, 3건, 줄이 넘치는 5건을 만들어요
+ */
+export const searchNotionEvidencesResponse = [
+  { title: "출시 계획", url: "https://www.notion.so/knot-team/launch-plan" },
+  { title: "2026 로드맵", url: "https://www.notion.so/knot-team/roadmap-2026" },
+  { title: "마케팅 일정", url: "https://www.notion.so/knot-team/marketing-schedule" },
+  {
+    title: "12월 배포 체크리스트",
+    url: "https://www.notion.so/knot-team/december-release-checklist",
+  },
+  { title: "QA 일정", url: "https://www.notion.so/knot-team/qa-schedule" },
+] satisfies SearchNotionEvidenceItem[];
+
+/**
+ * 회의 문서와 노션을 함께 읽고 답한 첫 질문 응답이에요(SEARCH-R35, R37).
+ * 회의 문서 근거 2개와 노션 근거 1개가 함께 와요
+ */
+export const searchNotionAnswerStreamResponse = {
+  ...searchAnswerStreamResponse,
+  deltas: [
+    "노션 출시 계획에는 12월 1일로 적혀 있고, ",
+    "11월 6일 회의에서도 12월 1일로 정했어요. 두 날짜가 같아요.\n",
+    "12월 1일은 11월 3일 회의에서 처음 나온 날짜예요.",
+  ],
+  evidences: searchAnswerStreamResponse.evidences.slice(0, 2),
+  notionEvidences: searchNotionEvidencesResponse.slice(0, 1),
+} satisfies SearchAnswerStream;
+
+/** 노션 연결이 없어 회의 문서만으로 답한 첫 질문 응답이에요(SEARCH-R39) */
+export const searchNotionNoticeAnswerStreamResponse = {
+  ...searchAnswerStreamResponse,
+  notionNotice: "NOT_CONNECTED",
+} satisfies SearchAnswerStream;
+
+/** 회의 문서를 노션 페이지로 만들어 달라는 요청에 답글과 대기 확인 카드가 온 첫 질문 응답이에요(SEARCH-R44) */
+export const searchWriteCardAnswerStreamResponse = {
+  ...searchAnswerStreamResponse,
+  deltas: ["주간 회의 회의록을 ", "노션 회의록 DB에 만들 준비를 했어요."],
+  evidences: [],
+  writeCard: searchWriteCardResponse,
+} satisfies SearchAnswerStream;
+
+/** 일반 페이지 아래에 만드는 대기 카드예요. DB 칸이 없어요(SEARCH-R48, R49) */
+export const searchWriteCardPageResponse = {
+  ...searchWriteCardResponse,
+  id: 32,
+  location: { name: "기획 문서", path: "팀 위키 / 기획 문서", kind: "PAGE" },
+  title: "11월 6일 회의 결정 정리",
+  body: "알림 채널 순서를 정했어요.\n실패 알림은 따로 모아 보여 줘요.\n첨부파일 처리는 다음 회의에서 정해요.",
+  databaseFields: null,
+  sourceDocument: { documentId: 205, title: "11/6 기획 회의록" },
+} satisfies SearchWriteCard;
+
+/** 내용이 길어 접어 보여 주는 대기 카드예요(SEARCH-R48) */
+export const searchWriteCardLongBodyResponse = {
+  ...searchWriteCardPageResponse,
+  id: 33,
+  body: [
+    "## 결정",
+    "- 알림 채널 순서를 정했어요. 앱 푸시, 이메일, 슬랙 순서예요.",
+    "- 실패 알림은 따로 모아 보여 줘요.",
+    "- 같은 알림이 5분 안에 다시 오면 한 번만 보내요.",
+    "- 밤 10시부터 아침 8시까지는 앱 푸시를 보내지 않고 아침에 모아 보내요.",
+    "- 알림 문구는 기획에서 정리한 표를 그대로 써요.",
+    "",
+    "## 할 일",
+    "- 디자인: 알림 설정 화면 시안 만들기 (11월 12일까지)",
+    "- 백엔드: 실패 알림 저장 API 설계 (11월 13일까지)",
+    "- 프론트엔드: 알림 목록에 실패 알림 묶음 추가 (11월 14일까지)",
+    "- 기획: 알림 문구 표 최종 확인",
+    "",
+    "## 다음 회의에서 정할 것",
+    "- 첨부파일 처리는 다음 회의에서 정해요.",
+    "- 알림을 30일 보관할지 90일 보관할지 정해요.",
+    "- 알림 끄기를 워크스페이스 단위로 둘지 사람 단위로 둘지 정해요.",
+    "",
+    "## 참고",
+    "- 지난 회의에서 나온 「알림이 너무 많다」는 의견을 반영했어요.",
+    "- 이메일은 하루 1,000건 이하로 보낼 것으로 예상해요.",
+  ].join("\n"),
+} satisfies SearchWriteCard;
