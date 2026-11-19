@@ -13,7 +13,11 @@ import com.knot.backend.document.DocumentFixtures;
 import com.knot.backend.global.config.JwtProperties;
 import com.knot.backend.global.config.SearchWorkerProperties;
 import com.knot.backend.search.SearchMessageFixtures;
+import com.knot.backend.search.application.SearchAnswerContentPolicy;
 import com.knot.backend.search.application.SearchAnswerExecutionService;
+import com.knot.backend.search.application.SearchToolScope;
+import com.knot.backend.search.infrastructure.persistence.SearchHistoryQuery;
+import com.knot.backend.search.SearchFixtures;
 import com.knot.backend.search.application.SearchAnswerGenerator;
 import com.knot.backend.search.application.SearchAnswerWorker;
 import com.knot.backend.search.application.SearchDocumentRetriever;
@@ -36,6 +40,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -98,6 +103,8 @@ class SearchAnswerEventsAcceptanceTest {
     private JsonMapper json;
     @Autowired
     private SearchQuestionIntakeService intake;
+    @Autowired
+    private SearchHistoryQuery history;
     @Autowired
     private SearchAnswerExecutionService executions;
     @Autowired
@@ -234,6 +241,223 @@ class SearchAnswerEventsAcceptanceTest {
     }
 
     @ParameterizedTest
+    @ValueSource(strings = {"deleted", "revoked-rank-4", "changed", "unchanged", "legacy"})
+    @DisplayName("이력과 SSE 재연결에서 삭제·접근 상실·수정을 구분한다")
+    void reconnect_evidenceHistory(String scenario) throws Exception {
+        long answerId = accepted.answerMessageId();
+        long conversationId = accepted.conversationId();
+        String content = "금요일 배포 예정 - 당시 답변";
+        SearchMessageFixtures messages = new SearchMessageFixtures(jdbc);
+        long workspaceForHiddenDocument = fixtures.saveWorkspace();
+        long sourceToDelete = 0;
+        for (int rank = 1; rank <= 4; rank++) {
+            long source = messages.saveDocument(
+                    workspaceId,
+                    memberId
+            );
+            if (rank == 4) {
+                sourceToDelete = source;
+            }
+            messages.saveEvidence(
+                    answerId,
+                    source,
+                    rank,
+                    scenario.equals("legacy") ? null : messages.sourceVersion(source)
+            );
+        }
+        jdbc.sql(
+                "UPDATE search_messages SET status='COMPLETED', answer_kind='DOCUMENT_ANSWER', content=:text WHERE id=:id"
+        )
+                .param(
+                        "text",
+                        content
+                )
+                .param(
+                        "id",
+                        answerId
+                )
+                .update();
+        new SearchFixtures(jdbc).setVisible(
+                conversationId,
+                true
+        );
+        if (scenario.equals("deleted")) {
+            assertThat(
+                    jdbc.sql("DELETE FROM documents WHERE id = :id")
+                            .param(
+                                    "id",
+                                    sourceToDelete
+                            )
+                            .update()
+            ).isEqualTo(1);
+            assertThat(
+                    jdbc.sql(
+                            "SELECT document_id FROM search_evidences WHERE message_id=:id AND live_document_id IS NULL"
+                    )
+                            .param(
+                                    "id",
+                                    answerId
+                            )
+                            .query(Long.class)
+                            .single()
+            ).isEqualTo(sourceToDelete);
+        }
+        if (scenario.equals("revoked-rank-4")) {
+            jdbc.sql("""
+                    WITH moved_recording AS (
+                        UPDATE recording_sessions SET workspace_id = :newWorkspace
+                        WHERE id = (SELECT recording_session_id FROM documents WHERE id = :id) RETURNING id
+                    )
+                    UPDATE documents SET workspace_id = :newWorkspace
+                    WHERE id = :id AND recording_session_id IN (SELECT id FROM moved_recording)
+                    """)
+                    .param(
+                            "newWorkspace",
+                            workspaceForHiddenDocument
+                    )
+                    .param(
+                            "id",
+                            sourceToDelete
+                    )
+                    .update();
+        }
+        if (scenario.equals("changed")) {
+            jdbc.sql("UPDATE documents SET content='월요일 배포 예정' WHERE id = :id")
+                    .param(
+                            "id",
+                            sourceToDelete
+                    )
+                    .update();
+        }
+
+        boolean hidden = scenario.equals("deleted") || scenario.equals("revoked-rank-4");
+        String expected = switch (scenario) {
+            case "deleted", "revoked-rank-4" -> SearchAnswerContentPolicy.SOURCE_UNAVAILABLE;
+            case "changed" -> content + "\n\n근거 문서가 변경되었어요.";
+            case "legacy" -> content + "\n\n근거 문서의 변경 여부를 확인할 수 없어요.";
+            default -> content;
+        };
+        SearchSseTiming timing = new SearchSseTiming(json);
+        HttpResponse<InputStream> reconnected = client.send(
+                HttpRequest.newBuilder(
+                        URI.create(
+                                "http://localhost:" + port + path(
+                                        conversationId,
+                                        answerId
+                                )
+                        )
+                )
+                        .timeout(Duration.ofSeconds(10))
+                        .header(
+                                "Accept",
+                                "text/event-stream"
+                        )
+                        .header(
+                                "Cookie",
+                                cookie
+                        )
+                        .header(
+                                "Last-Event-ID",
+                                "23"
+                        )
+                        .GET()
+                        .build(),
+                HttpResponse.BodyHandlers.ofInputStream()
+        );
+        assertThat(reconnected.statusCode()).isEqualTo(200);
+        try (BufferedReader stream = reader(reconnected.body())) {
+            List<String> events = java.util.Arrays.stream(
+                    timing.readToEnd(stream)
+                            .split("\n\n")
+            )
+                    .toList();
+            assertThat(events).hasSize(3);
+            assertThat(events.getFirst()).startsWith("event:snapshot");
+            assertThat(
+                    payload(events.getFirst()).path("content")
+                            .asString()
+            ).isEqualTo(expected);
+            assertThat(
+                    payload(events.get(1)).path("items")
+                            .size()
+            ).isEqualTo(hidden ? 0 : 3);
+            assertThat(events.getLast()).startsWith("event:completed");
+            assertThat(timing.firstSnapshot()).isPresent();
+            assertThat(timing.firstDelta()).isEmpty();
+            timing.log("1092-reconnect-" + scenario);
+        }
+        String conversations = "/api/v1/workspaces/" + workspaceId + "/search/conversations";
+        JsonNode item = readJson(conversations + "/" + conversationId + "/messages").path("items")
+                .get(1);
+        assertThat(
+                item.path("content")
+                        .asString()
+        ).isEqualTo(expected);
+        assertThat(
+                item.path("evidences")
+                        .size()
+        ).isEqualTo(hidden ? 0 : 3);
+        assertThat(
+                readJson(conversations).path("items")
+                        .get(0)
+                        .path("lastMessagePreview")
+                        .asString()
+        ).isEqualTo(hidden ? SearchAnswerContentPolicy.SOURCE_UNAVAILABLE : content);
+        assertThat(
+                jdbc.sql("SELECT content FROM search_messages WHERE id=:id")
+                        .param(
+                                "id",
+                                answerId
+                        )
+                        .query(String.class)
+                        .single()
+        ).isEqualTo(content);
+
+        SearchFixtures search = new SearchFixtures(jdbc);
+        search.saveMessage(
+                conversationId,
+                "USER",
+                3,
+                "왜?",
+                "RECEIVED"
+        );
+        Instant now = Instant.now();
+        SearchToolScope scope = new SearchToolScope(
+                workspaceId,
+                memberId,
+                conversationId,
+                messages.messageId(
+                        conversationId,
+                        3
+                ),
+                answerId,
+                UUID.randomUUID(),
+                now,
+                now.plusSeconds(60)
+        );
+        assertThat(
+                history.beforeQuestion(scope)
+                        .stream()
+                        .anyMatch(row -> content.equals(row.get("content")))
+        ).isEqualTo(!hidden);
+    }
+
+    private JsonNode readJson(String path) throws Exception {
+        HttpResponse<String> response = client.send(
+                HttpRequest.newBuilder(URI.create("http://localhost:" + port + path))
+                        .header(
+                                "Cookie",
+                                cookie
+                        )
+                        .GET()
+                        .build(),
+                HttpResponse.BodyHandlers.ofString()
+        );
+        assertThat(response.statusCode()).isEqualTo(200);
+        return json.readTree(response.body());
+    }
+
+    @ParameterizedTest
     @ValueSource(strings = {"unauthenticated", "owner", "membership", "workspace", "missing", "conversation",
             "question", "mismatch", "invalid"})
     @DisplayName("SSE Accept에서도 인증·권한·역할·소속 오류를 시작 전 JSON으로 반환한다")
@@ -353,7 +577,10 @@ class SearchAnswerEventsAcceptanceTest {
                                         document,
                                         "문서",
                                         "주제",
-                                        "본문"
+                                        "본문",
+                                        null,
+                                        null,
+                                        new SearchMessageFixtures(jdbc).sourceVersion(document)
                                 )
                         ),
                         0
@@ -528,7 +755,9 @@ class SearchAnswerEventsAcceptanceTest {
         CountDownLatch disconnected = new CountDownLatch(1);
         requestObserver.arm(disconnected);
         String content = "a".repeat(8_000_000);
-        jdbc.sql("UPDATE search_messages SET content=:content, status='COMPLETED' WHERE id=:id")
+        jdbc.sql(
+                "UPDATE search_messages SET content=:content, status='COMPLETED', answer_kind='UNVERIFIED_ANSWER' WHERE id=:id"
+        )
                 .param(
                         "content",
                         content

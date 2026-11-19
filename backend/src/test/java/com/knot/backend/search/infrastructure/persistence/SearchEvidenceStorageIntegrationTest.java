@@ -196,8 +196,8 @@ class SearchEvidenceStorageIntegrationTest {
     }
 
     @Test
-    @DisplayName("연결된 문서는 물리 삭제할 수 없다")
-    void delete_failure_referencedDocument() {
+    @DisplayName("문서 삭제는 근거의 당시 ID만 남긴다")
+    void delete_success_retainsHistoricalDocumentId() {
         // given
         messages.saveEvidence(
                 answerId,
@@ -205,14 +205,19 @@ class SearchEvidenceStorageIntegrationTest {
                 1
         );
         // when & then
-        assertThatExceptionOfType(DataIntegrityViolationException.class).isThrownBy(
-                () -> jdbc.sql("DELETE FROM documents WHERE id = :id")
+        assertThat(
+                jdbc.sql("DELETE FROM documents WHERE id = :id")
                         .param(
                                 "id",
                                 documentId
                         )
                         .update()
-        );
+        ).isEqualTo(1);
+        assertThat(
+                jdbc.sql("SELECT document_id FROM search_evidences WHERE live_document_id IS NULL")
+                        .query(Long.class)
+                        .list()
+        ).containsExactly(documentId);
     }
 
     @Test

@@ -29,7 +29,8 @@ class SearchAnswerSnapshotServiceTest {
     private final SearchAnswerSnapshotService service = new SearchAnswerSnapshotService(
             repository,
             memberships,
-            messages
+            messages,
+            new SearchHistoryReadTransaction()
     );
 
     @BeforeEach

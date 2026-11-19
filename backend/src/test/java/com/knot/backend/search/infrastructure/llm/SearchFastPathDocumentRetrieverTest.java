@@ -292,16 +292,8 @@ class SearchFastPathDocumentRetrieverTest {
                 parameters.getValue()
                         .size()
         ).isEqualTo(20);
-        assertThat(result.documents()).containsExactly(
-                new com.knot.backend.search.application.dto.result.SearchDocumentResult(
-                        41,
-                        "운영 로그 보관 기준",
-                        "운영",
-                        "문서 본문",
-                        document.recordingStartedAt(),
-                        document.createdAt()
-                )
-        );
+        assertThat(result.documents())
+                .containsExactly(com.knot.backend.search.application.dto.result.SearchDocumentResult.from(document));
         assertThat(result.excludedCount()).isZero();
     }
 

@@ -2,6 +2,7 @@ package com.knot.backend.search.infrastructure.llm;
 
 import com.knot.backend.search.application.dto.result.SearchDocumentResult;
 import com.knot.backend.search.domain.SearchToolException;
+import com.knot.backend.search.domain.model.SearchEvidenceVersion;
 import java.time.Instant;
 import java.time.format.DateTimeParseException;
 import java.util.LinkedHashMap;
@@ -69,14 +70,19 @@ public class SearchExploration {
                 revision,
                 offset
         );
+        String title = document.path("title")
+                .asString();
+        String topic = document.path("topic")
+                .asString();
+        if (title == null || topic == null) {
+            throw new SearchToolException("INVALID_MCP_RESPONSE");
+        }
         read.put(
                 id,
                 new SearchDocumentResult(
                         id,
-                        document.path("title")
-                                .asString(),
-                        document.path("topic")
-                                .asString(),
+                        title,
+                        topic,
                         previous + content,
                         date(
                                 document,
@@ -85,6 +91,11 @@ public class SearchExploration {
                         date(
                                 document,
                                 "createdAt"
+                        ),
+                        SearchEvidenceVersion.fromContentRevision(
+                                title,
+                                topic,
+                                revision
                         )
                 )
         );

@@ -19,12 +19,32 @@ public class SearchEvidence {
     @Column(nullable = false)
     private int rank;
 
+    @Column(name = "live_document_id", updatable = false)
+    private Long liveDocumentId;
+
+    @Column(name = "source_version", length = 43, updatable = false)
+    private String sourceVersion;
+
     protected SearchEvidence() {}
 
     public static SearchEvidence create(
             long messageId,
             long documentId,
             int rank
+    ) {
+        return create(
+                messageId,
+                documentId,
+                rank,
+                null
+        );
+    }
+
+    public static SearchEvidence create(
+            long messageId,
+            long documentId,
+            int rank,
+            String sourceVersion
     ) {
         if (rank < 1) {
             throw new SearchException(SearchErrorCode.INVALID_SEARCH_STATE);
@@ -35,6 +55,8 @@ public class SearchEvidence {
                 documentId
         );
         evidence.rank = rank;
+        evidence.liveDocumentId = documentId;
+        evidence.sourceVersion = sourceVersion;
         return evidence;
     }
 }

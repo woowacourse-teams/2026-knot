@@ -14,12 +14,14 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Supplier;
-import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.ObjectProvider;
@@ -312,9 +314,17 @@ public class SearchAnswerWorker {
             );
             throw exception;
         }
-        Set<Long> candidates = documents.stream()
-                .map(SearchDocumentResult::documentId)
-                .collect(Collectors.toSet());
+        Map<Long, String> sourceVersions = new HashMap<>();
+        Set<Long> candidates = new HashSet<>();
+        for (SearchDocumentResult document : documents) {
+            candidates.add(document.documentId());
+            if (document.sourceVersion() != null) {
+                sourceVersions.putIfAbsent(
+                        document.documentId(),
+                        document.sourceVersion()
+                );
+            }
+        }
         long persistenceStarted = System.nanoTime();
         try {
             executions.completeGenerated(
@@ -322,7 +332,8 @@ public class SearchAnswerWorker {
                     work.token(),
                     content.toString(),
                     usedIds,
-                    candidates
+                    candidates,
+                    sourceVersions
             );
         } finally {
             persistenceCount.incrementAndGet();

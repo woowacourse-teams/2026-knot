@@ -102,6 +102,20 @@ public class SearchFixtures {
                         Timestamp.from(TIME)
                 )
                 .update();
+        if ("ASSISTANT".equals(role) && "COMPLETED".equals(status)) {
+            jdbc.sql(
+                    "UPDATE search_messages SET answer_kind='UNVERIFIED_ANSWER' WHERE conversation_id=:id AND sequence=:sequence"
+            )
+                    .param(
+                            "id",
+                            conversationId
+                    )
+                    .param(
+                            "sequence",
+                            sequence
+                    )
+                    .update();
+        }
     }
 
     public void setVisible(
