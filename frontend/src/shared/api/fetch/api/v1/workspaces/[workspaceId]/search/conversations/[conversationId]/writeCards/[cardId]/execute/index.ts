@@ -11,6 +11,9 @@ export const WORKSPACE_SEARCH_WRITE_CARD_EXECUTE_API_PATH = (
 ) =>
   `/api/v1/workspaces/${workspaceId}/search/conversations/${conversationId}/write-cards/${cardId}/execute`;
 
+/** 실행하는 요청은 서버가 노션 응답과 대기를 기다리며 최악 약 56초 붙잡아요(BE #1147). 기본 10초면 끝나기 전에 끊겨요 */
+const EXECUTE_TIMEOUT_DURATION = 70_000;
+
 interface ExecuteSearchWriteCardApiParams {
   workspaceId: number;
   conversationId: number;
@@ -36,6 +39,7 @@ export const executeSearchWriteCardApi = async ({
       conversationId,
       cardId,
     ),
+    timeout: EXECUTE_TIMEOUT_DURATION,
   });
 
   return new PostSearchWriteCardExecuteResponseDto(response.data);
