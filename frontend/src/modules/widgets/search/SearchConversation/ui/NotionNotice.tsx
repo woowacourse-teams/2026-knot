@@ -40,7 +40,12 @@ interface NotionNoticeProps {
 export default function NotionNotice({ reason }: NotionNoticeProps) {
   const { workspaceId = "" } = useParams();
   const navigate = useNavigate();
-  const { text, action } = NOTICE[reason];
+  // 서버가 새 사유를 더해도 대화 화면이 깨지지 않게, 모르는 사유면 안내를 그리지 않아요
+  const notice: (typeof NOTICE)[typeof reason] | undefined = NOTICE[reason];
+
+  if (!notice) return null;
+
+  const { text, action } = notice;
 
   const handleActionClick = () => {
     navigate(getRouterPath({ routeKey: "APPS", params: { workspaceId } }));

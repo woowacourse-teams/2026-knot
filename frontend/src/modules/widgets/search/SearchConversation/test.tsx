@@ -677,6 +677,26 @@ describe("SearchConversation", () => {
     },
   );
 
+  it("모르는 노션 안내 사유가 오면 안내 없이 답변만 보여준다 (SEARCH-R39)", async () => {
+    const [question, answer, ...rest] = searchMessagesResponse.items;
+    mockServer.use(
+      http.get(MESSAGES_PATH, ({ params }) =>
+        HttpResponse.json({
+          ...searchMessagesResponse,
+          conversationId: Number(params.conversationId),
+          items: [question, { ...answer, notionNotice: "NEW_REASON" }, ...rest],
+        }),
+      ),
+    );
+    renderConversation();
+
+    await screen.findByText(questions[0].content);
+    const [firstTurn] = screen.getAllByRole("article");
+
+    expect(within(firstTurn).getByText(/작성자를 ‘탈퇴한 사용자’로 표시해요/)).toBeInTheDocument();
+    expect(within(firstTurn).queryByText(/회의 문서만으로 답했어요/)).not.toBeInTheDocument();
+  });
+
   it.each(["노션 연결", "다시 연결"])(
     "노션 안내의 [%s]을 누르면 연결된 앱 화면으로 간다 (SEARCH-R39, SEARCH-R34)",
     async (button) => {
