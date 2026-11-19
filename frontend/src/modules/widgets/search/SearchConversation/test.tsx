@@ -1,11 +1,14 @@
 import {
   GetSearchMessagesResponseDto,
+  SearchNotionEvidenceDto,
   SearchStreamAcceptedDto,
   SearchStreamDeltaDto,
   SearchStreamProgressDto,
 } from "@api/dto/search";
+import type { SearchMessage } from "@api/mock/types/search";
 import {
   searchMessagesResponse,
+  searchNotionEvidencesResponse,
 } from "@api/mock/responses/search";
 import { mockServer } from "@api/mock/server";
 import { ThemeProvider } from "@emotion/react";
@@ -54,6 +57,25 @@ const SEARCHING_TEXT = "찾는 중";
 const GENERATING_TEXT = "작성 중";
 const FAILED_TEXT = "지금은 답변을 정리하기 어려워요. 질문을 조금 더 구체적으로 이어서 해주시면 도와드릴게요.";
 const PARTIAL_ANSWER = "끊기기 전까지 받은 답";
+
+/** 이번 테스트에서만 첫 턴의 답변을 넘긴 값으로 덮어 조회되게 바꿔요 */
+const respondWithFirstAnswer = (patch: Partial<SearchMessage>) => {
+  const [question, answer, ...rest] = searchMessagesResponse.items;
+  mockServer.use(
+    http.get(MESSAGES_PATH, ({ params }) =>
+      HttpResponse.json({
+        ...searchMessagesResponse,
+        conversationId: Number(params.conversationId),
+        items: [question, { ...answer, ...patch }, ...rest],
+      }),
+    ),
+  );
+};
+
+/** 테스트 화면이 받는 노션 근거. mock 응답을 응답 DTO로 바꾼 값이에요 */
+const notionEvidences = searchNotionEvidencesResponse.map(
+  (notionEvidence) => new SearchNotionEvidenceDto(notionEvidence),
+);
 
 /** 이번 테스트에서만 첫 턴의 답변을 일부 글자만 받고 실패한 답변으로 조회되게 바꿔요 */
 const respondWithFailedFirstAnswer = () => {
@@ -559,5 +581,48 @@ describe("SearchConversation", () => {
     expect(within(lastTurn()).getByText(GENERATING_TEXT)).toBeInTheDocument();
     expect(within(lastTurn()).queryByText(SEARCHING_TEXT)).not.toBeInTheDocument();
     expect(screen.queryByText(/쓰는 중/)).not.toBeInTheDocument();
+  });
+
+  it("답에 쓴 노션 페이지는 '기록 N개에서 찾았어요' 옆에 페이지마다 노션 버튼으로 보여주고, 누르면 그 페이지를 새 탭으로 연다 (SEARCH-R37)", async () => {
+    const usedNotionEvidences = notionEvidences.slice(0, 3);
+    respondWithFirstAnswer({
+      notionEvidences: searchNotionEvidencesResponse.slice(0, 3),
+    });
+    renderConversation();
+
+    await screen.findByText(questions[0].content);
+    const [firstTurn] = screen.getAllByRole("article");
+    const links = within(firstTurn).getAllByRole("link");
+
+    expect(
+      within(firstTurn).getByRole("button", {
+        name: evidenceButtonName(answers[0].evidences.length),
+      }),
+    ).toBeInTheDocument();
+    expect(links.map((link) => link.textContent)).toEqual(
+      usedNotionEvidences.map(({ title }) => title),
+    );
+    links.forEach((link, index) => {
+      expect(link).toHaveAttribute("href", usedNotionEvidences[index].url);
+      expect(link).toHaveAttribute("target", "_blank");
+    });
+  });
+
+  it("회의 문서 근거 없이 노션 근거만 있는 답변은 노션 버튼만 보여준다 (SEARCH-R37)", async () => {
+    respondWithFirstAnswer({
+      evidences: [],
+      notionEvidences: searchNotionEvidencesResponse.slice(0, 1),
+    });
+    renderConversation();
+
+    await screen.findByText(questions[0].content);
+    const [firstTurn] = screen.getAllByRole("article");
+
+    expect(
+      within(firstTurn).getByRole("link", { name: notionEvidences[0].title }),
+    ).toBeInTheDocument();
+    expect(
+      within(firstTurn).queryByRole("button", { name: /에서 찾았어요$/ }),
+    ).not.toBeInTheDocument();
   });
 });
