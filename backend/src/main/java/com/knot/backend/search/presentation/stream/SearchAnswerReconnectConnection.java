@@ -172,6 +172,17 @@ final class SearchAnswerReconnectConnection implements Runnable {
         if (snapshot.status() == SearchMessageStatus.STREAMING) {
             return false;
         }
+        if (snapshot.documentSelection() != null) {
+            send(
+                    "document_selection",
+                    Map.of(
+                            "answerId",
+                            snapshot.answerId(),
+                            "selection",
+                            snapshot.documentSelection()
+                    )
+            );
+        }
         if (snapshot.status() == SearchMessageStatus.FAILED) {
             send(
                     "failed",

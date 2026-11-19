@@ -2,6 +2,7 @@ package com.knot.backend.search.application;
 
 import com.knot.backend.global.config.SearchAgentProperties;
 import com.knot.backend.global.logging.ServerErrorLogger;
+import com.knot.backend.search.application.dto.query.SearchDocumentListRequest;
 import com.knot.backend.search.application.dto.query.SearchQuestionContext;
 import com.knot.backend.search.application.dto.result.SearchAnswerWorkResult;
 import com.knot.backend.search.application.dto.result.SearchDocumentResult;
@@ -70,6 +71,14 @@ public class SearchAnswerWorker {
         AtomicLong persistenceCount = new AtomicLong();
         AtomicLong persistenceNanos = new AtomicLong();
         try {
+            Optional<SearchDocumentListRequest> list = SearchDocumentListRequest.parse(work.question());
+            if (list.isPresent()) {
+                executions.completeDocumentList(
+                        scope,
+                        list.orElseThrow()
+                );
+                return;
+            }
             generate(
                     work,
                     scope,

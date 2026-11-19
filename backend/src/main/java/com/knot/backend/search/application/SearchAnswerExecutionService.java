@@ -3,6 +3,7 @@ package com.knot.backend.search.application;
 import com.knot.backend.document.domain.model.Document;
 import com.knot.backend.document.domain.model.DocumentStatus;
 import com.knot.backend.document.domain.repository.DocumentRepository;
+import com.knot.backend.search.application.dto.query.SearchDocumentListRequest;
 import com.knot.backend.global.config.SearchWorkerProperties;
 import com.knot.backend.search.application.dto.result.SearchAnswerWorkResult;
 import com.knot.backend.search.application.dto.result.SearchAnswerStopResult;
@@ -20,8 +21,6 @@ import com.knot.backend.search.domain.model.SearchMessageStatus;
 import com.knot.backend.search.domain.model.SearchMessageRole;
 import com.knot.backend.search.domain.model.SearchRequestReceipt;
 import com.knot.backend.search.domain.model.SearchExecutionState;
-import com.knot.backend.search.domain.SearchException;
-import com.knot.backend.search.domain.SearchErrorCode;
 import com.knot.backend.search.domain.repository.SearchRepository;
 import com.knot.backend.workspace.domain.repository.WorkspaceRepository;
 import com.knot.backend.workspace.domain.repository.WorkspaceMemberRepository;
@@ -43,6 +42,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class SearchAnswerExecutionService {
 
     private final SearchRepository repository;
+    private final SearchDocumentListService documentLists;
     private final WorkspaceRepository workspaces;
     private final WorkspaceMemberRepository memberships;
     private final DocumentRepository documents;
@@ -279,6 +279,31 @@ public class SearchAnswerExecutionService {
                 context
         );
         return true;
+    }
+
+    public boolean completeDocumentList(
+            SearchToolScope scope,
+            SearchDocumentListRequest request
+    ) {
+        Optional<SearchAnswerExecution> current = currentExecution(
+                scope.answerId(),
+                scope.token()
+        );
+        if (current.isEmpty()) {
+            return false;
+        }
+        SearchAnswerExecution execution = current.orElseThrow();
+        answer(execution).appendContent(
+                documentLists.prepareAnswer(
+                        scope,
+                        request
+                )
+        );
+        return completeCurrent(
+                execution,
+                List.of(),
+                Set.of()
+        );
     }
 
     public boolean completeGenerated(

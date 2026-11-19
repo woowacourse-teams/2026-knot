@@ -14,7 +14,8 @@ public record SearchMessageListItemResult(
         SearchMessageStatus status,
         boolean retryable,
         Instant createdAt,
-        List<SearchEvidenceItemResult> evidences
+        List<SearchEvidenceItemResult> evidences,
+        SearchDocumentSelection documentSelection
 ) {
 
     public SearchMessageListItemResult {
@@ -25,15 +26,34 @@ public record SearchMessageListItemResult(
             SearchMessage message,
             List<SearchEvidenceItemResult> evidences
     ) {
+        return from(
+                message,
+                evidences,
+                null
+        );
+    }
+
+    public static SearchMessageListItemResult from(
+            SearchMessage message,
+            List<SearchEvidenceItemResult> evidences,
+            SearchDocumentListResult documentList
+    ) {
+        String content = message.getContent();
+        SearchDocumentSelection selection = null;
+        if (documentList != null) {
+            content = documentList.content();
+            selection = documentList.selectedDocument();
+        }
         return new SearchMessageListItemResult(
                 message.getId(),
                 message.getRole(),
                 message.getSequence(),
-                message.getContent(),
+                content,
                 message.getStatus(),
                 message.isRetryable(),
                 message.getCreatedAt(),
-                evidences
+                evidences,
+                selection
         );
     }
 }

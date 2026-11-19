@@ -1,6 +1,7 @@
 package com.knot.backend.search.infrastructure.persistence;
 
 import com.knot.backend.search.application.SearchMessageListQuery;
+import com.knot.backend.search.application.dto.result.SearchDocumentListResult;
 import com.knot.backend.search.application.dto.result.SearchEvidenceItemResult;
 import com.knot.backend.search.domain.model.SearchConversation;
 import com.knot.backend.search.domain.model.SearchMessage;
@@ -19,6 +20,22 @@ public class SearchMessageListQueryAdapter implements SearchMessageListQuery {
 
     private final SearchMessageListJpaRepository messages;
     private final SearchEvidenceReadJpaRepository evidences;
+    private final SearchDocumentListStore documentLists;
+
+    @Override
+    public Map<Long, SearchDocumentListResult> findDocumentLists(
+            long workspaceId,
+            long memberId,
+            long conversationId,
+            List<Long> answerIds
+    ) {
+        return documentLists.findAnswers(
+                workspaceId,
+                memberId,
+                conversationId,
+                answerIds
+        );
+    }
 
     @Override
     public Optional<SearchConversation> findConversation(long conversationId) {

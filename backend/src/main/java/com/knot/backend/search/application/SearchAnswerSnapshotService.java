@@ -1,11 +1,14 @@
 package com.knot.backend.search.application;
 
 import com.knot.backend.search.application.dto.result.SearchAnswerSnapshotResult;
+import com.knot.backend.search.application.dto.result.SearchDocumentListResult;
+import com.knot.backend.search.application.dto.result.SearchDocumentSelection;
 import com.knot.backend.search.application.dto.result.SearchEvidenceItemResult;
 import com.knot.backend.search.domain.model.SearchAnswerExecution;
 import com.knot.backend.search.domain.model.SearchConversation;
 import com.knot.backend.search.domain.model.SearchMessage;
 import com.knot.backend.search.domain.model.SearchMessageRole;
+import com.knot.backend.search.domain.model.SearchMessageStatus;
 import com.knot.backend.search.domain.repository.SearchRepository;
 import com.knot.backend.search.domain.SearchErrorCode;
 import com.knot.backend.search.domain.SearchException;
@@ -106,9 +109,25 @@ public class SearchAnswerSnapshotService {
                         answerId,
                         List.of()
                 );
+        SearchDocumentListResult list = null;
+        if (answer.getStatus() == SearchMessageStatus.COMPLETED) {
+            list = messages.findDocumentLists(
+                    workspaceId,
+                    memberId,
+                    conversationId,
+                    List.of(answerId)
+            )
+                    .get(answerId);
+        }
+        String content = answer.getContent();
+        SearchDocumentSelection selection = null;
+        if (list != null) {
+            content = list.content();
+            selection = list.selectedDocument();
+        }
         return new SearchAnswerSnapshotResult(
                 answerId,
-                answer.getContent(),
+                content,
                 answer.getStatus(),
                 answer.getFailureCode(),
                 execution.getExecutionToken(),
@@ -118,7 +137,8 @@ public class SearchAnswerSnapshotService {
                 repository.findLatestReceipt(answerId)
                         .map(receipt -> receipt.getId())
                         .orElse(0L),
-                conversation.getUpdatedAt()
+                conversation.getUpdatedAt(),
+                selection
         );
     }
 
