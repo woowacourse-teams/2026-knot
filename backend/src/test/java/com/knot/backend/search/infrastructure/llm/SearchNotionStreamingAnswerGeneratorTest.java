@@ -1,5 +1,8 @@
 package com.knot.backend.search.infrastructure.llm;
 
+import java.util.Optional;
+import com.knot.backend.search.domain.SearchToolException;
+import static org.mockito.Mockito.doThrow;
 import java.util.stream.IntStream;
 import com.knot.backend.global.config.SearchNotionProperties;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -363,6 +366,62 @@ class SearchNotionStreamingAnswerGeneratorTest {
                         .get("content")
         );
         assertThat(user.path("notionPages")).hasSize(notion.getSearchPageSize());
+    }
+
+    @Test
+    @DisplayName("주 모델이 일시 장애면 기존 답변처럼 검증된 대체 모델로 한 번 더 답한다")
+    void generate_success_openAiFallbackAfterTemporaryFailure() {
+        // given
+        SearchLlmClient fallback = mock(SearchLlmClient.class);
+        SearchNotionStreamingAnswerGenerator withFallback = new SearchNotionStreamingAnswerGenerator(
+                llm,
+                history,
+                access,
+                properties,
+                mapper,
+                Optional.of(fallback)
+        );
+        doThrow(new SearchToolException("SEARCH_UPSTREAM_UNAVAILABLE")).when(llm)
+                .stream(
+                        eq(scope),
+                        any(),
+                        any(Function.class),
+                        any()
+                );
+        doAnswer(call -> {
+            Consumer<String> consumer = call.getArgument(3);
+            consumer.accept(
+                    "{\"status\":\"ANSWERED\",\"decisionState\":\"NOT_APPLICABLE\",\"answer\":\"대체 모델 답변\","
+                            + "\"evidenceIds\":[\"E7\"],\"notionEvidenceIds\":[\"N1\"],\"clarificationQuestion\":null}"
+            );
+            return null;
+        }).when(fallback)
+                .stream(
+                        eq(scope),
+                        any(),
+                        any(Function.class),
+                        any()
+                );
+        List<String> deltas = new ArrayList<>();
+
+        // when
+        SearchNotionAnswer answer = withFallback.generate(
+                scope,
+                "질문",
+                retrieval(),
+                pages,
+                false,
+                deltas::add
+        );
+
+        // then
+        assertThat(
+                String.join(
+                        "",
+                        deltas
+                )
+        ).isEqualTo("대체 모델 답변");
+        assertThat(answer.notionEvidences()).containsExactly(pages.getFirst());
     }
 
     private void respond(String json) {
