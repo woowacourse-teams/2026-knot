@@ -60,7 +60,7 @@ export default function NotionNotice({ reason }: NotionNoticeProps) {
 
 const Container = styled.div`
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 0.75rem; /* 12px */
   padding: 1rem; /* 16px */
   border-radius: 0.75rem; /* 12px */
