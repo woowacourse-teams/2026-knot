@@ -1,5 +1,6 @@
 package com.knot.backend.search.application;
 
+import com.knot.backend.search.application.notion.SearchNotionAnswerFlow;
 import com.knot.backend.search.application.dto.result.SearchUsePlan;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -53,7 +54,8 @@ class SearchAnswerWorkerConversationTest {
                 Clock.systemUTC(),
                 new SearchAgentProperties(),
                 beans.getBeanProvider(SearchIntentClassifier.class),
-                mock(SearchFollowupContextResolver.class)
+                mock(SearchFollowupContextResolver.class),
+                mock(SearchNotionAnswerFlow.class)
         );
         when(executions.claim(5)).thenReturn(
                 Optional.of(

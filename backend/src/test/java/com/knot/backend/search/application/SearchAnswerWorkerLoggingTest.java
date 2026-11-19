@@ -1,5 +1,6 @@
 package com.knot.backend.search.application;
 
+import com.knot.backend.search.application.notion.SearchNotionAnswerFlow;
 import com.knot.backend.search.application.dto.result.SearchUsePlan;
 import com.knot.backend.search.domain.model.SearchIntent;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -289,7 +290,8 @@ class SearchAnswerWorkerLoggingTest {
                 clock,
                 new SearchAgentProperties(),
                 classifiers,
-                mock(SearchFollowupContextResolver.class)
+                mock(SearchFollowupContextResolver.class),
+                mock(SearchNotionAnswerFlow.class)
         );
     }
 }

@@ -6,6 +6,9 @@ import com.knot.backend.search.application.dto.query.SearchQuestionContext;
 import com.knot.backend.search.application.dto.result.SearchDocumentResult;
 import com.knot.backend.search.application.dto.result.SearchRetrievalResult;
 import com.knot.backend.search.application.dto.result.SearchUsePlan;
+import com.knot.backend.search.application.notion.SearchNotionAnswerFlow;
+import com.knot.backend.search.application.notion.SearchNotionMaterial;
+import com.knot.backend.search.application.notion.SearchNotionReading;
 import com.knot.backend.search.domain.model.SearchIntent;
 import java.time.Clock;
 import java.time.Duration;
@@ -34,6 +37,7 @@ public class SearchAnswerWorker {
     private final SearchAgentProperties agentProperties;
     private final ObjectProvider<SearchIntentClassifier> classifiers;
     private final SearchFollowupContextResolver followups;
+    private final SearchNotionAnswerFlow notionAnswers;
 
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public void execute(long answerId) {
@@ -209,6 +213,13 @@ public class SearchAnswerWorker {
                 scope = scope.forMeeting(context.recordingSessionId());
             }
         }
+        SearchNotionReading notion = SearchNotionReading.none();
+        if (plan.usesNotion()) {
+            notion = notionAnswers.start(
+                    work,
+                    plan
+            );
+        }
         long retrievalStarted = System.nanoTime();
         SearchRetrievalResult retrieval;
         try {
@@ -245,12 +256,24 @@ public class SearchAnswerWorker {
             }
             retrieval = SearchRetrievalResult.unavailable();
         }
+        // 노션 읽기가 모두 끝난 뒤에 작성 중(GENERATING)으로 바꾼다(SEARCH-R38).
+        SearchNotionMaterial material = notion.await();
         if (!executions.recordRetrieval(
                 work.answerId(),
                 work.token(),
                 retrieval.excludedCount(),
                 retrieval.documents()
         )) {
+            return;
+        }
+        if (material.planned()) {
+            notionAnswers.answer(
+                    work,
+                    scope,
+                    retrieval,
+                    material,
+                    retrievalGuidance(retrieval)
+            );
             return;
         }
         List<SearchDocumentResult> documents = retrieval.documents();
