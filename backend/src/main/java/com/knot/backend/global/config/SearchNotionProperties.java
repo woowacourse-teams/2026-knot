@@ -31,4 +31,15 @@ public class SearchNotionProperties {
     private int pageContentCharacterLimit = 2000;
     private Duration createTimeout = Duration.ofSeconds(10);
     private Duration rateLimitMaxWait = Duration.ofSeconds(10);
+
+    /**
+     * 이보다 오래 실행 중인 쓰기 확인 카드는 서버가 실행 중에 멈춘 것으로 본다. 살아 있는 실행이 가장 오래 걸리는 시간(DB 구조 읽기와
+     * 만들기를 각각 한도 안에서 기다렸다가 한 번 더 부름)보다 길다. 실행 API와 주기 정리가 같은 값을 쓴다.
+     */
+    public Duration runningCardAbandonedAfter() {
+        return readTimeout.plus(createTimeout)
+                .plus(rateLimitMaxWait)
+                .multipliedBy(2)
+                .plus(Duration.ofSeconds(5));
+    }
 }

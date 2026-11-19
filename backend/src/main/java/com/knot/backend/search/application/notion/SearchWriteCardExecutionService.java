@@ -49,7 +49,7 @@ public class SearchWriteCardExecutionService {
                 memberId,
                 conversationId,
                 cardId,
-                abandonedAfter()
+                properties.runningCardAbandonedAfter()
         );
         return switch (start) {
             case SearchWriteCardStart.Ready ready -> transitions.finish(
@@ -73,18 +73,6 @@ public class SearchWriteCardExecutionService {
     private Duration runningWait() {
         return properties.getCreateTimeout()
                 .plus(properties.getRateLimitMaxWait())
-                .plus(WAIT_MARGIN);
-    }
-
-    /**
-     * 살아 있는 실행이 가장 오래 걸리는 시간(DB 구조 읽기와 만들기를 각각 한도 안에서 기다렸다가 한 번 더 부름)보다 길게 잡아, 그보다
-     * 오래 실행 중인 카드만 서버가 실행 중에 멈춘 것으로 본다.
-     */
-    private Duration abandonedAfter() {
-        return properties.getReadTimeout()
-                .plus(properties.getCreateTimeout())
-                .plus(properties.getRateLimitMaxWait())
-                .multipliedBy(2)
                 .plus(WAIT_MARGIN);
     }
 
