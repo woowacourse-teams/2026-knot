@@ -10,4 +10,6 @@ interface SearchCreatedNotionPageJpaRepository extends JpaRepository<SearchCreat
             long conversationId,
             long sourceDocumentId
     );
+
+    List<SearchCreatedNotionPage> findByConversationIdOrderByCreatedAtDescIdDesc(long conversationId);
 }

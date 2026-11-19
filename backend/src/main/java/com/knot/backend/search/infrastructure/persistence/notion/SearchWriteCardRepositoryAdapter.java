@@ -65,6 +65,11 @@ public class SearchWriteCardRepositoryAdapter implements SearchWriteCardReposito
     }
 
     @Override
+    public List<SearchCreatedNotionPage> findCreatedPages(long conversationId) {
+        return createdPages.findByConversationIdOrderByCreatedAtDescIdDesc(conversationId);
+    }
+
+    @Override
     public void flush() {
         cards.flush();
     }

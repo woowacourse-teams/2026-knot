@@ -6,6 +6,7 @@ import jakarta.persistence.LockModeType;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
@@ -16,6 +17,7 @@ interface SearchWriteCardJpaRepository extends JpaRepository<SearchWriteCard, Lo
     @Query("select card from SearchWriteCard card where card.id = :cardId")
     Optional<SearchWriteCard> findByIdForUpdate(long cardId);
 
+    @EntityGraph(attributePaths = "databaseFields")
     List<SearchWriteCard> findByAnswerMessageIdIn(Collection<Long> answerMessageIds);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)

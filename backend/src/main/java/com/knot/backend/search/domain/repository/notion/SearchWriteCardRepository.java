@@ -28,5 +28,10 @@ public interface SearchWriteCardRepository {
             long sourceDocumentId
     );
 
+    /**
+     * 대화의 만든 페이지 이력을 최근에 만든 것부터 돌려준다. 한 페이지의 카드 이력을 한 번에 읽을 때 쓴다.
+     */
+    List<SearchCreatedNotionPage> findCreatedPages(long conversationId);
+
     void flush();
 }
