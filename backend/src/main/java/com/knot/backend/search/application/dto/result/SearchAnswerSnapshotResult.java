@@ -1,5 +1,7 @@
 package com.knot.backend.search.application.dto.result;
 
+import com.knot.backend.search.application.SearchAnswerContentPolicy;
+import com.knot.backend.search.application.SearchAnswerContentPolicy.EvidenceStatus;
 import com.knot.backend.search.domain.model.SearchMessageStatus;
 import com.knot.backend.search.domain.model.SearchProgressStage;
 import java.time.Instant;
@@ -17,8 +19,36 @@ public record SearchAnswerSnapshotResult(
         List<SearchEvidenceItemResult> evidences,
         long receiptId,
         Instant contentUpdatedAt,
-        SearchDocumentSelection documentSelection
+        SearchDocumentSelection documentSelection,
+        boolean sourceUnavailable
 ) {
+    public SearchAnswerSnapshotResult withEvidenceStatus(EvidenceStatus evidenceStatus) {
+        if (evidenceStatus == EvidenceStatus.AVAILABLE) {
+            return this;
+        }
+        boolean hidden = evidenceStatus == EvidenceStatus.SOURCE_UNAVAILABLE;
+        return new SearchAnswerSnapshotResult(
+                answerId,
+                SearchAnswerContentPolicy.content(
+                        content,
+                        evidenceStatus
+                ),
+                status,
+                failureCode,
+                executionToken,
+                stage,
+                excludedCount,
+                SearchAnswerContentPolicy.evidences(
+                        evidences,
+                        evidenceStatus
+                ),
+                receiptId,
+                contentUpdatedAt,
+                hidden ? null : documentSelection,
+                hidden
+        );
+    }
+
     public SearchAnswerSnapshotResult(
             long answerId,
             String content,
@@ -42,7 +72,8 @@ public record SearchAnswerSnapshotResult(
                 evidences,
                 receiptId,
                 contentUpdatedAt,
-                null
+                null,
+                false
         );
     }
 

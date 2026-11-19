@@ -165,7 +165,7 @@ class SearchAnswerSnapshotIntegrationTest {
                     accepted.conversationId(),
                     work.answerId()
             );
-            assertThat(after.content()).isEqualTo("처음 이후");
+            assertThat(after.content()).isEqualTo("처음 이후\n\n근거 문서의 변경 여부를 확인할 수 없어요.");
             assertThat(
                     after.status()
                             .name()

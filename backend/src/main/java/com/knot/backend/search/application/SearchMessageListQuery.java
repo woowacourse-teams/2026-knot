@@ -1,6 +1,7 @@
 package com.knot.backend.search.application;
 
 import com.knot.backend.search.application.dto.result.SearchEvidenceItemResult;
+import com.knot.backend.search.application.SearchAnswerContentPolicy.EvidenceStatus;
 import com.knot.backend.search.application.dto.result.SearchDocumentListResult;
 import com.knot.backend.search.domain.model.SearchConversation;
 import com.knot.backend.search.domain.model.SearchMessage;
@@ -25,6 +26,14 @@ public interface SearchMessageListQuery {
             long conversationId,
             Integer beforeSequence,
             int size
+    );
+
+    Map<Long, EvidenceStatus> findEvidenceStatuses(
+            long workspaceId,
+            long memberId,
+            long conversationId,
+            List<Long> answerIds,
+            boolean compareVersions
     );
 
     Map<Long, List<SearchEvidenceItemResult>> findEvidences(

@@ -46,7 +46,8 @@ class SearchMessageListServiceTest {
     void setUp() {
         service = new SearchMessageListService(
                 memberships,
-                query
+                query,
+                new SearchHistoryReadTransaction()
         );
     }
 

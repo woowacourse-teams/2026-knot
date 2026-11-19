@@ -15,7 +15,8 @@ interface SearchEvidenceReadJpaRepository extends Repository<SearchEvidence, Sea
             from SearchEvidence e
             join SearchMessage m on m.id = e.id.messageId
             join SearchConversation c on c.id = m.conversationId
-            join Document d on d.id = e.id.documentId and d.workspaceId = c.workspaceId
+            join Document d on d.id = e.liveDocumentId and d.workspaceId = c.workspaceId
+                and d.status in ('DRAFT', 'ARCHIVED')
             where c.workspaceId = :workspaceId and c.memberId = :memberId and c.id = :conversationId
                 and m.role = 'ASSISTANT' and m.id in :answerIds and e.rank <= 3
             order by m.id, e.rank
