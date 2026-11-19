@@ -11,13 +11,13 @@ import com.knot.backend.search.application.notion.SearchNotionAnswer;
 import com.knot.backend.search.application.notion.SearchNotionAnswerGenerator;
 import com.knot.backend.search.application.notion.SearchNotionPage;
 import com.knot.backend.search.application.notion.SearchNotionWriteSkip;
+import com.knot.backend.search.domain.SearchAttemptFailure;
 import com.knot.backend.search.domain.SearchToolException;
 import com.knot.backend.search.infrastructure.persistence.SearchHistoryQuery;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
@@ -31,20 +31,30 @@ import tools.jackson.databind.ObjectMapper;
 @Slf4j
 @RequiredArgsConstructor
 public class SearchNotionStreamingAnswerGenerator implements SearchNotionAnswerGenerator {
-    private static final Set<String> RETRYABLE = Set.of(
-            "SEARCH_UPSTREAM_UNAVAILABLE",
-            "SEARCH_TRANSPORT_FAILED",
-            "INCOMPLETE_MODEL_STREAM",
-            "INVALID_MODEL_ANSWER",
-            "INVALID_MODEL_RESPONSE",
-            "MODEL_GENERATION_FAILED"
-    );
 
     private final SearchLlmClient llm;
     private final SearchHistoryQuery history;
     private final SearchToolAccess access;
     private final SearchAgentProperties properties;
     private final ObjectMapper mapper;
+    private final Optional<SearchLlmClient> openAiFallback;
+
+    public SearchNotionStreamingAnswerGenerator(
+            SearchLlmClient llm,
+            SearchHistoryQuery history,
+            SearchToolAccess access,
+            SearchAgentProperties properties,
+            ObjectMapper mapper
+    ) {
+        this(
+                llm,
+                history,
+                access,
+                properties,
+                mapper,
+                Optional.empty()
+        );
+    }
 
     @Override
     public SearchNotionAnswer generate(
@@ -114,71 +124,140 @@ public class SearchNotionStreamingAnswerGenerator implements SearchNotionAnswerG
                         .size(),
                 draftRequested
         );
-        for (int attempt = 0; attempt < 2; attempt++) {
-            StringBuilder validatedText = new StringBuilder();
-            SearchAnswerJsonStream answer = new SearchAnswerJsonStream(
-                    mapper,
-                    validatedText::append
+        ValidatedAnswer answer;
+        try {
+            answer = generateWithFallback(
+                    scope,
+                    messages,
+                    budget.documents(),
+                    offered.size(),
+                    draftRequested
             );
-            SearchAnswerResponse response;
-            try {
-                llm.stream(
-                        scope,
-                        messages,
-                        includeArrayLimit -> SearchAnswerSchema.responseFormat(
-                                includeArrayLimit,
-                                !offered.isEmpty(),
-                                draftRequested
-                        ),
-                        text -> {
-                            access.validate(scope);
-                            answer.accept(text);
-                        }
-                );
-                access.validate(scope);
-                response = answer.complete(
-                        budget.documents(),
-                        offered.size(),
-                        draftRequested
-                );
-            } catch (RuntimeException exception) {
-                if (ServerErrorLogger.isControlFlow(exception)) {
-                    throw exception;
-                }
-                ServerErrorLogger.recordTaskFailure(
-                        log,
-                        "Search notion answer phase=validation attempt=" + (attempt + 1),
-                        exception
-                );
-                if (attempt == 0 && retryable(exception)) {
-                    continue;
-                }
-                access.validate(scope);
-                SearchNotionAnswer related = relatedDocuments(
-                        budget.documents(),
-                        onDelta
-                );
-                SearchAnswerCoverage.publish(
-                        retrieval,
-                        List.of(),
-                        budget.documentsLimited(),
-                        onDelta
-                );
-                return related;
+        } catch (RuntimeException exception) {
+            if (ServerErrorLogger.isControlFlow(exception) || SearchAttemptFailure.temporary(exception)
+                    || SearchAttemptFailure.terminalNetwork(exception)) {
+                throw exception;
             }
-            onDelta.accept(validatedText.toString());
+            ServerErrorLogger.recordTaskFailure(
+                    log,
+                    "Search notion answer phase=validation",
+                    exception
+            );
+            access.validate(scope);
+            SearchNotionAnswer related = relatedDocuments(
+                    budget.documents(),
+                    onDelta
+            );
             SearchAnswerCoverage.publish(
                     retrieval,
-                    response.usedDocumentIds(),
+                    List.of(),
                     budget.documentsLimited(),
                     onDelta
             );
-            return result(
-                    response,
-                    offered
-            );
+            return related;
         }
-        throw new IllegalStateException("Unreachable answer attempt");
+        onDelta.accept(answer.text());
+        SearchAnswerCoverage.publish(
+                retrieval,
+                answer.response()
+                        .usedDocumentIds(),
+                budget.documentsLimited(),
+                onDelta
+        );
+        return result(
+                answer.response(),
+                offered
+        );
+    }
+
+    /**
+     * 기존 답변 생성기와 같게 주 모델이 일시 장애면 검증된 대체 모델을 한 번 부른다. 다시 부르기는 워커가 한 번만 한다.
+     */
+    private ValidatedAnswer generateWithFallback(
+            SearchToolScope scope,
+            List<Map<String, Object>> messages,
+            List<SearchDocumentResult> documents,
+            int notionPages,
+            boolean draftRequested
+    ) {
+        try {
+            return validateAttempt(
+                    llm,
+                    scope,
+                    messages,
+                    documents,
+                    notionPages,
+                    draftRequested
+            );
+        } catch (RuntimeException primary) {
+            if (openAiFallback.isEmpty() || !SearchAttemptFailure.temporary(primary)) {
+                throw primary;
+            }
+            access.validate(scope);
+            log.info(
+                    "Search notion fallback provider=openai answerId={} failureCode={}",
+                    scope.answerId(),
+                    ServerErrorLogger.safeFailureCode(primary)
+            );
+            try {
+                return validateAttempt(
+                        openAiFallback.get(),
+                        scope,
+                        messages,
+                        documents,
+                        notionPages,
+                        draftRequested
+                );
+            } catch (RuntimeException fallback) {
+                if (ServerErrorLogger.isControlFlow(fallback)) {
+                    throw fallback;
+                }
+                throw SearchAttemptFailure.exhaustedFallback(fallback);
+            }
+        }
+    }
+
+    private ValidatedAnswer validateAttempt(
+            SearchLlmClient client,
+            SearchToolScope scope,
+            List<Map<String, Object>> messages,
+            List<SearchDocumentResult> documents,
+            int notionPages,
+            boolean draftRequested
+    ) {
+        StringBuilder text = new StringBuilder();
+        SearchAnswerJsonStream answer = new SearchAnswerJsonStream(
+                mapper,
+                text::append
+        );
+        client.stream(
+                scope,
+                messages,
+                includeArrayLimit -> SearchAnswerSchema.responseFormat(
+                        includeArrayLimit,
+                        notionPages > 0,
+                        draftRequested
+                ),
+                content -> {
+                    access.validate(scope);
+                    answer.accept(content);
+                }
+        );
+        access.validate(scope);
+        return new ValidatedAnswer(
+                text.toString(),
+                answer.complete(
+                        documents,
+                        notionPages,
+                        draftRequested
+                )
+        );
+    }
+
+    private record ValidatedAnswer(
+            String text,
+            SearchAnswerResponse response
+    ) {
     }
 
     /**
@@ -247,12 +326,5 @@ public class SearchNotionStreamingAnswerGenerator implements SearchNotionAnswerG
                         .map(SearchDocumentResult::documentId)
                         .toList()
         );
-    }
-
-    private boolean retryable(RuntimeException exception) {
-        if (!(exception instanceof SearchToolException tool)) {
-            return false;
-        }
-        return RETRYABLE.contains(tool.getCode());
     }
 }

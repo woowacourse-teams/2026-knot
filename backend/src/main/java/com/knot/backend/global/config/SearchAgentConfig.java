@@ -245,14 +245,24 @@ public class SearchAgentConfig {
             SearchHistoryQuery history,
             SearchToolAccess access,
             SearchAgentProperties properties,
-            ObjectMapper mapper
+            ObjectMapper mapper,
+            SearchAgentHttp http,
+            @Value("${knot.search.openai-fallback.enabled:false}") boolean fallbackEnabled,
+            @Value("${knot.search.openai-fallback.api-key:}") String fallbackKey,
+            @Value("${knot.search.openai-fallback.model}") String fallbackModel
     ) {
         return new SearchNotionStreamingAnswerGenerator(
                 llm,
                 history,
                 access,
                 properties,
-                mapper
+                mapper,
+                openAiFallback(
+                        http,
+                        fallbackEnabled,
+                        fallbackKey,
+                        fallbackModel
+                )
         );
     }
 }

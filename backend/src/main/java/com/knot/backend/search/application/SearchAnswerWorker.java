@@ -289,17 +289,21 @@ public class SearchAnswerWorker {
         )) {
             return;
         }
+        SearchRetrievalResult resolvedRetrieval = retrieval;
         if (material.planned()) {
-            notionAnswers.answer(
-                    work,
-                    currentScope,
-                    retrieval,
-                    material,
-                    retrievalGuidance(retrieval)
-            );
+            // 노션 자료가 있는 답변도 기존 답변과 같은 한 번 다시 부르기를 쓴다.
+            retry.run(() -> {
+                notionAnswers.answer(
+                        work,
+                        currentScope,
+                        resolvedRetrieval,
+                        material,
+                        retrievalGuidance(resolvedRetrieval)
+                );
+                return null;
+            });
             return;
         }
-        SearchRetrievalResult resolvedRetrieval = retrieval;
         List<SearchDocumentResult> documents = resolvedRetrieval.documents();
         SearchAnswerGenerator generator = generators.getObject();
         List<Long> usedIds;
