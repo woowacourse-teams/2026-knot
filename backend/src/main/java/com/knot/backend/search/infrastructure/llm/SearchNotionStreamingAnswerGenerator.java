@@ -84,6 +84,12 @@ public class SearchNotionStreamingAnswerGenerator implements SearchNotionAnswerG
             }
             access.validate(scope);
             onDelta.accept(SearchAnswerGuidance.DOCUMENT_BUDGET_EXHAUSTED);
+            SearchAnswerCoverage.publish(
+                    retrieval.items(),
+                    List.of(),
+                    false,
+                    onDelta
+            );
             return SearchNotionAnswer.documents(List.of());
         }
         List<Map<String, Object>> messages = SearchNotionAnswerPrompt.messages(
@@ -148,12 +154,25 @@ public class SearchNotionStreamingAnswerGenerator implements SearchNotionAnswerG
                     continue;
                 }
                 access.validate(scope);
-                return relatedDocuments(
+                SearchNotionAnswer related = relatedDocuments(
                         budget.documents(),
                         onDelta
                 );
+                SearchAnswerCoverage.publish(
+                        retrieval.items(),
+                        List.of(),
+                        budget.documentsLimited(),
+                        onDelta
+                );
+                return related;
             }
             onDelta.accept(validatedText.toString());
+            SearchAnswerCoverage.publish(
+                    retrieval.items(),
+                    response.usedDocumentIds(),
+                    budget.documentsLimited(),
+                    onDelta
+            );
             return result(
                     response,
                     offered
