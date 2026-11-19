@@ -9,6 +9,7 @@ interface SearchMessagesKeyParams {
  *
  * - `conversations` 워크스페이스의 내 탐색 대화 목록
  * - `messages` 한 탐색 대화의 메시지 목록
+ * - `notionConnection` 워크스페이스의 노션 연결
  */
 export const searchKeys = {
   all: ["search"] as const,
@@ -18,4 +19,7 @@ export const searchKeys = {
 
   messages: ({ workspaceId, conversationId }: SearchMessagesKeyParams) =>
     [...searchKeys.all, "messages", workspaceId, conversationId] as const,
+
+  notionConnection: (workspaceId: number) =>
+    [...searchKeys.all, "notionConnection", workspaceId] as const,
 };
