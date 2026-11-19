@@ -84,6 +84,17 @@ public class SearchWriteCardTransitionService {
         );
     }
 
+    /**
+     * abandonedAfter보다 오래 실행 중인 카드를 무응답 실패로 끝낸다. 실행 API의 회수 규칙과 같은 결과다.
+     */
+    public int failAbandoned(Duration abandonedAfter) {
+        Instant now = clock.instant();
+        return cards.failAbandonedRunning(
+                now.minus(abandonedAfter),
+                now
+        );
+    }
+
     public SearchWriteCardResult finish(
             long cardId,
             SearchWriteCardOutcome outcome

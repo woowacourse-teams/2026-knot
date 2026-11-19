@@ -2,8 +2,10 @@ package com.knot.backend.search.infrastructure.persistence.notion;
 
 import com.knot.backend.search.domain.model.notion.SearchCreatedNotionPage;
 import com.knot.backend.search.domain.model.notion.SearchWriteCard;
+import com.knot.backend.search.domain.model.notion.SearchWriteCardFailureReason;
 import com.knot.backend.search.domain.model.notion.SearchWriteCardStatus;
 import com.knot.backend.search.domain.repository.notion.SearchWriteCardRepository;
+import java.time.Instant;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
@@ -53,6 +55,20 @@ public class SearchWriteCardRepositoryAdapter implements SearchWriteCardReposito
         return cards.findByConversationIdAndStatusForUpdate(
                 conversationId,
                 SearchWriteCardStatus.PENDING
+        );
+    }
+
+    @Override
+    public int failAbandonedRunning(
+            Instant abandonedBefore,
+            Instant now
+    ) {
+        return cards.failAbandonedRunning(
+                SearchWriteCardStatus.RUNNING,
+                abandonedBefore,
+                SearchWriteCardStatus.FAILED,
+                SearchWriteCardFailureReason.NOTION_NO_RESPONSE,
+                now
         );
     }
 
