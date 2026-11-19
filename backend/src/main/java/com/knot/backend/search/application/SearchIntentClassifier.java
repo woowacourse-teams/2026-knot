@@ -1,10 +1,10 @@
 package com.knot.backend.search.application;
 
-import com.knot.backend.search.domain.model.SearchIntent;
+import com.knot.backend.search.application.dto.result.SearchUsePlan;
 
 public interface SearchIntentClassifier {
 
-    SearchIntent classify(
+    SearchUsePlan classify(
             SearchToolScope scope,
             String question
     );

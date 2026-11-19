@@ -1,5 +1,6 @@
 package com.knot.backend.search.presentation;
 
+import com.knot.backend.search.application.dto.result.SearchUsePlan;
 import com.knot.backend.search.domain.model.SearchIntent;
 import com.knot.backend.search.application.SearchIntentClassifier;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -140,7 +141,7 @@ class SearchFollowupQuestionAcceptanceTest {
                         any(),
                         any()
                 )
-        ).thenReturn(SearchIntent.MEETING_SEARCH);
+        ).thenReturn(SearchUsePlan.of(SearchIntent.MEETING_SEARCH));
         jdbc.sql("TRUNCATE TABLE members, workspaces RESTART IDENTITY CASCADE")
                 .update();
         fixtures = new DocumentFixtures(jdbc);
@@ -303,7 +304,7 @@ class SearchFollowupQuestionAcceptanceTest {
                         any(),
                         any()
                 )
-        ).thenReturn(SearchIntent.OUT_OF_SCOPE);
+        ).thenReturn(SearchUsePlan.of(SearchIntent.OUT_OF_SCOPE));
         when(
                 retriever.retrieve(
                         any(),
@@ -417,7 +418,7 @@ class SearchFollowupQuestionAcceptanceTest {
                         any(),
                         any()
                 )
-        ).thenReturn(SearchIntent.OUT_OF_SCOPE);
+        ).thenReturn(SearchUsePlan.of(SearchIntent.OUT_OF_SCOPE));
 
         try (InputStream stream = connect(
                 body(
@@ -517,7 +518,7 @@ class SearchFollowupQuestionAcceptanceTest {
                         any(),
                         any()
                 )
-        ).thenReturn(SearchIntent.OUT_OF_SCOPE);
+        ).thenReturn(SearchUsePlan.of(SearchIntent.OUT_OF_SCOPE));
         try (InputStream stream = connect(
                 body(
                         UUID.randomUUID(),

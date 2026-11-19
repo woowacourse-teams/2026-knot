@@ -1,5 +1,6 @@
 package com.knot.backend.search.application;
 
+import com.knot.backend.search.application.dto.result.SearchUsePlan;
 import static org.mockito.ArgumentMatchers.any;
 import com.knot.backend.search.domain.model.SearchIntent;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -86,7 +87,7 @@ class SearchAnswerExecutionIntegrationTest {
                         any(),
                         any()
                 )
-        ).thenReturn(SearchIntent.MEETING_SEARCH);
+        ).thenReturn(SearchUsePlan.of(SearchIntent.MEETING_SEARCH));
         when(clock.instant()).thenReturn(NOW);
         jdbc.sql("TRUNCATE TABLE members, workspaces RESTART IDENTITY CASCADE")
                 .update();

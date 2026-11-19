@@ -1,5 +1,6 @@
 package com.knot.backend.search.application;
 
+import com.knot.backend.search.application.dto.result.SearchUsePlan;
 import static org.mockito.Mockito.when;
 import com.knot.backend.search.domain.model.SearchIntent;
 import java.util.concurrent.ExecutorService;
@@ -90,7 +91,7 @@ class SearchTransportStopIntegrationTest {
                         any(),
                         any()
                 )
-        ).thenReturn(SearchIntent.MEETING_SEARCH);
+        ).thenReturn(SearchUsePlan.of(SearchIntent.MEETING_SEARCH));
         jdbc.sql("TRUNCATE TABLE members, workspaces RESTART IDENTITY CASCADE")
                 .update();
         DocumentFixtures fixtures = new DocumentFixtures(jdbc);

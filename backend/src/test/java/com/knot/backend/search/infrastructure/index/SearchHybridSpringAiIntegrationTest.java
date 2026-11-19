@@ -1,5 +1,6 @@
 package com.knot.backend.search.infrastructure.index;
 
+import com.knot.backend.search.application.dto.result.SearchUsePlan;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
@@ -110,7 +111,7 @@ class SearchHybridSpringAiIntegrationTest {
                         any(),
                         any()
                 )
-        ).willReturn(SearchIntent.MEETING_SEARCH);
+        ).willReturn(SearchUsePlan.of(SearchIntent.MEETING_SEARCH));
         jdbc.sql("TRUNCATE TABLE members, workspaces RESTART IDENTITY CASCADE")
                 .update();
         DocumentFixtures fixtures = new DocumentFixtures(jdbc);

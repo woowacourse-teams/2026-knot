@@ -1,5 +1,6 @@
 package com.knot.backend.search.presentation;
 
+import com.knot.backend.search.application.dto.result.SearchUsePlan;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -356,7 +357,7 @@ class SearchQuestionAcceptanceTest {
                             TimeUnit.SECONDS
                     )
             ).isTrue();
-            return SearchIntent.OUT_OF_SCOPE;
+            return SearchUsePlan.of(SearchIntent.OUT_OF_SCOPE);
         });
         try (BufferedReader stream = reader(
                 connect(
@@ -481,7 +482,7 @@ class SearchQuestionAcceptanceTest {
                         any(),
                         any()
                 )
-        ).thenReturn(SearchIntent.MEETING_SEARCH);
+        ).thenReturn(SearchUsePlan.of(SearchIntent.MEETING_SEARCH));
         jdbc.sql("TRUNCATE TABLE members, workspaces RESTART IDENTITY CASCADE")
                 .update();
         DocumentFixtures fixtures = new DocumentFixtures(jdbc);
@@ -936,7 +937,7 @@ class SearchQuestionAcceptanceTest {
                         any(),
                         any()
                 )
-        ).thenReturn(SearchIntent.OUT_OF_SCOPE);
+        ).thenReturn(SearchUsePlan.of(SearchIntent.OUT_OF_SCOPE));
         try (BufferedReader stream = reader(
                 connect(
                         UUID.randomUUID(),
@@ -978,7 +979,7 @@ class SearchQuestionAcceptanceTest {
                         any(),
                         any()
                 )
-        ).thenReturn(SearchIntent.GREETING_OR_THANKS);
+        ).thenReturn(SearchUsePlan.of(SearchIntent.GREETING_OR_THANKS));
         try (BufferedReader stream = reader(
                 connect(
                         UUID.randomUUID(),

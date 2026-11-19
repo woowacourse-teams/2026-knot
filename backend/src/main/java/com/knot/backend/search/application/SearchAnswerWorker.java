@@ -5,6 +5,7 @@ import com.knot.backend.search.application.dto.result.SearchAnswerWorkResult;
 import com.knot.backend.search.application.dto.query.SearchQuestionContext;
 import com.knot.backend.search.application.dto.result.SearchDocumentResult;
 import com.knot.backend.search.application.dto.result.SearchRetrievalResult;
+import com.knot.backend.search.application.dto.result.SearchUsePlan;
 import com.knot.backend.search.domain.model.SearchIntent;
 import java.time.Clock;
 import java.time.Duration;
@@ -136,14 +137,16 @@ public class SearchAnswerWorker {
         }
         long classificationStarted = System.nanoTime();
         SearchIntent intent;
+        SearchUsePlan plan = SearchUsePlan.of(SearchIntent.MEETING_SEARCH);
         try {
             intent = SearchIntent.MEETING_SEARCH;
             if (previous.isEmpty()) {
-                intent = classifiers.getObject()
+                plan = classifiers.getObject()
                         .classify(
                                 scope,
                                 work.question()
                         );
+                intent = plan.intent();
             }
             log.info(
                     "Search latency phase=intent_classification workspaceId={} questionId={} answerId={} elapsedMs={} inputChars={} outcome=success intent={}",

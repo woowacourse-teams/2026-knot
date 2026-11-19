@@ -1,5 +1,6 @@
 package com.knot.backend.search.application;
 
+import com.knot.backend.search.application.dto.result.SearchUsePlan;
 import com.knot.backend.search.domain.model.SearchIntent;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -280,7 +281,7 @@ class SearchAnswerWorkerLoggingTest {
                         any(),
                         any()
                 )
-        ).thenReturn(SearchIntent.MEETING_SEARCH);
+        ).thenReturn(SearchUsePlan.of(SearchIntent.MEETING_SEARCH));
         return new SearchAnswerWorker(
                 executions,
                 retrievers,

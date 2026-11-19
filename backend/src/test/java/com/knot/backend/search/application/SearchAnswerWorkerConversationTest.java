@@ -1,5 +1,6 @@
 package com.knot.backend.search.application;
 
+import com.knot.backend.search.application.dto.result.SearchUsePlan;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
@@ -74,7 +75,7 @@ class SearchAnswerWorkerConversationTest {
                         any(),
                         any()
                 )
-        ).thenReturn(SearchIntent.MEETING_SEARCH);
+        ).thenReturn(SearchUsePlan.of(SearchIntent.MEETING_SEARCH));
         when(
                 retriever.retrieve(
                         any(),
@@ -124,7 +125,7 @@ class SearchAnswerWorkerConversationTest {
                         any(),
                         any()
                 )
-        ).thenReturn(intent);
+        ).thenReturn(SearchUsePlan.of(intent));
         worker.execute(5);
         verifyNoInteractions(retriever);
         verifyGeneratedAnswer("생성한 답변");
