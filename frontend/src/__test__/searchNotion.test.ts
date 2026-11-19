@@ -278,6 +278,8 @@ for (const { id, scenario, title, action } of [
 
     await connectNotion(page);
     await page.goBack();
+    // 실제로는 노션 동의 화면을 다녀오며 페이지를 새로 불러와, 앞서 받은 연결 상태가 남지 않아요
+    await page.reload();
     await page.getByRole("region", { name: CARD_NAME }).getByRole("button", { name: "만들기" }).click();
     await expect(page.getByRole("region", { name: CARD_NAME }).getByText("만들었어요")).toBeVisible();
   });
