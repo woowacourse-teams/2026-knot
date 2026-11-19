@@ -25,6 +25,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { createMemoryRouter, RouterProvider } from "react-router";
 
 import SearchWriteCard from ".";
+import { formatDatabaseFieldValue } from "./utils/formatDatabaseFieldValue";
 
 const WORKSPACE_ID = "1";
 const CONVERSATION_ID = "10";
@@ -121,7 +122,9 @@ describe("SearchWriteCard", () => {
     expect(fieldValue(region, "위치")).toBe(`${card.location.path} DB`);
     expect(fieldValue(region, "제목")).toBe(card.title);
     expect(fieldValue(region, "DB 칸")).toBe(
-      "이름  11월 13일 주간 회의날짜  11월 13일",
+      card.databaseFields
+        ?.map(({ name, value }) => `${name}  ${formatDatabaseFieldValue(value)}`)
+        .join(""),
     );
     expect(fieldValue(region, "근거")).toBe(`문서${card.sourceDocument.title}`);
     expect(within(region).getByText("출시일은 12월 3일로 정했어요.", { exact: false })).toBeInTheDocument();
