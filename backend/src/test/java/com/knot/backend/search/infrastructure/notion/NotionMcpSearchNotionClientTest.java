@@ -315,6 +315,38 @@ class NotionMcpSearchNotionClientTest {
     }
 
     @Test
+    @DisplayName("refresh가 invalid_client 같은 설정 오류로 거절되면 연결을 만료로 바꾸지 않는다")
+    void search_refreshClientRejected() {
+        // given
+        connect(
+                Instant.now()
+                        .plusSeconds(3600)
+        );
+        notion.acceptToken("access-other");
+        notion.tokenResponse(
+                FakeNotionServer.Response.json(
+                        400,
+                        "{\"error\":\"invalid_client\"}"
+                )
+        );
+
+        // when & then
+        assertThatThrownBy(
+                () -> client.search(
+                        WORKSPACE_ID,
+                        "회의",
+                        TIMEOUT
+                )
+        ).isInstanceOf(SearchNotionException.class)
+                .extracting("failure")
+                .isEqualTo(SearchNotionFailure.FAILED);
+        assertThat(
+                connections.current()
+                        .isConnected()
+        ).isTrue();
+    }
+
+    @Test
     @DisplayName("갱신한 토큰까지 401로 거절되면 연결을 만료로 바꾼다")
     void search_refreshedTokenRejected() {
         // given

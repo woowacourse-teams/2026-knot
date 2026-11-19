@@ -162,10 +162,10 @@ class NotionOAuthClient implements SearchNotionAuthorizationServer {
         );
     }
 
+    /**
+     * invalid_grant만 grant 취소로 본다. invalid_client 같은 설정 오류로 모든 연결을 만료로 바꾸지 않는다.
+     */
     private boolean isRevoked(HttpResponse<String> response) {
-        if (response.statusCode() == 400) {
-            return true;
-        }
         return "invalid_grant".equals(
                 parseQuietly(response.body()).path("error")
                         .asString("")
